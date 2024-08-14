@@ -78,7 +78,7 @@ void HTMLObjectElement::form_associated_element_was_removed(DOM::Node*)
 String HTMLObjectElement::data() const
 {
     auto data = get_attribute_value(HTML::AttributeNames::data);
-    return MUST(document().parse_url(data).to_string());
+    return document().parse_url(data).to_string();
 }
 
 JS::GCPtr<Layout::Node> HTMLObjectElement::create_layout_node(NonnullRefPtr<CSS::StyleProperties> style)

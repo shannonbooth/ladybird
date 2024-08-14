@@ -275,7 +275,7 @@ bool HTMLImageElement::complete() const
 String HTMLImageElement::current_src() const
 {
     // The currentSrc IDL attribute must return the img element's current request's current URL.
-    return MUST(m_current_request->current_url().to_string());
+    return m_current_request->current_url().to_string();
 }
 
 // https://html.spec.whatwg.org/multipage/embedded-content.html#dom-img-decode
