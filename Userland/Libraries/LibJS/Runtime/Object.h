@@ -12,8 +12,8 @@
 #include <AK/StringView.h>
 #include <LibJS/Forward.h>
 #include <LibJS/Heap/Cell.h>
-#include <LibJS/Heap/CellAllocator.h>
-#include <LibJS/Heap/MarkedVector.h>
+#include <LibGC/CellAllocator.h>
+#include <LibGC/MarkedVector.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/IndexedProperties.h>
 #include <LibJS/Runtime/PrimitiveString.h>
@@ -22,7 +22,7 @@
 #include <LibJS/Runtime/PropertyKey.h>
 #include <LibJS/Runtime/Shape.h>
 #include <LibJS/Runtime/Value.h>
-#include <LibJS/SafeFunction.h>
+#include <LibGC/SafeFunction.h>
 
 namespace JS {
 

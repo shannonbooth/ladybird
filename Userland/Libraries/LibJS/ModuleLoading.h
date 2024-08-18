@@ -8,7 +8,7 @@
 
 #include <AK/Variant.h>
 #include <LibJS/Forward.h>
-#include <LibJS/Heap/GCPtr.h>
+#include <LibGC/GCPtr.h>
 
 namespace JS {
 

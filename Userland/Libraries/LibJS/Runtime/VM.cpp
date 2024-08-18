@@ -62,7 +62,7 @@ static constexpr auto make_single_ascii_character_strings(IndexSequence<code_poi
 static constexpr auto single_ascii_character_strings = make_single_ascii_character_strings(MakeIndexSequence<128>());
 
 VM::VM(OwnPtr<CustomData> custom_data, ErrorMessages error_messages)
-    : m_heap(this, [this](HashMap<Cell*, JS::HeapRoot>& roots) {
+    : m_heap(*this, [this](HashMap<GC::Cell*, GC::HeapRoot>& roots) {
         gather_roots(roots);
     })
     , m_error_messages(move(error_messages))
@@ -186,7 +186,7 @@ Bytecode::Interpreter& VM::bytecode_interpreter()
 }
 
 struct ExecutionContextRootsCollector : public Cell::Visitor {
-    virtual void visit_impl(Cell& cell) override
+    virtual void visit_impl(GC::Cell& cell) override
     {
         roots.set(&cell);
     }
@@ -196,41 +196,41 @@ struct ExecutionContextRootsCollector : public Cell::Visitor {
         VERIFY_NOT_REACHED();
     }
 
-    HashTable<GCPtr<Cell>> roots;
+    HashTable<GCPtr<GC::Cell>> roots;
 };
 
-void VM::gather_roots(HashMap<Cell*, HeapRoot>& roots)
+void VM::gather_roots(HashMap<GC::Cell*, GC::HeapRoot>& roots)
 {
-    roots.set(m_empty_string, HeapRoot { .type = HeapRoot::Type::VM });
+    roots.set(m_empty_string, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
     for (auto string : m_single_ascii_character_strings)
-        roots.set(string, HeapRoot { .type = HeapRoot::Type::VM });
+        roots.set(string, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
 
-    roots.set(typeof_strings.number, HeapRoot { .type = HeapRoot::Type::VM });
-    roots.set(typeof_strings.undefined, HeapRoot { .type = HeapRoot::Type::VM });
-    roots.set(typeof_strings.object, HeapRoot { .type = HeapRoot::Type::VM });
-    roots.set(typeof_strings.string, HeapRoot { .type = HeapRoot::Type::VM });
-    roots.set(typeof_strings.symbol, HeapRoot { .type = HeapRoot::Type::VM });
-    roots.set(typeof_strings.boolean, HeapRoot { .type = HeapRoot::Type::VM });
-    roots.set(typeof_strings.bigint, HeapRoot { .type = HeapRoot::Type::VM });
-    roots.set(typeof_strings.function, HeapRoot { .type = HeapRoot::Type::VM });
+    roots.set(typeof_strings.number, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
+    roots.set(typeof_strings.undefined, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
+    roots.set(typeof_strings.object, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
+    roots.set(typeof_strings.string, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
+    roots.set(typeof_strings.symbol, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
+    roots.set(typeof_strings.boolean, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
+    roots.set(typeof_strings.bigint, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
+    roots.set(typeof_strings.function, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
 
 #define __JS_ENUMERATE(SymbolName, snake_name) \
-    roots.set(m_well_known_symbols.snake_name, HeapRoot { .type = HeapRoot::Type::VM });
+    roots.set(m_well_known_symbols.snake_name, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
     JS_ENUMERATE_WELL_KNOWN_SYMBOLS
 #undef __JS_ENUMERATE
 
     for (auto& symbol : m_global_symbol_registry)
-        roots.set(symbol.value, HeapRoot { .type = HeapRoot::Type::VM });
+        roots.set(symbol.value, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
 
     for (auto finalization_registry : m_finalization_registry_cleanup_jobs)
-        roots.set(finalization_registry, HeapRoot { .type = HeapRoot::Type::VM });
+        roots.set(finalization_registry, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
 
     auto gather_roots_from_execution_context_stack = [&roots](Vector<ExecutionContext*> const& stack) {
         for (auto const& execution_context : stack) {
             ExecutionContextRootsCollector visitor;
             execution_context->visit_edges(visitor);
             for (auto cell : visitor.roots)
-                roots.set(cell, HeapRoot { .type = HeapRoot::Type::VM });
+                roots.set(cell, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
         }
     };
     gather_roots_from_execution_context_stack(m_execution_context_stack);
@@ -238,7 +238,7 @@ void VM::gather_roots(HashMap<Cell*, HeapRoot>& roots)
         gather_roots_from_execution_context_stack(saved_stack);
 
     for (auto& job : m_promise_jobs)
-        roots.set(job, HeapRoot { .type = HeapRoot::Type::VM });
+        roots.set(job, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
 }
 
 // 9.1.2.1 GetIdentifierReference ( env, name, strict ), https://tc39.es/ecma262/#sec-getidentifierreference

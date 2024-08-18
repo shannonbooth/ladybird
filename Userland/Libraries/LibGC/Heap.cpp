@@ -15,25 +15,25 @@
 #include <AK/TemporaryChange.h>
 #include <LibCore/ElapsedTimer.h>
 #include <LibGC/NanBoxedValue.h>
-#include <LibJS/Heap/CellAllocator.h>
-#include <LibJS/Heap/Handle.h>
-#include <LibJS/Heap/Heap.h>
-#include <LibJS/Heap/HeapBlock.h>
-#include <LibJS/Heap/WeakContainer.h>
-#include <LibJS/SafeFunction.h>
+#include <LibGC/CellAllocator.h>
+#include <LibGC/Handle.h>
+#include <LibGC/Heap.h>
+#include <LibGC/HeapBlock.h>
+#include <LibGC/WeakContainer.h>
+#include <LibGC/SafeFunction.h>
 #include <setjmp.h>
 
 #ifdef HAS_ADDRESS_SANITIZER
 #    include <sanitizer/asan_interface.h>
 #endif
 
-namespace JS {
+namespace GC {
 
 // NOTE: We keep a per-thread list of custom ranges. This hinges on the assumption that there is one JS VM per thread.
 static __thread HashMap<FlatPtr*, size_t>* s_custom_ranges_for_conservative_scan = nullptr;
 static __thread HashMap<FlatPtr*, SourceLocation*>* s_safe_function_locations = nullptr;
 
-Heap::Heap(void* private_data, Function<void(HashMap<Cell*, JS::HeapRoot>&)> gather_roots)
+Heap::Heap(void* private_data, Function<void(HashMap<Cell*, HeapRoot>&)> gather_roots)
     : HeapBase(private_data)
     , m_gather_roots(move(gather_roots))
 {
@@ -226,7 +226,7 @@ private:
     };
 
     GraphNode* m_node_being_visited { nullptr };
-    Vector<NonnullGCPtr<Cell>> m_work_queue;
+    Vector<JS::NonnullGCPtr<Cell>> m_work_queue;
     HashMap<FlatPtr, GraphNode> m_graph;
 
     Heap& m_heap;
@@ -421,7 +421,7 @@ public:
 
 private:
     Heap& m_heap;
-    Vector<NonnullGCPtr<Cell>> m_work_queue;
+    Vector<JS::NonnullGCPtr<Cell>> m_work_queue;
     HashTable<HeapBlock*> m_all_live_heap_blocks;
     FlatPtr m_min_block_address;
     FlatPtr m_max_block_address;
@@ -556,27 +556,30 @@ void Heap::uproot_cell(Cell* cell)
     m_uprooted_cells.append(cell);
 }
 
+}
+
+namespace JS {
 void register_safe_function_closure(void* base, size_t size, SourceLocation* location)
 {
-    if (!s_custom_ranges_for_conservative_scan) {
+    if (!GC::s_custom_ranges_for_conservative_scan) {
         // FIXME: This per-thread HashMap is currently leaked on thread exit.
-        s_custom_ranges_for_conservative_scan = new HashMap<FlatPtr*, size_t>;
+	    GC::s_custom_ranges_for_conservative_scan = new HashMap<FlatPtr*, size_t>;
     }
-    if (!s_safe_function_locations) {
-        s_safe_function_locations = new HashMap<FlatPtr*, SourceLocation*>;
+    if (!GC::s_safe_function_locations) {
+	    GC::s_safe_function_locations = new HashMap<FlatPtr*, SourceLocation*>;
     }
-    auto result = s_custom_ranges_for_conservative_scan->set(reinterpret_cast<FlatPtr*>(base), size);
+    auto result = GC::s_custom_ranges_for_conservative_scan->set(reinterpret_cast<FlatPtr*>(base), size);
     VERIFY(result == AK::HashSetResult::InsertedNewEntry);
-    result = s_safe_function_locations->set(reinterpret_cast<FlatPtr*>(base), location);
+    result = GC::s_safe_function_locations->set(reinterpret_cast<FlatPtr*>(base), location);
     VERIFY(result == AK::HashSetResult::InsertedNewEntry);
 }
 
 void unregister_safe_function_closure(void* base, size_t, SourceLocation*)
 {
-    VERIFY(s_custom_ranges_for_conservative_scan);
-    bool did_remove_range = s_custom_ranges_for_conservative_scan->remove(reinterpret_cast<FlatPtr*>(base));
+    VERIFY(GC::s_custom_ranges_for_conservative_scan);
+    bool did_remove_range = GC::s_custom_ranges_for_conservative_scan->remove(reinterpret_cast<FlatPtr*>(base));
     VERIFY(did_remove_range);
-    bool did_remove_location = s_safe_function_locations->remove(reinterpret_cast<FlatPtr*>(base));
+    bool did_remove_location = GC::s_safe_function_locations->remove(reinterpret_cast<FlatPtr*>(base));
     VERIFY(did_remove_location);
 }
 

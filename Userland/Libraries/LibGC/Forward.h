@@ -8,4 +8,8 @@
 
 namespace GC {
 class NanBoxedValue;
+class Cell;
+class CellAllocator;
+class Heap;
+class HeapBlock;
 }

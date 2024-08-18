@@ -17,7 +17,7 @@
 #include <AK/Variant.h>
 #include <LibJS/CyclicModule.h>
 #include <LibJS/Heap/Heap.h>
-#include <LibJS/Heap/MarkedVector.h>
+#include <LibGC/MarkedVector.h>
 #include <LibJS/ModuleLoading.h>
 #include <LibJS/Runtime/CommonPropertyNames.h>
 #include <LibJS/Runtime/Completion.h>
@@ -55,7 +55,7 @@ public:
 
     void dump_backtrace() const;
 
-    void gather_roots(HashMap<Cell*, HeapRoot>&);
+    void gather_roots(HashMap<GC::Cell*, GC::HeapRoot>&);
 
 #define __JS_ENUMERATE(SymbolName, snake_name)                  \
     NonnullGCPtr<Symbol> well_known_symbol_##snake_name() const \

@@ -5,12 +5,12 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include <LibJS/Heap/Heap.h>
-#include <LibJS/Heap/MarkedVector.h>
+#include <LibGC/Heap.h>
+#include <LibGC/MarkedVector.h>
 
 namespace JS {
 
-MarkedVectorBase::MarkedVectorBase(Heap& heap)
+MarkedVectorBase::MarkedVectorBase(GC::Heap& heap)
     : m_heap(&heap)
 {
     m_heap->did_create_marked_vector({}, *this);

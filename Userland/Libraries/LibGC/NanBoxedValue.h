@@ -13,6 +13,7 @@
 #include <AK/BitCast.h>
 #include <AK/Forward.h>
 #include <AK/Types.h>
+#include <LibGC/Cell.h>
 
 namespace GC {
 
@@ -88,6 +89,18 @@ public:
     {
         VERIFY(is_cell());
         return reinterpret_cast<PointerType*>(extract_pointer_bits(m_value.encoded));
+    }
+
+    Cell& as_cell2()
+    {
+        VERIFY(is_cell());
+        return *extract_pointer<Cell>();
+    }
+
+    Cell& as_cell2() const
+    {
+        VERIFY(is_cell());
+        return *extract_pointer<Cell>();
     }
 
 protected:

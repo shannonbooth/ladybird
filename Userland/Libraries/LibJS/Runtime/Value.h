@@ -19,9 +19,10 @@
 #include <AK/String.h>
 #include <AK/Types.h>
 #include <LibGC/NanBoxedValue.h>
+#include <LibJS/Heap/Cell.h>
 #include <LibJS/Forward.h>
-#include <LibJS/Heap/GCPtr.h>
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/GCPtr.h>
+#include <LibGC/Handle.h>
 #include <math.h>
 
 namespace JS {

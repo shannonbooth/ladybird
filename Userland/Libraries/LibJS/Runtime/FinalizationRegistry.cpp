@@ -47,7 +47,7 @@ bool FinalizationRegistry::remove_by_token(Cell& unregister_token)
     return removed;
 }
 
-void FinalizationRegistry::remove_dead_cells(Badge<Heap>)
+void FinalizationRegistry::remove_dead_cells(Badge<GC::Heap>)
 {
     auto any_cells_were_removed = false;
     for (auto& record : m_records) {

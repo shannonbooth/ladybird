@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <LibJS/Heap/HeapFunction.h>
+#include <LibGC/HeapFunction.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/GeneratorObject.h>
 #include <LibJS/Runtime/Iterator.h>

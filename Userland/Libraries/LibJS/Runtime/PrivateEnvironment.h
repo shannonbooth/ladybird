@@ -10,7 +10,7 @@
 #include <AK/StringView.h>
 #include <AK/Vector.h>
 #include <LibJS/Heap/Cell.h>
-#include <LibJS/Heap/CellAllocator.h>
+#include <LibGC/CellAllocator.h>
 
 namespace JS {
 

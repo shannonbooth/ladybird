@@ -13,11 +13,11 @@
 #include <AK/Noncopyable.h>
 #include <AK/StringView.h>
 #include <AK/Weakable.h>
-#include <LibJS/Forward.h>
-#include <LibJS/Heap/GCPtr.h>
-#include <LibJS/Heap/Internals.h>
+#include <LibGC/Forward.h>
+#include <LibGC/GCPtr.h>
+#include <LibGC/Internals.h>
 
-namespace JS {
+namespace GC {
 
 // This instrumentation tells analysis tooling to ignore a potentially mis-wrapped GC-allocated member variable
 // It should only be used when the lifetime of the GC-allocated member is always longer than the object
@@ -27,21 +27,20 @@ namespace JS {
 #    define IGNORE_GC
 #endif
 
-#define JS_CELL(class_, base_class)                \
+#define GC_CELL(class_, base_class)                \
 public:                                            \
     using Base = base_class;                       \
     virtual StringView class_name() const override \
     {                                              \
         return #class_##sv;                        \
     }                                              \
-    friend class JS::Heap;
+    friend class GC::Heap;
 
 class Cell : public Weakable<Cell> {
     AK_MAKE_NONCOPYABLE(Cell);
     AK_MAKE_NONMOVABLE(Cell);
 
 public:
-    virtual void initialize(Realm&);
     virtual ~Cell() = default;
 
     bool is_marked() const { return m_mark; }
@@ -59,6 +58,17 @@ public:
 
     class Visitor {
     public:
+        void visit(Cell const* cell)
+        {
+            if (cell)
+                visit_impl(*const_cast<Cell*>(cell));
+        }
+
+        void visit(Cell const& cell)
+        {
+            visit_impl(const_cast<Cell&>(cell));
+        }
+
         void visit(Cell* cell)
         {
             if (cell)
@@ -71,14 +81,14 @@ public:
         }
 
         template<typename T>
-        void visit(GCPtr<T> cell)
+        void visit(JS::GCPtr<T> cell)
         {
             if (cell)
                 visit_impl(const_cast<RemoveConst<T>&>(*cell.ptr()));
         }
 
         template<typename T>
-        void visit(NonnullGCPtr<T> cell)
+        void visit(JS::NonnullGCPtr<T> cell)
         {
             visit_impl(const_cast<RemoveConst<T>&>(*cell.ptr()));
         }
@@ -140,7 +150,7 @@ public:
             }
         }
 
-        void visit(Value value);
+        void visit(NanBoxedValue const& value);
 
         // Allow explicitly ignoring a GC-allocated member in a visit_edges implementation instead
         // of just not using it.
@@ -168,11 +178,13 @@ public:
 
     bool overrides_must_survive_garbage_collection(Badge<Heap>) const { return m_overrides_must_survive_garbage_collection; }
 
-    ALWAYS_INLINE Heap& heap() const { return HeapBlockBase::from_cell(this)->heap(); }
-    ALWAYS_INLINE void* private_data() const { return bit_cast<HeapBase*>(&heap())->private_data(); }
 
 protected:
     Cell() = default;
+
+    ALWAYS_INLINE Heap& heap_thing() const { return GC::HeapBlockBase::from_cell(this)->heap(); } // FIXME: tidy up
+
+    ALWAYS_INLINE void* private_data() const { return bit_cast<HeapBase*>(&heap_thing())->private_data(); }
 
     void set_overrides_must_survive_garbage_collection(bool b) { m_overrides_must_survive_garbage_collection = b; }
 
@@ -185,8 +197,8 @@ private:
 }
 
 template<>
-struct AK::Formatter<JS::Cell> : AK::Formatter<FormatString> {
-    ErrorOr<void> format(FormatBuilder& builder, JS::Cell const* cell)
+struct AK::Formatter<GC::Cell> : AK::Formatter<FormatString> {
+    ErrorOr<void> format(FormatBuilder& builder, GC::Cell const* cell)
     {
         if (!cell)
             return builder.put_string("Cell{nullptr}"sv);

@@ -15,7 +15,6 @@
 #include <LibCore/ElapsedTimer.h>
 #include <LibJS/Forward.h>
 #include <LibJS/Heap/Cell.h>
-#include <LibJS/Heap/CellAllocator.h>
 #include <LibJS/Runtime/Value.h>
 
 namespace JS {

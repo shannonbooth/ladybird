@@ -7,8 +7,8 @@
 #pragma once
 
 #include <AK/SinglyLinkedList.h>
-#include <LibJS/Heap/GCPtr.h>
-#include <LibJS/Heap/WeakContainer.h>
+#include <LibGC/GCPtr.h>
+#include <LibGC/WeakContainer.h>
 #include <LibJS/Runtime/FunctionObject.h>
 #include <LibJS/Runtime/GlobalObject.h>
 #include <LibJS/Runtime/JobCallback.h>
@@ -30,7 +30,7 @@ public:
     bool remove_by_token(Cell& unregister_token);
     ThrowCompletionOr<void> cleanup(GCPtr<JobCallback> = {});
 
-    virtual void remove_dead_cells(Badge<Heap>) override;
+    virtual void remove_dead_cells(Badge<GC::Heap>) override;
 
     Realm& realm() { return *m_realm; }
     Realm const& realm() const { return *m_realm; }

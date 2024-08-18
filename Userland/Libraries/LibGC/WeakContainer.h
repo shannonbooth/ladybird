@@ -7,23 +7,23 @@
 #pragma once
 
 #include <AK/IntrusiveList.h>
-#include <LibJS/Forward.h>
+#include <LibGC/Forward.h>
 
 namespace JS {
 
 class WeakContainer {
 public:
-    explicit WeakContainer(Heap&);
+    explicit WeakContainer(GC::Heap&);
     virtual ~WeakContainer();
 
-    virtual void remove_dead_cells(Badge<Heap>) = 0;
+    virtual void remove_dead_cells(Badge<GC::Heap>) = 0;
 
 protected:
     void deregister();
 
 private:
     bool m_registered { true };
-    Heap& m_heap;
+    GC::Heap& m_heap;
 
     IntrusiveListNode<WeakContainer> m_list_node;
 

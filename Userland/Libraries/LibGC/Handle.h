@@ -12,8 +12,9 @@
 #include <AK/RefCounted.h>
 #include <AK/RefPtr.h>
 #include <AK/SourceLocation.h>
-#include <LibJS/Forward.h>
-#include <LibJS/Heap/GCPtr.h>
+#include <LibGC/Forward.h>
+#include <LibGC/GCPtr.h>
+#include <LibGC/Cell.h>
 
 namespace JS {
 
@@ -24,8 +25,8 @@ class HandleImpl : public RefCounted<HandleImpl> {
 public:
     ~HandleImpl();
 
-    Cell* cell() { return m_cell; }
-    Cell const* cell() const { return m_cell; }
+    GC::Cell* cell() { return m_cell; }
+    GC::Cell const* cell() const { return m_cell; }
 
     SourceLocation const& source_location() const { return m_location; }
 
@@ -33,8 +34,13 @@ private:
     template<class T>
     friend class Handle;
 
-    explicit HandleImpl(Cell*, SourceLocation location);
-    GCPtr<Cell> m_cell;
+    explicit HandleImpl(GC::Cell*, SourceLocation location);
+    explicit HandleImpl(GC::Cell const* cell, SourceLocation location)
+        : HandleImpl(const_cast<GC::Cell*>(cell), location)
+    {
+    }
+
+    JS::GCPtr<GC::Cell> m_cell;
     SourceLocation m_location;
 
     IntrusiveListNode<HandleImpl> m_list_node;
@@ -48,9 +54,14 @@ class Handle {
 public:
     Handle() = default;
 
+    static Handle create(T const* cell, SourceLocation location = SourceLocation::current())
+    {
+        return Handle(adopt_ref(*new HandleImpl(const_cast<T*>(cell), location)));
+    }
+
     static Handle create(T* cell, SourceLocation location = SourceLocation::current())
     {
-        return Handle(adopt_ref(*new HandleImpl(const_cast<RemoveConst<T>*>(cell), location)));
+        return Handle(adopt_ref(*new HandleImpl(cell, location)));
     }
 
     Handle(T* cell, SourceLocation location = SourceLocation::current())
@@ -78,7 +89,7 @@ public:
     {
         if (!m_impl)
             return nullptr;
-        return static_cast<T*>(m_impl->cell());
+        return reinterpret_cast<T*>(m_impl->cell()); // FIXME!!!!!!!!!!!!!!!!!!!!!
     }
 
     T* ptr() const

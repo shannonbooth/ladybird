@@ -8,7 +8,7 @@
 #pragma once
 
 #include <AK/Optional.h>
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/Handle.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/Date.h>
 #include <LibJS/Runtime/Object.h>

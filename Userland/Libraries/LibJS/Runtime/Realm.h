@@ -13,7 +13,7 @@
 #include <AK/Weakable.h>
 #include <LibJS/Bytecode/Builtins.h>
 #include <LibJS/Heap/Cell.h>
-#include <LibJS/Heap/CellAllocator.h>
+#include <LibGC/CellAllocator.h>
 #include <LibJS/Runtime/Intrinsics.h>
 #include <LibJS/Runtime/Value.h>
 

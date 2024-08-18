@@ -8,7 +8,7 @@
 
 #include <AK/DeprecatedFlyString.h>
 #include <AK/FlyString.h>
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/Handle.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/StringOrSymbol.h>
 

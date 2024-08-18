@@ -9,7 +9,7 @@
 
 #include <AK/Badge.h>
 #include <AK/Optional.h>
-#include <LibJS/Heap/HeapFunction.h>
+#include <LibGC/HeapFunction.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/FunctionObject.h>
 #include <LibJS/Runtime/PropertyKey.h>

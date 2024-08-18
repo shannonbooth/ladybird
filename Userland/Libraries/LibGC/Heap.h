@@ -16,47 +16,25 @@
 #include <AK/Types.h>
 #include <AK/Vector.h>
 #include <LibCore/Forward.h>
-#include <LibJS/Forward.h>
-#include <LibJS/Heap/Cell.h>
-#include <LibJS/Heap/CellAllocator.h>
-#include <LibJS/Heap/ConservativeVector.h>
-#include <LibJS/Heap/Handle.h>
-#include <LibJS/Heap/HeapRoot.h>
-#include <LibJS/Heap/Internals.h>
-#include <LibJS/Heap/MarkedVector.h>
-#include <LibJS/Heap/WeakContainer.h>
+#include <LibGC/Forward.h>
+#include <LibGC/Cell.h>
+#include <LibGC/CellAllocator.h>
+#include <LibGC/ConservativeVector.h>
+#include <LibGC/Handle.h>
+#include <LibGC/HeapRoot.h>
+#include <LibGC/Internals.h>
+#include <LibGC/MarkedVector.h>
+#include <LibGC/WeakContainer.h>
 
-namespace JS {
+namespace GC {
 
 class Heap : public HeapBase {
     AK_MAKE_NONCOPYABLE(Heap);
     AK_MAKE_NONMOVABLE(Heap);
 
 public:
-    explicit Heap(VM&, Function<void(HashMap<Cell*, JS::HeapRoot>&)> gather_roots);
+    explicit Heap(void* private_data, Function<void(HashMap<Cell*, HeapRoot>&)> gather_roots);
     ~Heap();
-
-    template<typename T, typename... Args>
-    NonnullGCPtr<T> allocate_without_realm(Args&&... args)
-    {
-        auto* memory = allocate_cell<T>();
-        defer_gc();
-        new (memory) T(forward<Args>(args)...);
-        undefer_gc();
-        return *static_cast<T*>(memory);
-    }
-
-    template<typename T, typename... Args>
-    NonnullGCPtr<T> allocate(Realm& realm, Args&&... args)
-    {
-        auto* memory = allocate_cell<T>();
-        defer_gc();
-        new (memory) T(forward<Args>(args)...);
-        undefer_gc();
-        auto* cell = static_cast<T*>(memory);
-        memory->initialize(realm);
-        return *cell;
-    }
 
     enum class CollectionType {
         CollectGarbage,
@@ -69,31 +47,35 @@ public:
     bool should_collect_on_every_allocation() const { return m_should_collect_on_every_allocation; }
     void set_should_collect_on_every_allocation(bool b) { m_should_collect_on_every_allocation = b; }
 
-    void did_create_handle(Badge<HandleImpl>, HandleImpl&);
-    void did_destroy_handle(Badge<HandleImpl>, HandleImpl&);
+    void did_create_handle(Badge<JS::HandleImpl>, JS::HandleImpl&);
+    void did_destroy_handle(Badge<JS::HandleImpl>, JS::HandleImpl&);
 
-    void did_create_marked_vector(Badge<MarkedVectorBase>, MarkedVectorBase&);
-    void did_destroy_marked_vector(Badge<MarkedVectorBase>, MarkedVectorBase&);
+    void did_create_marked_vector(Badge<JS::MarkedVectorBase>, JS::MarkedVectorBase&);
+    void did_destroy_marked_vector(Badge<JS::MarkedVectorBase>, JS::MarkedVectorBase&);
 
-    void did_create_conservative_vector(Badge<ConservativeVectorBase>, ConservativeVectorBase&);
-    void did_destroy_conservative_vector(Badge<ConservativeVectorBase>, ConservativeVectorBase&);
+    void did_create_conservative_vector(Badge<JS::ConservativeVectorBase>, JS::ConservativeVectorBase&);
+    void did_destroy_conservative_vector(Badge<JS::ConservativeVectorBase>, JS::ConservativeVectorBase&);
 
-    void did_create_weak_container(Badge<WeakContainer>, WeakContainer&);
-    void did_destroy_weak_container(Badge<WeakContainer>, WeakContainer&);
+    void did_create_weak_container(Badge<JS::WeakContainer>, JS::WeakContainer&);
+    void did_destroy_weak_container(Badge<JS::WeakContainer>, JS::WeakContainer&);
 
     void register_cell_allocator(Badge<CellAllocator>, CellAllocator&);
 
     void uproot_cell(Cell* cell);
 
-private:
-    friend class MarkingVisitor;
-    friend class GraphConstructorVisitor;
-    friend class DeferGC;
+    template<typename T, typename... Args>
+    JS::NonnullGCPtr<T> allocate_without_impl(Args&&... args) // FIXME
+    {
+        auto* memory = allocate_cell<T>();
+        defer_gc();
+        new (memory) T(forward<Args>(args)...);
+        undefer_gc();
+        return *static_cast<T*>(memory);
+    }
 
+protected:
     void defer_gc();
     void undefer_gc();
-
-    static bool cell_must_survive_garbage_collection(Cell const&);
 
     template<typename T>
     Cell* allocate_cell()
@@ -106,6 +88,13 @@ private:
         }
         return allocator_for_size(sizeof(T)).allocate_cell(*this);
     }
+
+private:
+    friend class MarkingVisitor;
+    friend class GraphConstructorVisitor;
+    friend class DeferGC;
+
+    static bool cell_must_survive_garbage_collection(Cell const&);
 
     void will_allocate(size_t);
 
@@ -146,64 +135,64 @@ private:
     Vector<NonnullOwnPtr<CellAllocator>> m_size_based_cell_allocators;
     CellAllocator::List m_all_cell_allocators;
 
-    HandleImpl::List m_handles;
-    MarkedVectorBase::List m_marked_vectors;
-    ConservativeVectorBase::List m_conservative_vectors;
-    WeakContainer::List m_weak_containers;
+    JS::HandleImpl::List m_handles;
+    JS::MarkedVectorBase::List m_marked_vectors;
+    JS::ConservativeVectorBase::List m_conservative_vectors;
+    JS::WeakContainer::List m_weak_containers;
 
-    Vector<GCPtr<Cell>> m_uprooted_cells;
+    Vector<JS::GCPtr<Cell>> m_uprooted_cells;
 
     size_t m_gc_deferrals { 0 };
     bool m_should_gc_when_deferral_ends { false };
 
     bool m_collecting_garbage { false };
     StackInfo m_stack_info;
-    Function<void(HashMap<Cell*, JS::HeapRoot>&)> m_gather_roots;
+    Function<void(HashMap<Cell*, HeapRoot>&)> m_gather_roots;
 };
 
-inline void Heap::did_create_handle(Badge<HandleImpl>, HandleImpl& impl)
+inline void Heap::did_create_handle(Badge<JS::HandleImpl>, JS::HandleImpl& impl)
 {
     VERIFY(!m_handles.contains(impl));
     m_handles.append(impl);
 }
 
-inline void Heap::did_destroy_handle(Badge<HandleImpl>, HandleImpl& impl)
+inline void Heap::did_destroy_handle(Badge<JS::HandleImpl>, JS::HandleImpl& impl)
 {
     VERIFY(m_handles.contains(impl));
     m_handles.remove(impl);
 }
 
-inline void Heap::did_create_marked_vector(Badge<MarkedVectorBase>, MarkedVectorBase& vector)
+inline void Heap::did_create_marked_vector(Badge<JS::MarkedVectorBase>, JS::MarkedVectorBase& vector)
 {
     VERIFY(!m_marked_vectors.contains(vector));
     m_marked_vectors.append(vector);
 }
 
-inline void Heap::did_destroy_marked_vector(Badge<MarkedVectorBase>, MarkedVectorBase& vector)
+inline void Heap::did_destroy_marked_vector(Badge<JS::MarkedVectorBase>, JS::MarkedVectorBase& vector)
 {
     VERIFY(m_marked_vectors.contains(vector));
     m_marked_vectors.remove(vector);
 }
 
-inline void Heap::did_create_conservative_vector(Badge<ConservativeVectorBase>, ConservativeVectorBase& vector)
+inline void Heap::did_create_conservative_vector(Badge<JS::ConservativeVectorBase>, JS::ConservativeVectorBase& vector)
 {
     VERIFY(!m_conservative_vectors.contains(vector));
     m_conservative_vectors.append(vector);
 }
 
-inline void Heap::did_destroy_conservative_vector(Badge<ConservativeVectorBase>, ConservativeVectorBase& vector)
+inline void Heap::did_destroy_conservative_vector(Badge<JS::ConservativeVectorBase>, JS::ConservativeVectorBase& vector)
 {
     VERIFY(m_conservative_vectors.contains(vector));
     m_conservative_vectors.remove(vector);
 }
 
-inline void Heap::did_create_weak_container(Badge<WeakContainer>, WeakContainer& set)
+inline void Heap::did_create_weak_container(Badge<JS::WeakContainer>, JS::WeakContainer& set)
 {
     VERIFY(!m_weak_containers.contains(set));
     m_weak_containers.append(set);
 }
 
-inline void Heap::did_destroy_weak_container(Badge<WeakContainer>, WeakContainer& set)
+inline void Heap::did_destroy_weak_container(Badge<JS::WeakContainer>, JS::WeakContainer& set)
 {
     VERIFY(m_weak_containers.contains(set));
     m_weak_containers.remove(set);

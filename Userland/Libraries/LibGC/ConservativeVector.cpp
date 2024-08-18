@@ -4,12 +4,12 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include <LibJS/Heap/ConservativeVector.h>
-#include <LibJS/Heap/Heap.h>
+#include <LibGC/ConservativeVector.h>
+#include <LibGC/Heap.h>
 
 namespace JS {
 
-ConservativeVectorBase::ConservativeVectorBase(Heap& heap)
+ConservativeVectorBase::ConservativeVectorBase(GC::Heap& heap)
     : m_heap(&heap)
 {
     m_heap->did_create_conservative_vector({}, *this);

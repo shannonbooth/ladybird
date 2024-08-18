@@ -8,7 +8,7 @@
 #pragma once
 
 #include <AK/DeprecatedFlyString.h>
-#include <LibJS/Heap/GCPtr.h>
+#include <LibGC/GCPtr.h>
 #include <LibJS/ModuleLoading.h>
 #include <LibJS/Runtime/Environment.h>
 #include <LibJS/Runtime/Realm.h>

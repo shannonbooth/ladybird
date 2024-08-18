@@ -8,9 +8,9 @@
 #pragma once
 
 #include <AK/Types.h>
-#include <LibJS/Forward.h>
+#include <LibGC/Forward.h>
 
-namespace JS {
+namespace GC {
 
 class HeapBase {
     AK_MAKE_NONCOPYABLE(HeapBase);

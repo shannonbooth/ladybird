@@ -11,7 +11,7 @@
 #include <AK/StringView.h>
 #include <LibCrypto/BigInt/SignedBigInteger.h>
 #include <LibJS/Heap/Cell.h>
-#include <LibJS/Heap/CellAllocator.h>
+#include <LibGC/CellAllocator.h>
 
 namespace JS {
 

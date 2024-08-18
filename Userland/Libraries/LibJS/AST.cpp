@@ -15,8 +15,8 @@
 #include <AK/TemporaryChange.h>
 #include <LibCrypto/BigInt/SignedBigInteger.h>
 #include <LibJS/AST.h>
-#include <LibJS/Heap/ConservativeVector.h>
-#include <LibJS/Heap/MarkedVector.h>
+#include <LibGC/ConservativeVector.h>
+#include <LibGC/MarkedVector.h>
 #include <LibJS/Runtime/AbstractOperations.h>
 #include <LibJS/Runtime/Accessor.h>
 #include <LibJS/Runtime/Array.h>

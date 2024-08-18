@@ -36,7 +36,7 @@ WeakRef::WeakRef(Symbol& value, Object& prototype)
 {
 }
 
-void WeakRef::remove_dead_cells(Badge<Heap>)
+void WeakRef::remove_dead_cells(Badge<GC::Heap>)
 {
     if (m_value.visit([](Cell* cell) -> bool { return cell->state() == Cell::State::Live; }, [](Empty) -> bool { VERIFY_NOT_REACHED(); }))
         return;

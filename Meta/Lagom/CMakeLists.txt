@@ -389,6 +389,7 @@ set(lagom_standard_libraries
     HTTP
     IPC
     JS
+    GC
     Line
     Protocol
     Regex
@@ -568,7 +569,7 @@ if (BUILD_TESTING)
     add_executable(test-js
         ../../Tests/LibJS/test-js.cpp
         ../../Userland/Libraries/LibTest/JavaScriptTestRunnerMain.cpp)
-    target_link_libraries(test-js AK LibCore LibFileSystem LibTest LibJS)
+    target_link_libraries(test-js AK LibCore LibFileSystem LibTest LibJS LibGC)
     add_test(
         NAME JS
         COMMAND test-js --show-progress=false

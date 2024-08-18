@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <LibJS/Heap/WeakContainer.h>
+#include <LibGC/WeakContainer.h>
 #include <LibJS/Runtime/GlobalObject.h>
 #include <LibJS/Runtime/Object.h>
 
@@ -28,7 +28,7 @@ public:
 
     void update_execution_generation() { m_last_execution_generation = vm().execution_generation(); }
 
-    virtual void remove_dead_cells(Badge<Heap>) override;
+    virtual void remove_dead_cells(Badge<GC::Heap>) override;
 
 private:
     explicit WeakRef(Object&, Object& prototype);

@@ -9,7 +9,7 @@
 #include <AK/HashMap.h>
 #include <LibJS/Runtime/GlobalObject.h>
 #include <LibJS/Runtime/Object.h>
-#include <LibJS/Heap/WeakContainer.h>
+#include <LibGC/WeakContainer.h>
 
 namespace JS {
 
@@ -27,7 +27,7 @@ public:
     HashMap<GCPtr<Cell>, Value> const& values() const { return m_values; }
     HashMap<GCPtr<Cell>, Value>& values() { return m_values; }
 
-    virtual void remove_dead_cells(Badge<Heap>) override;
+    virtual void remove_dead_cells(Badge<GC::Heap>) override;
 
 private:
     explicit WeakMap(Object& prototype);

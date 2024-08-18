@@ -7,19 +7,19 @@
 #pragma once
 
 #include <AK/Function.h>
-#include <LibJS/Heap/Cell.h>
-#include <LibJS/Heap/Heap.h>
+#include <LibGC/Cell.h>
+#include <LibGC/Heap.h>
 
 namespace JS {
 
 template<typename T>
-class HeapFunction final : public Cell {
-    JS_CELL(HeapFunction, Cell);
+class HeapFunction final : public GC::Cell {
+    GC_CELL(HeapFunction, GC::Cell);
 
 public:
-    static NonnullGCPtr<HeapFunction> create(Heap& heap, Function<T> function)
+    static NonnullGCPtr<HeapFunction> create(GC::Heap& heap, Function<T> function)
     {
-        return heap.allocate_without_realm<HeapFunction>(move(function));
+        return heap.allocate_without_impl<HeapFunction>(move(function)); // FIXME
     }
 
     virtual ~HeapFunction() override = default;
@@ -42,7 +42,7 @@ private:
 };
 
 template<typename Callable, typename T = EquivalentFunctionType<Callable>>
-static NonnullGCPtr<HeapFunction<T>> create_heap_function(Heap& heap, Callable&& function)
+static NonnullGCPtr<HeapFunction<T>> create_heap_function(GC::Heap& heap, Callable&& function)
 {
     return HeapFunction<T>::create(heap, Function<T> { forward<Callable>(function) });
 }

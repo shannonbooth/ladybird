@@ -181,7 +181,7 @@ class GlobalEnvironment;
 class GlobalObject;
 struct GraphLoadingState;
 class HandleImpl;
-class Heap;
+class JSHeap;
 class HeapBlock;
 struct ImportEntry;
 class ImportStatement;

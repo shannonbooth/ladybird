@@ -9,9 +9,9 @@
 #include <AK/HashMap.h>
 #include <AK/IntrusiveList.h>
 #include <AK/Vector.h>
-#include <LibJS/Forward.h>
-#include <LibJS/Heap/Cell.h>
-#include <LibJS/Heap/HeapRoot.h>
+#include <LibGC/Forward.h>
+#include <LibGC/Cell.h>
+#include <LibGC/HeapRoot.h>
 
 namespace JS {
 
@@ -20,12 +20,12 @@ public:
     virtual ReadonlySpan<FlatPtr> possible_values() const = 0;
 
 protected:
-    explicit ConservativeVectorBase(Heap&);
+    explicit ConservativeVectorBase(GC::Heap&);
     ~ConservativeVectorBase();
 
     ConservativeVectorBase& operator=(ConservativeVectorBase const&);
 
-    Heap* m_heap { nullptr };
+    GC::Heap* m_heap { nullptr };
     IntrusiveListNode<ConservativeVectorBase> m_list_node;
 
 public:
@@ -38,7 +38,7 @@ class ConservativeVector final
     , public Vector<T, inline_capacity> {
 
 public:
-    explicit ConservativeVector(Heap& heap)
+    explicit ConservativeVector(GC::Heap& heap)
         : ConservativeVectorBase(heap)
     {
     }

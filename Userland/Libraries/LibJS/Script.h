@@ -7,8 +7,8 @@
 #pragma once
 
 #include <AK/NonnullRefPtr.h>
-#include <LibJS/Heap/GCPtr.h>
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/GCPtr.h>
+#include <LibGC/Handle.h>
 #include <LibJS/ParserError.h>
 #include <LibJS/Runtime/Realm.h>
 

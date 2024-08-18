@@ -7,7 +7,7 @@
 #pragma once
 
 #include <AK/HashTable.h>
-#include <LibJS/Heap/WeakContainer.h>
+#include <LibGC/WeakContainer.h>
 #include <LibJS/Runtime/GlobalObject.h>
 #include <LibJS/Runtime/Object.h>
 
@@ -27,7 +27,7 @@ public:
     HashTable<GCPtr<Cell>> const& values() const { return m_values; }
     HashTable<GCPtr<Cell>>& values() { return m_values; }
 
-    virtual void remove_dead_cells(Badge<Heap>) override;
+    virtual void remove_dead_cells(Badge<GC::Heap>) override;
 
 private:
     explicit WeakSet(Object& prototype);
