@@ -9,7 +9,7 @@
 #include <AK/HashMap.h>
 #include <LibJS/Runtime/GlobalObject.h>
 #include <LibJS/Runtime/Object.h>
-#include <LibJS/Runtime/WeakContainer.h>
+#include <LibJS/Heap/WeakContainer.h>
 
 namespace JS {
 
