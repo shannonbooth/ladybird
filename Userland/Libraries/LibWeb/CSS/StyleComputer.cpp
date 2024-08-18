@@ -158,7 +158,7 @@ void FontLoader::start_loading_next_url()
     if (referrer_url.has_value() && !request.headers().contains("Referer"))
         request.set_header("Referer", referrer_url->serialize());
 
-    set_resource(ResourceLoader::the().load_resource(Resource::Type::Generic, request));
+    set_resource(ResourceLoader::the().load_resource(realm().heap(), Resource::Type::Generic, request));
 }
 
 ErrorOr<NonnullRefPtr<Gfx::Typeface>> FontLoader::try_load_font()

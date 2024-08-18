@@ -39,7 +39,7 @@ CSSImportRule::CSSImportRule(URL::URL url, DOM::Document& document)
     //       as it may trigger a synchronous resource_did_load() callback.
     m_document_load_event_delayer.emplace(document);
 
-    set_resource(ResourceLoader::the().load_resource(Resource::Type::Generic, request));
+    set_resource(ResourceLoader::the().load_resource(realm().heap(), Resource::Type::Generic, request));
 }
 
 void CSSImportRule::initialize(JS::Realm& realm)
