@@ -48,8 +48,6 @@ Heap::Heap(VM& vm)
 
 Heap::~Heap()
 {
-    vm().string_cache().clear();
-    vm().byte_string_cache().clear();
     collect_garbage(CollectionType::CollectEverything);
 }
 
