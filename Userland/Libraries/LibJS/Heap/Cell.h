@@ -169,7 +169,7 @@ public:
     bool overrides_must_survive_garbage_collection(Badge<Heap>) const { return m_overrides_must_survive_garbage_collection; }
 
     ALWAYS_INLINE Heap& heap() const { return HeapBlockBase::from_cell(this)->heap(); }
-    ALWAYS_INLINE VM& vm() const { return bit_cast<HeapBase*>(&heap())->vm(); }
+    ALWAYS_INLINE void* private_data() const { return bit_cast<HeapBase*>(&heap())->private_data(); }
 
 protected:
     Cell() = default;
