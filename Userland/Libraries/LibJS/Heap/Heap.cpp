@@ -15,7 +15,6 @@
 #include <AK/TemporaryChange.h>
 #include <LibCore/ElapsedTimer.h>
 #include <LibGC/NanBoxedValue.h>
-#include <LibJS/Bytecode/Interpreter.h>
 #include <LibJS/Heap/CellAllocator.h>
 #include <LibJS/Heap/Handle.h>
 #include <LibJS/Heap/Heap.h>
