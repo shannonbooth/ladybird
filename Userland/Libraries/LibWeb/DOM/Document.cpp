@@ -4292,7 +4292,7 @@ void Document::restore_the_history_object_state(JS::NonnullGCPtr<HTML::SessionHi
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#update-document-for-history-step-application
-void Document::update_for_history_step_application(JS::NonnullGCPtr<HTML::SessionHistoryEntry> entry, bool do_not_reactivate, size_t script_history_length, size_t script_history_index, Optional<Bindings::NavigationType> navigation_type, Optional<Vector<JS::NonnullGCPtr<HTML::SessionHistoryEntry>>> entries_for_navigation_api, Optional<JS::NonnullGCPtr<HTML::SessionHistoryEntry>> previous_entry_for_activation, bool update_navigation_api)
+void Document::update_for_history_step_application(JS::NonnullGCPtr<HTML::SessionHistoryEntry> entry, bool do_not_reactivate, size_t script_history_length, size_t script_history_index, Optional<Bindings::NavigationType> navigation_type, Optional<Vector<JS::NonnullGCPtr<HTML::SessionHistoryEntry>>> entries_for_navigation_api, JS::GCPtr<HTML::SessionHistoryEntry> previous_entry_for_activation, bool update_navigation_api)
 {
     // 1. Let documentIsNew be true if document's latest entry is null; otherwise false.
     auto document_is_new = !m_latest_entry;
@@ -4380,9 +4380,9 @@ void Document::update_for_history_step_application(JS::NonnullGCPtr<HTML::Sessio
     //    - previousEntryForActivation is given;
     //    - navigationType is non-null; and
     //    - navigationType is "reload" or previousEntryForActivation's document is not document, then:
-    if (previous_entry_for_activation.has_value()
+    if (previous_entry_for_activation
         && navigation_type.has_value()
-        && (navigation_type.value() == Bindings::NavigationType::Reload || previous_entry_for_activation.value()->document() != this)) {
+        && (navigation_type.value() == Bindings::NavigationType::Reload || previous_entry_for_activation->document() != this)) {
 
         // 1. If navigation's activation is null, then set navigation's activation to a new NavigationActivation object in navigation's relevant realm.
         if (!navigation->activation()) {
@@ -4402,8 +4402,8 @@ void Document::update_for_history_step_application(JS::NonnullGCPtr<HTML::Sessio
         //    - previousEntryForActivation's document state's origin is same origin with document's origin; and
         //    - previousEntryForActivation's document's initial about:blank is false,
         if (navigation_type.value() == Bindings::NavigationType::Replace
-            && previous_entry_for_activation.value()->document_state()->origin() == origin()
-            && !previous_entry_for_activation.value()->document()->is_initial_about_blank()) {
+            && previous_entry_for_activation->document_state()->origin() == origin()
+            && !previous_entry_for_activation->document()->is_initial_about_blank()) {
             // then set activation's old entry to a new NavigationHistoryEntry in navigation's relevant realm, whose session history entry is previousEntryForActivation.
         }
 
