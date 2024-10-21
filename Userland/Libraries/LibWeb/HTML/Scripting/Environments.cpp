@@ -55,7 +55,6 @@ void EnvironmentSettingsObject::visit_edges(Cell::Visitor& visitor)
     Base::visit_edges(visitor);
     visitor.visit(m_responsible_event_loop);
     visitor.visit(m_module_map);
-    visitor.ignore(m_outstanding_rejected_promises_weak_set);
     m_realm_execution_context->visit_edges(visitor);
     visitor.visit(m_fetch_group);
     visitor.visit(m_storage_manager);
@@ -105,6 +104,15 @@ EventLoop& EnvironmentSettingsObject::responsible_event_loop()
     auto& event_loop = verify_cast<Bindings::WebEngineCustomData>(vm.custom_data())->event_loop;
     m_responsible_event_loop = event_loop;
     return *event_loop;
+}
+
+// https://whatpr.org/html/9893/b8ea975...df5706b/webappapis.html#concept-realm-module-map
+ModuleMap& module_map_of_realm(JS::Realm& realm)
+{
+    // FIXME: 1. If realm is a principal realm, then return the module map of the environment settings object of realm.
+    // FIXME: 2. Assert: realm is a synthetic realm.
+    // FIXME: 3. Return the module map of the synthetic realm settings object of realm.
+    return Bindings::host_defined_environment_settings_object(realm).module_map();
 }
 
 // https://html.spec.whatwg.org/multipage/webappapis.html#check-if-we-can-run-script
@@ -230,89 +238,6 @@ void clean_up_after_running_callback(JS::Realm const& realm)
     event_loop.pop_backup_incumbent_realm_stack();
 }
 
-void EnvironmentSettingsObject::push_onto_outstanding_rejected_promises_weak_set(JS::Promise* promise)
-{
-    m_outstanding_rejected_promises_weak_set.append(promise);
-}
-
-bool EnvironmentSettingsObject::remove_from_outstanding_rejected_promises_weak_set(JS::Promise* promise)
-{
-    return m_outstanding_rejected_promises_weak_set.remove_first_matching([&](JS::Promise* promise_in_set) {
-        return promise == promise_in_set;
-    });
-}
-
-void EnvironmentSettingsObject::push_onto_about_to_be_notified_rejected_promises_list(JS::NonnullGCPtr<JS::Promise> promise)
-{
-    m_about_to_be_notified_rejected_promises_list.append(JS::make_handle(promise));
-}
-
-bool EnvironmentSettingsObject::remove_from_about_to_be_notified_rejected_promises_list(JS::NonnullGCPtr<JS::Promise> promise)
-{
-    return m_about_to_be_notified_rejected_promises_list.remove_first_matching([&](auto& promise_in_list) {
-        return promise == promise_in_list;
-    });
-}
-
-// https://html.spec.whatwg.org/multipage/webappapis.html#notify-about-rejected-promises
-void EnvironmentSettingsObject::notify_about_rejected_promises(Badge<EventLoop>)
-{
-    // 1. Let list be a copy of settings object's about-to-be-notified rejected promises list.
-    auto list = m_about_to_be_notified_rejected_promises_list;
-
-    // 2. If list is empty, return.
-    if (list.is_empty())
-        return;
-
-    // 3. Clear settings object's about-to-be-notified rejected promises list.
-    m_about_to_be_notified_rejected_promises_list.clear();
-
-    // 4. Let global be settings object's global object.
-    // We need this as an event target for the unhandledrejection event below
-    auto& global = verify_cast<DOM::EventTarget>(global_object());
-
-    // 5. Queue a global task on the DOM manipulation task source given global to run the following substep:
-    queue_global_task(Task::Source::DOMManipulation, global, JS::create_heap_function(heap(), [this, &global, list = move(list)] {
-        auto& realm = global.realm();
-
-        // 1. For each promise p in list:
-        for (auto const& promise : list) {
-
-            // 1. If p's [[PromiseIsHandled]] internal slot is true, continue to the next iteration of the loop.
-            if (promise->is_handled())
-                continue;
-
-            // 2. Let notHandled be the result of firing an event named unhandledrejection at global, using PromiseRejectionEvent, with the cancelable attribute initialized to true,
-            //    the promise attribute initialized to p, and the reason attribute initialized to the value of p's [[PromiseResult]] internal slot.
-            PromiseRejectionEventInit event_init {
-                {
-                    .bubbles = false,
-                    .cancelable = true,
-                    .composed = false,
-                },
-                // Sadly we can't use .promise and .reason here, as we can't use the designator on the initialization of DOM::EventInit above.
-                /* .promise = */ JS::make_handle(*promise),
-                /* .reason = */ promise->result(),
-            };
-
-            auto promise_rejection_event = PromiseRejectionEvent::create(realm, HTML::EventNames::unhandledrejection, event_init);
-
-            bool not_handled = global.dispatch_event(*promise_rejection_event);
-
-            // 3. If notHandled is false, then the promise rejection is handled. Otherwise, the promise rejection is not handled.
-
-            // 4. If p's [[PromiseIsHandled]] internal slot is false, add p to settings object's outstanding rejected promises weak set.
-            if (!promise->is_handled())
-                m_outstanding_rejected_promises_weak_set.append(*promise);
-
-            // This algorithm results in promise rejections being marked as handled or not handled. These concepts parallel handled and not handled script errors.
-            // If a rejection is still not handled after this, then the rejection may be reported to a developer console.
-            if (not_handled)
-                HTML::report_exception_to_console(promise->result(), realm, ErrorInPromise::Yes);
-        }
-    }));
-}
-
 // https://html.spec.whatwg.org/multipage/webappapis.html#concept-environment-script
 // https://whatpr.org/html/9893/b8ea975...df5706b/webappapis.html#concept-environment-script
 bool is_scripting_enabled(JS::Realm const& realm)
@@ -344,23 +269,23 @@ bool is_scripting_disabled(JS::Realm const& realm)
 }
 
 // https://html.spec.whatwg.org/multipage/webappapis.html#module-type-allowed
-bool EnvironmentSettingsObject::module_type_allowed(StringView module_type) const
+bool module_type_allowed(StringView module_type, JS::Realm const&)
 {
     // 1. If moduleType is not "javascript", "css", or "json", then return false.
     if (module_type != "javascript"sv && module_type != "css"sv && module_type != "json"sv)
         return false;
 
-    // FIXME: 2. If moduleType is "css" and the CSSStyleSheet interface is not exposed in settings's Realm, then return false.
+    // FIXME: 2. If moduleType is "css" and the CSSStyleSheet interface is not exposed in realm, then return false.
 
     // 3. Return true.
     return true;
 }
 
 // https://html.spec.whatwg.org/multipage/webappapis.html#disallow-further-import-maps
-void EnvironmentSettingsObject::disallow_further_import_maps()
+void disallow_further_import_maps(JS::Realm& realm)
 {
-    // 1. Let global be settingsObject's global object.
-    auto& global = global_object();
+    // 1. Let global be realm's global object.
+    auto& global = realm.global_object();
 
     // 2. If global does not implement Window, then return.
     if (!is<Window>(global))
@@ -410,6 +335,17 @@ JS::Object& incumbent_global_object()
     return incumbent_settings_object().global_object();
 }
 
+// https://whatpr.org/html/9893/b8ea975...df5706b/webappapis.html#concept-principal-realm-of-realm
+JS::Realm& principal_realm(JS::Realm& realm)
+{
+    // FIXME: 1. If realm.[[HostDefined]] is a synthetic realm settings object, then:
+    // FIXME: 1.1. Assert: realm is a synthetic realm.
+    // FIXME: 1.2. Set realm to the principal realm of realm.[[HostDefined]].
+    // FIXME: 4. Assert: realm.[[HostDefined]] is an environment settings object and realm is a principal realm.
+    // 3. Return realm.
+    return realm;
+}
+
 // https://whatpr.org/html/9893/b8ea975...df5706b/webappapis.html#current-principal-realm
 JS::Realm& current_principal_realm()
 {
@@ -420,12 +356,19 @@ JS::Realm& current_principal_realm()
     return *vm.current_realm();
 }
 
+// https://whatpr.org/html/9893/b8ea975...df5706b/webappapis.html#concept-realm-settings-object
+EnvironmentSettingsObject& principal_realm_settings_object(JS::Realm& realm)
+{
+    // A principal realm has a [[HostDefined]] field, which contains the principal realm's settings object.
+    return Bindings::host_defined_environment_settings_object(realm);
+}
+
 // https://html.spec.whatwg.org/multipage/webappapis.html#current-settings-object
 // https://whatpr.org/html/9893/b8ea975...df5706b/webappapis.html#current-principal-settings-object
 EnvironmentSettingsObject& current_principal_settings_object()
 {
     // Then, the current principal settings object is the environment settings object of the current principal realm.
-    return Bindings::host_defined_environment_settings_object(current_principal_realm());
+    return principal_realm_settings_object(current_principal_realm());
 }
 
 // https://html.spec.whatwg.org/multipage/webappapis.html#current-global-object

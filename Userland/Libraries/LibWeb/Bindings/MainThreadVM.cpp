@@ -122,11 +122,14 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
     // FIXME: Implement 8.1.5.2 HostEnsureCanCompileStrings(callerRealm, calleeRealm), https://html.spec.whatwg.org/multipage/webappapis.html#hostensurecancompilestrings(callerrealm,-calleerealm)
 
     // 8.1.5.3 HostPromiseRejectionTracker(promise, operation), https://html.spec.whatwg.org/multipage/webappapis.html#the-hostpromiserejectiontracker-implementation
+    // https://whatpr.org/html/9893/b8ea975...df5706b/webappapis.html#the-hostpromiserejectiontracker-implementation
     s_main_thread_vm->host_promise_rejection_tracker = [](JS::Promise& promise, JS::Promise::RejectionOperation operation) {
+        auto& vm = *s_main_thread_vm;
+
         // 1. Let script be the running script.
         //    The running script is the script in the [[HostDefined]] field in the ScriptOrModule component of the running JavaScript execution context.
         HTML::Script* script { nullptr };
-        s_main_thread_vm->running_execution_context().script_or_module.visit(
+        vm.running_execution_context().script_or_module.visit(
             [&script](JS::NonnullGCPtr<JS::Script>& js_script) {
                 script = verify_cast<HTML::ClassicScript>(js_script->host_defined());
             },
@@ -144,35 +147,37 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
                 return;
         }
 
-        // 3. Let settings object be the current settings object.
-        // 4. If script is not null, then set settings object to script's principal settings object.
-        auto& settings_object = script ? script->settings_object() : HTML::current_principal_settings_object();
+        // 3. Let realm be the current realm.
+        // 4. If script is not null, then set realm to script's realm.
+        auto& realm = script ? script->realm() : *vm.current_realm();
+
+        // 5. Let global be realm's global object.
+        auto& global = realm.global_object();
+        auto* global_impl = dynamic_cast<HTML::WindowOrWorkerGlobalScopeMixin*>(&global);
+        VERIFY(global_impl);
 
         switch (operation) {
         case JS::Promise::RejectionOperation::Reject:
-            // 4. If operation is "reject",
-            //    1. Add promise to settings object's about-to-be-notified rejected promises list.
-            settings_object.push_onto_about_to_be_notified_rejected_promises_list(promise);
+            // 6. If operation is "reject",
+            //    1. Add promise to global's about-to-be-notified rejected promises list.
+            global_impl->push_onto_about_to_be_notified_rejected_promises_list(promise);
             break;
         case JS::Promise::RejectionOperation::Handle: {
-            // 5. If operation is "handle",
-            //    1. If settings object's about-to-be-notified rejected promises list contains promise, then remove promise from that list and return.
-            bool removed_about_to_be_notified_rejected_promise = settings_object.remove_from_about_to_be_notified_rejected_promises_list(promise);
+            // 7. If operation is "handle",
+            //    1. If global's about-to-be-notified rejected promises list contains promise, then remove promise from that list and return.
+            bool removed_about_to_be_notified_rejected_promise = global_impl->remove_from_about_to_be_notified_rejected_promises_list(promise);
             if (removed_about_to_be_notified_rejected_promise)
                 return;
 
-            // 3. Remove promise from settings object's outstanding rejected promises weak set.
-            bool removed_outstanding_rejected_promise = settings_object.remove_from_outstanding_rejected_promises_weak_set(&promise);
+            // 3. Remove promise from global's outstanding rejected promises weak set.
+            bool removed_outstanding_rejected_promise = global_impl->remove_from_outstanding_rejected_promises_weak_set(&promise);
 
             // 2. If settings object's outstanding rejected promises weak set does not contain promise, then return.
             // NOTE: This is done out of order because removed_outstanding_rejected_promise will be false if the promise wasn't in the set or true if it was and got removed.
             if (!removed_outstanding_rejected_promise)
                 return;
 
-            // 4. Let global be settings object's global object.
-            auto& global = settings_object.global_object();
-
-            // 5. Queue a global task on the DOM manipulation task source given global to fire an event named rejectionhandled at global, using PromiseRejectionEvent,
+            // 4. Queue a global task on the DOM manipulation task source given global to fire an event named rejectionhandled at global, using PromiseRejectionEvent,
             //    with the promise attribute initialized to promise, and the reason attribute initialized to the value of promise's [[PromiseResult]] internal slot.
             HTML::queue_global_task(HTML::Task::Source::DOMManipulation, global, JS::create_heap_function(s_main_thread_vm->heap(), [&global, &promise] {
                 // FIXME: This currently assumes that global is a WindowObject.
@@ -254,25 +259,20 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
     };
 
     // 8.1.5.4.3 HostEnqueuePromiseJob(job, realm), https://html.spec.whatwg.org/multipage/webappapis.html#hostenqueuepromisejob
+    // https://whatpr.org/html/9893/b8ea975...df5706b/webappapis.html#hostenqueuepromisejob
     s_main_thread_vm->host_enqueue_promise_job = [](JS::NonnullGCPtr<JS::HeapFunction<JS::ThrowCompletionOr<JS::Value>()>> job, JS::Realm* realm) {
-        // 1. If realm is not null, then let job settings be the settings object for realm. Otherwise, let job settings be null.
-        HTML::EnvironmentSettingsObject* job_settings { nullptr };
-        if (realm)
-            job_settings = &host_defined_environment_settings_object(*realm);
-
         // IMPLEMENTATION DEFINED: The JS spec says we must take implementation defined steps to make the currently active script or module at the time of HostEnqueuePromiseJob being invoked
         //                         also be the active script or module of the job at the time of its invocation.
         //                         This means taking it here now and passing it through to the lambda.
         auto script_or_module = s_main_thread_vm->get_active_script_or_module();
 
-        // 2. Queue a microtask on the surrounding agent's event loop to perform the following steps:
+        // 2. Queue a microtask to perform the following steps:
         // This instance of "queue a microtask" uses the "implied document". The best fit for "implied document" here is "If the task is being queued by or for a script, then return the script's settings object's responsible document."
         // Do note that "implied document" from the spec is handwavy and the spec authors are trying to get rid of it: https://github.com/whatwg/html/issues/4980
         auto* script = active_script();
 
         auto& heap = realm ? realm->heap() : s_main_thread_vm->heap();
-        // NOTE: This keeps job_settings alive by keeping realm alive, which is holding onto job_settings.
-        HTML::queue_a_microtask(script ? script->settings_object().responsible_document().ptr() : nullptr, JS::create_heap_function(heap, [realm, job_settings, job = move(job), script_or_module = move(script_or_module)] {
+        HTML::queue_a_microtask(script ? &verify_cast<HTML::Window>(script->realm().global_object()).associated_document() : nullptr, JS::create_heap_function(heap, [realm, job = move(job), script_or_module = move(script_or_module)] {
             // The dummy execution context has to be kept up here to keep it alive for the duration of the function.
             OwnPtr<JS::ExecutionContext> dummy_execution_context;
 
@@ -291,7 +291,7 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
 
                 // IMPLEMENTATION DEFINED: Per the previous "implementation defined" comment, we must now make the script or module the active script or module.
                 //                         Since the only active execution context currently is the realm execution context of job settings, lets attach it here.
-                job_settings->realm_execution_context().script_or_module = script_or_module;
+                HTML::execution_context_of_realm(*realm).script_or_module = script_or_module;
             } else {
                 // FIXME: We need to setup a dummy execution context in case a JS::NativeFunction is called when processing the job.
                 //        This is because JS::NativeFunction::call excepts something to be on the execution context stack to be able to get the caller context to initialize the environment.
@@ -307,7 +307,7 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
             // 4. If realm is not null, then clean up after running script with job settings.
             if (realm) {
                 // IMPLEMENTATION DEFINED: Disassociate the realm execution context from the script or module.
-                job_settings->realm_execution_context().script_or_module = Empty {};
+                HTML::execution_context_of_realm(*realm).script_or_module = Empty {};
 
                 // IMPLEMENTATION DEFINED: See comment above, we need to clean up the non-standard prepare_to_run_callback() call.
                 HTML::clean_up_after_running_callback(*realm);
@@ -320,14 +320,14 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
 
             // 5. If result is an abrupt completion, then report the exception given by result.[[Value]].
             if (result.is_error())
-                HTML::report_exception(result, job_settings->realm());
+                HTML::report_exception(result, *realm);
         }));
     };
 
     // 8.1.5.4.4 HostMakeJobCallback(callable), https://html.spec.whatwg.org/multipage/webappapis.html#hostmakejobcallback
     s_main_thread_vm->host_make_job_callback = [](JS::FunctionObject& callable) -> JS::NonnullGCPtr<JS::JobCallback> {
-        // 1. Let incumbent settings be the incumbent settings object.
-        auto& incumbent_settings = HTML::incumbent_settings_object();
+        // 1. Let incumbent realm be the incumbent realm.
+        auto& realm = HTML::incumbent_realm();
 
         // 2. Let active script be the active script.
         auto* script = active_script();
@@ -336,11 +336,11 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
         OwnPtr<JS::ExecutionContext> script_execution_context;
 
         // 4. If active script is not null, set script execution context to a new JavaScript execution context, with its Function field set to null,
-        //    its Realm field set to active script's settings object's Realm, and its ScriptOrModule set to active script's record.
+        //    its Realm field set to active script's realm, and its ScriptOrModule set to active script's record.
         if (script) {
             script_execution_context = JS::ExecutionContext::create();
             script_execution_context->function = nullptr;
-            script_execution_context->realm = &script->settings_object().realm();
+            script_execution_context->realm = &script->realm();
             if (is<HTML::ClassicScript>(script)) {
                 script_execution_context->script_or_module = JS::NonnullGCPtr<JS::Script>(*verify_cast<HTML::ClassicScript>(script)->script_record());
             } else if (is<HTML::ModuleScript>(script)) {
@@ -355,12 +355,13 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
             }
         }
 
-        // 5. Return the JobCallback Record { [[Callback]]: callable, [[HostDefined]]: { [[IncumbentSettings]]: incumbent settings, [[ActiveScriptContext]]: script execution context } }.
+        // FIXME: 5. Return the JobCallback Record { [[Callback]]: callable, [[HostDefined]]: { [[IncumbentRealm]]:  incumbent realm, [[ActiveScriptContext]]: script execution context } }.
         auto host_defined = adopt_own(*new WebEngineCustomJobCallbackData(incumbent_settings, move(script_execution_context)));
         return JS::JobCallback::create(*s_main_thread_vm, callable, move(host_defined));
     };
 
     // 8.1.5.5.1 HostGetImportMetaProperties(moduleRecord), https://html.spec.whatwg.org/multipage/webappapis.html#hostgetimportmetaproperties
+    // FIXME:
     s_main_thread_vm->host_get_import_meta_properties = [](JS::SourceTextModule& module_record) {
         auto& realm = module_record.realm();
         auto& vm = realm.vm();
@@ -411,14 +412,14 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
     };
 
     // 8.1.6.7.3 HostLoadImportedModule(referrer, moduleRequest, loadState, payload), https://html.spec.whatwg.org/multipage/webappapis.html#hostloadimportedmodule
+    // https://whatpr.org/html/9893/b8ea975...df5706b/webappapis.html#hostloadimportedmodule
     s_main_thread_vm->host_load_imported_module = [](JS::ImportedModuleReferrer referrer, JS::ModuleRequest const& module_request, JS::GCPtr<JS::GraphLoadingState::HostDefined> load_state, JS::ImportedModulePayload payload) -> void {
         auto& vm = *s_main_thread_vm;
-        auto& realm = *vm.current_realm();
 
-        // 1. Let settingsObject be the current principal settings object.
-        Optional<HTML::EnvironmentSettingsObject&> settings_object = HTML::current_principal_settings_object();
+        // 1. Let moduleMapRealm be the current realm.
+        JS::NonnullGCPtr<JS::Realm> module_map_realm = *vm.current_realm();
 
-        // FIXME: 2. If settingsObject's global object implements WorkletGlobalScope or ServiceWorkerGlobalScope and loadState is undefined, then:
+        // FIXME: 2. If moduleMapRealm's principal realm's global object implements WorkletGlobalScope or ServiceWorkerGlobalScope and loadState is undefined, then:
 
         // 3. Let referencingScript be null.
         Optional<HTML::Script&> referencing_script;
@@ -434,8 +435,8 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
             // 1. Set referencingScript to referrer.[[HostDefined]].
             referencing_script = verify_cast<HTML::Script>(referrer.has<JS::NonnullGCPtr<JS::Script>>() ? *referrer.get<JS::NonnullGCPtr<JS::Script>>()->host_defined() : *referrer.get<JS::NonnullGCPtr<JS::CyclicModule>>()->host_defined());
 
-            // 2. Set settingsObject to referencingScript's settings object.
-            settings_object = referencing_script->settings_object();
+            // 2. Set moduleMapRealm to referencingScript's realm.
+            module_map_realm = referencing_script->realm();
 
             // 3. Set fetchReferrer to referencingScript's base URL.
             fetch_referrer = referencing_script->base_url();
@@ -445,8 +446,8 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
 
         // FIXME: 7. If referrer is a Cyclic Module Record and moduleRequest is equal to the first element of referrer.[[RequestedModules]], then:
 
-        // 8. Disallow further import maps given settingsObject.
-        settings_object->disallow_further_import_maps();
+        // 8. Disallow further import maps given moduleMapRealm.
+        HTML::disallow_further_import_maps(module_map_realm);
 
         // 9. Let url be the result of resolving a module specifier given referencingScript and moduleRequest.[[Specifier]],
         //    catching any exceptions. If they throw an exception, let resolutionError be the thrown exception.
@@ -458,23 +459,26 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
             auto completion = dom_exception_to_throw_completion(main_thread_vm(), url.exception());
 
             // 2. Perform FinishLoadingImportedModule(referrer, moduleRequest, payload, completion).
-            HTML::TemporaryExecutionContext context { host_defined_environment_settings_object(realm) };
+            HTML::TemporaryExecutionContext context { host_defined_environment_settings_object(module_map_realm) };
             JS::finish_loading_imported_module(referrer, module_request, payload, completion);
 
             // 3. Return.
             return;
         }
 
-        // 11. Let fetchOptions be the result of getting the descendant script fetch options given originalFetchOptions, url, and settingsObject.
-        auto fetch_options = MUST(HTML::get_descendant_script_fetch_options(original_fetch_options, url.value(), *settings_object));
+        // 11. Let settingsObject be moduleMapRealm's principal realm's settings object.
+        auto& settings_object = HTML::principal_realm_settings_object(HTML::principal_realm(module_map_realm));
 
-        // 12. Let destination be "script".
+        // 12. Let fetchOptions be the result of getting the descendant script fetch options given originalFetchOptions, url, and settingsObject.
+        auto fetch_options = MUST(HTML::get_descendant_script_fetch_options(original_fetch_options, url.value(), settings_object));
+
+        // 13. Let destination be "script".
         auto destination = Fetch::Infrastructure::Request::Destination::Script;
 
-        // 13. Let fetchClient be settingsObject.
-        JS::NonnullGCPtr fetch_client { *settings_object };
+        // 14. Let fetchClient be moduleMapRealm's principal realm's setting object
+        auto* fetch_client = &HTML::principal_realm_settings_object(HTML::principal_realm(module_map_realm));
 
-        // 14. If loadState is not undefined, then:
+        // 15. If loadState is not undefined, then:
         HTML::PerformTheFetchHook perform_fetch;
         if (load_state) {
             auto& fetch_context = static_cast<HTML::FetchContext&>(*load_state);
@@ -489,19 +493,19 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
             perform_fetch = fetch_context.perform_fetch;
         }
 
-        auto on_single_fetch_complete = HTML::create_on_fetch_script_complete(realm.heap(), [referrer, &realm, load_state, module_request, payload](JS::GCPtr<HTML::Script> const& module_script) -> void {
+        auto on_single_fetch_complete = HTML::create_on_fetch_script_complete(module_map_realm->heap(), [referrer, module_map_realm, load_state, module_request, payload](JS::GCPtr<HTML::Script> const& module_script) -> void {
             // onSingleFetchComplete given moduleScript is the following algorithm:
             // 1. Let completion be null.
             // NOTE: Our JS::Completion does not support non JS::Value types for its [[Value]], a such we
             //       use JS::ThrowCompletionOr here.
 
-            auto& vm = realm.vm();
+            auto& vm = module_map_realm->vm();
             JS::GCPtr<JS::Module> module = nullptr;
 
             auto completion = [&]() -> JS::ThrowCompletionOr<JS::NonnullGCPtr<JS::Module>> {
                 // 2. If moduleScript is null, then set completion to Completion Record { [[Type]]: throw, [[Value]]: a new TypeError, [[Target]]: empty }.
                 if (!module_script) {
-                    return JS::throw_completion(JS::TypeError::create(realm, ByteString::formatted("Loading imported module '{}' failed.", module_request.module_specifier)));
+                    return JS::throw_completion(JS::TypeError::create(module_map_realm, ByteString::formatted("Loading imported module '{}' failed.", module_request.module_specifier)));
                 }
                 // 3. Otherwise, if moduleScript's parse error is not null, then:
                 else if (!module_script->parse_error().is_null()) {
@@ -532,7 +536,7 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
             // NON-STANDARD: To ensure that LibJS can find the module on the stack, we push a new execution context.
 
             auto module_execution_context = JS::ExecutionContext::create();
-            module_execution_context->realm = realm;
+            module_execution_context->realm = module_map_realm;
             if (module)
                 module_execution_context->script_or_module = JS::NonnullGCPtr { *module };
             vm.push_execution_context(*module_execution_context);
@@ -542,10 +546,10 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
             vm.pop_execution_context();
         });
 
-        // 15. Fetch a single imported module script given url, fetchClient, destination, fetchOptions, settingsObject, fetchReferrer,
+        // 16. Fetch a single imported module script given url, fetchClient, destination, fetchOptions, moduleMapRealm, fetchReferrer,
         //     moduleRequest, and onSingleFetchComplete as defined below.
         //     If loadState is not undefined and loadState.[[PerformFetch]] is not null, pass loadState.[[PerformFetch]] along as well.
-        HTML::fetch_single_imported_module_script(realm, url.release_value(), *fetch_client, destination, fetch_options, *settings_object, fetch_referrer, module_request, perform_fetch, on_single_fetch_complete);
+        HTML::fetch_single_imported_module_script(module_map_realm, url.release_value(), *fetch_client, destination, fetch_options, module_map_realm, fetch_referrer, module_request, perform_fetch, on_single_fetch_complete);
     };
 
     s_main_thread_vm->host_unrecognized_date_string = [](StringView date) {

@@ -14,6 +14,7 @@
 namespace Web::HTML {
 
 // https://html.spec.whatwg.org/multipage/webappapis.html#concept-script
+// https://whatpr.org/html/9893/b8ea975...df5706b/webappapis.html#concept-script
 class Script
     : public JS::Cell
     , public JS::Script::HostDefined {
@@ -26,7 +27,7 @@ public:
     URL::URL const& base_url() const { return m_base_url; }
     ByteString const& filename() const { return m_filename; }
 
-    EnvironmentSettingsObject& settings_object() { return m_settings_object; }
+    JS::Realm& realm() { return m_realm; }
 
     [[nodiscard]] JS::Value error_to_rethrow() const { return m_error_to_rethrow; }
     void set_error_to_rethrow(JS::Value value) { m_error_to_rethrow = value; }
@@ -34,8 +35,10 @@ public:
     [[nodiscard]] JS::Value parse_error() const { return m_parse_error; }
     void set_parse_error(JS::Value value) { m_parse_error = value; }
 
+    EnvironmentSettingsObject& settings_object();
+
 protected:
-    Script(URL::URL base_url, ByteString filename, EnvironmentSettingsObject& environment_settings_object);
+    Script(URL::URL base_url, ByteString filename, JS::Realm& realm);
 
     virtual void visit_edges(Visitor&) override;
 
@@ -44,7 +47,10 @@ private:
 
     URL::URL m_base_url;
     ByteString m_filename;
-    JS::NonnullGCPtr<EnvironmentSettingsObject> m_settings_object;
+
+    // A realm where the script is evaluated, which is shared with other scripts in the same context.
+    // Note that, in the case of module scripts (but not classic scripts), this realm can be a synthetic realm.
+    JS::Realm& m_realm;
 
     // https://html.spec.whatwg.org/multipage/webappapis.html#concept-script-parse-error
     JS::Value m_parse_error;
