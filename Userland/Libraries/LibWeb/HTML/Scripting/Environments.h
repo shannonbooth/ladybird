@@ -96,22 +96,6 @@ public:
     // https://fetch.spec.whatwg.org/#concept-fetch-group
     Vector<JS::NonnullGCPtr<Fetch::Infrastructure::FetchRecord>>& fetch_group() { return m_fetch_group; }
 
-    void push_onto_outstanding_rejected_promises_weak_set(JS::Promise*);
-
-    // Returns true if removed, false otherwise.
-    bool remove_from_outstanding_rejected_promises_weak_set(JS::Promise*);
-
-    void push_onto_about_to_be_notified_rejected_promises_list(JS::NonnullGCPtr<JS::Promise>);
-
-    // Returns true if removed, false otherwise.
-    bool remove_from_about_to_be_notified_rejected_promises_list(JS::NonnullGCPtr<JS::Promise>);
-
-    void notify_about_rejected_promises(Badge<EventLoop>);
-
-    bool module_type_allowed(StringView module_type) const;
-
-    void disallow_further_import_maps();
-
     SerializedEnvironmentSettingsObject serialize();
 
     JS::NonnullGCPtr<StorageAPI::StorageManager> storage_manager();
@@ -130,13 +114,6 @@ private:
 
     JS::GCPtr<EventLoop> m_responsible_event_loop;
 
-    // https://html.spec.whatwg.org/multipage/webappapis.html#outstanding-rejected-promises-weak-set
-    // The outstanding rejected promises weak set must not create strong references to any of its members, and implementations are free to limit its size, e.g. by removing old entries from it when new ones are added.
-    Vector<JS::GCPtr<JS::Promise>> m_outstanding_rejected_promises_weak_set;
-
-    // https://html.spec.whatwg.org/multipage/webappapis.html#about-to-be-notified-rejected-promises-list
-    Vector<JS::Handle<JS::Promise>> m_about_to_be_notified_rejected_promises_list;
-
     // https://fetch.spec.whatwg.org/#concept-fetch-record
     // A fetch group holds an ordered list of fetch records
     Vector<JS::NonnullGCPtr<Fetch::Infrastructure::FetchRecord>> m_fetch_group;
@@ -153,6 +130,8 @@ private:
 JS::ExecutionContext const& execution_context_of_realm(JS::Realm const&);
 inline JS::ExecutionContext& execution_context_of_realm(JS::Realm& realm) { return const_cast<JS::ExecutionContext&>(execution_context_of_realm(const_cast<JS::Realm const&>(realm))); }
 
+ModuleMap& module_map_of_realm(JS::Realm&);
+
 RunScriptDecision can_run_script(JS::Realm const&);
 bool is_scripting_enabled(JS::Realm const&);
 bool is_scripting_disabled(JS::Realm const&);
@@ -160,12 +139,16 @@ void prepare_to_run_script(JS::Realm&);
 void clean_up_after_running_script(JS::Realm const&);
 void prepare_to_run_callback(JS::Realm&);
 void clean_up_after_running_callback(JS::Realm const&);
+bool module_type_allowed(StringView module_type, JS::Realm const&);
+void disallow_further_import_maps(JS::Realm&);
 
 EnvironmentSettingsObject& incumbent_settings_object();
 JS::Realm& incumbent_realm();
 JS::Object& incumbent_global_object();
 
+JS::Realm& principal_realm(JS::Realm&);
 JS::Realm& current_principal_realm();
+EnvironmentSettingsObject& principal_realm_settings_object(JS::Realm&);
 EnvironmentSettingsObject& current_principal_settings_object();
 
 JS::Object& current_principal_global_object();

@@ -488,9 +488,12 @@ void EventLoop::perform_a_microtask_checkpoint()
         m_currently_running_task = nullptr;
     }
 
-    // 4. For each environment settings object whose responsible event loop is this event loop, notify about rejected promises on that environment settings object.
-    for (auto& environment_settings_object : m_related_environment_settings_objects)
-        environment_settings_object->notify_about_rejected_promises({});
+    // 4. For each environment settings object settingsObject whose responsible event loop is this event loop, notify about rejected promises given settingsObject's global object.
+    for (auto& environment_settings_object : m_related_environment_settings_objects) {
+        auto* global_impl = dynamic_cast<HTML::WindowOrWorkerGlobalScopeMixin*>(&environment_settings_object->global_object());
+        VERIFY(global_impl);
+        global_impl->notify_about_rejected_promises({});
+    }
 
     // FIXME: 5. Cleanup Indexed Database transactions.
 

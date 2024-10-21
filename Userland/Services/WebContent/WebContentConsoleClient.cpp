@@ -52,7 +52,7 @@ void WebContentConsoleClient::handle_input(ByteString const& js_source)
         return;
 
     auto& settings = Web::HTML::relevant_settings_object(*m_console_global_environment_extensions);
-    auto script = Web::HTML::ClassicScript::create("(console)", js_source, settings, settings.api_base_url());
+    auto script = Web::HTML::ClassicScript::create("(console)", js_source, settings.realm(), settings.api_base_url());
 
     JS::NonnullGCPtr<JS::Environment> with_scope = JS::new_object_environment(*m_console_global_environment_extensions, true, &settings.realm().global_environment());
 

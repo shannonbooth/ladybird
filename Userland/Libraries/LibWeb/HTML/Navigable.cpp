@@ -1593,8 +1593,8 @@ WebIDL::ExceptionOr<JS::GCPtr<DOM::Document>> Navigable::evaluate_javascript_url
     // 5. Let baseURL be settings's API base URL.
     auto base_url = settings.api_base_url();
 
-    // 6. Let script be the result of creating a classic script given scriptSource, settings, baseURL, and the default classic script fetch options.
-    auto script = HTML::ClassicScript::create("(javascript url)", script_source, settings, base_url);
+    // 6. Let script be the result of creating a classic script given scriptSource, settings's realm, baseURL, and the default classic script fetch options.
+    auto script = HTML::ClassicScript::create("(javascript url)", script_source, settings.realm(), base_url);
 
     // 7. Let evaluationStatus be the result of running the classic script script.
     auto evaluation_status = script->run();
