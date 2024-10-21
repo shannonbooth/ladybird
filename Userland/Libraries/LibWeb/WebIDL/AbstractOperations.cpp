@@ -151,7 +151,7 @@ JS::Completion call_user_object_operation(WebIDL::CallbackType& callback, String
     auto& stored_settings = callback.callback_context;
 
     // 7. Prepare to run script with relevant settings.
-    relevant_settings.prepare_to_run_script();
+    HTML::prepare_to_run_script(realm);
 
     // 8. Prepare to run a callback with stored settings.
     stored_settings->prepare_to_run_callback();
@@ -238,7 +238,7 @@ JS::Completion invoke_callback(WebIDL::CallbackType& callback, Optional<JS::Valu
     auto& stored_settings = callback.callback_context;
 
     // 8. Prepare to run script with relevant settings.
-    relevant_settings.prepare_to_run_script();
+    HTML::prepare_to_run_script(realm);
 
     // 9. Prepare to run a callback with stored settings.
     stored_settings->prepare_to_run_callback();
@@ -279,13 +279,13 @@ JS::Completion construct(WebIDL::CallbackType& callback, JS::MarkedVector<JS::Va
         return realm.vm().template throw_completion<JS::TypeError>(JS::ErrorType::NotAConstructor, JS::Value(function_object).to_string_without_side_effects());
 
     // 5. Let relevant settings be realm’s settings object.
-    auto& relevant_settings = Bindings::host_defined_environment_settings_object(realm);
+    // NOTE: Not needed after ShadowRealm implementation.
 
     // 6. Let stored settings be callable’s callback context.
     auto& stored_settings = callback.callback_context;
 
     // 7. Prepare to run script with relevant settings.
-    relevant_settings.prepare_to_run_script();
+    HTML::prepare_to_run_script(realm);
 
     // 8. Prepare to run a callback with stored settings.
     stored_settings->prepare_to_run_callback();
