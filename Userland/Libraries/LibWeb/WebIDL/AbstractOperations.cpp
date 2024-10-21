@@ -108,7 +108,7 @@ inline JS::Completion clean_up_on_return(HTML::EnvironmentSettingsObject& stored
     // Return: at this point completion will be set to an ECMAScript completion value.
 
     // 1. Clean up after running a callback with stored settings.
-    stored_settings.clean_up_after_running_callback();
+    HTML::clean_up_after_running_callback(stored_settings.realm());
 
     // 2. Clean up after running script with realm.
     HTML::clean_up_after_running_script(relevant_settings.realm());
@@ -154,7 +154,7 @@ JS::Completion call_user_object_operation(WebIDL::CallbackType& callback, String
     HTML::prepare_to_run_script(realm);
 
     // 8. Prepare to run a callback with stored settings.
-    stored_settings->prepare_to_run_callback();
+    HTML::prepare_to_run_callback(stored_settings->realm());
 
     // 9. Let X be O.
     auto actual_function_object = object;
@@ -241,7 +241,7 @@ JS::Completion invoke_callback(WebIDL::CallbackType& callback, Optional<JS::Valu
     HTML::prepare_to_run_script(realm);
 
     // 9. Prepare to run a callback with stored settings.
-    stored_settings->prepare_to_run_callback();
+    HTML::prepare_to_run_callback(stored_settings->realm());
 
     // FIXME: 10. Let esArgs be the result of converting args to an ECMAScript arguments list. If this throws an exception, set completion to the completion value representing the thrown exception and jump to the step labeled return.
     //        For simplicity, we currently make the caller do this. However, this means we can't throw exceptions at this point like the spec wants us to.
@@ -288,7 +288,7 @@ JS::Completion construct(WebIDL::CallbackType& callback, JS::MarkedVector<JS::Va
     HTML::prepare_to_run_script(realm);
 
     // 8. Prepare to run a callback with stored settings.
-    stored_settings->prepare_to_run_callback();
+    HTML::prepare_to_run_callback(stored_settings->realm());
 
     // FIXME: 9. Let esArgs be the result of converting args to an ECMAScript arguments list. If this throws an exception, set completion to the completion value representing the thrown exception and jump to the step labeled return.
     //        For simplicity, we currently make the caller do this. However, this means we can't throw exceptions at this point like the spec wants us to.
@@ -310,7 +310,7 @@ JS::Completion construct(WebIDL::CallbackType& callback, JS::MarkedVector<JS::Va
 
     // 13. Return: at this point completion will be set to an ECMAScript completion value.
     // 1. Clean up after running a callback with stored settings.
-    stored_settings->clean_up_after_running_callback();
+    HTML::clean_up_after_running_callback(stored_settings->realm());
 
     // 2. Clean up after running script with realm.
     HTML::clean_up_after_running_script(realm);
