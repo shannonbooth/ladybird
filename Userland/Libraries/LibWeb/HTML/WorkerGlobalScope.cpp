@@ -87,8 +87,8 @@ WebIDL::ExceptionOr<void> WorkerGlobalScope::import_scripts(Vector<String> const
 
     // FIXME: 1. If worker global scope's type is "module", throw a TypeError exception.
 
-    // 2. Let settings object be the current settings object.
-    auto& settings_object = HTML::current_settings_object();
+    // 2. Let settings object be the current principal settings object.
+    auto& settings_object = HTML::current_principal_settings_object();
 
     // 3. If urls is empty, return.
     if (urls.is_empty())

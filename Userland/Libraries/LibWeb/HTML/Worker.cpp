@@ -55,8 +55,8 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<Worker>> Worker::create(String const& scrip
     // a policy decision (e.g. if the user agent is configured to not allow the page to start dedicated workers).
     // Technically not a fixme if our policy is not to throw errors :^)
 
-    // 2. Let outside settings be the current settings object.
-    auto& outside_settings = current_settings_object();
+    // 2. Let outside settings be the current principal settings object.
+    auto& outside_settings = current_principal_settings_object();
 
     // 3. Parse the scriptURL argument relative to outside settings.
     auto url = document.parse_url(script_url);
