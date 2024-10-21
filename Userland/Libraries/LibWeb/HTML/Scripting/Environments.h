@@ -96,9 +96,6 @@ public:
     // https://fetch.spec.whatwg.org/#concept-fetch-group
     Vector<JS::NonnullGCPtr<Fetch::Infrastructure::FetchRecord>>& fetch_group() { return m_fetch_group; }
 
-    void prepare_to_run_callback();
-    void clean_up_after_running_callback();
-
     void push_onto_outstanding_rejected_promises_weak_set(JS::Promise*);
 
     // Returns true if removed, false otherwise.
@@ -161,6 +158,8 @@ bool is_scripting_enabled(JS::Realm const&);
 bool is_scripting_disabled(JS::Realm const&);
 void prepare_to_run_script(JS::Realm&);
 void clean_up_after_running_script(JS::Realm const&);
+void prepare_to_run_callback(JS::Realm&);
+void clean_up_after_running_callback(JS::Realm const&);
 
 EnvironmentSettingsObject& incumbent_settings_object();
 JS::Realm& incumbent_realm();
