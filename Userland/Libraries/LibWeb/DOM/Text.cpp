@@ -43,8 +43,8 @@ void Text::visit_edges(Cell::Visitor& visitor)
 // https://dom.spec.whatwg.org/#dom-text-text
 WebIDL::ExceptionOr<JS::NonnullGCPtr<Text>> Text::construct_impl(JS::Realm& realm, String const& data)
 {
-    // The new Text(data) constructor steps are to set this’s data to data and this’s node document to current global object’s associated Document.
-    auto& window = verify_cast<HTML::Window>(HTML::current_global_object());
+    // The new Text(data) constructor steps are to set this’s data to data and this’s node document to current principal global object’s associated Document.
+    auto& window = verify_cast<HTML::Window>(HTML::current_principal_global_object());
     return realm.heap().allocate<Text>(realm, window.associated_document(), data);
 }
 

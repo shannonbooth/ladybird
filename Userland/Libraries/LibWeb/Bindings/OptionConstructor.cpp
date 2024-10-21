@@ -44,8 +44,8 @@ JS::ThrowCompletionOr<JS::NonnullGCPtr<JS::Object>> OptionConstructor::construct
     auto& vm = this->vm();
     auto& realm = *vm.current_realm();
 
-    // 1. Let document be the current global object's associated Document.
-    auto& window = verify_cast<HTML::Window>(HTML::current_global_object());
+    // 1. Let document be the current principal global object's associated Document.
+    auto& window = verify_cast<HTML::Window>(HTML::current_principal_global_object());
     auto& document = window.associated_document();
 
     // 2. Let option be the result of creating an element given document, option, and the HTML namespace.
