@@ -145,8 +145,8 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
         }
 
         // 3. Let settings object be the current settings object.
-        // 4. If script is not null, then set settings object to script's settings object.
-        auto& settings_object = script ? script->settings_object() : HTML::current_settings_object();
+        // 4. If script is not null, then set settings object to script's principal settings object.
+        auto& settings_object = script ? script->settings_object() : HTML::current_principal_settings_object();
 
         switch (operation) {
         case JS::Promise::RejectionOperation::Reject:
@@ -414,8 +414,8 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
         auto& vm = *s_main_thread_vm;
         auto& realm = *vm.current_realm();
 
-        // 1. Let settingsObject be the current settings object.
-        Optional<HTML::EnvironmentSettingsObject&> settings_object = HTML::current_settings_object();
+        // 1. Let settingsObject be the current principal settings object.
+        Optional<HTML::EnvironmentSettingsObject&> settings_object = HTML::current_principal_settings_object();
 
         // FIXME: 2. If settingsObject's global object implements WorkletGlobalScope or ServiceWorkerGlobalScope and loadState is undefined, then:
 
