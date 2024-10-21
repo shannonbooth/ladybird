@@ -110,8 +110,8 @@ inline JS::Completion clean_up_on_return(HTML::EnvironmentSettingsObject& stored
     // 1. Clean up after running a callback with stored settings.
     stored_settings.clean_up_after_running_callback();
 
-    // 2. Clean up after running script with relevant settings.
-    relevant_settings.clean_up_after_running_script();
+    // 2. Clean up after running script with realm.
+    HTML::clean_up_after_running_script(relevant_settings.realm());
 
     // 3. If completion is a normal completion, return completion.
     if (completion.type() == JS::Completion::Type::Normal)
@@ -312,8 +312,8 @@ JS::Completion construct(WebIDL::CallbackType& callback, JS::MarkedVector<JS::Va
     // 1. Clean up after running a callback with stored settings.
     stored_settings->clean_up_after_running_callback();
 
-    // 2. Clean up after running script with relevant settings.
-    relevant_settings.clean_up_after_running_script();
+    // 2. Clean up after running script with realm.
+    HTML::clean_up_after_running_script(realm);
 
     // 3. Return completion.
     return completion;
