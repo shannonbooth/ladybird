@@ -94,7 +94,6 @@ public:
     // https://fetch.spec.whatwg.org/#concept-fetch-group
     Vector<JS::NonnullGCPtr<Fetch::Infrastructure::FetchRecord>>& fetch_group() { return m_fetch_group; }
 
-    RunScriptDecision can_run_script();
     void prepare_to_run_script();
     void clean_up_after_running_script();
 
@@ -112,9 +111,6 @@ public:
     bool remove_from_about_to_be_notified_rejected_promises_list(JS::NonnullGCPtr<JS::Promise>);
 
     void notify_about_rejected_promises(Badge<EventLoop>);
-
-    bool is_scripting_enabled() const;
-    bool is_scripting_disabled() const;
 
     bool module_type_allowed(StringView module_type) const;
 
@@ -157,6 +153,10 @@ private:
     // A service worker client has an associated discarded flag. It is initially unset.
     bool m_discarded { false };
 };
+
+RunScriptDecision can_run_script(JS::Realm const&);
+bool is_scripting_enabled(JS::Realm const&);
+bool is_scripting_disabled(JS::Realm const&);
 
 EnvironmentSettingsObject& incumbent_settings_object();
 JS::Realm& incumbent_realm();
