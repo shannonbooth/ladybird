@@ -15,6 +15,7 @@
 #include <LibJS/Runtime/FinalizationRegistry.h>
 #include <LibJS/Runtime/ModuleRequest.h>
 #include <LibJS/Runtime/NativeFunction.h>
+#include <LibJS/Runtime/ShadowRealm.h>
 #include <LibJS/Runtime/VM.h>
 #include <LibJS/SourceTextModule.h>
 #include <LibWeb/Bindings/ExceptionOrUtils.h>
@@ -36,6 +37,7 @@
 #include <LibWeb/HTML/Scripting/ModuleScript.h>
 #include <LibWeb/HTML/Scripting/Script.h>
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
+#include <LibWeb/HTML/ShadowRealmGlobalScope.h>
 #include <LibWeb/HTML/TagNames.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HTML/WindowProxy.h>
@@ -207,7 +209,7 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
         // 2. Let script execution context be callback.[[HostDefined]].[[ActiveScriptContext]]. (NOTE: Not necessary)
 
         // 3. Prepare to run a callback with incumbent realm.
-        HTML::prepare_to_run_callback(callback_host_defined.incumbent_settings->realm());
+        HTML::prepare_to_run_callback(callback_host_defined.incumbent_realm);
 
         // 4. If script execution context is not null, then push script execution context onto the JavaScript execution context stack.
         if (callback_host_defined.active_script_context)
@@ -223,7 +225,7 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
         }
 
         // 7. Clean up after running a callback with incumbent realm.
-        HTML::clean_up_after_running_callback(callback_host_defined.incumbent_settings->realm());
+        HTML::clean_up_after_running_callback(callback_host_defined.incumbent_realm);
 
         // 8. Return result.
         return result;
@@ -266,7 +268,7 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
         //                         This means taking it here now and passing it through to the lambda.
         auto script_or_module = s_main_thread_vm->get_active_script_or_module();
 
-        // 2. Queue a microtask to perform the following steps:
+        // 1. Queue a microtask to perform the following steps:
         // This instance of "queue a microtask" uses the "implied document". The best fit for "implied document" here is "If the task is being queued by or for a script, then return the script's settings object's responsible document."
         // Do note that "implied document" from the spec is handwavy and the spec authors are trying to get rid of it: https://github.com/whatwg/html/issues/4980
         auto* script = active_script();
@@ -277,11 +279,11 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
             OwnPtr<JS::ExecutionContext> dummy_execution_context;
 
             if (realm) {
-                // 1. If realm is not null, then check if we can run script with realm. If this returns "do not run" then return.
+                // 2. If realm is not null, then check if we can run script with realm. If this returns "do not run" then return.
                 if (HTML::can_run_script(*realm) == HTML::RunScriptDecision::DoNotRun)
                     return;
 
-                // 2. If realm is not null, then prepare to run script with realm.
+                // 3. If realm is not null, then prepare to run script with realm.
                 HTML::prepare_to_run_script(*realm);
 
                 // IMPLEMENTATION DEFINED: Additionally to preparing to run a script, we also prepare to run a callback here. This matches WebIDL's
@@ -327,7 +329,7 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
     // 8.1.5.4.4 HostMakeJobCallback(callable), https://html.spec.whatwg.org/multipage/webappapis.html#hostmakejobcallback
     s_main_thread_vm->host_make_job_callback = [](JS::FunctionObject& callable) -> JS::NonnullGCPtr<JS::JobCallback> {
         // 1. Let incumbent realm be the incumbent realm.
-        auto& realm = HTML::incumbent_realm();
+        auto& incumbent_realm = HTML::incumbent_realm();
 
         // 2. Let active script be the active script.
         auto* script = active_script();
@@ -355,8 +357,8 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
             }
         }
 
-        // FIXME: 5. Return the JobCallback Record { [[Callback]]: callable, [[HostDefined]]: { [[IncumbentRealm]]:  incumbent realm, [[ActiveScriptContext]]: script execution context } }.
-        auto host_defined = adopt_own(*new WebEngineCustomJobCallbackData(incumbent_settings, move(script_execution_context)));
+        // 5. Return the JobCallback Record { [[Callback]]: callable, [[HostDefined]]: { [[IncumbentRealm]]:  incumbent realm, [[ActiveScriptContext]]: script execution context } }.
+        auto host_defined = adopt_own(*new WebEngineCustomJobCallbackData(incumbent_realm, move(script_execution_context)));
         return JS::JobCallback::create(*s_main_thread_vm, callable, move(host_defined));
     };
 
@@ -550,6 +552,37 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
         //     moduleRequest, and onSingleFetchComplete as defined below.
         //     If loadState is not undefined and loadState.[[PerformFetch]] is not null, pass loadState.[[PerformFetch]] along as well.
         HTML::fetch_single_imported_module_script(module_map_realm, url.release_value(), *fetch_client, destination, fetch_options, module_map_realm, fetch_referrer, module_request, perform_fetch, on_single_fetch_complete);
+    };
+
+    // https://whatpr.org/html/9893/webappapis.html#hostinitializeshadowrealm(realm,-context,-o)
+    // 8.1.6.8 HostInitializeShadowRealm(realm, context)
+    s_main_thread_vm->host_initialize_shadow_realm = [](JS::Realm& realm, NonnullOwnPtr<JS::ExecutionContext> context, JS::ShadowRealm& object) -> JS::ThrowCompletionOr<JS::NonnullGCPtr<JS::Object>> {
+        // FIXME: 1. Set realm's is global prototype chain mutable to true.
+
+        // 2. Let globalObject be a new ShadowRealmGlobalScope object with realm.
+        auto global_object = HTML::ShadowRealmGlobalScope::create(realm);
+
+        // 3. Let settings be a new synthetic realm settings object that this algorithm will subsequently initialize.
+        auto settings = make<HTML::SyntheticRealmSettings>(
+            // 4. Set settings's execution context to context.
+            move(context),
+
+            // 5. Set settings's principal realm to O's associated realm
+            object.shape().realm(),
+
+            // 6. Set settings's underlying realm to realm.
+            realm,
+
+            // 7. Set settings's module map to a new module map, initially empty.
+            realm.heap().allocate<HTML::ModuleMap>(realm));
+
+        // FIXME: 8. Set realm.[[HostDefined]] to settings.
+        auto intrinsics = realm.heap().allocate<Bindings::Intrinsics>(realm, realm);
+        auto host_defined = make<Bindings::HostDefined>(nullptr, intrinsics, nullptr, move(settings));
+        realm.set_host_defined(move(host_defined));
+
+        // 9. Return globalObject.
+        return global_object;
     };
 
     s_main_thread_vm->host_unrecognized_date_string = [](StringView date) {

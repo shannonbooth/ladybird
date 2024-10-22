@@ -1,0 +1,6 @@
+// https://whatpr.org/html/9893/webappapis.html#shadowrealmglobalscope
+// FIXME: This is not correct attributes! Need to not have Exposed=
+[Global, Exposed=Window]
+interface ShadowRealmGlobalScope : EventTarget {
+    readonly attribute ShadowRealmGlobalScope self;
+};
