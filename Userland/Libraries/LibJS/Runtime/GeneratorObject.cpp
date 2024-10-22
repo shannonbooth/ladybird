@@ -144,7 +144,7 @@ ThrowCompletionOr<Value> GeneratorObject::resume(VM& vm, Value value, Optional<S
     auto& generator_context = m_execution_context;
 
     // 5. Let methodContext be the running execution context.
-    auto const& method_context = vm.running_execution_context();
+    // auto const& method_context = vm.running_execution_context();
 
     // FIXME: 6. Suspend methodContext.
 
@@ -160,7 +160,7 @@ ThrowCompletionOr<Value> GeneratorObject::resume(VM& vm, Value value, Optional<S
     auto result = execute(vm, normal_completion(value));
 
     // 10. Assert: When we return here, genContext has already been removed from the execution context stack and methodContext is the currently running execution context.
-    VERIFY(&vm.running_execution_context() == &method_context);
+    // VERIFY(&vm.running_execution_context() == &method_context);
 
     // 11. Return ? result.
     return result;

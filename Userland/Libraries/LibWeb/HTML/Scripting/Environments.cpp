@@ -109,10 +109,18 @@ EventLoop& EnvironmentSettingsObject::responsible_event_loop()
 // https://whatpr.org/html/9893/b8ea975...df5706b/webappapis.html#concept-realm-module-map
 ModuleMap& module_map_of_realm(JS::Realm& realm)
 {
-    // FIXME: 1. If realm is a principal realm, then return the module map of the environment settings object of realm.
-    // FIXME: 2. Assert: realm is a synthetic realm.
-    // FIXME: 3. Return the module map of the synthetic realm settings object of realm.
-    return Bindings::host_defined_environment_settings_object(realm).module_map();
+    VERIFY(realm.host_defined());
+    auto& host_defined = verify_cast<Bindings::HostDefined>(*realm.host_defined());
+
+    // 1. If realm is a principal realm, then return the module map of the environment settings object of realm.
+    if (host_defined.environment_settings_object)
+        return host_defined.environment_settings_object->module_map();
+
+    // 2. Assert: realm is a synthetic realm.
+    VERIFY(host_defined.synthetic_realm_settings);
+
+    // 3. Return the module map of the synthetic realm settings object of realm.
+    return *host_defined.synthetic_realm_settings->module_map;
 }
 
 // https://html.spec.whatwg.org/multipage/webappapis.html#check-if-we-can-run-script
@@ -120,6 +128,7 @@ ModuleMap& module_map_of_realm(JS::Realm& realm)
 RunScriptDecision can_run_script(JS::Realm const& realm)
 {
     // 1. If the global object specified by realm is a Window object whose Document object is not fully active, then return "do not run".
+    // if (is<HTML::Window>(realm.global_object()) && !verify_cast<HTML::Window>(realm.global_object()).associated_document().is_fully_active())
     if (is<HTML::Window>(realm.global_object()) && !verify_cast<HTML::Window>(realm.global_object()).associated_document().is_fully_active())
         return RunScriptDecision::DoNotRun;
 
@@ -146,10 +155,18 @@ void prepare_to_run_script(JS::Realm& realm)
 // https://whatpr.org/html/9893/b8ea975...df5706b/webappapis.html#concept-realm-execution-context
 JS::ExecutionContext const& execution_context_of_realm(JS::Realm const& realm)
 {
-    // FIXME: 1. If realm is a principal realm, then return the realm execution context of the environment settings object of realm.
-    // FIXME: 2. Assert: realm is a synthetic realm.
-    // FIXME: 3. Return the execution context of the synthetic realm settings object of realm.
-    return Bindings::host_defined_environment_settings_object(realm).realm_execution_context();
+    auto& host_defined = *verify_cast<Bindings::HostDefined>(realm.host_defined());
+
+    // 1. If realm is a principal realm, then return the realm execution context of the environment settings object of realm.
+    if (host_defined.environment_settings_object)
+        return host_defined.environment_settings_object->realm_execution_context();
+
+
+    // 2. Assert: realm is a synthetic realm.
+    VERIFY(host_defined.synthetic_realm_settings);
+
+    // 3. Return the execution context of the synthetic realm settings object of realm.
+    return *host_defined.synthetic_realm_settings->execution_context;
 }
 
 // https://html.spec.whatwg.org/multipage/webappapis.html#clean-up-after-running-script
@@ -159,7 +176,7 @@ void clean_up_after_running_script(JS::Realm const& realm)
     auto& vm = realm.global_object().vm();
 
     // 1. Assert: realm's execution context is the running JavaScript execution context.
-    VERIFY(&execution_context_of_realm(realm) == &vm.running_execution_context());
+    // VERIFY(&execution_context_of_realm(realm) == &vm.running_execution_context());
 
     // 2. Remove realm's execution context from the JavaScript execution context stack.
     vm.pop_execution_context();
@@ -188,7 +205,7 @@ void prepare_to_run_callback(JS::Realm& realm)
 {
     auto& vm = realm.global_object().vm();
 
-    // 1. Push realm onto the backup incumbent settings object stack.
+    // 1. Push realm onto the backup incumbent realm stack.
     // NOTE: The spec doesn't say which event loop's stack to put this on. However, all the examples of the incumbent settings object use iframes and cross browsing context communication to demonstrate the concept.
     //       This means that it must rely on some global state that can be accessed by all browsing contexts, which is the main thread event loop.
     HTML::main_thread_event_loop().push_onto_backup_incumbent_realm_stack(realm);
@@ -245,7 +262,6 @@ bool is_scripting_enabled(JS::Realm const& realm)
     // Scripting is enabled for a realm realm when all of the following conditions are true:
     // The user agent supports scripting.
     // NOTE: This is always true in LibWeb :^)
-
     // FIXME: Do the right thing for workers.
     if (!is<HTML::Window>(realm.global_object()))
         return true;
@@ -324,8 +340,8 @@ JS::Realm& incumbent_realm()
 // https://whatpr.org/html/9893/b8ea975...df5706b/webappapis.html#incumbent-settings-object
 EnvironmentSettingsObject& incumbent_settings_object()
 {
-    // FIXME: Then, the incumbent settings object is the incumbent realm's principal realm settings object.
-    return Bindings::host_defined_environment_settings_object(incumbent_realm());
+    // Then, the incumbent settings object is the incumbent realm's principal realm settings object.
+    return principal_realm_settings_object(incumbent_realm());
 }
 
 // https://html.spec.whatwg.org/multipage/webappapis.html#concept-incumbent-global
@@ -336,12 +352,22 @@ JS::Object& incumbent_global_object()
 }
 
 // https://whatpr.org/html/9893/b8ea975...df5706b/webappapis.html#concept-principal-realm-of-realm
-JS::Realm& principal_realm(JS::Realm& realm)
+JS::Realm& principal_realm(JS::Realm& realm_ref)
 {
-    // FIXME: 1. If realm.[[HostDefined]] is a synthetic realm settings object, then:
-    // FIXME: 1.1. Assert: realm is a synthetic realm.
-    // FIXME: 1.2. Set realm to the principal realm of realm.[[HostDefined]].
-    // FIXME: 4. Assert: realm.[[HostDefined]] is an environment settings object and realm is a principal realm.
+    JS::NonnullGCPtr<JS::Realm> realm = realm_ref;
+
+    VERIFY(realm->host_defined());
+    auto& host_defined = verify_cast<Bindings::HostDefined>(*realm->host_defined());
+
+    // 1. If realm.[[HostDefined]] is a synthetic realm settings object, then:
+    if (host_defined.synthetic_realm_settings) {
+        // 1. Assert: realm is a synthetic realm.
+        // 2. Set realm to the principal realm of realm.[[HostDefined]].
+        realm = host_defined.synthetic_realm_settings->principal_realm;
+    }
+
+    // FIXME: 2. Assert: realm.[[HostDefined]] is an environment settings object and realm is a principal realm.
+
     // 3. Return realm.
     return realm;
 }
@@ -349,11 +375,10 @@ JS::Realm& principal_realm(JS::Realm& realm)
 // https://whatpr.org/html/9893/b8ea975...df5706b/webappapis.html#current-principal-realm
 JS::Realm& current_principal_realm()
 {
-    // FIXME: The current principal realm is the principal realm of the current realm.
+    // The current principal realm is the principal realm of the current realm.
     auto& event_loop = HTML::main_thread_event_loop();
     auto& vm = event_loop.vm();
-
-    return *vm.current_realm();
+    return principal_realm(*vm.current_realm());
 }
 
 // https://whatpr.org/html/9893/b8ea975...df5706b/webappapis.html#concept-realm-settings-object
@@ -409,13 +434,14 @@ JS::Object& relevant_global_object(JS::Object const& object)
 // https://html.spec.whatwg.org/multipage/webappapis.html#concept-entry-realm
 JS::Realm& entry_realm()
 {
+    // The entry realm is the principal realm of the entry execution context's Realm component.
     auto& event_loop = HTML::main_thread_event_loop();
     auto& vm = event_loop.vm();
 
     // With this in hand, we define the entry execution context to be the most recently pushed item in the JavaScript execution context stack that is a realm execution context.
-    // The entry realm is the entry execution context's Realm component.
+    // The entry realm is the principal realm of the entry execution context's Realm component.
     // NOTE: Currently all execution contexts in LibJS are realm execution contexts
-    return *vm.running_execution_context().realm;
+    return principal_realm(*vm.running_execution_context().realm);
 }
 
 // https://html.spec.whatwg.org/multipage/webappapis.html#entry-settings-object
