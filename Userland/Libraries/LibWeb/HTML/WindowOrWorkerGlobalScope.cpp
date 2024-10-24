@@ -228,7 +228,7 @@ JS::NonnullGCPtr<WebIDL::Promise> WindowOrWorkerGlobalScopeMixin::create_image_b
                     // (e.g., a vector graphic with no natural size), then reject p with an "InvalidStateError" DOMException
                     // and abort these steps.
                     auto& realm = relevant_realm(p->promise());
-                    TemporaryExecutionContext context { relevant_settings_object(p->promise()), TemporaryExecutionContext::CallbacksEnabled::Yes };
+                    TemporaryExecutionContext context { relevant_realm(p->promise()), TemporaryExecutionContext::CallbacksEnabled::Yes };
                     WebIDL::reject_promise(realm, *p, WebIDL::InvalidStateError::create(realm, "image does not contain a supported image format"_string));
                 };
 
@@ -242,7 +242,7 @@ JS::NonnullGCPtr<WebIDL::Promise> WindowOrWorkerGlobalScopeMixin::create_image_b
                     auto& realm = relevant_realm(p->promise());
 
                     // 5. Resolve p with imageBitmap.
-                    TemporaryExecutionContext context { relevant_settings_object(*image_bitmap), TemporaryExecutionContext::CallbacksEnabled::Yes };
+                    TemporaryExecutionContext context { relevant_realm(*image_bitmap), TemporaryExecutionContext::CallbacksEnabled::Yes };
                     WebIDL::resolve_promise(realm, *p, image_bitmap);
                     return {};
                 };
@@ -255,7 +255,7 @@ JS::NonnullGCPtr<WebIDL::Promise> WindowOrWorkerGlobalScopeMixin::create_image_b
             (void)sx;
             (void)sy;
             auto error = JS::Error::create(realm, "Not Implemented: createImageBitmap() for non-blob types"sv);
-            TemporaryExecutionContext context { relevant_settings_object(p->promise()), TemporaryExecutionContext::CallbacksEnabled::Yes };
+            TemporaryExecutionContext context { relevant_realm(p->promise()), TemporaryExecutionContext::CallbacksEnabled::Yes };
             WebIDL::reject_promise(realm, *p, error);
         });
 
