@@ -245,7 +245,7 @@ WebIDL::ExceptionOr<void> FileReader::read_operation(Blob& blob, Type type, Opti
                     // FIXME: 2. Set fr’s error to error.
 
                     // 5. Fire a progress event called error at fr.
-                    dispatch_event(DOM::Event::create(realm, HTML::EventNames::loadend));
+                    dispatch_event(DOM::Event::create(realm, HTML::EventNames::error));
 
                     // 4. If fr’s state is not "loading", fire a progress event called loadend at fr.
                     if (m_state != State::Loading)
