@@ -67,10 +67,7 @@ enum class CallerMode {
     Strict,
     NonStrict
 };
-enum class EvalMode {
-    Direct,
-    Indirect
-};
+
 ThrowCompletionOr<Value> perform_eval(VM&, Value, CallerMode, EvalMode);
 
 ThrowCompletionOr<void> eval_declaration_instantiation(VM& vm, Program const& program, Environment* variable_environment, Environment* lexical_environment, PrivateEnvironment* private_environment, bool strict);
