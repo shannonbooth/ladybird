@@ -748,6 +748,11 @@ public:
 
     JS::NonnullGCPtr<EditingHostManager> editing_host_manager() const { return *m_editing_host_manager; }
 
+    void set_iframe_load_in_progress(bool in_progress) { m_is_iframe_load_in_progress = in_progress; }
+    bool is_iframe_load_in_progress() const { return m_is_iframe_load_in_progress; }
+
+    bool should_mute_iframe_load() const { return m_should_mute_iframe_load; }
+
 protected:
     virtual void initialize(JS::Realm&) override;
     virtual void visit_edges(Cell::Visitor&) override;
@@ -1012,6 +1017,11 @@ private:
 
     // https://w3c.github.io/selection-api/#dfn-has-scheduled-selectionchange-event
     bool m_has_scheduled_selectionchange_event { false };
+
+    // https://html.spec.whatwg.org/multipage/iframe-embed-object.html#iframe-load-in-progress
+    // Each Document has an iframe load in progress flag and a mute iframe load flag. When a Document is created, these flags must be unset for that Document.
+    bool m_is_iframe_load_in_progress { false };
+    bool m_should_mute_iframe_load { false };
 
     JS::GCPtr<JS::ConsoleClient> m_console_client;
 

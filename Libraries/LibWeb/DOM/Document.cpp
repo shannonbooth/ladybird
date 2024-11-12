@@ -662,7 +662,9 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<Document>> Document::open(Optional<String> 
     // 13. Set document's is initial about:blank to false.
     set_is_initial_about_blank(false);
 
-    // FIXME: 14. If document's iframe load in progress flag is set, then set document's mute iframe load flag.
+    // 14. If document's iframe load in progress flag is set, then set document's mute iframe load flag.
+    if (m_is_iframe_load_in_progress)
+        m_should_mute_iframe_load = true;
 
     // 15. Set document to no-quirks mode.
     set_quirks_mode(QuirksMode::No);
