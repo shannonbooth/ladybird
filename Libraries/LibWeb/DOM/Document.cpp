@@ -600,7 +600,8 @@ WebIDL::ExceptionOr<void> Document::run_the_document_write_steps(StringView inpu
 }
 
 // https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-open
-WebIDL::ExceptionOr<Document*> Document::open(Optional<String> const&, Optional<String> const&)
+// https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-open-steps
+WebIDL::ExceptionOr<JS::NonnullGCPtr<Document>> Document::open(Optional<String> const&, Optional<String> const&)
 {
     // If document belongs to a child navigable, we need to make sure its initial navigation is done,
     // because subsequent steps will modify "initial about:blank" to false, which would cause
@@ -628,15 +629,15 @@ WebIDL::ExceptionOr<Document*> Document::open(Optional<String> const&, Optional<
 
     // 5. If document has an active parser whose script nesting level is greater than 0, then return document.
     if (m_parser && m_parser->script_nesting_level() > 0)
-        return this;
+        return JS::NonnullGCPtr { *this };
 
     // 6. Similarly, if document's unload counter is greater than 0, then return document.
     if (m_unload_counter > 0)
-        return this;
+        return JS::NonnullGCPtr { *this };
 
     // 7. If document's active parser was aborted is true, then return document.
     if (m_active_parser_was_aborted)
-        return this;
+        return JS::NonnullGCPtr { *this };
 
     // FIXME: 8. If document's browsing context is non-null and there is an existing attempt to navigate document's browsing context, then stop document loading given document.
 
@@ -676,7 +677,7 @@ WebIDL::ExceptionOr<Document*> Document::open(Optional<String> const&, Optional<
     update_readiness(HTML::DocumentReadyState::Loading);
 
     // 19. Return document.
-    return this;
+    return JS::NonnullGCPtr { *this };
 }
 
 // https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-open-window

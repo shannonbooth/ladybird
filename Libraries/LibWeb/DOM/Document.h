@@ -370,7 +370,7 @@ public:
     WebIDL::ExceptionOr<void> write(Vector<String> const& strings);
     WebIDL::ExceptionOr<void> writeln(Vector<String> const& strings);
 
-    WebIDL::ExceptionOr<Document*> open(Optional<String> const& = {}, Optional<String> const& = {});
+    WebIDL::ExceptionOr<JS::NonnullGCPtr<Document>> open(Optional<String> const& = {}, Optional<String> const& = {});
     WebIDL::ExceptionOr<JS::GCPtr<HTML::WindowProxy>> open(StringView url, StringView name, StringView features);
     WebIDL::ExceptionOr<void> close();
 
