@@ -674,14 +674,14 @@ private:
     {
     }
 
-    explicit Handle(Value value, CellImpl* cell, SourceLocation location)
+    explicit Handle(Value value, GC::Cell* cell, SourceLocation location)
         : m_value(value)
-        , m_handle(Handle<CellImpl>::create(cell, location))
+        , m_handle(Handle<GC::Cell>::create(cell, location))
     {
     }
 
     Optional<Value> m_value;
-    Handle<CellImpl> m_handle;
+    Handle<GC::Cell> m_handle;
 };
 
 inline Handle<Value> make_handle(Value value, SourceLocation location = SourceLocation::current())
