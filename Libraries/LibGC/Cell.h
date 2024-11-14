@@ -14,8 +14,8 @@
 #include <AK/StringView.h>
 #include <AK/Weakable.h>
 #include <LibGC/Forward.h>
-#include <LibGC/GCPtr.h>
 #include <LibGC/Internals.h>
+#include <LibGC/Ptr.h>
 
 namespace GC {
 
@@ -80,14 +80,14 @@ public:
         }
 
         template<typename T>
-        void visit(GCPtr<T> cell)
+        void visit(Ptr<T> cell)
         {
             if (cell)
                 visit_impl(const_cast<RemoveConst<T>&>(*cell.ptr()));
         }
 
         template<typename T>
-        void visit(NonnullGCPtr<T> cell)
+        void visit(Ref<T> cell)
         {
             visit_impl(const_cast<RemoveConst<T>&>(*cell.ptr()));
         }

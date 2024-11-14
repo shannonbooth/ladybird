@@ -218,7 +218,7 @@ private:
     };
 
     GraphNode* m_node_being_visited { nullptr };
-    Vector<NonnullGCPtr<Cell>> m_work_queue;
+    Vector<Ref<Cell>> m_work_queue;
     HashMap<FlatPtr, GraphNode> m_graph;
 
     Heap& m_heap;
@@ -400,7 +400,7 @@ public:
 
 private:
     Heap& m_heap;
-    Vector<NonnullGCPtr<Cell>> m_work_queue;
+    Vector<Ref<Cell>> m_work_queue;
     HashTable<HeapBlock*> m_all_live_heap_blocks;
     FlatPtr m_min_block_address;
     FlatPtr m_max_block_address;

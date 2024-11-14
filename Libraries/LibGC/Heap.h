@@ -37,7 +37,7 @@ public:
     ~Heap();
 
     template<typename T, typename... Args>
-    NonnullGCPtr<T> allocate(Args&&... args)
+    Ref<T> allocate(Args&&... args)
     {
         auto* memory = allocate_cell<T>();
         defer_gc();
@@ -139,7 +139,7 @@ private:
     ConservativeVectorBase::List m_conservative_vectors;
     WeakContainer::List m_weak_containers;
 
-    Vector<GCPtr<Cell>> m_uprooted_cells;
+    Vector<Ptr<Cell>> m_uprooted_cells;
 
     size_t m_gc_deferrals { 0 };
     bool m_should_gc_when_deferral_ends { false };

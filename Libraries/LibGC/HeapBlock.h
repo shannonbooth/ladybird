@@ -100,7 +100,7 @@ private:
     struct FreelistEntry final : public Cell {
         GC_CELL(FreelistEntry, Cell);
 
-        RawGCPtr<FreelistEntry> next;
+        RawPtr<FreelistEntry> next;
     };
 
     Cell* cell(size_t index)
@@ -111,7 +111,7 @@ private:
     CellAllocator& m_cell_allocator;
     size_t m_cell_size { 0 };
     size_t m_next_lazy_freelist_index { 0 };
-    GCPtr<FreelistEntry> m_freelist;
+    Ptr<FreelistEntry> m_freelist;
     alignas(__BIGGEST_ALIGNMENT__) u8 m_storage[];
 
 public:
