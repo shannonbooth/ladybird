@@ -672,7 +672,7 @@ WebIDL::ExceptionOr<GC::Ref<ShadowRoot>> Element::attach_shadow(ShadowRootInit i
     TRY(attach_a_shadow_root(init.mode, init.clonable, init.serializable, init.delegates_focus, init.slot_assignment));
 
     // 2. Return this’s shadow root.
-    return JS::NonnullGCPtr { *shadow_root() };
+    return GC::Ref { *shadow_root() };
 }
 
 // https://dom.spec.whatwg.org/#dom-element-shadowroot
@@ -839,7 +839,7 @@ void Element::make_html_uppercased_qualified_name()
 // https://html.spec.whatwg.org/multipage/webappapis.html#queue-an-element-task
 HTML::TaskID Element::queue_an_element_task(HTML::Task::Source source, Function<void()> steps)
 {
-    return queue_a_task(source, HTML::main_thread_event_loop(), document(), JS::create_heap_function(heap(), move(steps)));
+    return queue_a_task(source, HTML::main_thread_event_loop(), document(), GC::create_function(heap(), move(steps)));
 }
 
 // https://html.spec.whatwg.org/multipage/syntax.html#void-elements
@@ -874,7 +874,7 @@ GC::Ref<Geometry::DOMRect> Element::get_bounding_client_rect() const
         }
     }
     if (all_rectangle_has_zero_width_or_height)
-        return JS::NonnullGCPtr { *const_cast<Geometry::DOMRect*>(list->item(0)) };
+        return GC::Ref { *const_cast<Geometry::DOMRect*>(list->item(0)) };
 
     // 4. Otherwise, return a DOMRect object describing the smallest rectangle that includes all of the rectangles in
     //    list of which the height or width is not zero.
@@ -1954,8 +1954,8 @@ void Element::enqueue_an_element_on_the_appropriate_element_queue()
         reactions_stack.processing_the_backup_element_queue = true;
 
         // 4. Queue a microtask to perform the following steps:
-        // NOTE: `this` is protected by JS::HeapFunction
-        HTML::queue_a_microtask(&document(), JS::create_heap_function(relevant_agent.heap(), [this]() {
+        // NOTE: `this` is protected by GC::Function
+        HTML::queue_a_microtask(&document(), GC::create_function(relevant_agent.heap(), [this]() {
             auto& relevant_agent = HTML::relevant_agent(*this);
             auto* custom_data = verify_cast<Bindings::WebEngineCustomData>(relevant_agent.custom_data());
             auto& reactions_stack = custom_data->custom_element_reactions_stack;
@@ -2058,7 +2058,7 @@ JS::ThrowCompletionOr<void> Element::upgrade_element(GC::Ref<HTML::CustomElement
     }
 
     // 6. Add element to the end of definition's construction stack.
-    custom_element_definition->construction_stack().append(JS::make_handle(this));
+    custom_element_definition->construction_stack().append(GC::make_handle(this));
 
     // 7. Let C be definition's constructor.
     auto& constructor = custom_element_definition->constructor();
@@ -2697,7 +2697,7 @@ void Element::attribute_changed(FlyString const& local_name, Optional<String> co
             assign_slottables(*assigned_slot);
 
         // 7. Run assign a slot for element.
-        assign_a_slot(JS::NonnullGCPtr { *this });
+        assign_a_slot(GC::Ref { *this });
         return;
     }
 

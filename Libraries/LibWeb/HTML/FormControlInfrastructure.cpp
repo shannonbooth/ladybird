@@ -39,7 +39,7 @@ WebIDL::ExceptionOr<XHR::FormDataEntry> create_entry(JS::Realm& realm, String co
                 FileAPI::FilePropertyBag options {};
                 options.type = blob->type();
 
-                blob = TRY(FileAPI::File::create(realm, { JS::make_handle(*blob) }, "blob"_string, move(options)));
+                blob = TRY(FileAPI::File::create(realm, { GC::make_handle(*blob) }, "blob"_string, move(options)));
             }
 
             // 2. If filename is given, then set value to a new File object, representing the same bytes, whose name
@@ -48,10 +48,10 @@ WebIDL::ExceptionOr<XHR::FormDataEntry> create_entry(JS::Realm& realm, String co
                 FileAPI::FilePropertyBag options {};
                 options.type = blob->type();
 
-                blob = TRY(FileAPI::File::create(realm, { JS::make_handle(*blob) }, *filename, move(options)));
+                blob = TRY(FileAPI::File::create(realm, { GC::make_handle(*blob) }, *filename, move(options)));
             }
 
-            return JS::make_handle(verify_cast<FileAPI::File>(*blob));
+            return GC::make_handle(verify_cast<FileAPI::File>(*blob));
         }));
 
     // 4. Return an entry whose name is name and whose value is value.
@@ -165,13 +165,13 @@ WebIDL::ExceptionOr<Optional<Vector<XHR::FormDataEntry>>> construct_entry_list(J
                 FileAPI::FilePropertyBag options {};
                 options.type = "application/octet-stream"_string;
                 auto file = TRY(FileAPI::File::create(realm, {}, String {}, options));
-                entry_list.append(XHR::FormDataEntry { .name = name.to_string(), .value = JS::make_handle(file) });
+                entry_list.append(XHR::FormDataEntry { .name = name.to_string(), .value = GC::make_handle(file) });
             }
             // 2. Otherwise, for each file in selected files, create an entry with name and a File object representing the file, and append it to entry list.
             else {
                 for (size_t i = 0; i < file_element->files()->length(); i++) {
-                    auto file = JS::NonnullGCPtr { *file_element->files()->item(i) };
-                    entry_list.append(XHR::FormDataEntry { .name = name.to_string(), .value = JS::make_handle(file) });
+                    auto file = GC::Ref { *file_element->files()->item(i) };
+                    entry_list.append(XHR::FormDataEntry { .name = name.to_string(), .value = GC::make_handle(file) });
                 }
             }
         }

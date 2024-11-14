@@ -440,7 +440,7 @@ WebIDL::ExceptionOr<GC::Ref<Storage>> Window::local_storage()
     auto storage = local_storage_per_origin.ensure(associated_document().origin(), [this]() -> GC::Handle<Storage> {
         return Storage::create(realm());
     });
-    return JS::NonnullGCPtr { *storage };
+    return GC::Ref { *storage };
 }
 
 // https://html.spec.whatwg.org/multipage/webstorage.html#dom-sessionstorage
@@ -451,7 +451,7 @@ WebIDL::ExceptionOr<GC::Ref<Storage>> Window::session_storage()
     auto storage = session_storage_per_origin.ensure(associated_document().origin(), [this]() -> GC::Handle<Storage> {
         return Storage::create(realm());
     });
-    return JS::NonnullGCPtr { *storage };
+    return GC::Ref { *storage };
 }
 
 // https://html.spec.whatwg.org/multipage/interaction.html#sticky-activation
@@ -569,7 +569,7 @@ void Window::start_an_idle_period()
 
     // 5. Queue a task on the queue associated with the idle-task task source,
     //    which performs the steps defined in the invoke idle callbacks algorithm with window and getDeadline as parameters.
-    queue_global_task(Task::Source::IdleTask, *this, JS::create_heap_function(heap(), [this] {
+    queue_global_task(Task::Source::IdleTask, *this, GC::create_function(heap(), [this] {
         invoke_idle_callbacks();
     }));
 }
@@ -593,7 +593,7 @@ void Window::invoke_idle_callbacks()
             report_exception(result, realm());
         // 4. If window's list of runnable idle callbacks is not empty, queue a task which performs the steps
         //    in the invoke idle callbacks algorithm with getDeadline and window as a parameters and return from this algorithm
-        queue_global_task(Task::Source::IdleTask, *this, JS::create_heap_function(heap(), [this] {
+        queue_global_task(Task::Source::IdleTask, *this, GC::create_function(heap(), [this] {
             invoke_idle_callbacks();
         }));
     }
@@ -690,7 +690,7 @@ GC::Ref<WebIDL::CallbackType> Window::count_queuing_strategy_size_function()
         m_count_queuing_strategy_size_function = realm.create<WebIDL::CallbackType>(*function, relevant_settings_object(*this));
     }
 
-    return JS::NonnullGCPtr { *m_count_queuing_strategy_size_function };
+    return GC::Ref { *m_count_queuing_strategy_size_function };
 }
 
 // https://streams.spec.whatwg.org/#byte-length-queuing-strategy-size-function
@@ -714,7 +714,7 @@ GC::Ref<WebIDL::CallbackType> Window::byte_length_queuing_strategy_size_function
         m_byte_length_queuing_strategy_size_function = realm.create<WebIDL::CallbackType>(*function, relevant_settings_object(*this));
     }
 
-    return JS::NonnullGCPtr { *m_byte_length_queuing_strategy_size_function };
+    return GC::Ref { *m_byte_length_queuing_strategy_size_function };
 }
 
 static bool s_inspector_object_exposed = false;
@@ -843,7 +843,7 @@ void Window::close()
         traversable->set_closing(true);
 
         // 2. Queue a task on the DOM manipulation task source to definitely close thisTraversable.
-        HTML::queue_global_task(HTML::Task::Source::DOMManipulation, incumbent_global_object, JS::create_heap_function(heap(), [traversable] {
+        HTML::queue_global_task(HTML::Task::Source::DOMManipulation, incumbent_global_object, GC::create_function(heap(), [traversable] {
             verify_cast<TraversableNavigable>(*traversable).definitely_close_top_level_traversable();
         }));
     }
@@ -879,7 +879,7 @@ GC::Ref<Location> Window::location()
     // The Window object's location getter steps are to return this's Location object.
     if (!m_location)
         m_location = realm.create<Location>(realm);
-    return JS::NonnullGCPtr { *m_location };
+    return GC::Ref { *m_location };
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-history
@@ -1034,7 +1034,7 @@ GC::Ref<Navigator> Window::navigator()
     // The navigator and clientInformation getter steps are to return this's associated Navigator.
     if (!m_navigator)
         m_navigator = realm.create<Navigator>(realm);
-    return JS::NonnullGCPtr { *m_navigator };
+    return GC::Ref { *m_navigator };
 }
 
 // https://html.spec.whatwg.org/multipage/interaction.html#close-watcher-manager
@@ -1044,7 +1044,7 @@ GC::Ref<CloseWatcherManager> Window::close_watcher_manager()
 
     if (!m_close_watcher_manager)
         m_close_watcher_manager = realm.create<CloseWatcherManager>(realm);
-    return JS::NonnullGCPtr { *m_close_watcher_manager };
+    return GC::Ref { *m_close_watcher_manager };
 }
 
 // https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-alert
@@ -1109,7 +1109,7 @@ WebIDL::ExceptionOr<void> Window::window_post_message_steps(JS::Value message, W
     auto serialize_with_transfer_result = TRY(structured_serialize_with_transfer(target_realm.vm(), message, transfer));
 
     // 8. Queue a global task on the posted message task source given targetWindow to run the following steps:
-    queue_global_task(Task::Source::PostedMessage, *this, JS::create_heap_function(heap(), [this, serialize_with_transfer_result = move(serialize_with_transfer_result), target_origin = move(target_origin), &incumbent_settings, &target_realm]() mutable {
+    queue_global_task(Task::Source::PostedMessage, *this, GC::create_function(heap(), [this, serialize_with_transfer_result = move(serialize_with_transfer_result), target_origin = move(target_origin), &incumbent_settings, &target_realm]() mutable {
         // 1. If the targetOrigin argument is not a single literal U+002A ASTERISK character (*) and targetWindow's
         //    associated Document's origin is not same origin with targetOrigin, then return.
         // NOTE: Due to step 4 and 5 above, the only time it's not '*' is if target_origin contains an Origin.
@@ -1134,7 +1134,7 @@ WebIDL::ExceptionOr<void> Window::window_post_message_steps(JS::Value message, W
         if (deserialize_record_or_error.is_exception()) {
             MessageEventInit message_event_init {};
             message_event_init.origin = MUST(String::from_byte_string(origin));
-            message_event_init.source = JS::make_handle(source);
+            message_event_init.source = GC::make_handle(source);
 
             auto message_error_event = MessageEvent::create(target_realm, EventNames::messageerror, message_event_init);
             dispatch_event(message_error_event);
@@ -1160,7 +1160,7 @@ WebIDL::ExceptionOr<void> Window::window_post_message_steps(JS::Value message, W
         //    initialized to newPorts.
         MessageEventInit message_event_init {};
         message_event_init.origin = MUST(String::from_byte_string(origin));
-        message_event_init.source = JS::make_handle(source);
+        message_event_init.source = GC::make_handle(source);
         message_event_init.data = message_clone;
         message_event_init.ports = move(new_ports);
 
@@ -1264,7 +1264,7 @@ GC::Ref<CSS::Screen> Window::screen()
     // The screen attribute must return the Screen object associated with the Window object.
     if (!m_screen)
         m_screen = realm().create<CSS::Screen>(*this);
-    return JS::NonnullGCPtr { *m_screen };
+    return GC::Ref { *m_screen };
 }
 
 GC::Ptr<CSS::VisualViewport> Window::visual_viewport()
@@ -1546,7 +1546,7 @@ double Window::device_pixel_ratio() const
 WebIDL::UnsignedLong Window::request_animation_frame(GC::Ref<WebIDL::CallbackType> callback)
 {
     // FIXME: Make this fully spec compliant. Currently implements a mix of 'requestAnimationFrame()' and 'run the animation frame callbacks'.
-    return animation_frame_callback_driver().add(JS::create_heap_function(heap(), [this, callback](double now) {
+    return animation_frame_callback_driver().add(GC::create_function(heap(), [this, callback](double now) {
         // 3. Invoke callback, passing now as the only argument, and if an exception is thrown, report the exception.
         auto result = WebIDL::invoke_callback(*callback, {}, JS::Value(now));
         if (result.is_error())
@@ -1591,7 +1591,7 @@ u32 Window::request_idle_callback(WebIDL::CallbackType& callback, RequestIdleCal
     auto handle = m_idle_callback_identifier;
 
     // 4. Push callback to the end of window's list of idle request callbacks, associated with handle.
-    auto handler = [callback = JS::make_handle(callback)](GC::Ref<RequestIdleCallback::IdleDeadline> deadline) -> JS::Completion {
+    auto handler = [callback = GC::make_handle(callback)](GC::Ref<RequestIdleCallback::IdleDeadline> deadline) -> JS::Completion {
         return WebIDL::invoke_callback(*callback, {}, deadline.ptr());
     };
     m_idle_request_callbacks.append(adopt_ref(*new IdleCallback(move(handler), handle)));
@@ -1664,7 +1664,7 @@ GC::Ref<CustomElementRegistry> Window::custom_elements()
     // The customElements attribute of the Window interface must return the CustomElementRegistry object for that Window object.
     if (!m_custom_element_registry)
         m_custom_element_registry = realm.create<CustomElementRegistry>(realm);
-    return JS::NonnullGCPtr { *m_custom_element_registry };
+    return GC::Ref { *m_custom_element_registry };
 }
 
 // https://html.spec.whatwg.org/#document-tree-child-navigable-target-name-property-set
@@ -1762,7 +1762,7 @@ JS::Value Window::named_item_value(FlyString const& name) const
         mutable_this.associated_document().for_each_in_subtree_of_type<HTML::NavigableContainer>([&](HTML::NavigableContainer& navigable_container) {
             if (!navigable_container.content_navigable())
                 return TraversalDecision::Continue;
-            if (objects.navigables.contains_slow(JS::NonnullGCPtr { *navigable_container.content_navigable() })) {
+            if (objects.navigables.contains_slow(GC::Ref { *navigable_container.content_navigable() })) {
                 container = navigable_container;
                 return TraversalDecision::Break;
             }

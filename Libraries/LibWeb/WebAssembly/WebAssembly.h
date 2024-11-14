@@ -8,8 +8,8 @@
 #pragma once
 
 #include <AK/Optional.h>
+#include <LibGC/Handle.h>
 #include <LibJS/Forward.h>
-#include <LibJS/Heap/Handle.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/Value.h>
 #include <LibWasm/AbstractMachine/AbstractMachine.h>

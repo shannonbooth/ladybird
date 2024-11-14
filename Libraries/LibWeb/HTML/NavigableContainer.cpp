@@ -110,7 +110,7 @@ WebIDL::ExceptionOr<void> NavigableContainer::create_new_child_navigable(GC::Ptr
     auto traversable = parent_navigable->traversable_navigable();
 
     // 12. Append the following session history traversal steps to traversable:
-    traversable->append_session_history_traversal_steps(JS::create_heap_function(heap(), [traversable, navigable, parent_navigable, history_entry, after_session_history_update] {
+    traversable->append_session_history_traversal_steps(GC::create_function(heap(), [traversable, navigable, parent_navigable, history_entry, after_session_history_update] {
         // 1. Let parentDocState be parentNavigable's active session history entry's document state.
         auto parent_doc_state = parent_navigable->active_session_history_entry()->document_state();
 
@@ -278,7 +278,7 @@ void NavigableContainer::destroy_the_child_navigable()
     // FIXME: 4. Inform the navigation API about child navigable destruction given navigable.
 
     // 5. Destroy a document and its descendants given navigable's active document.
-    navigable->active_document()->destroy_a_document_and_its_descendants(JS::create_heap_function(heap(), [this, navigable] {
+    navigable->active_document()->destroy_a_document_and_its_descendants(GC::create_function(heap(), [this, navigable] {
         // 3. Set container's content navigable to null.
         m_content_navigable = nullptr;
 
@@ -297,7 +297,7 @@ void NavigableContainer::destroy_the_child_navigable()
         auto traversable = this->navigable()->traversable_navigable();
 
         // 9. Append the following session history traversal steps to traversable:
-        traversable->append_session_history_traversal_steps(JS::create_heap_function(heap(), [traversable] {
+        traversable->append_session_history_traversal_steps(GC::create_function(heap(), [traversable] {
             // 1. Update for navigable creation/destruction given traversable.
             traversable->update_for_navigable_creation_or_destruction();
         }));

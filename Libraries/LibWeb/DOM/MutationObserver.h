@@ -8,7 +8,7 @@
 #pragma once
 
 #include <AK/RefCounted.h>
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/Handle.h>
 #include <LibWeb/DOM/MutationRecord.h>
 #include <LibWeb/WebIDL/CallbackType.h>
 #include <LibWeb/WebIDL/ExceptionOr.h>

@@ -508,7 +508,7 @@ void HTMLInputElement::did_select_files(Span<SelectedFile> selected_files, Multi
         FileAPI::FilePropertyBag options {};
         options.type = mime_type.essence();
 
-        auto file = MUST(FileAPI::File::create(realm(), { JS::make_handle(blob) }, file_name, move(options)));
+        auto file = MUST(FileAPI::File::create(realm(), { GC::make_handle(blob) }, file_name, move(options)));
         files->add_file(file);
     }
 

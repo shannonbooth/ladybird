@@ -9,8 +9,8 @@
 
 #pragma once
 
+#include <LibGC/Handle.h>
 #include <LibJS/Heap/Cell.h>
-#include <LibJS/Heap/Handle.h>
 #include <LibURL/URL.h>
 #include <LibWeb/CSS/Enums.h>
 #include <LibWeb/CSS/StyleValues/AbstractImageStyleValue.h>

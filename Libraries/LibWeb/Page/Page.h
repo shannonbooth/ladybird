@@ -14,6 +14,7 @@
 #include <AK/RefPtr.h>
 #include <AK/WeakPtr.h>
 #include <AK/Weakable.h>
+#include <LibGC/Handle.h>
 #include <LibGC/Heap.h>
 #include <LibGfx/Forward.h>
 #include <LibGfx/Palette.h>
@@ -23,7 +24,6 @@
 #include <LibGfx/Size.h>
 #include <LibGfx/StandardCursor.h>
 #include <LibIPC/Forward.h>
-#include <LibJS/Heap/Handle.h>
 #include <LibURL/URL.h>
 #include <LibWeb/CSS/PreferredColorScheme.h>
 #include <LibWeb/CSS/PreferredContrast.h>

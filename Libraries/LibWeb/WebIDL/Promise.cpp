@@ -217,7 +217,7 @@ void wait_for_all(JS::Realm& realm, Vector<GC::Ref<Promise>> const& promises, Fu
     auto rejected = false;
 
     // 3. Let rejectionHandlerSteps be the following steps given arg:
-    auto rejection_handler_steps = [rejected, failure_steps = JS::create_heap_function(realm.heap(), move(failure_steps))](JS::VM& vm) mutable -> JS::ThrowCompletionOr<JS::Value> {
+    auto rejection_handler_steps = [rejected, failure_steps = GC::create_function(realm.heap(), move(failure_steps))](JS::VM& vm) mutable -> JS::ThrowCompletionOr<JS::Value> {
         // 1. If rejected is true, abort these steps.
         if (rejected)
             return JS::js_undefined();
@@ -240,7 +240,7 @@ void wait_for_all(JS::Realm& realm, Vector<GC::Ref<Promise>> const& promises, Fu
     // 6. If total is 0, then:
     if (total == 0) {
         // 1. Queue a microtask to perform successSteps given « ».
-        HTML::queue_a_microtask(nullptr, JS::create_heap_function(realm.heap(), [success_steps = JS::create_heap_function(realm.heap(), move(success_steps))] {
+        HTML::queue_a_microtask(nullptr, GC::create_function(realm.heap(), [success_steps = GC::create_function(realm.heap(), move(success_steps))] {
             success_steps->function()({});
         }));
 
@@ -254,7 +254,7 @@ void wait_for_all(JS::Realm& realm, Vector<GC::Ref<Promise>> const& promises, Fu
     // 8. Let result be a list containing total null values.
     // Handled in WaitForAllResults
 
-    auto results = realm.create<WaitForAllResults>(JS::create_heap_function(realm.heap(), move(success_steps)), total);
+    auto results = realm.create<WaitForAllResults>(GC::create_function(realm.heap(), move(success_steps)), total);
 
     // 9. For each promise of promises:
     for (auto const& promise : promises) {

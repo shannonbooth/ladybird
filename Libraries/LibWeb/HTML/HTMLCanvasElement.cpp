@@ -178,7 +178,7 @@ JS::ThrowCompletionOr<HTMLCanvasElement::RenderingContext> HTMLCanvasElement::ge
     // NOTE: See the spec for the full table.
     if (type == "2d"sv) {
         if (create_2d_context() == HasOrCreatedContext::Yes)
-            return JS::make_handle(*m_context.get<GC::Ref<HTML::CanvasRenderingContext2D>>());
+            return GC::make_handle(*m_context.get<GC::Ref<HTML::CanvasRenderingContext2D>>());
 
         return Empty {};
     }
@@ -186,7 +186,7 @@ JS::ThrowCompletionOr<HTMLCanvasElement::RenderingContext> HTMLCanvasElement::ge
     // NOTE: The WebGL spec says "experimental-webgl" is also acceptable and must be equivalent to "webgl". Other engines accept this, so we do too.
     if (type.is_one_of("webgl"sv, "experimental-webgl"sv)) {
         if (TRY(create_webgl_context(options)) == HasOrCreatedContext::Yes)
-            return JS::make_handle(*m_context.get<GC::Ref<WebGL::WebGLRenderingContext>>());
+            return GC::make_handle(*m_context.get<GC::Ref<WebGL::WebGLRenderingContext>>());
 
         return Empty {};
     }
@@ -316,7 +316,7 @@ WebIDL::ExceptionOr<void> HTMLCanvasElement::to_blob(GC::Ref<WebIDL::CallbackTyp
     }
 
     // 4. Run these steps in parallel:
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(heap(), [this, callback, bitmap_result, type, quality] {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(heap(), [this, callback, bitmap_result, type, quality] {
         // 1. If result is non-null, then set result to a serialization of result as a file with type and quality if given.
         Optional<SerializeBitmapResult> file_result;
         if (bitmap_result) {

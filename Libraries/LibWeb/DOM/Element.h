@@ -226,7 +226,7 @@ public:
     void set_custom_properties(Optional<CSS::Selector::PseudoElement::Type>, HashMap<FlyString, CSS::StyleProperty> custom_properties);
     [[nodiscard]] HashMap<FlyString, CSS::StyleProperty> const& custom_properties(Optional<CSS::Selector::PseudoElement::Type>) const;
 
-    // NOTE: The function is wrapped in a JS::HeapFunction immediately.
+    // NOTE: The function is wrapped in a GC::HeapFunction immediately.
     HTML::TaskID queue_an_element_task(HTML::Task::Source, Function<void()>);
 
     bool is_void_element() const;

@@ -1079,7 +1079,7 @@ WebIDL::ExceptionOr<GC::Ref<CryptoKey>> RSAOAEP::import_key(Web::Crypto::Algorit
     key->set_algorithm(algorithm);
 
     // 9. Return key.
-    return JS::NonnullGCPtr { *key };
+    return GC::Ref { *key };
 }
 
 // https://w3c.github.io/webcrypto/#rsa-oaep-operations
@@ -1241,7 +1241,7 @@ WebIDL::ExceptionOr<GC::Ref<JS::Object>> RSAOAEP::export_key(Bindings::KeyFormat
     }
 
     // 8. Return result
-    return JS::NonnullGCPtr { *result };
+    return GC::Ref { *result };
 }
 
 // https://w3c.github.io/webcrypto/#aes-cbc-operations
@@ -1536,7 +1536,7 @@ WebIDL::ExceptionOr<GC::Ref<JS::Object>> AesCbc::export_key(Bindings::KeyFormat 
     }
 
     // 3. Return result.
-    return JS::NonnullGCPtr { *result };
+    return GC::Ref { *result };
 }
 
 WebIDL::ExceptionOr<JS::Value> AesCbc::get_key_length(AlgorithmParams const& params)
@@ -1731,7 +1731,7 @@ WebIDL::ExceptionOr<GC::Ref<JS::Object>> AesCtr::export_key(Bindings::KeyFormat 
     }
 
     // 3. Return result.
-    return JS::NonnullGCPtr { *result };
+    return GC::Ref { *result };
 }
 
 WebIDL::ExceptionOr<JS::Value> AesCtr::get_key_length(AlgorithmParams const& params)
@@ -2048,7 +2048,7 @@ WebIDL::ExceptionOr<GC::Ref<JS::Object>> AesGcm::export_key(Bindings::KeyFormat 
     }
 
     // 3. Return result.
-    return JS::NonnullGCPtr { *result };
+    return GC::Ref { *result };
 }
 
 WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> AesGcm::encrypt(AlgorithmParams const& params, GC::Ref<CryptoKey> key, ByteBuffer const& plaintext)
@@ -3161,7 +3161,7 @@ WebIDL::ExceptionOr<GC::Ref<CryptoKey>> X25519::import_key([[maybe_unused]] Web:
     }
 
     // 3. Return key
-    return JS::NonnullGCPtr { *key };
+    return GC::Ref { *key };
 }
 
 WebIDL::ExceptionOr<GC::Ref<JS::Object>> X25519::export_key(Bindings::KeyFormat format, GC::Ref<CryptoKey> key)
@@ -3288,7 +3288,7 @@ WebIDL::ExceptionOr<GC::Ref<JS::Object>> X25519::export_key(Bindings::KeyFormat 
     }
 
     // 4. Return result.
-    return JS::NonnullGCPtr { *result };
+    return GC::Ref { *result };
 }
 
 static WebIDL::ExceptionOr<ByteBuffer> hmac_calculate_message_digest(JS::Realm& realm, GC::Ptr<KeyAlgorithm> hash, ReadonlyBytes key, ReadonlyBytes message)
@@ -3682,7 +3682,7 @@ WebIDL::ExceptionOr<GC::Ref<JS::Object>> HMAC::export_key(Bindings::KeyFormat fo
     }
 
     // 5. Return result.
-    return JS::NonnullGCPtr { *result };
+    return GC::Ref { *result };
 }
 
 // https://w3c.github.io/webcrypto/#hmac-operations

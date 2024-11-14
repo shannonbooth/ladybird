@@ -15,7 +15,7 @@ class TimerSerenity final : public Timer {
     GC_CELL(TimerSerenity, Timer);
 
 public:
-    static GC::Ref<TimerSerenity> create(JS::Heap&);
+    static GC::Ref<TimerSerenity> create(GC::Heap&);
 
     virtual ~TimerSerenity();
 

@@ -7,7 +7,7 @@
 #pragma once
 
 #include <AK/NonnullOwnPtr.h>
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/Handle.h>
 #include <LibWeb/InvalidateDisplayList.h>
 #include <LibWeb/Layout/LineBox.h>
 #include <LibWeb/TraversalDecision.h>

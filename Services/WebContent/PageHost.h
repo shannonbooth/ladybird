@@ -34,7 +34,7 @@ private:
     explicit PageHost(ConnectionFromClient&);
 
     ConnectionFromClient& m_client;
-    HashMap<u64, JS::Handle<PageClient>> m_pages;
+    HashMap<u64, GC::Handle<PageClient>> m_pages;
     u64 m_next_id { 0 };
 };
 

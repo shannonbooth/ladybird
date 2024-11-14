@@ -1127,7 +1127,7 @@ WebIDL::ExceptionOr<SerializedTransferRecord> structured_serialize_with_transfer
         }
 
         // 4. Set memory[transferable] to { [[Type]]: an uninitialized value }.
-        memory.set(JS::make_handle(transferable_value), NumericLimits<u32>::max());
+        memory.set(GC::make_handle(transferable_value), NumericLimits<u32>::max());
     }
 
     // 3. Let serialized be ? StructuredSerializeInternal(value, false, memory).
@@ -1262,7 +1262,7 @@ WebIDL::ExceptionOr<DeserializedTransferRecord> structured_deserialize_with_tran
         memory.append(value);
 
         // 6. Append value to transferredValues.
-        transferred_values.append(JS::make_handle(value.as_object()));
+        transferred_values.append(GC::make_handle(value.as_object()));
     }
 
     // 4. Let deserialized be ? StructuredDeserialize(serializeWithTransferResult.[[Serialized]], targetRealm, memory).

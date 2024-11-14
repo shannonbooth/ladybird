@@ -502,7 +502,7 @@ WebIDL::ExceptionOr<GC::Ref<Request>> Request::construct_impl(JS::Realm& realm, 
     if (final_body.has_value())
         request_object->request()->set_body(*final_body);
 
-    return JS::NonnullGCPtr { *request_object };
+    return GC::Ref { *request_object };
 }
 
 // https://fetch.spec.whatwg.org/#dom-request-method

@@ -5,7 +5,7 @@
  */
 
 #include <AK/StringBuilder.h>
-#include <LibJS/Heap/MarkedVector.h>
+#include <LibGC/MarkedVector.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/Realm.h>
 #include <LibJS/Runtime/VM.h>

@@ -347,7 +347,7 @@ public:
     {
         Base::visit_edges(visitor);
         for (auto& fragment : m_fragments)
-            visitor.visit(JS::NonnullGCPtr { fragment.layout_node() });
+            visitor.visit(GC::Ref { fragment.layout_node() });
     }
 
     virtual void resolve_paint_properties() override;

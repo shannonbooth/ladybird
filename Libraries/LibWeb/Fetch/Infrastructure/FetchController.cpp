@@ -34,12 +34,12 @@ void FetchController::visit_edges(JS::Cell::Visitor& visitor)
 
 void FetchController::set_report_timing_steps(Function<void(JS::Object const&)> report_timing_steps)
 {
-    m_report_timing_steps = JS::create_heap_function(vm().heap(), move(report_timing_steps));
+    m_report_timing_steps = GC::create_function(vm().heap(), move(report_timing_steps));
 }
 
 void FetchController::set_next_manual_redirect_steps(Function<void()> next_manual_redirect_steps)
 {
-    m_next_manual_redirect_steps = JS::create_heap_function(vm().heap(), move(next_manual_redirect_steps));
+    m_next_manual_redirect_steps = GC::create_function(vm().heap(), move(next_manual_redirect_steps));
 }
 
 // https://fetch.spec.whatwg.org/#finalize-and-report-timing

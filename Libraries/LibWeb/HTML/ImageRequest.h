@@ -8,8 +8,8 @@
 
 #include <AK/Error.h>
 #include <AK/OwnPtr.h>
+#include <LibGC/Handle.h>
 #include <LibGfx/Size.h>
-#include <LibJS/Heap/Handle.h>
 #include <LibURL/URL.h>
 #include <LibWeb/Forward.h>
 

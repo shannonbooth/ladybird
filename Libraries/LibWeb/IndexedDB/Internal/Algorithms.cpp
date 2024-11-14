@@ -26,7 +26,7 @@ WebIDL::ExceptionOr<GC::Ref<IDBDatabase>> open_a_database_connection(JS::Realm& 
     queue.append(request);
 
     // 3. Wait until all previous requests in queue have been processed.
-    HTML::main_thread_event_loop().spin_until(JS::create_heap_function(realm.vm().heap(), [queue, request]() {
+    HTML::main_thread_event_loop().spin_until(GC::create_function(realm.vm().heap(), [queue, request]() {
         return queue.all_previous_requests_processed(request);
     }));
 
@@ -69,7 +69,7 @@ WebIDL::ExceptionOr<GC::Ref<IDBDatabase>> open_a_database_connection(JS::Realm& 
         //    queue a task to fire a version change event named versionchange at entry with db’s version and version.
         for (auto& entry : open_connections) {
             if (!entry->close_pending()) {
-                HTML::queue_a_task(HTML::Task::Source::DatabaseAccess, nullptr, nullptr, JS::create_heap_function(realm.vm().heap(), [&realm, entry, db, version]() {
+                HTML::queue_a_task(HTML::Task::Source::DatabaseAccess, nullptr, nullptr, GC::create_function(realm.vm().heap(), [&realm, entry, db, version]() {
                     fire_a_version_change_event(realm, HTML::EventNames::versionchange, *entry, db->version(), version);
                 }));
             }
@@ -81,14 +81,14 @@ WebIDL::ExceptionOr<GC::Ref<IDBDatabase>> open_a_database_connection(JS::Realm& 
         //    queue a task to fire a version change event named blocked at request with db’s version and version.
         for (auto& entry : open_connections) {
             if (entry->state() != IDBDatabase::ConnectionState::Closed) {
-                HTML::queue_a_task(HTML::Task::Source::DatabaseAccess, nullptr, nullptr, JS::create_heap_function(realm.vm().heap(), [&realm, entry, db, version]() {
+                HTML::queue_a_task(HTML::Task::Source::DatabaseAccess, nullptr, nullptr, GC::create_function(realm.vm().heap(), [&realm, entry, db, version]() {
                     fire_a_version_change_event(realm, HTML::EventNames::blocked, *entry, db->version(), version);
                 }));
             }
         }
 
         // 5. Wait until all connections in openConnections are closed.
-        HTML::main_thread_event_loop().spin_until(JS::create_heap_function(realm.vm().heap(), [open_connections]() {
+        HTML::main_thread_event_loop().spin_until(GC::create_function(realm.vm().heap(), [open_connections]() {
             for (auto const& entry : open_connections) {
                 if (entry->state() != IDBDatabase::ConnectionState::Closed) {
                     return false;

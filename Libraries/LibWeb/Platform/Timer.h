@@ -15,9 +15,9 @@ class Timer : public JS::Cell {
     GC_CELL(Timer, JS::Cell);
 
 public:
-    static GC::Ref<Timer> create(JS::Heap&);
-    static GC::Ref<Timer> create_repeating(JS::Heap&, int interval_ms, GC::Ptr<GC::Function<void()>> timeout_handler);
-    static GC::Ref<Timer> create_single_shot(JS::Heap&, int interval_ms, GC::Ptr<GC::Function<void()>> timeout_handler);
+    static GC::Ref<Timer> create(GC::Heap&);
+    static GC::Ref<Timer> create_repeating(GC::Heap&, int interval_ms, GC::Ptr<GC::Function<void()>> timeout_handler);
+    static GC::Ref<Timer> create_single_shot(GC::Heap&, int interval_ms, GC::Ptr<GC::Function<void()>> timeout_handler);
 
     virtual ~Timer();
 

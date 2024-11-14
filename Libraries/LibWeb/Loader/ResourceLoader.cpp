@@ -30,7 +30,7 @@ namespace Web {
 
 static RefPtr<ResourceLoader> s_resource_loader;
 
-void ResourceLoader::initialize(JS::Heap& heap, NonnullRefPtr<Requests::RequestClient> request_client)
+void ResourceLoader::initialize(GC::Heap& heap, NonnullRefPtr<Requests::RequestClient> request_client)
 {
     s_resource_loader = adopt_ref(*new ResourceLoader(heap, move(request_client)));
 }
@@ -44,7 +44,7 @@ ResourceLoader& ResourceLoader::the()
     return *s_resource_loader;
 }
 
-ResourceLoader::ResourceLoader(JS::Heap& heap, NonnullRefPtr<Requests::RequestClient> request_client)
+ResourceLoader::ResourceLoader(GC::Heap& heap, NonnullRefPtr<Requests::RequestClient> request_client)
     : m_heap(heap)
     , m_request_client(move(request_client))
     , m_user_agent(MUST(String::from_utf8(default_user_agent)))
@@ -108,10 +108,10 @@ RefPtr<Resource> ResourceLoader::load_resource(Resource::Type type, LoadRequest&
 
     load(
         request,
-        JS::create_heap_function(m_heap, [=](ReadonlyBytes data, HTTP::HeaderMap const& headers, Optional<u32> status_code, Optional<String> const&) {
+        GC::create_function(m_heap, [=](ReadonlyBytes data, HTTP::HeaderMap const& headers, Optional<u32> status_code, Optional<String> const&) {
             const_cast<Resource&>(*resource).did_load({}, data, headers, status_code);
         }),
-        JS::create_heap_function(m_heap, [=](ByteString const& error, Optional<u32> status_code, Optional<String> const&, ReadonlyBytes data, HTTP::HeaderMap const& headers) {
+        GC::create_function(m_heap, [=](ByteString const& error, Optional<u32> status_code, Optional<String> const&, ReadonlyBytes data, HTTP::HeaderMap const& headers) {
             const_cast<Resource&>(*resource).did_fail({}, error, data, headers, status_code);
         }));
 
@@ -278,7 +278,7 @@ void ResourceLoader::load(LoadRequest& request, GC::Handle<SuccessCallback> succ
             return;
         }
 
-        Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(m_heap, [success_callback, response_headers = move(response_headers)] {
+        Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(m_heap, [success_callback, response_headers = move(response_headers)] {
             success_callback->function()(ByteString::empty().to_byte_buffer(), response_headers, {}, {});
         }));
         return;
@@ -303,7 +303,7 @@ void ResourceLoader::load(LoadRequest& request, GC::Handle<SuccessCallback> succ
 
         log_success(request);
 
-        Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(m_heap, [data = move(data_url.body), response_headers = move(response_headers), success_callback] {
+        Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(m_heap, [data = move(data_url.body), response_headers = move(response_headers), success_callback] {
             success_callback->function()(data, response_headers, {}, {});
         }));
         return;
@@ -415,7 +415,7 @@ void ResourceLoader::load(LoadRequest& request, GC::Handle<SuccessCallback> succ
 
         if (timeout.has_value() && timeout.value() > 0) {
             auto timer = Platform::Timer::create_single_shot(m_heap, timeout.value(), nullptr);
-            timer->on_timeout = JS::create_heap_function(m_heap, [timer = JS::make_handle(timer), protocol_request, timeout_callback] {
+            timer->on_timeout = GC::create_function(m_heap, [timer = GC::make_handle(timer), protocol_request, timeout_callback] {
                 (void)timer;
                 protocol_request->stop();
                 if (timeout_callback)

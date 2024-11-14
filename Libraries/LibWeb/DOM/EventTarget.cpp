@@ -198,7 +198,7 @@ void EventTarget::add_an_event_listener(DOMEventListener& listener)
 
     // 5. If listener’s signal is not null, then add the following abort steps to it:
     if (listener.signal) {
-        // NOTE: `this` and `listener` are protected by AbortSignal using JS::HeapFunction.
+        // NOTE: `this` and `listener` are protected by AbortSignal using GC::HeapFunction.
         listener.signal->add_abort_algorithm([this, &listener] {
             // 1. Remove an event listener with eventTarget and listener.
             remove_an_event_listener(listener);
@@ -499,7 +499,7 @@ WebIDL::CallbackType* EventTarget::get_current_value_of_event_handler(FlyString 
         function->set_script_or_module({});
 
         // 12. Set eventHandler's value to the result of creating a Web IDL EventHandler callback function object whose object reference is function and whose callback context is settings object.
-        event_handler->value = JS::GCPtr(realm.heap().allocate<WebIDL::CallbackType>(*function, settings_object));
+        event_handler->value = GC::Ptr(realm.heap().allocate<WebIDL::CallbackType>(*function, settings_object));
     }
 
     // 4. Return eventHandler's value.
@@ -547,7 +547,7 @@ void EventTarget::set_event_handler_attribute(FlyString const& name, WebIDL::Cal
 
     auto& event_handler = event_handler_iterator->value;
 
-    event_handler->value = JS::GCPtr(value);
+    event_handler->value = GC::Ptr(value);
 
     //  4. Activate an event handler given eventTarget and name.
     //  NOTE: See the optimization comment above.

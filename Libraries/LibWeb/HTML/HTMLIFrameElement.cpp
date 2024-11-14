@@ -78,7 +78,7 @@ void HTMLIFrameElement::inserted()
         return;
 
     // 2. Create a new child navigable for insertedNode.
-    MUST(create_new_child_navigable(JS::create_heap_function(realm().heap(), [this] {
+    MUST(create_new_child_navigable(GC::create_function(realm().heap(), [this] {
         // FIXME: 3. If insertedNode has a sandbox attribute, then parse the sandboxing directive given the attribute's
         //           value and insertedNode's iframe sandboxing flag set.
 

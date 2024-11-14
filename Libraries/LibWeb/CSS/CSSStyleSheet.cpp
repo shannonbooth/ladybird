@@ -209,7 +209,7 @@ GC::Ref<WebIDL::Promise> CSSStyleSheet::replace(String text)
     set_disallow_modification(true);
 
     // 4. In parallel, do these steps:
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(realm.heap(), [&realm, this, text = move(text), promise = JS::Handle(promise)] {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(realm.heap(), [&realm, this, text = move(text), promise = GC::Handle(promise)] {
         HTML::TemporaryExecutionContext execution_context { realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes };
 
         // 1. Let rules be the result of running parse a stylesheet’s contents from text.

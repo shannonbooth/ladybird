@@ -24,8 +24,8 @@ enum class TopLevelModule {
 using OnFetchScriptComplete = GC::Ref<GC::Function<void(GC::Ptr<Script>)>>;
 using PerformTheFetchHook = GC::Ptr<GC::Function<WebIDL::ExceptionOr<void>(GC::Ref<Fetch::Infrastructure::Request>, TopLevelModule, Fetch::Infrastructure::FetchAlgorithms::ProcessResponseConsumeBodyFunction)>>;
 
-OnFetchScriptComplete create_on_fetch_script_complete(JS::Heap& heap, Function<void(GC::Ptr<Script>)> function);
-PerformTheFetchHook create_perform_the_fetch_hook(JS::Heap& heap, Function<WebIDL::ExceptionOr<void>(GC::Ref<Fetch::Infrastructure::Request>, TopLevelModule, Fetch::Infrastructure::FetchAlgorithms::ProcessResponseConsumeBodyFunction)> function);
+OnFetchScriptComplete create_on_fetch_script_complete(GC::Heap& heap, Function<void(GC::Ptr<Script>)> function);
+PerformTheFetchHook create_perform_the_fetch_hook(GC::Heap& heap, Function<WebIDL::ExceptionOr<void>(GC::Ref<Fetch::Infrastructure::Request>, TopLevelModule, Fetch::Infrastructure::FetchAlgorithms::ProcessResponseConsumeBodyFunction)> function);
 
 // https://html.spec.whatwg.org/multipage/webappapis.html#script-fetch-options
 struct ScriptFetchOptions {

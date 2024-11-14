@@ -100,7 +100,7 @@ WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> Memory::buffer() const
     if (!m_buffer)
         m_buffer = TRY(create_a_memory_buffer(vm, realm, m_address));
 
-    return JS::NonnullGCPtr(*m_buffer);
+    return GC::Ref(*m_buffer);
 }
 
 // https://webassembly.github.io/spec/js-api/#create-a-memory-buffer
@@ -114,7 +114,7 @@ WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> Memory::create_a_memory_buffer(JS:
     auto array_buffer = JS::ArrayBuffer::create(realm, &memory->data());
     array_buffer->set_detach_key(JS::PrimitiveString::create(vm, "WebAssembly.Memory"_string));
 
-    return JS::NonnullGCPtr(*array_buffer);
+    return GC::Ref(*array_buffer);
 }
 
 }

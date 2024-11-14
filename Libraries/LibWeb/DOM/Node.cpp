@@ -8,7 +8,7 @@
 
 #include <AK/HashTable.h>
 #include <AK/StringBuilder.h>
-#include <LibJS/Heap/DeferGC.h>
+#include <LibGC/DeferGC.h>
 #include <LibJS/Runtime/FunctionObject.h>
 #include <LibRegex/Regex.h>
 #include <LibURL/Origin.h>
@@ -577,7 +577,7 @@ void Node::insert_before(GC::Ref<Node> node, GC::Ptr<Node> child, bool suppress_
     if (is<DocumentFragment>(*node))
         nodes = node->children_as_vector();
     else
-        nodes.append(JS::make_handle(*node));
+        nodes.append(GC::make_handle(*node));
 
     // 2. Let count be nodes’s size.
     auto count = nodes.size();
@@ -971,7 +971,7 @@ WebIDL::ExceptionOr<GC::Ref<Node>> Node::replace_child(GC::Ref<Node> node, GC::R
     // NOTE: The above can only be false if child is node.
     if (child->parent()) {
         // 1. Set removedNodes to « child ».
-        removed_nodes.append(JS::make_handle(*child));
+        removed_nodes.append(GC::make_handle(*child));
 
         // 2. Remove child with the suppress observers flag set.
         child->remove(true);
@@ -982,7 +982,7 @@ WebIDL::ExceptionOr<GC::Ref<Node>> Node::replace_child(GC::Ref<Node> node, GC::R
     if (is<DocumentFragment>(*node))
         nodes = node->children_as_vector();
     else
-        nodes.append(JS::make_handle(*node));
+        nodes.append(GC::make_handle(*node));
 
     // 13. Insert node into parent before referenceChild with the suppress observers flag set.
     insert_before(node, reference_child, true);
@@ -1109,7 +1109,7 @@ WebIDL::ExceptionOr<GC::Ref<Node>> Node::clone_node(Document* document, bool clo
 
     // 7. Return copy.
     VERIFY(copy);
-    return JS::NonnullGCPtr { *copy };
+    return GC::Ref { *copy };
 }
 
 // https://dom.spec.whatwg.org/#dom-node-clonenode
@@ -1216,8 +1216,8 @@ Slottable Node::as_slottable()
     VERIFY(is_slottable());
 
     if (is_element())
-        return JS::NonnullGCPtr { static_cast<Element&>(*this) };
-    return JS::NonnullGCPtr { static_cast<Text&>(*this) };
+        return GC::Ref { static_cast<Element&>(*this) };
+    return GC::Ref { static_cast<Text&>(*this) };
 }
 
 GC::Ref<NodeList> Node::child_nodes()
@@ -1235,7 +1235,7 @@ Vector<GC::Handle<Node>> Node::children_as_vector() const
     Vector<GC::Handle<Node>> nodes;
 
     for_each_child([&](auto& child) {
-        nodes.append(JS::make_handle(child));
+        nodes.append(GC::make_handle(child));
         return IterationDecision::Continue;
     });
 
@@ -1527,7 +1527,7 @@ void Node::replace_all(GC::Ptr<Node> node)
     }
     // 4. Otherwise, if node is non-null, set addedNodes to « node ».
     else if (node) {
-        added_nodes.append(JS::make_handle(*node));
+        added_nodes.append(GC::make_handle(*node));
     }
 
     // 5. Remove all parent’s children, in tree order, with the suppress observers flag set.
@@ -1959,7 +1959,7 @@ void Node::queue_mutation_record(FlyString const& type, Optional<FlyString> cons
 {
     // NOTE: We defer garbage collection until the end of the scope, since we can't safely use MutationObserver* as a hashmap key otherwise.
     // FIXME: This is a total hack.
-    JS::DeferGC defer_gc(heap());
+    GC::DeferGC defer_gc(heap());
 
     // 1. Let interestedObservers be an empty map.
     // mutationObserver -> mappedOldValue

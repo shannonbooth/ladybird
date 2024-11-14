@@ -359,7 +359,7 @@ static void update(JS::VM& vm, GC::Ref<Job> job)
 
         // FIXME: This feels.. uncomfortable but it should work to block the current task until the fetch has progressed past our processResponse hook or aborted
         auto& event_loop = job->client ? job->client->responsible_event_loop() : HTML::main_thread_event_loop();
-        event_loop.spin_until(JS::create_heap_function(realm.heap(), [fetch_controller, &realm, &process_response_completion_result]() -> bool {
+        event_loop.spin_until(GC::create_function(realm.heap(), [fetch_controller, &realm, &process_response_completion_result]() -> bool {
             if (process_response_completion_result.has_value())
                 return true;
             if (fetch_controller->state() == Fetch::Infrastructure::FetchController::State::Terminated || fetch_controller->state() == Fetch::Infrastructure::FetchController::State::Aborted) {
@@ -442,7 +442,7 @@ static void run_job(JS::VM& vm, JobQueue& job_queue)
     VERIFY(!job_queue.is_empty());
 
     // 2. Queue a task to run these steps:
-    auto job_run_steps = JS::create_heap_function(vm.heap(), [&vm, &job_queue] {
+    auto job_run_steps = GC::create_function(vm.heap(), [&vm, &job_queue] {
         // 1. Let job be the first item in jobQueue.
         auto& job = job_queue.first();
 
@@ -496,7 +496,7 @@ static void resolve_job_promise(GC::Ref<Job> job, Optional<Registration const&>,
     // 1. If job’s client is not null, queue a task, on job’s client's responsible event loop using the DOM manipulation task source, to run the following substeps:
     if (job->client) {
         auto& realm = job->client->realm();
-        HTML::queue_a_task(HTML::Task::Source::DOMManipulation, job->client->responsible_event_loop(), nullptr, JS::create_heap_function(realm.heap(), [&realm, job, value] {
+        HTML::queue_a_task(HTML::Task::Source::DOMManipulation, job->client->responsible_event_loop(), nullptr, GC::create_function(realm.heap(), [&realm, job, value] {
             HTML::TemporaryExecutionContext const context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
             // FIXME: Resolve to a ServiceWorkerRegistration platform object
             // 1. Let convertedValue be null.
@@ -517,7 +517,7 @@ static void resolve_job_promise(GC::Ref<Job> job, Optional<Registration const&>,
         // 2. Queue a task, on equivalentJob’s client's responsible event loop using the DOM manipulation task source,
         //    to run the following substeps:
         auto& realm = equivalent_job->client->realm();
-        HTML::queue_a_task(HTML::Task::Source::DOMManipulation, equivalent_job->client->responsible_event_loop(), nullptr, JS::create_heap_function(realm.heap(), [&realm, equivalent_job, value] {
+        HTML::queue_a_task(HTML::Task::Source::DOMManipulation, equivalent_job->client->responsible_event_loop(), nullptr, GC::create_function(realm.heap(), [&realm, equivalent_job, value] {
             HTML::TemporaryExecutionContext const context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
             // FIXME: Resolve to a ServiceWorkerRegistration platform object
             // 1. Let convertedValue be null.
@@ -538,7 +538,7 @@ static void reject_job_promise(GC::Ref<Job> job, String message)
     //    to reject job’s job promise with a new exception with errorData and a user agent-defined message, in job’s client's Realm.
     if (job->client) {
         auto& realm = job->client->realm();
-        HTML::queue_a_task(HTML::Task::Source::DOMManipulation, job->client->responsible_event_loop(), nullptr, JS::create_heap_function(realm.heap(), [&realm, job, message] {
+        HTML::queue_a_task(HTML::Task::Source::DOMManipulation, job->client->responsible_event_loop(), nullptr, GC::create_function(realm.heap(), [&realm, job, message] {
             HTML::TemporaryExecutionContext const context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
             WebIDL::reject_promise(realm, *job->job_promise, Error::create(realm, message));
         }));
@@ -554,7 +554,7 @@ static void reject_job_promise(GC::Ref<Job> job, String message)
         //    to reject equivalentJob’s job promise with a new exception with errorData and a user agent-defined message,
         //    in equivalentJob’s client's Realm.
         auto& realm = equivalent_job->client->realm();
-        HTML::queue_a_task(HTML::Task::Source::DOMManipulation, equivalent_job->client->responsible_event_loop(), nullptr, JS::create_heap_function(realm.heap(), [&realm, equivalent_job, message] {
+        HTML::queue_a_task(HTML::Task::Source::DOMManipulation, equivalent_job->client->responsible_event_loop(), nullptr, GC::create_function(realm.heap(), [&realm, equivalent_job, message] {
             HTML::TemporaryExecutionContext const context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
             WebIDL::reject_promise(realm, *equivalent_job->job_promise, Error::create(realm, message));
         }));

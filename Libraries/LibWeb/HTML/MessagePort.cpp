@@ -30,9 +30,9 @@ constexpr u8 IPC_FILE_TAG = 0xA5;
 
 GC_DEFINE_ALLOCATOR(MessagePort);
 
-static HashTable<JS::RawGCPtr<MessagePort>>& all_message_ports()
+static HashTable<GC::RawPtr<MessagePort>>& all_message_ports()
 {
-    static HashTable<JS::RawGCPtr<MessagePort>> ports;
+    static HashTable<GC::RawPtr<MessagePort>> ports;
     return ports;
 }
 
@@ -132,7 +132,7 @@ WebIDL::ExceptionOr<void> MessagePort::transfer_receiving_steps(HTML::TransferDa
             auto fd = data_holder.fds.take_first();
             m_transport = IPC::Transport(MUST(Core::LocalSocket::adopt_fd(fd.take_fd())));
 
-            m_transport->set_up_read_hook([strong_this = JS::make_handle(this)]() {
+            m_transport->set_up_read_hook([strong_this = GC::make_handle(this)]() {
                 strong_this->read_from_transport();
             });
         } else {
@@ -192,11 +192,11 @@ void MessagePort::entangle_with(MessagePort& remote_port)
     m_transport = IPC::Transport(move(sockets[0]));
     m_remote_port->m_transport = IPC::Transport(move(sockets[1]));
 
-    m_transport->set_up_read_hook([strong_this = JS::make_handle(this)]() {
+    m_transport->set_up_read_hook([strong_this = GC::make_handle(this)]() {
         strong_this->read_from_transport();
     });
 
-    m_remote_port->m_transport->set_up_read_hook([remote_port = JS::make_handle(m_remote_port)]() {
+    m_remote_port->m_transport->set_up_read_hook([remote_port = GC::make_handle(m_remote_port)]() {
         remote_port->read_from_transport();
     });
 }
@@ -323,7 +323,7 @@ ErrorOr<MessagePort::ParseDecision> MessagePort::parse_message()
 
         // Note: this is step 7 of message_port_post_message_steps:
         // 7. Add a task that runs the following steps to the port message queue of targetPort:
-        queue_global_task(Task::Source::PostedMessage, relevant_global_object(*this), JS::create_heap_function(heap(), [this, serialized_transfer_record = move(serialized_transfer_record)]() mutable {
+        queue_global_task(Task::Source::PostedMessage, relevant_global_object(*this), GC::create_function(heap(), [this, serialized_transfer_record = move(serialized_transfer_record)]() mutable {
             this->post_message_task_steps(serialized_transfer_record);
         }));
 
@@ -339,7 +339,7 @@ ErrorOr<MessagePort::ParseDecision> MessagePort::parse_message()
 void MessagePort::read_from_transport()
 {
     auto&& [bytes, fds] = m_transport->read_as_much_as_possible_without_blocking([this] {
-        queue_global_task(Task::Source::PostedMessage, relevant_global_object(*this), JS::create_heap_function(heap(), [this] {
+        queue_global_task(Task::Source::PostedMessage, relevant_global_object(*this), GC::create_function(heap(), [this] {
             this->close();
         }));
     });

@@ -26,7 +26,7 @@ HTML::TaskID queue_fetch_task(GC::Ref<FetchController> fetch_controller, JS::Obj
     auto fetch_task_id = fetch_controller->next_fetch_task_id();
 
     auto& heap = task_destination.heap();
-    auto html_task_id = queue_fetch_task(task_destination, JS::create_heap_function(heap, [fetch_controller, fetch_task_id, algorithm]() {
+    auto html_task_id = queue_fetch_task(task_destination, GC::create_function(heap, [fetch_controller, fetch_task_id, algorithm]() {
         fetch_controller->fetch_task_complete(fetch_task_id);
         algorithm->function()();
     }));

@@ -124,7 +124,7 @@ WebIDL::ExceptionOr<void> HTMLOptionsCollection::add(HTMLOptionOrOptGroupElement
 {
     auto resolved_element = element.visit(
         [](auto& e) -> GC::Handle<HTMLElement> {
-            return JS::make_handle(static_cast<HTML::HTMLElement&>(*e));
+            return GC::make_handle(static_cast<HTML::HTMLElement&>(*e));
         });
 
     GC::Ptr<DOM::Node> before_element;

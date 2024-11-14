@@ -150,7 +150,7 @@ GC::Ref<WebIDL::Promise> Clipboard::write_text(String data)
     auto promise = WebIDL::create_promise(realm);
 
     // 3. Run the following steps in parallel:
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(realm.heap(), [&realm, promise, data = move(data)]() mutable {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(realm.heap(), [&realm, promise, data = move(data)]() mutable {
         // 1. Let r be the result of running check clipboard write permission.
         auto result = check_clipboard_write_permission(realm);
 
@@ -158,7 +158,7 @@ GC::Ref<WebIDL::Promise> Clipboard::write_text(String data)
         if (!result) {
             // 1. Queue a global task on the permission task source, given realm’s global object, to reject p with
             //    "NotAllowedError" DOMException in realm.
-            queue_global_task(HTML::Task::Source::Permissions, realm.global_object(), JS::create_heap_function(realm.heap(), [&realm, promise]() mutable {
+            queue_global_task(HTML::Task::Source::Permissions, realm.global_object(), GC::create_function(realm.heap(), [&realm, promise]() mutable {
                 HTML::TemporaryExecutionContext execution_context { realm };
                 WebIDL::reject_promise(realm, promise, WebIDL::NotAllowedError::create(realm, "Clipboard writing is only allowed through user activation"_string));
             }));
@@ -168,7 +168,7 @@ GC::Ref<WebIDL::Promise> Clipboard::write_text(String data)
         }
 
         // 1. Queue a global task on the clipboard task source, given realm’s global object, to perform the below steps:
-        queue_global_task(HTML::Task::Source::Clipboard, realm.global_object(), JS::create_heap_function(realm.heap(), [&realm, promise, data = move(data)]() mutable {
+        queue_global_task(HTML::Task::Source::Clipboard, realm.global_object(), GC::create_function(realm.heap(), [&realm, promise, data = move(data)]() mutable {
             // 1. Let itemList be an empty sequence<Blob>.
             Vector<GC::Ref<FileAPI::Blob>> item_list;
 

@@ -29,7 +29,7 @@ void EventLoopPluginSerenity::deferred_invoke(GC::Handle<GC::Function<void()>> f
     });
 }
 
-GC::Ref<Timer> EventLoopPluginSerenity::create_timer(JS::Heap& heap)
+GC::Ref<Timer> EventLoopPluginSerenity::create_timer(GC::Heap& heap)
 {
     return TimerSerenity::create(heap);
 }

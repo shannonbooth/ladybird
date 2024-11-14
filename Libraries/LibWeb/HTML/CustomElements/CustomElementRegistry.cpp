@@ -297,7 +297,7 @@ JS::ThrowCompletionOr<void> CustomElementRegistry::define(String const& name, We
         auto& inclusive_descendant_element = static_cast<DOM::Element&>(inclusive_descendant);
 
         if (inclusive_descendant_element.namespace_uri() == Namespace::HTML && inclusive_descendant_element.local_name() == local_name && (!extends.has_value() || inclusive_descendant_element.is_value() == name))
-            upgrade_candidates.append(JS::make_handle(inclusive_descendant_element));
+            upgrade_candidates.append(GC::make_handle(inclusive_descendant_element));
 
         return TraversalDecision::Continue;
     });
@@ -331,7 +331,7 @@ Variant<GC::Handle<WebIDL::CallbackType>, JS::Value> CustomElementRegistry::get(
     });
 
     if (!existing_definition_iterator.is_end())
-        return JS::make_handle((*existing_definition_iterator)->constructor());
+        return GC::make_handle((*existing_definition_iterator)->constructor());
 
     // 2. Otherwise, return undefined.
     return JS::js_undefined();
@@ -386,7 +386,7 @@ WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> CustomElementRegistry::when_define
 
     // 5. Return promise.
     VERIFY(promise);
-    return JS::NonnullGCPtr { *promise };
+    return GC::Ref { *promise };
 }
 
 // https://html.spec.whatwg.org/multipage/custom-elements.html#dom-customelementregistry-upgrade
@@ -400,7 +400,7 @@ void CustomElementRegistry::upgrade(GC::Ref<DOM::Node> root) const
             return TraversalDecision::Continue;
 
         auto& inclusive_descendant_element = static_cast<DOM::Element&>(inclusive_descendant);
-        candidates.append(JS::make_handle(inclusive_descendant_element));
+        candidates.append(GC::make_handle(inclusive_descendant_element));
 
         return TraversalDecision::Continue;
     });

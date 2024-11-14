@@ -18,12 +18,12 @@ void Timer::visit_edges(JS::Cell::Visitor& visitor)
     visitor.visit(on_timeout);
 }
 
-GC::Ref<Timer> Timer::create(JS::Heap& heap)
+GC::Ref<Timer> Timer::create(GC::Heap& heap)
 {
     return EventLoopPlugin::the().create_timer(heap);
 }
 
-GC::Ref<Timer> Timer::create_repeating(JS::Heap& heap, int interval_ms, GC::Ptr<GC::Function<void()>> timeout_handler)
+GC::Ref<Timer> Timer::create_repeating(GC::Heap& heap, int interval_ms, GC::Ptr<GC::Function<void()>> timeout_handler)
 {
     auto timer = EventLoopPlugin::the().create_timer(heap);
     timer->set_single_shot(false);
@@ -32,7 +32,7 @@ GC::Ref<Timer> Timer::create_repeating(JS::Heap& heap, int interval_ms, GC::Ptr<
     return timer;
 }
 
-GC::Ref<Timer> Timer::create_single_shot(JS::Heap& heap, int interval_ms, GC::Ptr<GC::Function<void()>> timeout_handler)
+GC::Ref<Timer> Timer::create_single_shot(GC::Heap& heap, int interval_ms, GC::Ptr<GC::Function<void()>> timeout_handler)
 {
     auto timer = EventLoopPlugin::the().create_timer(heap);
     timer->set_single_shot(true);

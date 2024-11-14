@@ -1316,7 +1316,7 @@ public:
         m_timer = Core::Timer::create_single_shot(static_cast<int>(tick_duration.to_milliseconds()), [this]() {
             m_timer = nullptr;
 
-            HTML::queue_a_task(HTML::Task::Source::Unspecified, nullptr, nullptr, JS::create_heap_function(heap(), [this]() {
+            HTML::queue_a_task(HTML::Task::Source::Unspecified, nullptr, nullptr, GC::create_function(heap(), [this]() {
                 process_next_tick();
             }));
         });
@@ -1596,7 +1596,7 @@ GC::Ref<JS::Cell> dispatch_actions_for_a_string(Web::WebDriver::InputState& inpu
 
     // 5. Dispatch the events for a typeable string with input state, input id and source, current typeable text, and
     //    browsing context.
-    return dispatch_the_events_for_a_typeable_string(input_state, input_id, source, text, browsing_context, JS::create_heap_function(browsing_context.heap(), [on_complete](Web::WebDriver::Response result) {
+    return dispatch_the_events_for_a_typeable_string(input_state, input_id, source, text, browsing_context, GC::create_function(browsing_context.heap(), [on_complete](Web::WebDriver::Response result) {
         // FIXME: 6. Try to clear the modifier key state with input state, input id, source, undo actions, and browsing context.
 
         on_complete->function()(move(result));

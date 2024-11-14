@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/Handle.h>
 #include <LibWeb/Bindings/DOMRectListPrototype.h>
 #include <LibWeb/Bindings/Intrinsics.h>
 #include <LibWeb/Geometry/DOMRect.h>

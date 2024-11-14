@@ -463,7 +463,7 @@ void Animation::cancel(ShouldInvalidate should_invalidate)
                 scheduled_event_time = m_timeline->convert_a_timeline_time_to_an_origin_relative_time(m_timeline->current_time());
             document->append_pending_animation_event({ cancel_event, *this, *this, scheduled_event_time });
         } else {
-            HTML::queue_global_task(HTML::Task::Source::DOMManipulation, realm.global_object(), JS::create_heap_function(heap(), [this, cancel_event]() {
+            HTML::queue_global_task(HTML::Task::Source::DOMManipulation, realm.global_object(), GC::create_function(heap(), [this, cancel_event]() {
                 dispatch_event(cancel_event);
             }));
         }
@@ -1105,7 +1105,7 @@ void Animation::update_finished_state(DidSeek did_seek, SynchronouslyNotify sync
     //    steps:
     if (current_finished_state && !m_is_finished) {
         // 1. Let finish notification steps refer to the following procedure:
-        auto finish_notification_steps = JS::create_heap_function(heap(), [this, &realm]() {
+        auto finish_notification_steps = GC::create_function(heap(), [this, &realm]() {
             // 1. If animation’s play state is not equal to finished, abort these steps.
             if (play_state() != Bindings::AnimationPlayState::Finished)
                 return;
@@ -1147,7 +1147,7 @@ void Animation::update_finished_state(DidSeek did_seek, SynchronouslyNotify sync
                 // Manually create a task so its ID can be saved
                 auto& document = verify_cast<HTML::Window>(realm.global_object()).associated_document();
                 auto task = HTML::Task::create(vm(), HTML::Task::Source::DOMManipulation, &document,
-                    JS::create_heap_function(heap(), [this, finish_event]() {
+                    GC::create_function(heap(), [this, finish_event]() {
                         dispatch_event(finish_event);
                     }));
                 m_pending_finish_microtask_id = task->id();

@@ -169,7 +169,7 @@ GC::Ref<WebIDL::Promise> BaseAudioContext::decode_audio_data(GC::Handle<WebIDL::
 
         // 4.3. Queue a media element task to invoke errorCallback with error.
         if (error_callback) {
-            queue_a_media_element_task(JS::create_heap_function(heap(), [&realm, error_callback, error] {
+            queue_a_media_element_task(GC::create_function(heap(), [&realm, error_callback, error] {
                 auto completion = WebIDL::invoke_callback(*error_callback, {}, error);
                 if (completion.is_abrupt())
                     HTML::report_exception(completion, realm);
@@ -208,7 +208,7 @@ void BaseAudioContext::queue_a_decoding_operation(GC::Ref<JS::PromiseCapability>
     // 4. If can decode is false,
     if (!can_decode) {
         // queue a media element task to execute the following steps:
-        queue_a_media_element_task(JS::create_heap_function(heap(), [this, &realm, promise, error_callback] {
+        queue_a_media_element_task(GC::create_function(heap(), [this, &realm, promise, error_callback] {
             // 4.1. Let error be a DOMException whose name is EncodingError.
             auto error = WebIDL::EncodingError::create(realm, "Unable to decode."_string);
 

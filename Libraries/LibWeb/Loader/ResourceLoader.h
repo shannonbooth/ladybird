@@ -21,7 +21,7 @@ namespace Web {
 class ResourceLoader : public Core::EventReceiver {
     C_OBJECT_ABSTRACT(ResourceLoader)
 public:
-    static void initialize(JS::Heap&, NonnullRefPtr<Requests::RequestClient>);
+    static void initialize(GC::Heap&, NonnullRefPtr<Requests::RequestClient>);
     static ResourceLoader& the();
 
     RefPtr<Resource> load_resource(Resource::Type, LoadRequest&);
@@ -73,10 +73,10 @@ public:
     void clear_cache();
     void evict_from_cache(LoadRequest const&);
 
-    JS::Heap& heap() { return m_heap; }
+    GC::Heap& heap() { return m_heap; }
 
 private:
-    explicit ResourceLoader(JS::Heap&, NonnullRefPtr<Requests::RequestClient>);
+    explicit ResourceLoader(GC::Heap&, NonnullRefPtr<Requests::RequestClient>);
 
     RefPtr<Requests::Request> start_network_request(LoadRequest const&);
     void handle_network_response_headers(LoadRequest const&, HTTP::HeaderMap const&);
@@ -84,7 +84,7 @@ private:
 
     int m_pending_loads { 0 };
 
-    JS::Heap& m_heap;
+    GC::Heap& m_heap;
     NonnullRefPtr<Requests::RequestClient> m_request_client;
     HashTable<NonnullRefPtr<Requests::Request>> m_active_requests;
 

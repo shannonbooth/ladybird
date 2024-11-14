@@ -32,14 +32,14 @@ namespace Web::HTML {
 
 GC_DEFINE_ALLOCATOR(FetchContext);
 
-OnFetchScriptComplete create_on_fetch_script_complete(JS::Heap& heap, Function<void(GC::Ptr<Script>)> function)
+OnFetchScriptComplete create_on_fetch_script_complete(GC::Heap& heap, Function<void(GC::Ptr<Script>)> function)
 {
-    return JS::create_heap_function(heap, move(function));
+    return GC::create_function(heap, move(function));
 }
 
-PerformTheFetchHook create_perform_the_fetch_hook(JS::Heap& heap, Function<WebIDL::ExceptionOr<void>(GC::Ref<Fetch::Infrastructure::Request>, TopLevelModule, Fetch::Infrastructure::FetchAlgorithms::ProcessResponseConsumeBodyFunction)> function)
+PerformTheFetchHook create_perform_the_fetch_hook(GC::Heap& heap, Function<WebIDL::ExceptionOr<void>(GC::Ref<Fetch::Infrastructure::Request>, TopLevelModule, Fetch::Infrastructure::FetchAlgorithms::ProcessResponseConsumeBodyFunction)> function)
 {
-    return JS::create_heap_function(heap, move(function));
+    return GC::create_function(heap, move(function));
 }
 
 ScriptFetchOptions default_script_fetch_options()
@@ -506,7 +506,7 @@ WebIDL::ExceptionOr<GC::Ref<ClassicScript>> fetch_a_classic_worker_imported_scri
 
     // 5. Pause until response is not null.
     auto& event_loop = settings_object.responsible_event_loop();
-    event_loop.spin_until(JS::create_heap_function(vm.heap(), [&]() -> bool {
+    event_loop.spin_until(GC::create_function(vm.heap(), [&]() -> bool {
         return response;
     }));
 
@@ -759,7 +759,7 @@ void fetch_single_module_script(JS::Realm& realm,
     //    then queue a task on the networking task source to proceed with running the following steps.
     if (module_map.is_fetching(url, module_type)) {
         module_map.wait_for_change(realm.heap(), url, module_type, [on_complete, &realm](auto entry) -> void {
-            HTML::queue_global_task(HTML::Task::Source::Networking, realm.global_object(), JS::create_heap_function(realm.heap(), [on_complete, entry] {
+            HTML::queue_global_task(HTML::Task::Source::Networking, realm.global_object(), GC::create_function(realm.heap(), [on_complete, entry] {
                 // FIXME: This should run other steps, for now we just assume the script loaded.
                 VERIFY(entry.type == ModuleMap::EntryType::ModuleScript || entry.type == ModuleMap::EntryType::Failed);
 
@@ -968,7 +968,7 @@ void fetch_descendants_of_and_link_a_module_script(JS::Realm& realm,
     auto& loading_promise = record->load_requested_modules(state);
 
     // 6. Upon fulfillment of loadingPromise, run the following steps:
-    WebIDL::upon_fulfillment(loading_promise, JS::create_heap_function(realm.heap(), [&realm, record, &module_script, on_complete](JS::Value) -> WebIDL::ExceptionOr<JS::Value> {
+    WebIDL::upon_fulfillment(loading_promise, GC::create_function(realm.heap(), [&realm, record, &module_script, on_complete](JS::Value) -> WebIDL::ExceptionOr<JS::Value> {
         // 1. Perform record.Link().
         auto linking_result = record->link(realm.vm());
 
@@ -983,7 +983,7 @@ void fetch_descendants_of_and_link_a_module_script(JS::Realm& realm,
     }));
 
     // 7. Upon rejection of loadingPromise, run the following steps:
-    WebIDL::upon_rejection(loading_promise, JS::create_heap_function(realm.heap(), [state, &module_script, on_complete](JS::Value) -> WebIDL::ExceptionOr<JS::Value> {
+    WebIDL::upon_rejection(loading_promise, GC::create_function(realm.heap(), [state, &module_script, on_complete](JS::Value) -> WebIDL::ExceptionOr<JS::Value> {
         // 1. If state.[[ParseError]] is not null, set moduleScript's error to rethrow to state.[[ParseError]] and run
         //    onComplete given moduleScript.
         if (!state->parse_error.is_null()) {

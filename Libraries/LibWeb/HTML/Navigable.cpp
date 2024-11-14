@@ -461,7 +461,7 @@ Navigable::ChosenNavigable Navigable::choose_a_navigable(StringView name, Tokeni
                 traversable->set_window_handle(window_handle);
                 return traversable;
             };
-            auto create_new_traversable = JS::create_heap_function(heap(), move(create_new_traversable_closure));
+            auto create_new_traversable = GC::create_function(heap(), move(create_new_traversable_closure));
 
             // 7. If noopener is true, then set chosen to the result of creating a new top-level traversable given null and targetName.
             if (no_opener == TokenizedFeature::NoOpener::Yes) {
@@ -883,7 +883,7 @@ static WebIDL::ExceptionOr<Navigable::NavigationParamsVariant> create_navigation
         }
 
         // 7. Wait until either response is non-null, or navigable's ongoing navigation changes to no longer equal navigationId.
-        HTML::main_thread_event_loop().spin_until(JS::create_heap_function(vm.heap(), [&]() {
+        HTML::main_thread_event_loop().spin_until(GC::create_function(vm.heap(), [&]() {
             if (response_holder->response() != nullptr)
                 return true;
 
@@ -1128,7 +1128,7 @@ WebIDL::ExceptionOr<void> Navigable::populate_session_history_entry_document(
         return {};
 
     // 6. Queue a global task on the navigation and traversal task source, given navigable's active window, to run these steps:
-    queue_global_task(Task::Source::NavigationAndTraversal, *active_window(), JS::create_heap_function(heap(), [this, entry, navigation_params = move(navigation_params), navigation_id, completion_steps]() mutable {
+    queue_global_task(Task::Source::NavigationAndTraversal, *active_window(), GC::create_function(heap(), [this, entry, navigation_params = move(navigation_params), navigation_id, completion_steps]() mutable {
         // NOTE: This check is not in the spec but we should not continue navigation if navigable has been destroyed.
         if (has_been_destroyed())
             return;
@@ -1356,7 +1356,7 @@ WebIDL::ExceptionOr<void> Navigable::navigate(NavigateParams params)
     if (url.scheme() == "javascript"sv) {
         // 1. Queue a global task on the navigation and traversal task source given navigable's active window to navigate to a javascript: URL given navigable, url, historyHandling, initiatorOriginSnapshot, and cspNavigationType.
         VERIFY(active_window());
-        queue_global_task(Task::Source::NavigationAndTraversal, *active_window(), JS::create_heap_function(heap(), [this, url, history_handling, initiator_origin_snapshot, csp_navigation_type, navigation_id] {
+        queue_global_task(Task::Source::NavigationAndTraversal, *active_window(), GC::create_function(heap(), [this, url, history_handling, initiator_origin_snapshot, csp_navigation_type, navigation_id] {
             (void)navigate_to_a_javascript_url(url, to_history_handling_behavior(history_handling), initiator_origin_snapshot, csp_navigation_type, navigation_id);
         }));
 
@@ -1401,7 +1401,7 @@ WebIDL::ExceptionOr<void> Navigable::navigate(NavigateParams params)
     }
 
     // 20. In parallel, run these steps:
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(heap(), [this, source_snapshot_params, target_snapshot_params, csp_navigation_type, document_resource, url, navigation_id, referrer_policy, initiator_origin_snapshot, response, history_handling, initiator_base_url_snapshot] {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(heap(), [this, source_snapshot_params, target_snapshot_params, csp_navigation_type, document_resource, url, navigation_id, referrer_policy, initiator_origin_snapshot, response, history_handling, initiator_base_url_snapshot] {
         // AD-HOC: Not in the spec but subsequent steps will fail if the navigable doesn't have an active window.
         if (!active_window()) {
             set_delaying_load_events(false);
@@ -1427,7 +1427,7 @@ WebIDL::ExceptionOr<void> Navigable::navigate(NavigateParams params)
         }
 
         // 3. Queue a global task on the navigation and traversal task source given navigable's active window to abort a document and its descendants given navigable's active document.
-        queue_global_task(Task::Source::NavigationAndTraversal, *active_window(), JS::create_heap_function(heap(), [this] {
+        queue_global_task(Task::Source::NavigationAndTraversal, *active_window(), GC::create_function(heap(), [this] {
             VERIFY(this->active_document());
             this->active_document()->abort_a_document_and_its_descendants();
         }));
@@ -1473,9 +1473,9 @@ WebIDL::ExceptionOr<void> Navigable::navigate(NavigateParams params)
         //     for historyEntry, given navigable, "navigate", sourceSnapshotParams,
         //     targetSnapshotParams, navigationId, navigationParams, cspNavigationType, with allowPOST
         //     set to true and completionSteps set to the following step:
-        populate_session_history_entry_document(history_entry, source_snapshot_params, target_snapshot_params, navigation_id, navigation_params, csp_navigation_type, true, JS::create_heap_function(heap(), [this, history_entry, history_handling, navigation_id] {
+        populate_session_history_entry_document(history_entry, source_snapshot_params, target_snapshot_params, navigation_id, navigation_params, csp_navigation_type, true, GC::create_function(heap(), [this, history_entry, history_handling, navigation_id] {
             // 1.     Append session history traversal steps to navigable's traversable to finalize a cross-document navigation given navigable, historyHandling, and historyEntry.
-            traversable_navigable()->append_session_history_traversal_steps(JS::create_heap_function(heap(), [this, history_entry, history_handling, navigation_id] {
+            traversable_navigable()->append_session_history_traversal_steps(GC::create_function(heap(), [this, history_entry, history_handling, navigation_id] {
                 if (this->has_been_destroyed()) {
                     // NOTE: This check is not in the spec but we should not continue navigation if navigable has been destroyed.
                     set_delaying_load_events(false);
@@ -1570,7 +1570,7 @@ WebIDL::ExceptionOr<void> Navigable::navigate_to_a_fragment(URL::URL const& url,
     auto traversable = traversable_navigable();
 
     // 17. Append the following session history synchronous navigation steps involving navigable to traversable:
-    traversable->append_session_history_synchronous_navigation_steps(*this, JS::create_heap_function(heap(), [this, traversable, history_entry, entry_to_replace, navigation_id, history_handling] {
+    traversable->append_session_history_synchronous_navigation_steps(*this, GC::create_function(heap(), [this, traversable, history_entry, entry_to_replace, navigation_id, history_handling] {
         // 1. Finalize a same-document navigation given traversable, navigable, historyEntry, and entryToReplace.
         finalize_a_same_document_navigation(*traversable, *this, history_entry, entry_to_replace, history_handling);
 
@@ -1753,7 +1753,7 @@ WebIDL::ExceptionOr<void> Navigable::navigate_to_a_javascript_url(URL::URL const
     history_entry->set_document_state(document_state);
 
     // 13. Append session history traversal steps to targetNavigable's traversable to finalize a cross-document navigation with targetNavigable, historyHandling, and historyEntry.
-    traversable_navigable()->append_session_history_traversal_steps(JS::create_heap_function(heap(), [this, history_entry, history_handling, navigation_id] {
+    traversable_navigable()->append_session_history_traversal_steps(GC::create_function(heap(), [this, history_entry, history_handling, navigation_id] {
         finalize_a_cross_document_navigation(*this, history_handling, history_entry);
     }));
 
@@ -1770,7 +1770,7 @@ void Navigable::reload()
     auto traversable = traversable_navigable();
 
     // 3. Append the following session history traversal steps to traversable:
-    traversable->append_session_history_traversal_steps(JS::create_heap_function(heap(), [traversable] {
+    traversable->append_session_history_traversal_steps(GC::create_function(heap(), [traversable] {
         // 1. Apply the reload history step to traversable.
         traversable->apply_the_reload_history_step();
     }));
@@ -1984,7 +1984,7 @@ void perform_url_and_history_update_steps(DOM::Document& document, URL::URL new_
     auto traversable = navigable->traversable_navigable();
 
     // 13. Append the following session history synchronous navigation steps involving navigable to traversable:
-    traversable->append_session_history_synchronous_navigation_steps(*navigable, JS::create_heap_function(document.realm().heap(), [traversable, navigable, new_entry, entry_to_replace, history_handling] {
+    traversable->append_session_history_synchronous_navigation_steps(*navigable, GC::create_function(document.realm().heap(), [traversable, navigable, new_entry, entry_to_replace, history_handling] {
         // 1. Finalize a same-document navigation given traversable, navigable, newEntry, and entryToReplace.
         finalize_a_same_document_navigation(*traversable, *navigable, new_entry, entry_to_replace, history_handling);
 
@@ -2111,7 +2111,7 @@ void Navigable::inform_the_navigation_api_about_aborting_navigation()
     if (!active_window())
         return;
 
-    queue_global_task(Task::Source::NavigationAndTraversal, *active_window(), JS::create_heap_function(heap(), [this] {
+    queue_global_task(Task::Source::NavigationAndTraversal, *active_window(), GC::create_function(heap(), [this] {
         // 2. Let navigation be navigable's active window's navigation API.
         VERIFY(active_window());
         auto navigation = active_window()->navigation();

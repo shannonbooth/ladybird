@@ -8,7 +8,7 @@
 #pragma once
 
 #include <AK/FlyString.h>
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/Handle.h>
 #include <LibJS/Runtime/Promise.h>
 #include <LibJS/Runtime/Value.h>
 #include <LibWeb/DOM/Event.h>

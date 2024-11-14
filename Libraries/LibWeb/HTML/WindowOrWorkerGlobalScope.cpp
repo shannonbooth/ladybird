@@ -151,7 +151,7 @@ GC::Ref<WebIDL::Promise> WindowOrWorkerGlobalScopeMixin::create_image_bitmap_imp
     image.visit(
         [&](GC::Handle<FileAPI::Blob>& blob) {
             // Run these step in parallel:
-            Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(realm.heap(), [=]() {
+            Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(realm.heap(), [=]() {
                 // 1. Let imageData be the result of reading image's data. If an error occurs during reading of the
                 // object, then reject p with an "InvalidStateError" DOMException and abort these steps.
                 // FIXME: I guess this is always fine for us as the data is already read.
@@ -161,7 +161,7 @@ GC::Ref<WebIDL::Promise> WindowOrWorkerGlobalScopeMixin::create_image_bitmap_imp
                 // 2. Apply the image sniffing rules to determine the file format of imageData, with MIME type of
                 // image (as given by image's type attribute) giving the official type.
 
-                auto on_failed_decode = [p = JS::Handle(*p)](Error&) {
+                auto on_failed_decode = [p = GC::Handle(*p)](Error&) {
                     // 3. If imageData is not in a supported image file format (e.g., it's not an image at all), or if
                     // imageData is corrupted in some fatal way such that the image dimensions cannot be obtained
                     // (e.g., a vector graphic with no natural size), then reject p with an "InvalidStateError" DOMException
@@ -171,7 +171,7 @@ GC::Ref<WebIDL::Promise> WindowOrWorkerGlobalScopeMixin::create_image_bitmap_imp
                     WebIDL::reject_promise(realm, *p, WebIDL::InvalidStateError::create(realm, "image does not contain a supported image format"_string));
                 };
 
-                auto on_successful_decode = [image_bitmap = JS::Handle(*image_bitmap), p = JS::Handle(*p)](Web::Platform::DecodedImage& result) -> ErrorOr<void> {
+                auto on_successful_decode = [image_bitmap = GC::Handle(*image_bitmap), p = GC::Handle(*p)](Web::Platform::DecodedImage& result) -> ErrorOr<void> {
                     // 4. Set imageBitmap's bitmap data to imageData, cropped to the source rectangle with formatting.
                     // If this is an animated image, imageBitmap's bitmap data must only be taken from the default image
                     // of the animation (the one that the format defines is to be used when animation is not supported
@@ -269,7 +269,7 @@ i32 WindowOrWorkerGlobalScopeMixin::run_timer_initialization_steps(TimerHandler 
     auto& vm = this_impl().vm();
 
     // 8. Let task be a task that runs the following substeps:
-    auto task = JS::create_heap_function(vm.heap(), Function<void()>([this, handler = move(handler), timeout, arguments = move(arguments), repeat, id, initiating_script]() {
+    auto task = GC::create_function(vm.heap(), Function<void()>([this, handler = move(handler), timeout, arguments = move(arguments), repeat, id, initiating_script]() {
         // 1. If id does not exist in global's map of active timers, then abort these steps.
         if (!m_timers.contains(id))
             return;
@@ -338,7 +338,7 @@ i32 WindowOrWorkerGlobalScopeMixin::run_timer_initialization_steps(TimerHandler 
 
     // 11. Let completionStep be an algorithm step which queues a global task on the timer task source given global to run task.
     Function<void()> completion_step = [this, task = move(task)]() mutable {
-        queue_global_task(Task::Source::TimerTask, this_impl(), JS::create_heap_function(this_impl().heap(), [this, task] {
+        queue_global_task(Task::Source::TimerTask, this_impl(), GC::create_function(this_impl().heap(), [this, task] {
             HTML::TemporaryExecutionContext execution_context { this_impl().realm(), HTML::TemporaryExecutionContext::CallbacksEnabled::Yes };
             task->function()();
         }));
@@ -508,7 +508,7 @@ void WindowOrWorkerGlobalScopeMixin::queue_the_performance_observer_task()
 
     // 3. Queue a task that consists of running the following substeps. The task source for the queued task is the performance
     //    timeline task source.
-    queue_global_task(Task::Source::PerformanceTimeline, this_impl(), JS::create_heap_function(this_impl().heap(), [this]() {
+    queue_global_task(Task::Source::PerformanceTimeline, this_impl(), GC::create_function(this_impl().heap(), [this]() {
         auto& realm = this_impl().realm();
         HTML::TemporaryExecutionContext execution_context { realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes };
 
@@ -643,7 +643,7 @@ GC::Ref<HighResolutionTime::Performance> WindowOrWorkerGlobalScopeMixin::perform
     auto& realm = this_impl().realm();
     if (!m_performance)
         m_performance = realm.create<HighResolutionTime::Performance>(realm);
-    return JS::NonnullGCPtr { *m_performance };
+    return GC::Ref { *m_performance };
 }
 
 GC::Ref<IndexedDB::IDBFactory> WindowOrWorkerGlobalScopeMixin::indexed_db()
@@ -790,7 +790,7 @@ GC::Ref<Crypto::Crypto> WindowOrWorkerGlobalScopeMixin::crypto()
 
     if (!m_crypto)
         m_crypto = realm.create<Crypto::Crypto>(realm);
-    return JS::NonnullGCPtr { *m_crypto };
+    return GC::Ref { *m_crypto };
 }
 
 void WindowOrWorkerGlobalScopeMixin::push_onto_outstanding_rejected_promises_weak_set(JS::Promise* promise)
@@ -807,7 +807,7 @@ bool WindowOrWorkerGlobalScopeMixin::remove_from_outstanding_rejected_promises_w
 
 void WindowOrWorkerGlobalScopeMixin::push_onto_about_to_be_notified_rejected_promises_list(GC::Ref<JS::Promise> promise)
 {
-    m_about_to_be_notified_rejected_promises_list.append(JS::make_handle(promise));
+    m_about_to_be_notified_rejected_promises_list.append(GC::make_handle(promise));
 }
 
 bool WindowOrWorkerGlobalScopeMixin::remove_from_about_to_be_notified_rejected_promises_list(GC::Ref<JS::Promise> promise)
@@ -837,7 +837,7 @@ void WindowOrWorkerGlobalScopeMixin::notify_about_rejected_promises(Badge<EventL
     auto& global = verify_cast<DOM::EventTarget>(this_impl());
 
     // 5. Queue a global task on the DOM manipulation task source given global to run the following substep:
-    queue_global_task(Task::Source::DOMManipulation, global, JS::create_heap_function(realm.heap(), [this, &global, list = move(list)] {
+    queue_global_task(Task::Source::DOMManipulation, global, GC::create_function(realm.heap(), [this, &global, list = move(list)] {
         auto& realm = global.realm();
 
         // 1. For each promise p in list:

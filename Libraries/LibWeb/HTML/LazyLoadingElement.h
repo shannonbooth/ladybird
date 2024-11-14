@@ -63,7 +63,7 @@ public:
     {
         auto& element = static_cast<T&>(*this);
 
-        m_lazy_load_resumption_steps = JS::create_heap_function(element.vm().heap(), move(steps));
+        m_lazy_load_resumption_steps = GC::create_function(element.vm().heap(), move(steps));
     }
 
     void visit_lazy_loading_element(JS::Cell::Visitor& visitor)

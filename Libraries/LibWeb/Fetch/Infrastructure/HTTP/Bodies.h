@@ -11,8 +11,8 @@
 #include <AK/NonnullRefPtr.h>
 #include <AK/Optional.h>
 #include <AK/Variant.h>
+#include <LibGC/Handle.h>
 #include <LibGC/Ptr.h>
-#include <LibJS/Heap/Handle.h>
 #include <LibWeb/Fetch/Infrastructure/Task.h>
 #include <LibWeb/FileAPI/Blob.h>
 #include <LibWeb/Streams/ReadableStream.h>

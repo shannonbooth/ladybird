@@ -7,8 +7,8 @@
 
 #pragma once
 
+#include <LibGC/Handle.h>
 #include <LibGC/Ptr.h>
-#include <LibJS/Heap/Handle.h>
 #include <LibWeb/Forward.h>
 
 namespace Web::DOM {

@@ -12,10 +12,10 @@
 #include <AK/JsonObject.h>
 #include <AK/QuickSort.h>
 #include <LibCore/EventLoop.h>
+#include <LibGC/Heap.h>
 #include <LibGfx/Bitmap.h>
 #include <LibGfx/Font/FontDatabase.h>
 #include <LibGfx/SystemTheme.h>
-#include <LibJS/Heap/Heap.h>
 #include <LibJS/Runtime/ConsoleObject.h>
 #include <LibJS/Runtime/Date.h>
 #include <LibUnicode/TimeZone.h>
@@ -55,7 +55,7 @@
 
 namespace WebContent {
 
-ConnectionFromClient::ConnectionFromClient(JS::Heap& heap, IPC::Transport transport)
+ConnectionFromClient::ConnectionFromClient(GC::Heap& heap, IPC::Transport transport)
     : IPC::ConnectionFromClient<WebContentClientEndpoint, WebContentServerEndpoint>(*this, move(transport), 1)
     , m_heap(heap)
     , m_page_host(PageHost::create(*this))
@@ -366,7 +366,7 @@ void ConnectionFromClient::debug_request(u64 page_id, ByteString const& request,
     if (request == "collect-garbage") {
         // NOTE: We use deferred_invoke here to ensure that GC runs with as little on the stack as possible.
         Core::deferred_invoke([] {
-            Web::Bindings::main_thread_vm().heap().collect_garbage(JS::Heap::CollectionType::CollectGarbage, true);
+            Web::Bindings::main_thread_vm().heap().collect_garbage(GC::Heap::CollectionType::CollectGarbage, true);
         });
         return;
     }

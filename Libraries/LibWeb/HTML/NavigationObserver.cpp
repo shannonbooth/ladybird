@@ -35,7 +35,7 @@ void NavigationObserver::finalize()
 void NavigationObserver::set_navigation_complete(Function<void()> callback)
 {
     if (callback)
-        m_navigation_complete = JS::create_heap_function(vm().heap(), move(callback));
+        m_navigation_complete = GC::create_function(vm().heap(), move(callback));
     else
         m_navigation_complete = nullptr;
 }

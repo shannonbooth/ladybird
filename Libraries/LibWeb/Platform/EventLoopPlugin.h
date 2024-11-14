@@ -22,7 +22,7 @@ public:
 
     virtual void spin_until(GC::Handle<GC::Function<bool()>> goal_condition) = 0;
     virtual void deferred_invoke(ESCAPING GC::Handle<GC::Function<void()>>) = 0;
-    virtual GC::Ref<Timer> create_timer(JS::Heap&) = 0;
+    virtual GC::Ref<Timer> create_timer(GC::Heap&) = 0;
     virtual void quit() = 0;
 };
 

@@ -218,7 +218,7 @@ WebIDL::ExceptionOr<JS::Value> XMLHttpRequest::response()
     else if (m_response_type == Bindings::XMLHttpRequestResponseType::Blob) {
         auto mime_type_as_string = get_final_mime_type().serialized();
         auto blob_part = FileAPI::Blob::create(realm(), m_received_bytes, move(mime_type_as_string));
-        auto blob = FileAPI::Blob::create(realm(), Vector<FileAPI::BlobPart> { JS::make_handle(*blob_part) });
+        auto blob = FileAPI::Blob::create(realm(), Vector<FileAPI::BlobPart> { GC::make_handle(*blob_part) });
         m_response_object = GC::Ref<JS::Object> { blob };
     }
     // 7. Otherwise, if this’s response type is "document", set a document response for this.
@@ -667,7 +667,7 @@ WebIDL::ExceptionOr<void> XMLHttpRequest::send(Optional<DocumentOrXMLHttpRequest
     // body
     //    This’s request body.
     if (m_request_body)
-        request->set_body(JS::NonnullGCPtr { *m_request_body });
+        request->set_body(GC::Ref { *m_request_body });
 
     // client
     //    This’s relevant settings object.
@@ -738,7 +738,7 @@ WebIDL::ExceptionOr<void> XMLHttpRequest::send(Optional<DocumentOrXMLHttpRequest
 
         // 7. Let processRequestBodyChunkLength, given a bytesLength, be these steps:
         // NOTE: request_body_length is captured by copy as to not UAF it when we leave `send()` and the callback gets called.
-        // NOTE: `this` is kept alive by FetchAlgorithms using JS::HeapFunction.
+        // NOTE: `this` is kept alive by FetchAlgorithms using GC::HeapFunction.
         auto process_request_body_chunk_length = [this, request_body_length](u64 bytes_length) {
             // 1. Increase requestBodyTransmitted by bytesLength.
             m_request_body_transmitted += bytes_length;
@@ -752,7 +752,7 @@ WebIDL::ExceptionOr<void> XMLHttpRequest::send(Optional<DocumentOrXMLHttpRequest
 
         // 8. Let processRequestEndOfBody be these steps:
         // NOTE: request_body_length is captured by copy as to not UAF it when we leave `send()` and the callback gets called.
-        // NOTE: `this` is kept alive by FetchAlgorithms using JS::HeapFunction.
+        // NOTE: `this` is kept alive by FetchAlgorithms using GC::HeapFunction.
         auto process_request_end_of_body = [this, request_body_length]() {
             // 1. Set this’s upload complete flag.
             m_upload_complete = true;
@@ -772,7 +772,7 @@ WebIDL::ExceptionOr<void> XMLHttpRequest::send(Optional<DocumentOrXMLHttpRequest
         };
 
         // 9. Let processResponse, given a response, be these steps:
-        // NOTE: `this` is kept alive by FetchAlgorithms using JS::HeapFunction.
+        // NOTE: `this` is kept alive by FetchAlgorithms using GC::HeapFunction.
         auto process_response = [this](GC::Ref<Fetch::Infrastructure::Response> response) {
             // 1. Set this’s response to response.
             m_response = response;
@@ -816,7 +816,7 @@ WebIDL::ExceptionOr<void> XMLHttpRequest::send(Optional<DocumentOrXMLHttpRequest
             // FIXME: We can't implement these steps yet, as we don't fully implement the Streams standard.
 
             // 10. Let processBodyChunk given bytes be these steps:
-            auto process_body_chunks = JS::create_heap_function(heap(), [this, length](ByteBuffer byte_buffer) {
+            auto process_body_chunks = GC::create_function(heap(), [this, length](ByteBuffer byte_buffer) {
                 // 1. Append bytes to this’s received bytes.
                 m_received_bytes.append(byte_buffer);
 
@@ -835,14 +835,14 @@ WebIDL::ExceptionOr<void> XMLHttpRequest::send(Optional<DocumentOrXMLHttpRequest
             });
 
             // 11. Let processEndOfBody be this step: run handle response end-of-body for this.
-            auto process_end_of_body = JS::create_heap_function(heap(), [this]() {
+            auto process_end_of_body = GC::create_function(heap(), [this]() {
                 // NOTE: This cannot throw, as `handle_response_end_of_body` only throws in a synchronous context.
                 // FIXME: However, we can receive allocation failures, but we can't propagate them anywhere currently.
                 handle_response_end_of_body().release_value_but_fixme_should_propagate_errors();
             });
 
             // 12. Let processBodyError be these steps:
-            auto process_body_error = JS::create_heap_function(heap(), [this](JS::Value) {
+            auto process_body_error = GC::create_function(heap(), [this](JS::Value) {
                 auto& vm = this->vm();
                 // 1. Set this’s response to a network error.
                 m_response = Fetch::Infrastructure::Response::network_error(vm, "A network error occurred processing body."sv);
@@ -880,7 +880,7 @@ WebIDL::ExceptionOr<void> XMLHttpRequest::send(Optional<DocumentOrXMLHttpRequest
 
             // NOTE: `timer` is kept alive by capturing into the lambda for the GC to see
             // NOTE: `this` and `request` is kept alive by Platform::Timer using a Handle.
-            timer->on_timeout = JS::create_heap_function(heap(), [this, request, timer = JS::make_handle(timer)]() {
+            timer->on_timeout = GC::create_function(heap(), [this, request, timer = GC::make_handle(timer)]() {
                 (void)timer;
                 if (!request->done()) {
                     m_timed_out = true;
@@ -933,7 +933,7 @@ WebIDL::ExceptionOr<void> XMLHttpRequest::send(Optional<DocumentOrXMLHttpRequest
             auto timer = Platform::Timer::create_single_shot(heap(), m_timeout, nullptr);
 
             // NOTE: `timer` is kept alive by capturing into the lambda for the GC to see
-            timer->on_timeout = JS::create_heap_function(heap(), [timer = JS::make_handle(timer), &did_time_out]() {
+            timer->on_timeout = GC::create_function(heap(), [timer = GC::make_handle(timer), &did_time_out]() {
                 (void)timer;
                 did_time_out = true;
             });
@@ -942,7 +942,7 @@ WebIDL::ExceptionOr<void> XMLHttpRequest::send(Optional<DocumentOrXMLHttpRequest
         }
 
         // FIXME: This is not exactly correct, as it allows the HTML event loop to continue executing tasks.
-        Platform::EventLoopPlugin::the().spin_until(JS::create_heap_function(heap(), [&]() {
+        Platform::EventLoopPlugin::the().spin_until(GC::create_function(heap(), [&]() {
             return processed_response || did_time_out;
         }));
 

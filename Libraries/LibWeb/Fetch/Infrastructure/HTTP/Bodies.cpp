@@ -74,7 +74,7 @@ void Body::fully_read(JS::Realm& realm, Web::Fetch::Infrastructure::Body::Proces
     auto success_steps = [&realm, process_body, task_destination_object = task_destination_object](ReadonlyBytes bytes) -> ErrorOr<void> {
         // Make a copy of the bytes, as the source of the bytes may disappear between the time the task is queued and executed.
         auto bytes_copy = TRY(ByteBuffer::copy(bytes));
-        queue_fetch_task(*task_destination_object, JS::create_heap_function(realm.heap(), [process_body, bytes_copy = move(bytes_copy)]() mutable {
+        queue_fetch_task(*task_destination_object, GC::create_function(realm.heap(), [process_body, bytes_copy = move(bytes_copy)]() mutable {
             process_body->function()(move(bytes_copy));
         }));
         return {};
@@ -82,7 +82,7 @@ void Body::fully_read(JS::Realm& realm, Web::Fetch::Infrastructure::Body::Proces
 
     // 3. Let errorSteps optionally given an exception exception be to queue a fetch task to run processBodyError given exception, with taskDestination.
     auto error_steps = [&realm, process_body_error, task_destination_object](GC::Ptr<WebIDL::DOMException> exception) {
-        queue_fetch_task(*task_destination_object, JS::create_heap_function(realm.heap(), [process_body_error, exception]() {
+        queue_fetch_task(*task_destination_object, GC::create_function(realm.heap(), [process_body_error, exception]() {
             process_body_error->function()(exception);
         }));
     };

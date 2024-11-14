@@ -114,7 +114,7 @@ static Gfx::IntRect compute_window_rect(Web::Page const& page)
 }
 
 // https://w3c.github.io/webdriver/#dfn-no-longer-open
-static ErrorOr<void, Web::WebDriver::Error> ensure_browsing_context_is_open(JS::GCPtr<Web::HTML::BrowsingContext> browsing_context)
+static ErrorOr<void, Web::WebDriver::Error> ensure_browsing_context_is_open(GC::Ptr<Web::HTML::BrowsingContext> browsing_context)
 {
     // A browsing context is said to be no longer open if its navigable has been destroyed.
     if (!browsing_context || browsing_context->has_navigable_been_destroyed())
@@ -1006,7 +1006,7 @@ Messages::WebDriverClient::FindElementResponse WebDriverConnection::find_element
 
     // 6. Try to handle any user prompts with session.
     handle_any_user_prompts([this, location_strategy, selector = move(selector)]() mutable {
-        auto get_start_node = JS::create_heap_function(current_browsing_context().heap(), [this]() -> ErrorOr<JS::NonnullGCPtr<Web::DOM::ParentNode>, Web::WebDriver::Error> {
+        auto get_start_node = JS::create_heap_function(current_browsing_context().heap(), [this]() -> ErrorOr<GC::Ref<Web::DOM::ParentNode>, Web::WebDriver::Error> {
             // 7. Let start node be session's current browsing context's document element.
             auto* start_node = current_browsing_context().active_document();
 
@@ -1048,7 +1048,7 @@ Messages::WebDriverClient::FindElementsResponse WebDriverConnection::find_elemen
 
     // 6. Try to handle any user prompts with session.
     handle_any_user_prompts([this, location_strategy, selector = move(selector)]() mutable {
-        auto get_start_node = JS::create_heap_function(current_browsing_context().heap(), [this]() -> ErrorOr<JS::NonnullGCPtr<Web::DOM::ParentNode>, Web::WebDriver::Error> {
+        auto get_start_node = JS::create_heap_function(current_browsing_context().heap(), [this]() -> ErrorOr<GC::Ref<Web::DOM::ParentNode>, Web::WebDriver::Error> {
             // 7. Let start node be session's current browsing context's document element.
             auto* start_node = current_browsing_context().active_document();
 
@@ -1088,7 +1088,7 @@ Messages::WebDriverClient::FindElementFromElementResponse WebDriverConnection::f
 
     // 6. Try to handle any user prompts with session.
     handle_any_user_prompts([this, element_id, location_strategy, selector = move(selector)]() mutable {
-        auto get_start_node = JS::create_heap_function(current_browsing_context().heap(), [this, element_id]() -> ErrorOr<JS::NonnullGCPtr<Web::DOM::ParentNode>, Web::WebDriver::Error> {
+        auto get_start_node = JS::create_heap_function(current_browsing_context().heap(), [this, element_id]() -> ErrorOr<GC::Ref<Web::DOM::ParentNode>, Web::WebDriver::Error> {
             // 7. Let start node be the result of trying to get a known element with session and URL variables["element id"].
             return Web::WebDriver::get_known_element(current_browsing_context(), element_id);
         });
@@ -1123,7 +1123,7 @@ Messages::WebDriverClient::FindElementsFromElementResponse WebDriverConnection::
 
     // 6. Try to handle any user prompts with session.
     handle_any_user_prompts([this, element_id, location_strategy, selector = move(selector)]() mutable {
-        auto get_start_node = JS::create_heap_function(current_browsing_context().heap(), [this, element_id]() -> ErrorOr<JS::NonnullGCPtr<Web::DOM::ParentNode>, Web::WebDriver::Error> {
+        auto get_start_node = JS::create_heap_function(current_browsing_context().heap(), [this, element_id]() -> ErrorOr<GC::Ref<Web::DOM::ParentNode>, Web::WebDriver::Error> {
             // 7. Let start node be the result of trying to get a known element with session and URL variables["element id"].
             return Web::WebDriver::get_known_element(current_browsing_context(), element_id);
         });
@@ -1157,7 +1157,7 @@ Messages::WebDriverClient::FindElementFromShadowRootResponse WebDriverConnection
 
     // 6. Handle any user prompts and return its value if it is an error.
     handle_any_user_prompts([this, shadow_id, location_strategy, selector = move(selector)]() mutable {
-        auto get_start_node = JS::create_heap_function(current_browsing_context().heap(), [this, shadow_id]() -> ErrorOr<JS::NonnullGCPtr<Web::DOM::ParentNode>, Web::WebDriver::Error> {
+        auto get_start_node = JS::create_heap_function(current_browsing_context().heap(), [this, shadow_id]() -> ErrorOr<GC::Ref<Web::DOM::ParentNode>, Web::WebDriver::Error> {
             // 7. Let start node be the result of trying to get a known shadow root with session and URL variables["shadow id"].
             return Web::WebDriver::get_known_shadow_root(current_browsing_context(), shadow_id);
         });
@@ -1192,7 +1192,7 @@ Messages::WebDriverClient::FindElementsFromShadowRootResponse WebDriverConnectio
 
     // 6. Handle any user prompts and return its value if it is an error.
     handle_any_user_prompts([this, shadow_id, location_strategy, selector = move(selector)]() mutable {
-        auto get_start_node = JS::create_heap_function(current_browsing_context().heap(), [this, shadow_id]() -> ErrorOr<JS::NonnullGCPtr<Web::DOM::ParentNode>, Web::WebDriver::Error> {
+        auto get_start_node = JS::create_heap_function(current_browsing_context().heap(), [this, shadow_id]() -> ErrorOr<GC::Ref<Web::DOM::ParentNode>, Web::WebDriver::Error> {
             // 7. Let start node be the result of trying to get a known shadow root with session and URL variables["shadow id"].
             return Web::WebDriver::get_known_shadow_root(current_browsing_context(), shadow_id);
         });
@@ -2802,7 +2802,7 @@ void WebDriverConnection::maximize_the_window()
 }
 
 // https://w3c.github.io/webdriver/#dfn-iconify-the-window
-void WebDriverConnection::iconify_the_window(JS::NonnullGCPtr<JS::HeapFunction<void()>> on_complete)
+void WebDriverConnection::iconify_the_window(GC::Ref<JS::HeapFunction<void()>> on_complete)
 {
     // To iconify the window, given an operating system level window with an associated top-level browsing context, run
     // implementation-specific steps to iconify, minimize, or hide the window from the visible screen.
@@ -2814,7 +2814,7 @@ void WebDriverConnection::iconify_the_window(JS::NonnullGCPtr<JS::HeapFunction<v
 }
 
 // https://w3c.github.io/webdriver/#dfn-restore-the-window
-void WebDriverConnection::restore_the_window(JS::NonnullGCPtr<JS::HeapFunction<void()>> on_complete)
+void WebDriverConnection::restore_the_window(GC::Ref<JS::HeapFunction<void()>> on_complete)
 {
     // To restore the window, given an operating system level window with an associated top-level browsing context, run
     // implementation-specific steps to restore or unhide the window to the visible screen.
@@ -2825,7 +2825,7 @@ void WebDriverConnection::restore_the_window(JS::NonnullGCPtr<JS::HeapFunction<v
     wait_for_visibility_state(on_complete, Web::HTML::VisibilityState::Visible);
 }
 
-void WebDriverConnection::wait_for_visibility_state(JS::NonnullGCPtr<JS::HeapFunction<void()>> on_complete, Web::HTML::VisibilityState target_visibility_state)
+void WebDriverConnection::wait_for_visibility_state(GC::Ref<JS::HeapFunction<void()>> on_complete, Web::HTML::VisibilityState target_visibility_state)
 {
     static constexpr auto VISIBILITY_STATE_TIMEOUT_MS = 5'000;
 
@@ -2864,7 +2864,7 @@ public:
         ByteString selector,
         WebDriverConnection::GetStartNode get_start_node,
         WebDriverConnection::OnFindComplete on_complete,
-        JS::NonnullGCPtr<Web::WebDriver::HeapTimer> timer)
+        GC::Ref<Web::WebDriver::HeapTimer> timer)
         : m_browsing_context(browsing_context)
         , m_location_strategy(location_strategy)
         , m_selector(move(selector))
@@ -2927,7 +2927,7 @@ private:
         visitor.visit(m_timer);
     }
 
-    JS::NonnullGCPtr<Web::HTML::BrowsingContext const> m_browsing_context;
+    GC::Ref<Web::HTML::BrowsingContext const> m_browsing_context;
 
     Web::WebDriver::LocationStrategy m_location_strategy;
     ByteString m_selector;
@@ -2935,7 +2935,7 @@ private:
     WebDriverConnection::GetStartNode m_get_start_node;
     WebDriverConnection::OnFindComplete m_on_complete;
 
-    JS::NonnullGCPtr<Web::WebDriver::HeapTimer> m_timer;
+    GC::Ref<Web::WebDriver::HeapTimer> m_timer;
 };
 
 GC_DEFINE_ALLOCATOR(ElementLocator);
@@ -3024,7 +3024,7 @@ void WebDriverConnection::delete_cookies(Optional<StringView> const& name)
 }
 
 // https://w3c.github.io/webdriver/#dfn-calculate-the-absolute-position
-Gfx::IntPoint WebDriverConnection::calculate_absolute_position_of_element(JS::NonnullGCPtr<Web::Geometry::DOMRect> rect)
+Gfx::IntPoint WebDriverConnection::calculate_absolute_position_of_element(GC::Ref<Web::Geometry::DOMRect> rect)
 {
     // 1. Let rect be the value returned by calling getBoundingClientRect().
 

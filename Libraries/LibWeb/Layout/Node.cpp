@@ -48,7 +48,7 @@ void Node::visit_edges(Cell::Visitor& visitor)
     Base::visit_edges(visitor);
     visitor.visit(m_dom_node);
     for (auto const& paintable : m_paintable) {
-        visitor.visit(JS::GCPtr { &paintable });
+        visitor.visit(GC::Ptr { &paintable });
     }
     visitor.visit(m_pseudo_element_generator);
     TreeNode::visit_edges(visitor);

@@ -7,8 +7,8 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+#include <LibGC/DeferGC.h>
 #include <LibJS/AST.h>
-#include <LibJS/Heap/DeferGC.h>
 #include <LibJS/Module.h>
 #include <LibJS/Runtime/Array.h>
 #include <LibJS/Runtime/Environment.h>
@@ -186,7 +186,7 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
 
             // 4. Queue a global task on the DOM manipulation task source given global to fire an event named rejectionhandled at global, using PromiseRejectionEvent,
             //    with the promise attribute initialized to promise, and the reason attribute initialized to the value of promise's [[PromiseResult]] internal slot.
-            HTML::queue_global_task(HTML::Task::Source::DOMManipulation, global, JS::create_heap_function(s_main_thread_vm->heap(), [&global, &promise] {
+            HTML::queue_global_task(HTML::Task::Source::DOMManipulation, global, GC::create_function(s_main_thread_vm->heap(), [&global, &promise] {
                 // FIXME: This currently assumes that global is a WindowObject.
                 auto& window = verify_cast<HTML::Window>(global);
 
@@ -245,7 +245,7 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
         auto& global = finalization_registry.realm().global_object();
 
         // 2. Queue a global task on the JavaScript engine task source given global to perform the following steps:
-        HTML::queue_global_task(HTML::Task::Source::JavaScriptEngine, global, JS::create_heap_function(s_main_thread_vm->heap(), [&finalization_registry] {
+        HTML::queue_global_task(HTML::Task::Source::JavaScriptEngine, global, GC::create_function(s_main_thread_vm->heap(), [&finalization_registry] {
             // 1. Let entry be finalizationRegistry.[[CleanupCallback]].[[Callback]].[[Realm]].
             auto& entry = *finalization_registry.cleanup_callback().callback().realm();
 
@@ -284,7 +284,7 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
         auto* script = active_script();
 
         auto& heap = realm ? realm->heap() : vm.heap();
-        HTML::queue_a_microtask(script ? script->settings_object().responsible_document().ptr() : nullptr, JS::create_heap_function(heap, [&vm, realm, job = move(job), script_or_module = move(script_or_module)] {
+        HTML::queue_a_microtask(script ? script->settings_object().responsible_document().ptr() : nullptr, GC::create_function(heap, [&vm, realm, job = move(job), script_or_module = move(script_or_module)] {
             // The dummy execution context has to be kept up here to keep it alive for the duration of the function.
             OwnPtr<JS::ExecutionContext> dummy_execution_context;
 
@@ -388,7 +388,7 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
         auto url_string = module_script.base_url().serialize();
 
         // 4. Let steps be the following steps, given the argument specifier:
-        auto steps = [module_script = JS::NonnullGCPtr { module_script }](JS::VM& vm) -> JS::ThrowCompletionOr<JS::Value> {
+        auto steps = [module_script = GC::Ref { module_script }](JS::VM& vm) -> JS::ThrowCompletionOr<JS::Value> {
             auto specifier = vm.argument(0);
 
             // 1. Set specifier to ? ToString(specifier).
@@ -488,7 +488,7 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
         auto destination = Fetch::Infrastructure::Request::Destination::Script;
 
         // 14. Let fetchClient be moduleMapRealm's principal realm's settings object.
-        JS::NonnullGCPtr fetch_client { HTML::principal_realm_settings_object(HTML::principal_realm(*module_map_realm)) };
+        GC::Ref fetch_client { HTML::principal_realm_settings_object(HTML::principal_realm(*module_map_realm)) };
 
         // 14. If loadState is not undefined, then:
         HTML::PerformTheFetchHook perform_fetch;
@@ -551,7 +551,7 @@ ErrorOr<void> initialize_main_thread_vm(HTML::EventLoop::Type type)
             auto module_execution_context = JS::ExecutionContext::create();
             module_execution_context->realm = realm;
             if (module)
-                module_execution_context->script_or_module = JS::NonnullGCPtr { *module };
+                module_execution_context->script_or_module = GC::Ref { *module };
             vm.push_execution_context(*module_execution_context);
 
             JS::finish_loading_imported_module(referrer, module_request, payload, completion);
@@ -636,7 +636,7 @@ void queue_mutation_observer_microtask(DOM::Document const& document)
     // 3. Queue a microtask to notify mutation observers.
     // NOTE: This uses the implied document concept. In the case of mutation observers, it is always done in a node context, so document should be that node's document.
     // FIXME: Is it safe to pass custom_data through?
-    HTML::queue_a_microtask(&document, JS::create_heap_function(vm.heap(), [&custom_data, &heap = document.heap()]() {
+    HTML::queue_a_microtask(&document, GC::create_function(vm.heap(), [&custom_data, &heap = document.heap()]() {
         // 1. Set the surrounding agent’s mutation observer microtask queued to false.
         custom_data.mutation_observer_microtask_queued = false;
 

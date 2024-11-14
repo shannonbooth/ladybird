@@ -373,7 +373,7 @@ bool is_element_in_view(ReadonlySpan<GC::Ref<Web::DOM::Element>> paint_tree, Web
     if (!element.paintable() || !element.paintable()->is_visible() || !element.paintable()->visible_for_hit_testing())
         return false;
 
-    return paint_tree.contains_slow(JS::NonnullGCPtr { element });
+    return paint_tree.contains_slow(GC::Ref { element });
 }
 
 // https://w3c.github.io/webdriver/#dfn-in-view

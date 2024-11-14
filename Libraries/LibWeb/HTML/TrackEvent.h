@@ -9,7 +9,7 @@
 #include <AK/FlyString.h>
 #include <AK/Optional.h>
 #include <AK/Variant.h>
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/Handle.h>
 #include <LibWeb/DOM/Event.h>
 
 namespace Web::HTML {

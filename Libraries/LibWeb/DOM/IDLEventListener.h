@@ -7,7 +7,7 @@
 #pragma once
 
 #include <AK/RefCounted.h>
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/Handle.h>
 #include <LibWeb/DOM/AbortSignal.h>
 #include <LibWeb/WebIDL/CallbackType.h>
 

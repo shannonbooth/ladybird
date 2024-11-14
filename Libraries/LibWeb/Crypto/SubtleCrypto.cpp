@@ -68,7 +68,7 @@ WebIDL::ExceptionOr<NormalizedAlgorithmAndParameter> normalize_an_algorithm(JS::
     if (algorithm.has<String>()) {
         // Return the result of running the normalize an algorithm algorithm,
         // with the alg set to a new Algorithm dictionary whose name attribute is alg, and with the op set to op.
-        auto dictionary = JS::make_handle(JS::Object::create(realm, realm.intrinsics().object_prototype()));
+        auto dictionary = GC::make_handle(JS::Object::create(realm, realm.intrinsics().object_prototype()));
         TRY(dictionary->create_data_property("name", JS::PrimitiveString::create(vm, algorithm.get<String>())));
 
         return normalize_an_algorithm(realm, dictionary, operation);
@@ -147,7 +147,7 @@ GC::Ref<WebIDL::Promise> SubtleCrypto::encrypt(AlgorithmIdentifier const& algori
 
     // 6. Return promise and perform the remaining steps in parallel.
 
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(realm.heap(), [&realm, normalized_algorithm = normalized_algorithm.release_value(), promise, key, data = move(data)]() -> void {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(realm.heap(), [&realm, normalized_algorithm = normalized_algorithm.release_value(), promise, key, data = move(data)]() -> void {
         HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
         // 7. If the following steps or referenced procedures say to throw an error, reject promise with the returned error and then terminate the algorithm.
 
@@ -204,7 +204,7 @@ GC::Ref<WebIDL::Promise> SubtleCrypto::decrypt(AlgorithmIdentifier const& algori
 
     // 6. Return promise and perform the remaining steps in parallel.
 
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(realm.heap(), [&realm, normalized_algorithm = normalized_algorithm.release_value(), promise, key, data = move(data)]() -> void {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(realm.heap(), [&realm, normalized_algorithm = normalized_algorithm.release_value(), promise, key, data = move(data)]() -> void {
         HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
         // 7. If the following steps or referenced procedures say to throw an error, reject promise with the returned error and then terminate the algorithm.
 
@@ -262,7 +262,7 @@ GC::Ref<WebIDL::Promise> SubtleCrypto::digest(AlgorithmIdentifier const& algorit
     auto promise = WebIDL::create_promise(realm);
 
     // 6. Return promise and perform the remaining steps in parallel.
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(realm.heap(), [&realm, algorithm_object = normalized_algorithm.release_value(), promise, data_buffer = move(data_buffer)]() -> void {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(realm.heap(), [&realm, algorithm_object = normalized_algorithm.release_value(), promise, data_buffer = move(data_buffer)]() -> void {
         HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
         // 7. If the following steps or referenced procedures say to throw an error, reject promise with the returned error and then terminate the algorithm.
         // FIXME: Need spec reference to https://webidl.spec.whatwg.org/#reject
@@ -302,7 +302,7 @@ JS::ThrowCompletionOr<GC::Ref<WebIDL::Promise>> SubtleCrypto::generate_key(Algor
     auto promise = WebIDL::create_promise(realm);
 
     // 5. Return promise and perform the remaining steps in parallel.
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(realm.heap(), [&realm, normalized_algorithm = normalized_algorithm.release_value(), promise, extractable, key_usages = move(key_usages)]() -> void {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(realm.heap(), [&realm, normalized_algorithm = normalized_algorithm.release_value(), promise, extractable, key_usages = move(key_usages)]() -> void {
         HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
         // 6. If the following steps or referenced procedures say to throw an error, reject promise with
         //    the returned error and then terminate the algorithm.
@@ -384,7 +384,7 @@ JS::ThrowCompletionOr<GC::Ref<WebIDL::Promise>> SubtleCrypto::import_key(Binding
     auto promise = WebIDL::create_promise(realm);
 
     // 8. Return promise and perform the remaining steps in parallel.
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(heap(), [&realm, real_key_data = move(real_key_data), normalized_algorithm = normalized_algorithm.release_value(), promise, format, extractable, key_usages = move(key_usages), algorithm = move(algorithm)]() mutable -> void {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(heap(), [&realm, real_key_data = move(real_key_data), normalized_algorithm = normalized_algorithm.release_value(), promise, format, extractable, key_usages = move(key_usages), algorithm = move(algorithm)]() mutable -> void {
         HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
 
         // 9. If the following steps or referenced procedures say to throw an error, reject promise with the returned error and then terminate the algorithm.
@@ -428,7 +428,7 @@ JS::ThrowCompletionOr<GC::Ref<WebIDL::Promise>> SubtleCrypto::export_key(Binding
     auto promise = WebIDL::create_promise(realm);
 
     // 3. Return promise and perform the remaining steps in parallel.
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(heap(), [&realm, key, promise, format]() -> void {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(heap(), [&realm, key, promise, format]() -> void {
         HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
         // 4.  If the following steps or referenced procedures say to throw an error, reject promise with the returned error and then terminate the algorithm.
 
@@ -491,7 +491,7 @@ JS::ThrowCompletionOr<GC::Ref<WebIDL::Promise>> SubtleCrypto::sign(AlgorithmIden
 
     // 6. Return promise and perform the remaining steps in parallel.
 
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(realm.heap(), [&realm, normalized_algorithm = normalized_algorithm.release_value(), promise, key, data = move(data)]() -> void {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(realm.heap(), [&realm, normalized_algorithm = normalized_algorithm.release_value(), promise, key, data = move(data)]() -> void {
         HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
         // 7. If the following steps or referenced procedures say to throw an error, reject promise with the returned error and then terminate the algorithm.
 
@@ -555,7 +555,7 @@ JS::ThrowCompletionOr<GC::Ref<WebIDL::Promise>> SubtleCrypto::verify(AlgorithmId
     auto promise = WebIDL::create_promise(realm);
 
     // 7. Return promise and perform the remaining steps in parallel.
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(realm.heap(), [&realm, normalized_algorithm = normalized_algorithm.release_value(), promise, key, signature = move(signature), data = move(data)]() -> void {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(realm.heap(), [&realm, normalized_algorithm = normalized_algorithm.release_value(), promise, key, signature = move(signature), data = move(data)]() -> void {
         HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
         // 8. If the following steps or referenced procedures say to throw an error, reject promise with the returned error and then terminate the algorithm.
 
@@ -602,7 +602,7 @@ JS::ThrowCompletionOr<GC::Ref<WebIDL::Promise>> SubtleCrypto::derive_bits(Algori
     auto promise = WebIDL::create_promise(realm);
 
     // 5. Return promise and perform the remaining steps in parallel.
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(realm.heap(), [&realm, normalized_algorithm = normalized_algorithm.release_value(), promise, base_key, length]() -> void {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(realm.heap(), [&realm, normalized_algorithm = normalized_algorithm.release_value(), promise, base_key, length]() -> void {
         HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
         // 6. If the following steps or referenced procedures say to throw an error, reject promise with the returned error and then terminate the algorithm.
 
@@ -663,7 +663,7 @@ JS::ThrowCompletionOr<GC::Ref<WebIDL::Promise>> SubtleCrypto::derive_key(Algorit
     auto promise = WebIDL::create_promise(realm);
 
     // 9. Return promise and perform the remaining steps in parallel.
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(realm.heap(), [&realm, &vm, normalized_algorithm = normalized_algorithm.release_value(), promise, normalized_derived_key_algorithm_import = normalized_derived_key_algorithm_import.release_value(), normalized_derived_key_algorithm_length = normalized_derived_key_algorithm_length.release_value(), base_key = move(base_key), extractable, key_usages = move(key_usages)]() -> void {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(realm.heap(), [&realm, &vm, normalized_algorithm = normalized_algorithm.release_value(), promise, normalized_derived_key_algorithm_import = normalized_derived_key_algorithm_import.release_value(), normalized_derived_key_algorithm_length = normalized_derived_key_algorithm_length.release_value(), base_key = move(base_key), extractable, key_usages = move(key_usages)]() -> void {
         HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
         // 10. If the following steps or referenced procedures say to throw an error, reject promise with the returned error and then terminate the algorithm.
 

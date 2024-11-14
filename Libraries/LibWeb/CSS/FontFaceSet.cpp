@@ -232,10 +232,10 @@ JS::ThrowCompletionOr<GC::Ref<WebIDL::Promise>> FontFaceSet::load(String const& 
     auto& realm = this->realm();
 
     // 1. Let font face set be the FontFaceSet object this method was called on. Let promise be a newly-created promise object.
-    JS::NonnullGCPtr font_face_set = *this;
+    GC::Ref font_face_set = *this;
     auto promise = WebIDL::create_promise(realm);
 
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(realm.heap(), [&realm, font_face_set, promise, font, text]() mutable {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(realm.heap(), [&realm, font_face_set, promise, font, text]() mutable {
         // 3. Find the matching font faces from font face set using the font and text arguments passed to the function,
         //    and let font face list be the return value (ignoring the found faces flag). If a syntax error was returned,
         //    reject promise with a SyntaxError exception and terminate these steps.
@@ -249,7 +249,7 @@ JS::ThrowCompletionOr<GC::Ref<WebIDL::Promise>> FontFaceSet::load(String const& 
         auto matched_font_faces = result.release_value();
 
         // 4. Queue a task to run the following steps synchronously:
-        HTML::queue_a_task(HTML::Task::Source::FontLoading, nullptr, nullptr, JS::create_heap_function(realm.heap(), [&realm, promise, matched_font_faces] {
+        HTML::queue_a_task(HTML::Task::Source::FontLoading, nullptr, nullptr, GC::create_function(realm.heap(), [&realm, promise, matched_font_faces] {
             GC::MarkedVector<GC::Ref<WebIDL::Promise>> promises(realm.heap());
 
             // 1. For all of the font faces in the font face list, call their load() method.

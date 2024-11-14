@@ -335,7 +335,7 @@ GC::Ref<Streams::ReadableStream> Blob::get_stream()
             auto bytes = m_byte_buffer;
 
             // 2. Queue a global task on the file reading task source given blob’s relevant global object to perform the following steps:
-            HTML::queue_global_task(HTML::Task::Source::FileReading, realm.global_object(), JS::create_heap_function(heap(), [stream, bytes = move(bytes)]() {
+            HTML::queue_global_task(HTML::Task::Source::FileReading, realm.global_object(), GC::create_function(heap(), [stream, bytes = move(bytes)]() {
                 // NOTE: Using an TemporaryExecutionContext here results in a crash in the method HTML::incumbent_realm()
                 //       since we end up in a state where we have no execution context + an event loop with an empty incumbent
                 //       realm stack. We still need an execution context therefore we push the realm's execution context
@@ -396,7 +396,7 @@ GC::Ref<WebIDL::Promise> Blob::text()
     auto promise = reader->read_all_bytes_deprecated();
 
     // 4. Return the result of transforming promise by a fulfillment handler that returns the result of running UTF-8 decode on its first argument.
-    return WebIDL::upon_fulfillment(*promise, JS::create_heap_function(heap(), [&vm](JS::Value first_argument) -> WebIDL::ExceptionOr<JS::Value> {
+    return WebIDL::upon_fulfillment(*promise, GC::create_function(heap(), [&vm](JS::Value first_argument) -> WebIDL::ExceptionOr<JS::Value> {
         auto const& object = first_argument.as_object();
         VERIFY(is<JS::ArrayBuffer>(object));
         auto const& buffer = static_cast<const JS::ArrayBuffer&>(object).buffer();
@@ -425,7 +425,7 @@ GC::Ref<WebIDL::Promise> Blob::array_buffer()
     auto promise = reader->read_all_bytes_deprecated();
 
     // 4. Return the result of transforming promise by a fulfillment handler that returns a new ArrayBuffer whose contents are its first argument.
-    return WebIDL::upon_fulfillment(*promise, JS::create_heap_function(heap(), [&realm](JS::Value first_argument) -> WebIDL::ExceptionOr<JS::Value> {
+    return WebIDL::upon_fulfillment(*promise, GC::create_function(heap(), [&realm](JS::Value first_argument) -> WebIDL::ExceptionOr<JS::Value> {
         auto const& object = first_argument.as_object();
         VERIFY(is<JS::ArrayBuffer>(object));
         auto const& buffer = static_cast<const JS::ArrayBuffer&>(object).buffer();
@@ -452,7 +452,7 @@ GC::Ref<WebIDL::Promise> Blob::bytes()
     auto promise = reader->read_all_bytes_deprecated();
 
     // 4. Return the result of transforming promise by a fulfillment handler that returns a new Uint8Array wrapping an ArrayBuffer containing its first argument.
-    return WebIDL::upon_fulfillment(*promise, JS::create_heap_function(heap(), [&realm](JS::Value first_argument) -> WebIDL::ExceptionOr<JS::Value> {
+    return WebIDL::upon_fulfillment(*promise, GC::create_function(heap(), [&realm](JS::Value first_argument) -> WebIDL::ExceptionOr<JS::Value> {
         auto& object = first_argument.as_object();
         VERIFY(is<JS::ArrayBuffer>(object));
         auto& array_buffer = static_cast<JS::ArrayBuffer&>(object);

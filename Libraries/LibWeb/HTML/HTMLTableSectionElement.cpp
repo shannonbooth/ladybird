@@ -75,7 +75,7 @@ WebIDL::ExceptionOr<GC::Ref<HTMLTableRowElement>> HTMLTableSectionElement::inser
         insert_before(table_row, rows_collection->item(index));
 
     // 5. Return table row.
-    return JS::NonnullGCPtr(table_row);
+    return GC::Ref(table_row);
 }
 
 // https://html.spec.whatwg.org/multipage/tables.html#dom-tbody-deleterow

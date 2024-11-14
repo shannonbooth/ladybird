@@ -55,14 +55,14 @@ WebIDL::ExceptionOr<GC::Ref<IDBOpenDBRequest>> IDBFactory::open(String const& na
     auto request = IDBOpenDBRequest::create(realm);
 
     // 5. Run these steps in parallel:
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(realm.heap(), [&realm, storage_key, name, version, request] {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(realm.heap(), [&realm, storage_key, name, version, request] {
         HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
 
         // 1. Let result be the result of opening a database connection, with storageKey, name, version if given and undefined otherwise, and request.
         auto result = open_a_database_connection(realm, storage_key.value(), name, version, request);
 
         // 2. Queue a task to run these steps:
-        HTML::queue_a_task(HTML::Task::Source::DatabaseAccess, nullptr, nullptr, JS::create_heap_function(realm.heap(), [&realm, &request, result = move(result)]() mutable {
+        HTML::queue_a_task(HTML::Task::Source::DatabaseAccess, nullptr, nullptr, GC::create_function(realm.heap(), [&realm, &request, result = move(result)]() mutable {
             // 1. If result is an error, then:
             if (result.is_error()) {
                 // 1. Set request’s result to undefined.

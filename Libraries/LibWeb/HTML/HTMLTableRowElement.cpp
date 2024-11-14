@@ -153,7 +153,7 @@ WebIDL::ExceptionOr<GC::Ref<HTMLTableCellElement>> HTMLTableRowElement::insert_c
         insert_before(table_cell, cells_collection->item(index));
 
     // 5. Return table cell.
-    return JS::NonnullGCPtr(table_cell);
+    return GC::Ref(table_cell);
 }
 
 // https://html.spec.whatwg.org/multipage/tables.html#dom-tr-deletecell

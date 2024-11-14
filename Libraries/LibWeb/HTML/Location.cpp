@@ -7,7 +7,7 @@
 
 #include <AK/String.h>
 #include <AK/StringBuilder.h>
-#include <LibJS/Heap/MarkedVector.h>
+#include <LibGC/MarkedVector.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/PropertyDescriptor.h>
 #include <LibJS/Runtime/PropertyKey.h>

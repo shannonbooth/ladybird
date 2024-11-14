@@ -33,7 +33,7 @@ EventLoop::EventLoop(Type type)
     m_task_queue = heap().allocate<TaskQueue>(*this);
     m_microtask_queue = heap().allocate<TaskQueue>(*this);
 
-    m_rendering_task_function = JS::create_heap_function(heap(), [this] {
+    m_rendering_task_function = GC::create_function(heap(), [this] {
         update_the_rendering();
     });
 }
@@ -54,7 +54,7 @@ void EventLoop::visit_edges(Visitor& visitor)
 void EventLoop::schedule()
 {
     if (!m_system_event_loop_timer) {
-        m_system_event_loop_timer = Platform::Timer::create_single_shot(heap(), 0, JS::create_heap_function(heap(), [this] {
+        m_system_event_loop_timer = Platform::Timer::create_single_shot(heap(), 0, GC::create_function(heap(), [this] {
             process();
         }));
     }
@@ -92,7 +92,7 @@ void EventLoop::spin_until(GC::Ref<GC::Function<bool()>> goal_condition)
     //       2. Perform any steps that appear after this spin the event loop instance in the original algorithm.
     //       NOTE: This is achieved by returning from the function.
 
-    Platform::EventLoopPlugin::the().spin_until(JS::create_heap_function(heap(), [this, goal_condition] {
+    Platform::EventLoopPlugin::the().spin_until(GC::create_function(heap(), [this, goal_condition] {
         if (goal_condition->function()())
             return true;
         if (m_task_queue->has_runnable_tasks()) {
@@ -120,7 +120,7 @@ void EventLoop::spin_processing_tasks_with_source_until(Task::Source source, GC:
     // NOTE: HTML event loop processing steps could run a task with arbitrary source
     m_skip_event_loop_processing_steps = true;
 
-    Platform::EventLoopPlugin::the().spin_until(JS::create_heap_function(heap(), [this, source, goal_condition] {
+    Platform::EventLoopPlugin::the().spin_until(GC::create_function(heap(), [this, source, goal_condition] {
         if (goal_condition->function()())
             return true;
         if (m_task_queue->has_runnable_tasks()) {
@@ -522,7 +522,7 @@ Vector<GC::Handle<DOM::Document>> EventLoop::documents_in_this_event_loop() cons
         VERIFY(document);
         if (document->is_decoded_svg())
             continue;
-        documents.append(JS::make_handle(*document));
+        documents.append(GC::make_handle(*document));
     }
     return documents;
 }
@@ -570,7 +570,7 @@ Vector<GC::Handle<HTML::Window>> EventLoop::same_loop_windows() const
     Vector<GC::Handle<HTML::Window>> windows;
     for (auto& document : documents_in_this_event_loop()) {
         if (document->is_fully_active())
-            windows.append(JS::make_handle(document->window()));
+            windows.append(GC::make_handle(document->window()));
     }
     return windows;
 }

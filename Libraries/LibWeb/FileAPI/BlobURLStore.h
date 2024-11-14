@@ -8,8 +8,8 @@
 
 #include <AK/HashMap.h>
 #include <AK/String.h>
+#include <LibGC/Handle.h>
 #include <LibGC/Ptr.h>
-#include <LibJS/Heap/Handle.h>
 #include <LibURL/Forward.h>
 #include <LibWeb/Forward.h>
 

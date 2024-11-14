@@ -483,7 +483,7 @@ GC::Ref<TextTrack> HTMLMediaElement::add_text_track(Bindings::TextTrackKind kind
     //    text track's TextTrack object.
     queue_a_media_element_task([this, text_track] {
         TrackEventInit event_init {};
-        event_init.track = JS::make_handle(text_track);
+        event_init.track = GC::make_handle(text_track);
 
         auto event = TrackEvent::create(this->realm(), HTML::EventNames::addtrack, move(event_init));
         m_text_tracks->dispatch_event(event);
@@ -859,7 +859,7 @@ WebIDL::ExceptionOr<void> HTMLMediaElement::select_resource()
             });
 
             // 7. Wait for the task queued by the previous step to have executed.
-            HTML::main_thread_event_loop().spin_until(JS::create_heap_function(heap(), [&]() { return ran_media_element_task; }));
+            HTML::main_thread_event_loop().spin_until(GC::create_function(heap(), [&]() { return ran_media_element_task; }));
         };
 
         // 1. ⌛ If the src attribute's value is the empty string, then end the synchronous section, and jump down to the failed with attribute step below.
@@ -1013,7 +1013,7 @@ WebIDL::ExceptionOr<void> HTMLMediaElement::fetch_resource(URL::URL const& url_r
             // 2. Let updateMedia be to queue a media element task given the media element to run the first appropriate steps from the media data processing
             //    steps list below. (A new task is used for this so that the work described below occurs relative to the appropriate media element event task
             //    source rather than using the networking task source.)
-            auto update_media = JS::create_heap_function(heap(), [this, failure_callback = move(failure_callback)](ByteBuffer media_data) mutable {
+            auto update_media = GC::create_function(heap(), [this, failure_callback = move(failure_callback)](ByteBuffer media_data) mutable {
                 // 6. Update the media data with the contents of response's unsafe response obtained in this fashion. response can be CORS-same-origin or
                 //    CORS-cross-origin; this affects whether subtitles referenced in the media data are exposed in the API and, for video elements, whether
                 //    a canvas gets tainted when the video is drawn on it.
@@ -1042,12 +1042,12 @@ WebIDL::ExceptionOr<void> HTMLMediaElement::fetch_resource(URL::URL const& url_r
             // 5. Otherwise, incrementally read response's body given updateMedia, processEndOfMedia, an empty algorithm, and global.
 
             VERIFY(response->body());
-            auto empty_algorithm = JS::create_heap_function(heap(), [](JS::Value) {});
+            auto empty_algorithm = GC::create_function(heap(), [](JS::Value) {});
 
             // FIXME: We are "fully" reading the response here, rather than "incrementally". Memory concerns aside, this should be okay for now as we are
             //        always setting byteRange to "entire resource". However, we should switch to incremental reads when that is implemented, and then
             //        implement the processEndOfMedia step.
-            response->body()->fully_read(realm, update_media, empty_algorithm, JS::NonnullGCPtr { global });
+            response->body()->fully_read(realm, update_media, empty_algorithm, GC::Ref { global });
         };
 
         m_fetch_controller = TRY(Fetch::Fetching::fetch(realm, request, Fetch::Infrastructure::FetchAlgorithms::create(vm, move(fetch_algorithms_input))));
@@ -1141,7 +1141,7 @@ WebIDL::ExceptionOr<void> HTMLMediaElement::process_media_data(Function<void(Str
 
         // 7. Fire an event named addtrack at this AudioTrackList object, using TrackEvent, with the track attribute initialized to the new AudioTrack object.
         TrackEventInit event_init {};
-        event_init.track = JS::make_handle(audio_track);
+        event_init.track = GC::make_handle(audio_track);
 
         auto event = TrackEvent::create(realm, HTML::EventNames::addtrack, move(event_init));
         m_audio_tracks->dispatch_event(event);
@@ -1174,7 +1174,7 @@ WebIDL::ExceptionOr<void> HTMLMediaElement::process_media_data(Function<void(Str
 
         // 7. Fire an event named addtrack at this VideoTrackList object, using TrackEvent, with the track attribute initialized to the new VideoTrack object.
         TrackEventInit event_init {};
-        event_init.track = JS::make_handle(video_track);
+        event_init.track = GC::make_handle(video_track);
 
         auto event = TrackEvent::create(realm, HTML::EventNames::addtrack, move(event_init));
         m_video_tracks->dispatch_event(event);
@@ -1575,7 +1575,7 @@ void HTMLMediaElement::seek_element(double playback_position, MediaSeekMode seek
     //     available, and, if it is, until it has decoded enough data to play back that position.
     m_seek_in_progress = true;
     on_seek(playback_position, seek_mode);
-    HTML::main_thread_event_loop().spin_until(JS::create_heap_function(heap(), [&]() { return !m_seek_in_progress; }));
+    HTML::main_thread_event_loop().spin_until(GC::create_function(heap(), [&]() { return !m_seek_in_progress; }));
 
     // FIXME: 13. Await a stable state. The synchronous section consists of all the remaining steps of this algorithm. (Steps in the
     //            synchronous section are marked with ⌛.)

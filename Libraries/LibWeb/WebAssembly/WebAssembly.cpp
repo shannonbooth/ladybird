@@ -149,7 +149,7 @@ WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> instantiate_streaming(JS::VM& vm, 
     auto promise_of_module = compile_potential_webassembly_response(vm, *source);
 
     // 2. Return the result of instantiating the promise of a module promiseOfModule with imports importObject.
-    auto imports = JS::GCPtr { import_object.has_value() ? import_object.value().ptr() : nullptr };
+    auto imports = GC::Ptr { import_object.has_value() ? import_object.value().ptr() : nullptr };
     return instantiate_promise_of_module(vm, promise_of_module, imports);
 }
 
@@ -506,13 +506,13 @@ GC::Ref<WebIDL::Promise> asynchronously_compile_webassembly_module(JS::VM& vm, B
     auto promise = WebIDL::create_promise(realm);
 
     // 2. Run the following steps in parallel:
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(vm.heap(), [&vm, &realm, bytes = move(bytes), promise, task_source]() mutable {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(vm.heap(), [&vm, &realm, bytes = move(bytes), promise, task_source]() mutable {
         HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
         // 1. Compile the WebAssembly module bytes and store the result as module.
         auto module_or_error = Detail::compile_a_webassembly_module(vm, move(bytes));
 
         // 2. Queue a task to perform the following steps. If taskSource was provided, queue the task on that task source.
-        HTML::queue_a_task(task_source, nullptr, nullptr, JS::create_heap_function(vm.heap(), [&realm, promise, module_or_error = move(module_or_error)]() mutable {
+        HTML::queue_a_task(task_source, nullptr, nullptr, GC::create_function(vm.heap(), [&realm, promise, module_or_error = move(module_or_error)]() mutable {
             HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
             auto& realm = HTML::relevant_realm(*promise->promise());
 
@@ -554,7 +554,7 @@ GC::Ref<WebIDL::Promise> asynchronously_instantiate_webassembly_module(JS::VM& v
 
     // 4. Run the following steps in parallel:
     //   1. Queue a task to perform the following steps: Note: Implementation-specific work may be performed here.
-    HTML::queue_a_task(HTML::Task::Source::Unspecified, nullptr, nullptr, JS::create_heap_function(vm.heap(), [&vm, &realm, promise, module, import_object]() {
+    HTML::queue_a_task(HTML::Task::Source::Unspecified, nullptr, nullptr, GC::create_function(vm.heap(), [&vm, &realm, promise, module, import_object]() {
         HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
         auto& realm = HTML::relevant_realm(*promise->promise());
 
@@ -591,19 +591,19 @@ GC::Ref<WebIDL::Promise> instantiate_promise_of_module(JS::VM& vm, GC::Ref<WebID
     // FIXME: Spec should use react to promise here instead of separate upon fulfillment and upon rejection steps
 
     // 2. Upon fulfillment of promiseOfModule with value module:
-    auto fulfillment_steps = JS::create_heap_function(vm.heap(), [&vm, promise, import_object](JS::Value module_value) -> WebIDL::ExceptionOr<JS::Value> {
+    auto fulfillment_steps = GC::create_function(vm.heap(), [&vm, promise, import_object](JS::Value module_value) -> WebIDL::ExceptionOr<JS::Value> {
         VERIFY(module_value.is_object() && is<Module>(module_value.as_object()));
-        auto module = JS::NonnullGCPtr { static_cast<Module&>(module_value.as_object()) };
+        auto module = GC::Ref { static_cast<Module&>(module_value.as_object()) };
 
         // 1. Instantiate the WebAssembly module module importing importObject, and let innerPromise be the result.
         auto inner_promise = asynchronously_instantiate_webassembly_module(vm, module, import_object);
 
         // 2. Upon fulfillment of innerPromise with value instance.
-        auto instantiate_fulfillment_steps = JS::create_heap_function(vm.heap(), [promise, module](JS::Value instance_value) -> WebIDL::ExceptionOr<JS::Value> {
+        auto instantiate_fulfillment_steps = GC::create_function(vm.heap(), [promise, module](JS::Value instance_value) -> WebIDL::ExceptionOr<JS::Value> {
             auto& realm = HTML::relevant_realm(*promise->promise());
 
             VERIFY(instance_value.is_object() && is<Instance>(instance_value.as_object()));
-            auto instance = JS::NonnullGCPtr { static_cast<Instance&>(instance_value.as_object()) };
+            auto instance = GC::Ref { static_cast<Instance&>(instance_value.as_object()) };
 
             // 1. Let result be the WebAssemblyInstantiatedSource value «[ "module" → module, "instance" → instance ]».
             auto result = JS::Object::create(realm, nullptr);
@@ -617,7 +617,7 @@ GC::Ref<WebIDL::Promise> instantiate_promise_of_module(JS::VM& vm, GC::Ref<WebID
         });
 
         // 3. Upon rejection of innerPromise with reason reason.
-        auto instantiate_rejection_steps = JS::create_heap_function(vm.heap(), [promise](JS::Value reason) -> WebIDL::ExceptionOr<JS::Value> {
+        auto instantiate_rejection_steps = GC::create_function(vm.heap(), [promise](JS::Value reason) -> WebIDL::ExceptionOr<JS::Value> {
             auto& realm = HTML::relevant_realm(*promise->promise());
 
             // 1. Reject promise with reason.
@@ -632,7 +632,7 @@ GC::Ref<WebIDL::Promise> instantiate_promise_of_module(JS::VM& vm, GC::Ref<WebID
     });
 
     // 3. Upon rejection of promiseOfModule with reason reason:
-    auto rejection_steps = JS::create_heap_function(vm.heap(), [promise](JS::Value reason) -> WebIDL::ExceptionOr<JS::Value> {
+    auto rejection_steps = GC::create_function(vm.heap(), [promise](JS::Value reason) -> WebIDL::ExceptionOr<JS::Value> {
         auto& realm = HTML::relevant_realm(*promise->promise());
 
         // 1. Reject promise with reason.
@@ -662,7 +662,7 @@ GC::Ref<WebIDL::Promise> compile_potential_webassembly_response(JS::VM& vm, GC::
     auto return_value = WebIDL::create_promise(realm);
 
     // 2. Upon fulfillment of source with value unwrappedSource:
-    auto fulfillment_steps = JS::create_heap_function(vm.heap(), [&vm, return_value](JS::Value unwrapped_source) -> WebIDL::ExceptionOr<JS::Value> {
+    auto fulfillment_steps = GC::create_function(vm.heap(), [&vm, return_value](JS::Value unwrapped_source) -> WebIDL::ExceptionOr<JS::Value> {
         auto& realm = HTML::relevant_realm(*return_value->promise());
 
         // 1. Let response be unwrappedSource’s response.
@@ -708,7 +708,7 @@ GC::Ref<WebIDL::Promise> compile_potential_webassembly_response(JS::VM& vm, GC::
         auto body_promise = body_promise_or_error.release_value();
 
         // 9. Upon fulfillment of bodyPromise with value bodyArrayBuffer:
-        auto body_fulfillment_steps = JS::create_heap_function(vm.heap(), [&vm, return_value](JS::Value body_array_buffer) -> WebIDL::ExceptionOr<JS::Value> {
+        auto body_fulfillment_steps = GC::create_function(vm.heap(), [&vm, return_value](JS::Value body_array_buffer) -> WebIDL::ExceptionOr<JS::Value> {
             // 1. Let stableBytes be a copy of the bytes held by the buffer bodyArrayBuffer.
             VERIFY(body_array_buffer.is_object());
             auto stable_bytes = WebIDL::get_buffer_source_copy(body_array_buffer.as_object());
@@ -728,7 +728,7 @@ GC::Ref<WebIDL::Promise> compile_potential_webassembly_response(JS::VM& vm, GC::
         });
 
         // 10. Upon rejection of bodyPromise with reason reason:
-        auto body_rejection_steps = JS::create_heap_function(vm.heap(), [return_value](JS::Value reason) -> WebIDL::ExceptionOr<JS::Value> {
+        auto body_rejection_steps = GC::create_function(vm.heap(), [return_value](JS::Value reason) -> WebIDL::ExceptionOr<JS::Value> {
             // 1. Reject returnValue with reason.
             WebIDL::reject_promise(HTML::relevant_realm(*return_value->promise()), return_value, reason);
             return JS::js_undefined();
@@ -740,7 +740,7 @@ GC::Ref<WebIDL::Promise> compile_potential_webassembly_response(JS::VM& vm, GC::
     });
 
     // 3. Upon rejection of source with reason reason:
-    auto rejection_steps = JS::create_heap_function(vm.heap(), [return_value](JS::Value reason) -> WebIDL::ExceptionOr<JS::Value> {
+    auto rejection_steps = GC::create_function(vm.heap(), [return_value](JS::Value reason) -> WebIDL::ExceptionOr<JS::Value> {
         // 1. Reject returnValue with reason.
         WebIDL::reject_promise(HTML::relevant_realm(*return_value->promise()), return_value, reason);
 

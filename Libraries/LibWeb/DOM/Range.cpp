@@ -1240,7 +1240,7 @@ GC::Ref<Geometry::DOMRect> Range::get_bounding_client_rect()
         }
     }
     if (all_rectangle_has_zero_width_or_height)
-        return JS::NonnullGCPtr { *const_cast<Geometry::DOMRect*>(list->item(0)) };
+        return GC::Ref { *const_cast<Geometry::DOMRect*>(list->item(0)) };
 
     // 4. Otherwise, return a DOMRect object describing the smallest rectangle that includes all of the rectangles in
     //    list of which the height or width is not zero.

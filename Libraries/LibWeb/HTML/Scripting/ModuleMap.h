@@ -65,7 +65,7 @@ public:
 
     AK::HashSetResult set(URL::URL const& url, ByteString const& type, Entry);
 
-    void wait_for_change(JS::Heap&, URL::URL const& url, ByteString const& type, Function<void(Entry)> callback);
+    void wait_for_change(GC::Heap&, URL::URL const& url, ByteString const& type, Function<void(Entry)> callback);
 
 private:
     virtual void visit_edges(JS::Cell::Visitor&) override;

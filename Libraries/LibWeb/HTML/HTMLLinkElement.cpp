@@ -533,7 +533,7 @@ static NonnullRefPtr<Core::Promise<Web::Platform::DecodedImage>> decode_favicon(
         dbgln_if(IMAGE_DECODER_DEBUG, "Failed to decode favicon {}: {}", favicon_url, error);
     };
 
-    auto on_successful_decode = [document = JS::Handle(document)](Web::Platform::DecodedImage& decoded_image) -> ErrorOr<void> {
+    auto on_successful_decode = [document = GC::Handle(document)](Web::Platform::DecodedImage& decoded_image) -> ErrorOr<void> {
         auto favicon_bitmap = decoded_image.frames[0].bitmap;
         dbgln_if(IMAGE_DECODER_DEBUG, "Decoded favicon, {}", favicon_bitmap->size());
 
@@ -588,12 +588,12 @@ WebIDL::ExceptionOr<void> HTMLLinkElement::load_fallback_favicon_if_needed(GC::R
     Fetch::Infrastructure::FetchAlgorithms::Input fetch_algorithms_input {};
     fetch_algorithms_input.process_response = [document, request](GC::Ref<Fetch::Infrastructure::Response> response) {
         auto& realm = document->realm();
-        auto global = JS::NonnullGCPtr { realm.global_object() };
+        auto global = GC::Ref { realm.global_object() };
 
-        auto process_body = JS::create_heap_function(realm.heap(), [document, request](ByteBuffer body) {
+        auto process_body = GC::create_function(realm.heap(), [document, request](ByteBuffer body) {
             (void)decode_favicon(body, request->url(), document);
         });
-        auto process_body_error = JS::create_heap_function(realm.heap(), [](JS::Value) {
+        auto process_body_error = GC::create_function(realm.heap(), [](JS::Value) {
         });
 
         // Check for failed favicon response

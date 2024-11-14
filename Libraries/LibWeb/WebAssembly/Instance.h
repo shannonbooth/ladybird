@@ -8,9 +8,9 @@
 #pragma once
 
 #include <AK/Optional.h>
+#include <LibGC/Handle.h>
 #include <LibGC/Ptr.h>
 #include <LibJS/Forward.h>
-#include <LibJS/Heap/Handle.h>
 #include <LibWasm/AbstractMachine/AbstractMachine.h>
 #include <LibWeb/Bindings/ExceptionOrUtils.h>
 #include <LibWeb/Bindings/PlatformObject.h>

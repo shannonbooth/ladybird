@@ -167,7 +167,7 @@ private:
 
     Queue<QueuedInputEvent> m_input_event_queue;
 
-    JS::Handle<Web::Platform::Timer> m_input_event_queue_timer;
+    GC::Handle<Web::Platform::Timer> m_input_event_queue_timer;
 };
 
 }

@@ -11,8 +11,8 @@
 #include <AK/Optional.h>
 #include <AK/Time.h>
 #include <AK/Variant.h>
+#include <LibGC/MarkedVector.h>
 #include <LibGfx/Rect.h>
-#include <LibJS/Heap/MarkedVector.h>
 #include <LibWeb/DOM/DocumentLoadEventDelayer.h>
 #include <LibWeb/HTML/CORSSettingAttribute.h>
 #include <LibWeb/HTML/EventLoop/Task.h>
@@ -39,7 +39,7 @@ public:
 
     virtual bool is_focusable() const override { return true; }
 
-    // NOTE: The function is wrapped in a JS::HeapFunction immediately.
+    // NOTE: The function is wrapped in a GC::HeapFunction immediately.
     void queue_a_media_element_task(Function<void()>);
 
     GC::Ptr<MediaError> error() const { return m_error; }

@@ -9,7 +9,7 @@
 
 #include <AK/Variant.h>
 #include <AK/Vector.h>
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/Handle.h>
 #include <LibWeb/DOM/Slot.h>
 #include <LibWeb/DOM/Slottable.h>
 #include <LibWeb/HTML/HTMLElement.h>

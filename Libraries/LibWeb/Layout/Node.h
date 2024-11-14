@@ -9,9 +9,9 @@
 #include <AK/NonnullRefPtr.h>
 #include <AK/TypeCasts.h>
 #include <AK/Vector.h>
+#include <LibGC/Handle.h>
 #include <LibGfx/Rect.h>
 #include <LibJS/Heap/Cell.h>
-#include <LibJS/Heap/Handle.h>
 #include <LibWeb/CSS/ComputedValues.h>
 #include <LibWeb/CSS/StyleComputer.h>
 #include <LibWeb/CSS/StyleProperties.h>

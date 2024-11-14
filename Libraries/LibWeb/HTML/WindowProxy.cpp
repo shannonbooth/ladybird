@@ -5,7 +5,7 @@
  */
 
 #include <AK/Optional.h>
-#include <LibJS/Heap/MarkedVector.h>
+#include <LibGC/MarkedVector.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/GlobalObject.h>
 #include <LibJS/Runtime/PropertyDescriptor.h>

@@ -138,7 +138,7 @@ WebIDL::ExceptionOr<GC::Ref<ReadableStream>> ReadableStream::pipe_through(Readab
     WebIDL::mark_promise_as_handled(*promise);
 
     // 6. Return transform["readable"].
-    return JS::NonnullGCPtr { *transform.readable };
+    return GC::Ref { *transform.readable };
 }
 
 GC::Ref<WebIDL::Promise> ReadableStream::pipe_to(WritableStream& destination, StreamPipeOptions const& options)

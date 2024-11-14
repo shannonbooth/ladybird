@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <LibJS/Heap/MarkedVector.h>
+#include <LibGC/MarkedVector.h>
 #include <LibWeb/DOM/EventTarget.h>
 #include <LibWeb/HTML/TextTrackCue.h>
 

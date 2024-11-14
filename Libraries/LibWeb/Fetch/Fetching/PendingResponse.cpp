@@ -42,7 +42,7 @@ void PendingResponse::visit_edges(JS::Cell::Visitor& visitor)
 void PendingResponse::when_loaded(Callback callback)
 {
     VERIFY(!m_callback);
-    m_callback = JS::create_heap_function(heap(), move(callback));
+    m_callback = GC::create_function(heap(), move(callback));
     if (m_response)
         run_callback();
 }
@@ -59,7 +59,7 @@ void PendingResponse::run_callback()
 {
     VERIFY(m_callback);
     VERIFY(m_response);
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(heap(), [this] {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(heap(), [this] {
         VERIFY(m_callback);
         VERIFY(m_response);
         m_callback->function()(*m_response);

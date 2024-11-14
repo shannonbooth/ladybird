@@ -8,7 +8,7 @@
 
 #include <AK/TypeCasts.h>
 #include <AK/Vector.h>
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/Handle.h>
 #include <LibWeb/DOM/Document.h>
 #include <LibWeb/DOM/Element.h>
 #include <LibWeb/DOM/ShadowRoot.h>
@@ -161,7 +161,7 @@ static Vector<GC::Handle<DOM::Node>> focus_chain(DOM::Node* subject)
     // 3. While true:
     while (true) {
         // 1. Append currentObject to output.
-        output.append(JS::make_handle(*current_object));
+        output.append(GC::make_handle(*current_object));
 
         // FIXME: 2. If currentObject is an area element's shape, then append that area element to output.
 

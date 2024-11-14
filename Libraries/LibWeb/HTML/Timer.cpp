@@ -15,7 +15,7 @@ GC_DEFINE_ALLOCATOR(Timer);
 
 GC::Ref<Timer> Timer::create(JS::Object& window_or_worker_global_scope, i32 milliseconds, Function<void()> callback, i32 id)
 {
-    auto heap_function_callback = JS::create_heap_function(window_or_worker_global_scope.heap(), move(callback));
+    auto heap_function_callback = GC::create_function(window_or_worker_global_scope.heap(), move(callback));
     return window_or_worker_global_scope.heap().allocate<Timer>(window_or_worker_global_scope, milliseconds, heap_function_callback, id);
 }
 

@@ -89,7 +89,7 @@ void IntersectionObserver::observe(DOM::Element& target)
     // Run the observe a target Element algorithm, providing this and target.
     // https://www.w3.org/TR/intersection-observer/#observe-a-target-element
     // 1. If target is in observer’s internal [[ObservationTargets]] slot, return.
-    if (m_observation_targets.contains_slow(JS::NonnullGCPtr { target }))
+    if (m_observation_targets.contains_slow(GC::Ref { target }))
         return;
 
     // 2. Let intersectionObserverRegistration be an IntersectionObserverRegistration record with an observer
@@ -155,9 +155,9 @@ Variant<GC::Handle<DOM::Element>, GC::Handle<DOM::Document>, Empty> Intersection
     if (!m_root)
         return Empty {};
     if (m_root->is_element())
-        return JS::make_handle(static_cast<DOM::Element&>(*m_root));
+        return GC::make_handle(static_cast<DOM::Element&>(*m_root));
     if (m_root->is_document())
-        return JS::make_handle(static_cast<DOM::Document&>(*m_root));
+        return GC::make_handle(static_cast<DOM::Document&>(*m_root));
     VERIFY_NOT_REACHED();
 }
 
@@ -168,14 +168,14 @@ Variant<GC::Handle<DOM::Element>, GC::Handle<DOM::Document>> IntersectionObserve
     // if the attribute is non-null;
     if (m_root) {
         if (m_root->is_element())
-            return JS::make_handle(static_cast<DOM::Element&>(*m_root));
+            return GC::make_handle(static_cast<DOM::Element&>(*m_root));
         if (m_root->is_document())
-            return JS::make_handle(static_cast<DOM::Document&>(*m_root));
+            return GC::make_handle(static_cast<DOM::Document&>(*m_root));
         VERIFY_NOT_REACHED();
     }
 
     // otherwise, it is the top-level browsing context’s document node, referred to as the implicit root.
-    return JS::make_handle(verify_cast<HTML::Window>(HTML::relevant_global_object(*this)).page().top_level_browsing_context().active_document());
+    return GC::make_handle(verify_cast<HTML::Window>(HTML::relevant_global_object(*this)).page().top_level_browsing_context().active_document());
 }
 
 // https://www.w3.org/TR/intersection-observer/#intersectionobserver-root-intersection-rectangle

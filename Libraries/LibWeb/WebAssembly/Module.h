@@ -7,9 +7,9 @@
 
 #pragma once
 
+#include <LibGC/Handle.h>
 #include <LibGC/Ptr.h>
 #include <LibJS/Forward.h>
-#include <LibJS/Heap/Handle.h>
 #include <LibWasm/Types.h>
 #include <LibWeb/Bindings/ExceptionOrUtils.h>
 #include <LibWeb/Bindings/PlatformObject.h>

@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/Handle.h>
 #include <LibWeb/Bindings/PlatformObject.h>
 #include <LibWeb/IntersectionObserver/IntersectionObserverEntry.h>
 #include <LibWeb/PixelUnits.h>

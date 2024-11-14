@@ -196,13 +196,13 @@ WebIDL::ExceptionOr<void> HTMLVideoElement::determine_element_poster_frame(Optio
             response = filtered_response.internal_response();
         }
 
-        auto on_image_data_read = JS::create_heap_function(heap(), [this](ByteBuffer image_data) mutable {
+        auto on_image_data_read = GC::create_function(heap(), [this](ByteBuffer image_data) mutable {
             m_fetch_controller = nullptr;
 
             // 6. If an image is thus obtained, the poster frame is that image. Otherwise, there is no poster frame.
             (void)Platform::ImageCodecPlugin::the().decode_image(
                 image_data,
-                [strong_this = JS::Handle(*this)](Web::Platform::DecodedImage& image) -> ErrorOr<void> {
+                [strong_this = GC::Handle(*this)](Web::Platform::DecodedImage& image) -> ErrorOr<void> {
                     if (!image.frames.is_empty())
                         strong_this->m_poster_frame = move(image.frames[0].bitmap);
                     return {};
@@ -211,9 +211,9 @@ WebIDL::ExceptionOr<void> HTMLVideoElement::determine_element_poster_frame(Optio
         });
 
         VERIFY(response->body());
-        auto empty_algorithm = JS::create_heap_function(heap(), [](JS::Value) {});
+        auto empty_algorithm = GC::create_function(heap(), [](JS::Value) {});
 
-        response->body()->fully_read(realm, on_image_data_read, empty_algorithm, JS::NonnullGCPtr { global });
+        response->body()->fully_read(realm, on_image_data_read, empty_algorithm, GC::Ref { global });
     };
 
     m_fetch_controller = TRY(Fetch::Fetching::fetch(realm, request, Fetch::Infrastructure::FetchAlgorithms::create(vm, move(fetch_algorithms_input))));

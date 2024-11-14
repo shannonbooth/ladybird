@@ -64,7 +64,7 @@ void FetchedDataReceiver::on_data_received(ReadonlyBytes bytes)
     Infrastructure::queue_fetch_task(
         m_fetch_params->controller(),
         m_fetch_params->task_destination().get<GC::Ref<JS::Object>>(),
-        JS::create_heap_function(heap(), [this, bytes = MUST(ByteBuffer::copy(bytes))]() mutable {
+        GC::create_function(heap(), [this, bytes = MUST(ByteBuffer::copy(bytes))]() mutable {
             HTML::TemporaryExecutionContext execution_context { m_stream->realm(), HTML::TemporaryExecutionContext::CallbacksEnabled::Yes };
 
             // 1. Pull from bytes buffer into stream.

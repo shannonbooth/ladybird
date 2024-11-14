@@ -22,7 +22,7 @@ namespace Web::Animations {
 WebIDL::ExceptionOr<GC::Ref<Animation>> Animatable::animate(Optional<GC::Handle<JS::Object>> keyframes, Variant<Empty, double, KeyframeAnimationOptions> options)
 {
     // 1. Let target be the object on which this method was called.
-    JS::NonnullGCPtr target { *static_cast<DOM::Element*>(this) };
+    GC::Ref target { *static_cast<DOM::Element*>(this) };
     auto& realm = target->realm();
 
     // 2. Construct a new KeyframeEffect object, effect, in the relevant Realm of target by using the same procedure as
@@ -82,7 +82,7 @@ WebIDL::ExceptionOr<Vector<GC::Ref<Animation>>> Animatable::get_animations_inter
     //    Otherwise, let target be object.
     // FIXME: We can't refer to pseudo-elements directly, and they also can't be animated yet.
     (void)pseudo_element;
-    JS::NonnullGCPtr target { *static_cast<DOM::Element*>(this) };
+    GC::Ref target { *static_cast<DOM::Element*>(this) };
 
     // 4. If options is passed with subtree set to true, then return the set of relevant animations for a subtree of target.
     //    Otherwise, return the set of relevant animations for target.

@@ -237,12 +237,12 @@ GC::Ref<WebIDL::Promise> ReadableStreamDefaultReader::read_all_bytes_deprecated(
 
     auto promise = WebIDL::create_promise(realm);
 
-    auto success_steps = JS::create_heap_function(realm.heap(), [promise, &realm](ByteBuffer bytes) {
+    auto success_steps = GC::create_function(realm.heap(), [promise, &realm](ByteBuffer bytes) {
         auto buffer = JS::ArrayBuffer::create(realm, move(bytes));
         WebIDL::resolve_promise(realm, promise, buffer);
     });
 
-    auto failure_steps = JS::create_heap_function(realm.heap(), [promise, &realm](JS::Value error) {
+    auto failure_steps = GC::create_function(realm.heap(), [promise, &realm](JS::Value error) {
         WebIDL::reject_promise(realm, promise, error);
     });
 

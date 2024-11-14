@@ -145,7 +145,7 @@ WebIDL::ExceptionOr<Infrastructure::BodyWithType> extract_body(JS::Realm& realm,
 
     // 12. If action is non-null, then run these steps in parallel:
     if (action) {
-        Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(realm.heap(), [&realm, stream, action = move(action)] {
+        Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(realm.heap(), [&realm, stream, action = move(action)] {
             HTML::TemporaryExecutionContext execution_context { realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes };
 
             // 1. Run action.

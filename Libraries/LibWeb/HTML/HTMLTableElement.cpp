@@ -412,7 +412,7 @@ WebIDL::ExceptionOr<GC::Ref<HTMLTableRowElement>> HTMLTableElement::insert_row(W
     } else {
         rows->item(index)->parent_element()->insert_before(tr, rows->item(index));
     }
-    return JS::NonnullGCPtr(tr);
+    return GC::Ref(tr);
 }
 
 // https://html.spec.whatwg.org/multipage/tables.html#dom-table-deleterow

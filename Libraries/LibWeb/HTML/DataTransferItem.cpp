@@ -146,7 +146,7 @@ GC::Ptr<FileAPI::File> DataTransferItem::get_as_file() const
     FileAPI::FilePropertyBag options {};
     options.type = item.type_string;
 
-    return MUST(FileAPI::File::create(realm, { JS::make_handle(blob) }, file_name, move(options)));
+    return MUST(FileAPI::File::create(realm, { GC::make_handle(blob) }, file_name, move(options)));
 }
 
 // https://wicg.github.io/entries-api/#dom-datatransferitem-webkitgetasentry

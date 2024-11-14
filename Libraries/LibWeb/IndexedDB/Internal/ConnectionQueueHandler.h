@@ -7,7 +7,7 @@
 #pragma once
 
 #include <AK/HashMap.h>
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/Handle.h>
 #include <LibWeb/DOM/EventTarget.h>
 #include <LibWeb/IndexedDB/IDBRequest.h>
 #include <LibWeb/StorageAPI/StorageKey.h>

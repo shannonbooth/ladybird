@@ -17,7 +17,7 @@ public:
 
     virtual void spin_until(GC::Handle<GC::Function<bool()>> goal_condition) override;
     virtual void deferred_invoke(GC::Handle<GC::Function<void()>>) override;
-    virtual GC::Ref<Timer> create_timer(JS::Heap&) override;
+    virtual GC::Ref<Timer> create_timer(GC::Heap&) override;
     virtual void quit() override;
 };
 

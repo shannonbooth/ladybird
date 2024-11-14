@@ -260,7 +260,7 @@ static CSSStyleSheet& default_stylesheet(DOM::Document const& document)
     static GC::Handle<CSSStyleSheet> sheet;
     if (!sheet.cell()) {
         extern String default_stylesheet_source;
-        sheet = JS::make_handle(parse_css_stylesheet(CSS::Parser::ParsingContext(document), default_stylesheet_source));
+        sheet = GC::make_handle(parse_css_stylesheet(CSS::Parser::ParsingContext(document), default_stylesheet_source));
     }
     return *sheet;
 }
@@ -270,7 +270,7 @@ static CSSStyleSheet& quirks_mode_stylesheet(DOM::Document const& document)
     static GC::Handle<CSSStyleSheet> sheet;
     if (!sheet.cell()) {
         extern String quirks_mode_stylesheet_source;
-        sheet = JS::make_handle(parse_css_stylesheet(CSS::Parser::ParsingContext(document), quirks_mode_stylesheet_source));
+        sheet = GC::make_handle(parse_css_stylesheet(CSS::Parser::ParsingContext(document), quirks_mode_stylesheet_source));
     }
     return *sheet;
 }
@@ -280,7 +280,7 @@ static CSSStyleSheet& mathml_stylesheet(DOM::Document const& document)
     static GC::Handle<CSSStyleSheet> sheet;
     if (!sheet.cell()) {
         extern String mathml_stylesheet_source;
-        sheet = JS::make_handle(parse_css_stylesheet(CSS::Parser::ParsingContext(document), mathml_stylesheet_source));
+        sheet = GC::make_handle(parse_css_stylesheet(CSS::Parser::ParsingContext(document), mathml_stylesheet_source));
     }
     return *sheet;
 }
@@ -290,7 +290,7 @@ static CSSStyleSheet& svg_stylesheet(DOM::Document const& document)
     static GC::Handle<CSSStyleSheet> sheet;
     if (!sheet.cell()) {
         extern String svg_stylesheet_source;
-        sheet = JS::make_handle(parse_css_stylesheet(CSS::Parser::ParsingContext(document), svg_stylesheet_source));
+        sheet = GC::make_handle(parse_css_stylesheet(CSS::Parser::ParsingContext(document), svg_stylesheet_source));
     }
     return *sheet;
 }
@@ -2732,7 +2732,7 @@ void StyleComputer::build_qualified_layer_names_cache()
 void StyleComputer::build_rule_cache()
 {
     if (auto user_style_source = document().page().user_style(); user_style_source.has_value()) {
-        m_user_style_sheet = JS::make_handle(parse_css_stylesheet(CSS::Parser::ParsingContext(document()), user_style_source.value()));
+        m_user_style_sheet = GC::make_handle(parse_css_stylesheet(CSS::Parser::ParsingContext(document()), user_style_source.value()));
     }
 
     build_qualified_layer_names_cache();

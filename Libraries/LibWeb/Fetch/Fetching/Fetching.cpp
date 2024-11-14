@@ -157,7 +157,7 @@ WebIDL::ExceptionOr<GC::Ref<Infrastructure::FetchController>> fetch(JS::Realm& r
 
         // 2. Let onPreloadedResponseAvailable be an algorithm that runs the following step given a response
         //    response: set fetchParams’s preloaded response candidate to response.
-        auto on_preloaded_response_available = JS::create_heap_function(realm.heap(), [fetch_params](GC::Ref<Infrastructure::Response> response) {
+        auto on_preloaded_response_available = GC::create_function(realm.heap(), [fetch_params](GC::Ref<Infrastructure::Response> response) {
             fetch_params->set_preloaded_response_candidate(response);
         });
 
@@ -333,13 +333,13 @@ WebIDL::ExceptionOr<GC::Ptr<PendingResponse>> main_fetch(JS::Realm& realm, Infra
         request->current_url().set_scheme("https"_string);
     }
 
-    auto get_response = JS::create_heap_function(vm.heap(), [&realm, &vm, &fetch_params, request]() -> WebIDL::ExceptionOr<GC::Ref<PendingResponse>> {
+    auto get_response = GC::create_function(vm.heap(), [&realm, &vm, &fetch_params, request]() -> WebIDL::ExceptionOr<GC::Ref<PendingResponse>> {
         dbgln_if(WEB_FETCH_DEBUG, "Fetch: Running 'main fetch' get_response() function");
 
         // -> fetchParams’s preloaded response candidate is not null
         if (!fetch_params.preloaded_response_candidate().has<Empty>()) {
             // 1. Wait until fetchParams’s preloaded response candidate is not "pending".
-            HTML::main_thread_event_loop().spin_until(JS::create_heap_function(vm.heap(), [&] {
+            HTML::main_thread_event_loop().spin_until(GC::create_function(vm.heap(), [&] {
                 return !fetch_params.preloaded_response_candidate().has<Infrastructure::FetchParams::PreloadedResponseCandidatePendingTag>();
             }));
 
@@ -441,7 +441,7 @@ WebIDL::ExceptionOr<GC::Ptr<PendingResponse>> main_fetch(JS::Realm& realm, Infra
     }
 
     // 11. If recursive is false, then run the remaining steps in parallel.
-    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(realm.heap(), [&realm, &vm, &fetch_params, request, response, get_response] {
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(realm.heap(), [&realm, &vm, &fetch_params, request, response, get_response] {
         // 12. If response is null, then set response to the result of running the steps corresponding to the first
         //     matching statement:
         auto pending_response = PendingResponse::create(vm, request, Infrastructure::Response::create(vm));
@@ -503,7 +503,7 @@ WebIDL::ExceptionOr<GC::Ptr<PendingResponse>> main_fetch(JS::Realm& realm, Infra
             // 15. Let internalResponse be response, if response is a network error, and response’s internal response
             //     otherwise.
             auto internal_response = response->is_network_error()
-                ? JS::NonnullGCPtr { *response }
+                ? GC::Ref { *response }
                 : static_cast<Infrastructure::FilteredResponse&>(*response).internal_response();
 
             // 16. If internalResponse’s URL list is empty, then set it to a clone of request’s URL list.
@@ -557,7 +557,7 @@ WebIDL::ExceptionOr<GC::Ptr<PendingResponse>> main_fetch(JS::Realm& realm, Infra
             if (!request->integrity_metadata().is_empty()) {
                 // 1. Let processBodyError be this step: run fetch response handover given fetchParams and a network
                 //    error.
-                auto process_body_error = JS::create_heap_function(vm.heap(), [&realm, &vm, &fetch_params](JS::Value) {
+                auto process_body_error = GC::create_function(vm.heap(), [&realm, &vm, &fetch_params](JS::Value) {
                     fetch_response_handover(realm, fetch_params, Infrastructure::Response::network_error(vm, "Response body could not be processed"sv));
                 });
 
@@ -568,7 +568,7 @@ WebIDL::ExceptionOr<GC::Ptr<PendingResponse>> main_fetch(JS::Realm& realm, Infra
                 }
 
                 // 3. Let processBody given bytes be these steps:
-                auto process_body = JS::create_heap_function(vm.heap(), [&realm, request, response, &fetch_params, process_body_error = move(process_body_error)](ByteBuffer bytes) {
+                auto process_body = GC::create_function(vm.heap(), [&realm, request, response, &fetch_params, process_body_error = move(process_body_error)](ByteBuffer bytes) {
                     // 1. If bytes do not match request’s integrity metadata, then run processBodyError and abort these steps.
                     if (!TRY_OR_IGNORE(SRI::do_bytes_match_metadata_list(bytes, request->integrity_metadata()))) {
                         process_body_error->function()({});
@@ -677,7 +677,7 @@ void fetch_response_handover(JS::Realm& realm, Infrastructure::FetchParams const
         });
 
         // 4. Let processResponseEndOfBodyTask be the following steps:
-        auto process_response_end_of_body_task = JS::create_heap_function(vm.heap(), [&fetch_params, &response] {
+        auto process_response_end_of_body_task = GC::create_function(vm.heap(), [&fetch_params, &response] {
             // 1. Set fetchParams’s request’s done flag.
             fetch_params.request()->set_done(true);
 
@@ -710,13 +710,13 @@ void fetch_response_handover(JS::Realm& realm, Infrastructure::FetchParams const
     // 4. If fetchParams’s process response is non-null, then queue a fetch task to run fetchParams’s process response
     //    given response, with fetchParams’s task destination.
     if (fetch_params.algorithms()->process_response()) {
-        Infrastructure::queue_fetch_task(fetch_params.controller(), task_destination, JS::create_heap_function(vm.heap(), [&fetch_params, &response]() {
+        Infrastructure::queue_fetch_task(fetch_params.controller(), task_destination, GC::create_function(vm.heap(), [&fetch_params, &response]() {
             fetch_params.algorithms()->process_response()(response);
         }));
     }
 
     // 5. Let internalResponse be response, if response is a network error; otherwise response’s internal response.
-    auto internal_response = response.is_network_error() ? JS::NonnullGCPtr { response } : response.unsafe_response();
+    auto internal_response = response.is_network_error() ? GC::Ref { response } : response.unsafe_response();
 
     // 6. If internalResponse’s body is null, then run processResponseEndOfBody.
     if (!internal_response->body()) {
@@ -730,14 +730,14 @@ void fetch_response_handover(JS::Realm& realm, Infrastructure::FetchParams const
         auto transform_stream = realm.create<Streams::TransformStream>(realm);
 
         // 2. Let identityTransformAlgorithm be an algorithm which, given chunk, enqueues chunk in transformStream.
-        auto identity_transform_algorithm = JS::create_heap_function(realm.heap(), [&realm, transform_stream](JS::Value chunk) -> GC::Ref<WebIDL::Promise> {
+        auto identity_transform_algorithm = GC::create_function(realm.heap(), [&realm, transform_stream](JS::Value chunk) -> GC::Ref<WebIDL::Promise> {
             MUST(Streams::transform_stream_default_controller_enqueue(*transform_stream->controller(), chunk));
             return WebIDL::create_resolved_promise(realm, JS::js_undefined());
         });
 
         // 3. Set up transformStream with transformAlgorithm set to identityTransformAlgorithm and flushAlgorithm set
         //    to processResponseEndOfBody.
-        auto flush_algorithm = JS::create_heap_function(realm.heap(), [&realm, process_response_end_of_body]() -> GC::Ref<WebIDL::Promise> {
+        auto flush_algorithm = GC::create_function(realm.heap(), [&realm, process_response_end_of_body]() -> GC::Ref<WebIDL::Promise> {
             process_response_end_of_body();
             return WebIDL::create_resolved_promise(realm, JS::js_undefined());
         });
@@ -753,20 +753,20 @@ void fetch_response_handover(JS::Realm& realm, Infrastructure::FetchParams const
     if (fetch_params.algorithms()->process_response_consume_body()) {
         // 1. Let processBody given nullOrBytes be this step: run fetchParams’s process response consume body given
         //    response and nullOrBytes.
-        auto process_body = JS::create_heap_function(vm.heap(), [&fetch_params, &response](ByteBuffer null_or_bytes) {
+        auto process_body = GC::create_function(vm.heap(), [&fetch_params, &response](ByteBuffer null_or_bytes) {
             (fetch_params.algorithms()->process_response_consume_body())(response, null_or_bytes);
         });
 
         // 2. Let processBodyError be this step: run fetchParams’s process response consume body given response and
         //    failure.
-        auto process_body_error = JS::create_heap_function(vm.heap(), [&fetch_params, &response](JS::Value) {
+        auto process_body_error = GC::create_function(vm.heap(), [&fetch_params, &response](JS::Value) {
             (fetch_params.algorithms()->process_response_consume_body())(response, Infrastructure::FetchAlgorithms::ConsumeBodyFailureTag {});
         });
 
         // 3. If internalResponse's body is null, then queue a fetch task to run processBody given null, with
         //    fetchParams’s task destination.
         if (!internal_response->body()) {
-            Infrastructure::queue_fetch_task(fetch_params.controller(), task_destination, JS::create_heap_function(vm.heap(), [process_body = move(process_body)]() {
+            Infrastructure::queue_fetch_task(fetch_params.controller(), task_destination, GC::create_function(vm.heap(), [process_body = move(process_body)]() {
                 process_body->function()({});
             }));
         }
@@ -987,7 +987,7 @@ WebIDL::ExceptionOr<GC::Ref<PendingResponse>> http_fetch(JS::Realm& realm, Infra
             // 3. Set internalResponse to response, if response is not a filtered response; otherwise to response’s
             //    internal response.
             internal_response = !is<Infrastructure::FilteredResponse>(*response)
-                ? JS::NonnullGCPtr { *response }
+                ? GC::Ref { *response }
                 : static_cast<Infrastructure::FilteredResponse const&>(*response).internal_response();
 
             // 4. If one of the following is true
@@ -1035,7 +1035,7 @@ WebIDL::ExceptionOr<GC::Ref<PendingResponse>> http_fetch(JS::Realm& realm, Infra
             // NOTE: Step 2 is performed in pending_preflight_response's load callback below.
         }
 
-        auto fetch_main_content = [request = JS::make_handle(request), realm = JS::make_handle(realm), fetch_params = JS::make_handle(fetch_params)]() -> WebIDL::ExceptionOr<GC::Ref<PendingResponse>> {
+        auto fetch_main_content = [request = GC::make_handle(request), realm = GC::make_handle(realm), fetch_params = GC::make_handle(fetch_params)]() -> WebIDL::ExceptionOr<GC::Ref<PendingResponse>> {
             // 2. If request’s redirect mode is "follow", then set request’s service-workers mode to "none".
             // NOTE: Redirects coming from the network (as opposed to from a service worker) are not to be exposed to a
             //       service worker.
@@ -1170,7 +1170,7 @@ WebIDL::ExceptionOr<GC::Ptr<PendingResponse>> http_redirect_fetch(JS::Realm& rea
     // 2. Let internalResponse be response, if response is not a filtered response; otherwise response’s internal
     //    response.
     auto internal_response = !is<Infrastructure::FilteredResponse>(response)
-        ? JS::NonnullGCPtr { response }
+        ? GC::Ref { response }
         : static_cast<Infrastructure::FilteredResponse const&>(response).internal_response();
 
     // 3. Let locationURL be internalResponse’s location URL given request’s current URL’s fragment.
@@ -1921,7 +1921,7 @@ WebIDL::ExceptionOr<GC::Ref<PendingResponse>> http_network_or_cache_fetch(JS::Re
                     revalidate_request->set_service_workers_mode(Infrastructure::Request::ServiceWorkersMode::None);
 
                     // 7. In parallel, run main fetch given a new fetch params whose request is revalidateRequest.
-                    Platform::EventLoopPlugin::the().deferred_invoke(JS::create_heap_function(realm.heap(), [&vm, &realm, revalidate_request, fetch_params = JS::NonnullGCPtr(fetch_params)] {
+                    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(realm.heap(), [&vm, &realm, revalidate_request, fetch_params = GC::Ref(fetch_params)] {
                         (void)main_fetch(realm, Infrastructure::FetchParams::create(vm, revalidate_request, fetch_params->timing_info()));
                     }));
                 }
@@ -2240,7 +2240,7 @@ WebIDL::ExceptionOr<GC::Ref<PendingResponse>> nonstandard_resource_loader_file_o
         auto fetched_data_receiver = realm.create<FetchedDataReceiver>(fetch_params, stream);
 
         // 10. Let pullAlgorithm be the followings steps:
-        auto pull_algorithm = JS::create_heap_function(realm.heap(), [&realm, fetched_data_receiver]() {
+        auto pull_algorithm = GC::create_function(realm.heap(), [&realm, fetched_data_receiver]() {
             // 1. Let promise be a new promise.
             auto promise = WebIDL::create_promise(realm);
 
@@ -2253,7 +2253,7 @@ WebIDL::ExceptionOr<GC::Ref<PendingResponse>> nonstandard_resource_loader_file_o
         });
 
         // 11. Let cancelAlgorithm be an algorithm that aborts fetchParams’s controller with reason, given reason.
-        auto cancel_algorithm = JS::create_heap_function(realm.heap(), [&realm, &fetch_params](JS::Value reason) {
+        auto cancel_algorithm = GC::create_function(realm.heap(), [&realm, &fetch_params](JS::Value reason) {
             fetch_params.controller()->abort(realm, reason);
             return WebIDL::create_resolved_promise(realm, JS::js_undefined());
         });
@@ -2261,7 +2261,7 @@ WebIDL::ExceptionOr<GC::Ref<PendingResponse>> nonstandard_resource_loader_file_o
         // 13. Set up stream with byte reading support with pullAlgorithm set to pullAlgorithm, cancelAlgorithm set to cancelAlgorithm.
         Streams::set_up_readable_stream_controller_with_byte_reading_support(stream, pull_algorithm, cancel_algorithm);
 
-        auto on_headers_received = JS::create_heap_function(vm.heap(), [&vm, request, pending_response, stream](HTTP::HeaderMap const& response_headers, Optional<u32> status_code, Optional<String> const& reason_phrase) {
+        auto on_headers_received = GC::create_function(vm.heap(), [&vm, request, pending_response, stream](HTTP::HeaderMap const& response_headers, Optional<u32> status_code, Optional<String> const& reason_phrase) {
             (void)request;
             if (pending_response->is_resolved()) {
                 // RequestServer will send us the response headers twice, the second time being for HTTP trailers. This
@@ -2298,7 +2298,7 @@ WebIDL::ExceptionOr<GC::Ref<PendingResponse>> nonstandard_resource_loader_file_o
 
         // 16. Run these steps in parallel:
         //    FIXME: 1. Run these steps, but abort when fetchParams is canceled:
-        auto on_data_received = JS::create_heap_function(vm.heap(), [fetched_data_receiver](ReadonlyBytes bytes) {
+        auto on_data_received = GC::create_function(vm.heap(), [fetched_data_receiver](ReadonlyBytes bytes) {
             // 1. If one or more bytes have been transmitted from response’s message body, then:
             if (!bytes.is_empty()) {
                 // 1. Let bytes be the transmitted bytes.
@@ -2317,7 +2317,7 @@ WebIDL::ExceptionOr<GC::Ref<PendingResponse>> nonstandard_resource_loader_file_o
             }
         });
 
-        auto on_complete = JS::create_heap_function(vm.heap(), [&vm, &realm, pending_response, stream](bool success, Optional<StringView> error_message) {
+        auto on_complete = GC::create_function(vm.heap(), [&vm, &realm, pending_response, stream](bool success, Optional<StringView> error_message) {
             HTML::TemporaryExecutionContext execution_context { realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes };
 
             // 16.1.1.2. Otherwise, if the bytes transmission for response’s message body is done normally and stream is readable,
@@ -2340,7 +2340,7 @@ WebIDL::ExceptionOr<GC::Ref<PendingResponse>> nonstandard_resource_loader_file_o
 
         ResourceLoader::the().load_unbuffered(load_request, on_headers_received, on_data_received, on_complete);
     } else {
-        auto on_load_success = JS::create_heap_function(vm.heap(), [&realm, &vm, request, pending_response](ReadonlyBytes data, HTTP::HeaderMap const& response_headers, Optional<u32> status_code, Optional<String> const& reason_phrase) {
+        auto on_load_success = GC::create_function(vm.heap(), [&realm, &vm, request, pending_response](ReadonlyBytes data, HTTP::HeaderMap const& response_headers, Optional<u32> status_code, Optional<String> const& reason_phrase) {
             (void)request;
             dbgln_if(WEB_FETCH_DEBUG, "Fetch: ResourceLoader load for '{}' complete", request->url());
             if constexpr (WEB_FETCH_DEBUG)
@@ -2360,7 +2360,7 @@ WebIDL::ExceptionOr<GC::Ref<PendingResponse>> nonstandard_resource_loader_file_o
             pending_response->resolve(response);
         });
 
-        auto on_load_error = JS::create_heap_function(vm.heap(), [&realm, &vm, request, pending_response](ByteString const& error, Optional<u32> status_code, Optional<String> const& reason_phrase, ReadonlyBytes data, HTTP::HeaderMap const& response_headers) {
+        auto on_load_error = GC::create_function(vm.heap(), [&realm, &vm, request, pending_response](ByteString const& error, Optional<u32> status_code, Optional<String> const& reason_phrase, ReadonlyBytes data, HTTP::HeaderMap const& response_headers) {
             (void)request;
             dbgln_if(WEB_FETCH_DEBUG, "Fetch: ResourceLoader load for '{}' failed: {} (status {})", request->url(), error, status_code.value_or(0));
             if constexpr (WEB_FETCH_DEBUG)

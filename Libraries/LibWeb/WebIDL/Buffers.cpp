@@ -44,13 +44,13 @@ GC::Ptr<JS::ArrayBuffer> BufferableObjectBase::viewed_array_buffer()
 BufferableObject BufferableObjectBase::bufferable_object_from_raw_object(GC::Ref<JS::Object> object)
 {
     if (is<JS::TypedArrayBase>(*object))
-        return JS::NonnullGCPtr { static_cast<JS::TypedArrayBase&>(*object) };
+        return GC::Ref { static_cast<JS::TypedArrayBase&>(*object) };
 
     if (is<JS::DataView>(*object))
-        return JS::NonnullGCPtr { static_cast<JS::DataView&>(*object) };
+        return GC::Ref { static_cast<JS::DataView&>(*object) };
 
     if (is<JS::ArrayBuffer>(*object))
-        return JS::NonnullGCPtr { static_cast<JS::ArrayBuffer&>(*object) };
+        return GC::Ref { static_cast<JS::ArrayBuffer&>(*object) };
 
     VERIFY_NOT_REACHED();
 }

@@ -856,7 +856,7 @@ EventResult EventHandler::fire_keyboard_event(FlyString const& event_name, HTML:
     // FIXME: De-duplicate this. This is just to prevent wasting a KeyboardEvent allocation when recursing into an (i)frame.
     auto event = UIEvents::KeyboardEvent::create_from_platform_event(document->realm(), event_name, key, modifiers, code_point, repeat);
 
-    JS::GCPtr target = document->body() ?: &document->root();
+    GC::Ptr target = document->body() ?: &document->root();
     return target->dispatch_event(event) ? EventResult::Accepted : EventResult::Cancelled;
 }
 

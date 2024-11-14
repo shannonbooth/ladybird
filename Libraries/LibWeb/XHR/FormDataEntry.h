@@ -8,7 +8,7 @@
 
 #include <AK/String.h>
 #include <AK/Variant.h>
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/Handle.h>
 #include <LibWeb/Forward.h>
 
 namespace Web::XHR {

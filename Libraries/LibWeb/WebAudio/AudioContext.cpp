@@ -72,7 +72,7 @@ AudioContext::AudioContext(JS::Realm& realm, AudioContextOptions const& context_
         BaseAudioContext::set_rendering_state(Bindings::AudioContextState::Running);
 
         // 5.3: queue a media element task to execute the following steps:
-        queue_a_media_element_task(JS::create_heap_function(heap(), [&realm, this]() {
+        queue_a_media_element_task(GC::create_function(heap(), [&realm, this]() {
             // 5.3.1: Set the state attribute of the AudioContext to "running".
             BaseAudioContext::set_control_state(Bindings::AudioContextState::Running);
 
@@ -145,7 +145,7 @@ WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> AudioContext::resume()
     // 7.3: Start rendering the audio graph.
     if (!start_rendering_audio_graph()) {
         // 7.4: In case of failure, queue a media element task to execute the following steps:
-        queue_a_media_element_task(JS::create_heap_function(heap(), [&realm, this]() {
+        queue_a_media_element_task(GC::create_function(heap(), [&realm, this]() {
             HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
 
             // 7.4.1: Reject all promises from [[pending resume promises]] in order, then clear [[pending resume promises]].
@@ -162,7 +162,7 @@ WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> AudioContext::resume()
     }
 
     // 7.5: queue a media element task to execute the following steps:
-    queue_a_media_element_task(JS::create_heap_function(heap(), [&realm, promise, this]() {
+    queue_a_media_element_task(GC::create_function(heap(), [&realm, promise, this]() {
         HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
 
         // 7.5.1: Resolve all promises from [[pending resume promises]] in order.
@@ -185,7 +185,7 @@ WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> AudioContext::resume()
             set_control_state(Bindings::AudioContextState::Running);
 
             // 7.5.4.2: queue a media element task to fire an event named statechange at the AudioContext.
-            queue_a_media_element_task(JS::create_heap_function(heap(), [&realm, this]() {
+            queue_a_media_element_task(GC::create_function(heap(), [&realm, this]() {
                 this->dispatch_event(DOM::Event::create(realm, HTML::EventNames::statechange));
             }));
         }
@@ -232,7 +232,7 @@ WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> AudioContext::suspend()
     set_rendering_state(Bindings::AudioContextState::Suspended);
 
     // 7.3: queue a media element task to execute the following steps:
-    queue_a_media_element_task(JS::create_heap_function(heap(), [&realm, promise, this]() {
+    queue_a_media_element_task(GC::create_function(heap(), [&realm, promise, this]() {
         HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
 
         // 7.3.1: Resolve promise.
@@ -244,7 +244,7 @@ WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> AudioContext::suspend()
             set_control_state(Bindings::AudioContextState::Suspended);
 
             // 7.3.2.2: queue a media element task to fire an event named statechange at the AudioContext.
-            queue_a_media_element_task(JS::create_heap_function(heap(), [&realm, this]() {
+            queue_a_media_element_task(GC::create_function(heap(), [&realm, this]() {
                 this->dispatch_event(DOM::Event::create(realm, HTML::EventNames::statechange));
             }));
         }
@@ -287,7 +287,7 @@ WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> AudioContext::close()
     // FIXME: 5.3: If this control message is being run in a reaction to the document being unloaded, abort this algorithm.
 
     // 5.4: queue a media element task to execute the following steps:
-    queue_a_media_element_task(JS::create_heap_function(heap(), [&realm, promise, this]() {
+    queue_a_media_element_task(GC::create_function(heap(), [&realm, promise, this]() {
         HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
 
         // 5.4.1: Resolve promise.

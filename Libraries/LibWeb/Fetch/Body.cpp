@@ -186,8 +186,8 @@ WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> consume_body(JS::Realm& realm, Bod
     auto promise = WebIDL::create_promise(realm);
 
     // 3. Let errorSteps given error be to reject promise with error.
-    // NOTE: `promise` and `realm` is protected by JS::HeapFunction.
-    auto error_steps = JS::create_heap_function(realm.heap(), [promise, &realm](JS::Value error) {
+    // NOTE: `promise` and `realm` is protected by GC::HeapFunction.
+    auto error_steps = GC::create_function(realm.heap(), [promise, &realm](JS::Value error) {
         // AD-HOC: An execution context is required for Promise's reject function.
         HTML::TemporaryExecutionContext execution_context { realm };
         WebIDL::reject_promise(realm, promise, error);
@@ -195,9 +195,9 @@ WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> consume_body(JS::Realm& realm, Bod
 
     // 4. Let successSteps given a byte sequence data be to resolve promise with the result of running convertBytesToJSValue
     //    with data. If that threw an exception, then run errorSteps with that exception.
-    // NOTE: `promise`, `realm` and `object` is protected by JS::HeapFunction.
+    // NOTE: `promise`, `realm` and `object` is protected by GC::HeapFunction.
     // FIXME: Refactor this to the new version of the spec introduced with https://github.com/whatwg/fetch/commit/464326e8eb6a602122c030cd40042480a3c0e265
-    auto success_steps = JS::create_heap_function(realm.heap(), [promise, &realm, &object, type](ByteBuffer data) {
+    auto success_steps = GC::create_function(realm.heap(), [promise, &realm, &object, type](ByteBuffer data) {
         auto& vm = realm.vm();
 
         // AD-HOC: An execution context is required for Promise's reject function and JSON.parse.
@@ -224,7 +224,7 @@ WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> consume_body(JS::Realm& realm, Bod
     }
     // 6. Otherwise, fully read object’s body given successSteps, errorSteps, and object’s relevant global object.
     else {
-        body->fully_read(realm, success_steps, error_steps, JS::NonnullGCPtr { HTML::relevant_global_object(object.as_platform_object()) });
+        body->fully_read(realm, success_steps, error_steps, GC::Ref { HTML::relevant_global_object(object.as_platform_object()) });
     }
 
     // 7. Return promise.

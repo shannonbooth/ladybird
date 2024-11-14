@@ -87,12 +87,12 @@ void SharedResourceRequest::fetch_resource(JS::Realm& realm, GC::Ref<Fetch::Infr
         //        https://github.com/whatwg/html/issues/9355
         response = response->unsafe_response();
 
-        auto process_body = JS::create_heap_function(heap(), [this, request, response](ByteBuffer data) {
+        auto process_body = GC::create_function(heap(), [this, request, response](ByteBuffer data) {
             auto extracted_mime_type = response->header_list()->extract_mime_type();
             auto mime_type = extracted_mime_type.has_value() ? extracted_mime_type.value().essence().bytes_as_string_view() : StringView {};
             handle_successful_fetch(request->url(), mime_type, move(data));
         });
-        auto process_body_error = JS::create_heap_function(heap(), [this](JS::Value) {
+        auto process_body_error = GC::create_function(heap(), [this](JS::Value) {
             handle_failed_fetch();
         });
 
@@ -102,7 +102,7 @@ void SharedResourceRequest::fetch_resource(JS::Realm& realm, GC::Ref<Fetch::Infr
             return;
         }
 
-        response->body()->fully_read(realm, process_body, process_body_error, JS::NonnullGCPtr { realm.global_object() });
+        response->body()->fully_read(realm, process_body, process_body_error, GC::Ref { realm.global_object() });
     };
 
     m_state = State::Fetching;
@@ -132,9 +132,9 @@ void SharedResourceRequest::add_callbacks(Function<void()> on_finish, Function<v
 
     Callbacks callbacks;
     if (on_finish)
-        callbacks.on_finish = JS::create_heap_function(vm().heap(), move(on_finish));
+        callbacks.on_finish = GC::create_function(vm().heap(), move(on_finish));
     if (on_fail)
-        callbacks.on_fail = JS::create_heap_function(vm().heap(), move(on_fail));
+        callbacks.on_fail = GC::create_function(vm().heap(), move(on_fail));
 
     m_callbacks.append(move(callbacks));
 }
@@ -157,7 +157,7 @@ void SharedResourceRequest::handle_successful_fetch(URL::URL const& url_string, 
         return;
     }
 
-    auto handle_successful_bitmap_decode = [strong_this = JS::Handle(*this)](Web::Platform::DecodedImage& result) -> ErrorOr<void> {
+    auto handle_successful_bitmap_decode = [strong_this = GC::Handle(*this)](Web::Platform::DecodedImage& result) -> ErrorOr<void> {
         Vector<AnimatedBitmapDecodedImageData::Frame> frames;
         for (auto& frame : result.frames) {
             frames.append(AnimatedBitmapDecodedImageData::Frame {
@@ -170,7 +170,7 @@ void SharedResourceRequest::handle_successful_fetch(URL::URL const& url_string, 
         return {};
     };
 
-    auto handle_failed_decode = [strong_this = JS::Handle(*this)](Error&) -> void {
+    auto handle_failed_decode = [strong_this = GC::Handle(*this)](Error&) -> void {
         strong_this->handle_failed_fetch();
     };
 
