@@ -15,8 +15,8 @@ namespace JS {
 
 // 16.2.1.6 Source Text Module Records, https://tc39.es/ecma262/#sec-source-text-module-records
 class SourceTextModule final : public CyclicModule {
-    JS_CELL(SourceTextModule, CyclicModule);
-    JS_DECLARE_ALLOCATOR(SourceTextModule);
+    GC_CELL(SourceTextModule, CyclicModule);
+    GC_DECLARE_ALLOCATOR(SourceTextModule);
 
 public:
     virtual ~SourceTextModule() override;

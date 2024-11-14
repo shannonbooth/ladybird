@@ -14,8 +14,8 @@
 namespace JS {
 
 class Accessor final : public Cell {
-    JS_CELL(Accessor, Cell);
-    JS_DECLARE_ALLOCATOR(Accessor);
+    GC_CELL(Accessor, Cell);
+    GC_DECLARE_ALLOCATOR(Accessor);
 
 public:
     static NonnullGCPtr<Accessor> create(VM& vm, FunctionObject* getter, FunctionObject* setter)

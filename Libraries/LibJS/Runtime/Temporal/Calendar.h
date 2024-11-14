@@ -19,7 +19,7 @@ namespace JS::Temporal {
 
 class Calendar final : public Object {
     JS_OBJECT(Calendar, Object);
-    JS_DECLARE_ALLOCATOR(Calendar);
+    GC_DECLARE_ALLOCATOR(Calendar);
 
 public:
     virtual ~Calendar() override = default;

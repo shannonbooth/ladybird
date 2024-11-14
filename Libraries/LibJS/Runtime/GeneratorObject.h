@@ -14,7 +14,7 @@ namespace JS {
 
 class GeneratorObject : public Object {
     JS_OBJECT(GeneratorObject, Object);
-    JS_DECLARE_ALLOCATOR(GeneratorObject);
+    GC_DECLARE_ALLOCATOR(GeneratorObject);
 
 public:
     static ThrowCompletionOr<NonnullGCPtr<GeneratorObject>> create(Realm&, Value, ECMAScriptFunctionObject*, NonnullOwnPtr<ExecutionContext>);

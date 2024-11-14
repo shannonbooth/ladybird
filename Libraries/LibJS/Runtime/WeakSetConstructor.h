@@ -12,7 +12,7 @@ namespace JS {
 
 class WeakSetConstructor final : public NativeFunction {
     JS_OBJECT(WeakSetConstructor, NativeFunction);
-    JS_DECLARE_ALLOCATOR(WeakSetConstructor);
+    GC_DECLARE_ALLOCATOR(WeakSetConstructor);
 
 public:
     virtual void initialize(Realm&) override;

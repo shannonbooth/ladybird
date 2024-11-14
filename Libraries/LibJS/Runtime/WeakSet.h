@@ -7,7 +7,7 @@
 #pragma once
 
 #include <AK/HashTable.h>
-#include <LibJS/Heap/WeakContainer.h>
+#include <LibGC/WeakContainer.h>
 #include <LibJS/Runtime/GlobalObject.h>
 #include <LibJS/Runtime/Object.h>
 
@@ -17,7 +17,7 @@ class WeakSet final
     : public Object
     , public WeakContainer {
     JS_OBJECT(WeakSet, Object);
-    JS_DECLARE_ALLOCATOR(WeakSet);
+    GC_DECLARE_ALLOCATOR(WeakSet);
 
 public:
     static NonnullGCPtr<WeakSet> create(Realm&);

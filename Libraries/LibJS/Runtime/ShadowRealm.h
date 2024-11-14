@@ -15,7 +15,7 @@ namespace JS {
 
 class ShadowRealm final : public Object {
     JS_OBJECT(ShadowRealm, Object);
-    JS_DECLARE_ALLOCATOR(ShadowRealm);
+    GC_DECLARE_ALLOCATOR(ShadowRealm);
 
 public:
     virtual ~ShadowRealm() override = default;

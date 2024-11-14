@@ -10,7 +10,7 @@
 #include <AK/Optional.h>
 #include <AK/String.h>
 #include <AK/Vector.h>
-#include <LibJS/Heap/GCPtr.h>
+#include <LibGC/Ptr.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/Object.h>
 #include <LibJS/Runtime/Value.h>
@@ -20,7 +20,7 @@ namespace JS::Intl {
 
 class Locale final : public Object {
     JS_OBJECT(Locale, Object);
-    JS_DECLARE_ALLOCATOR(Locale);
+    GC_DECLARE_ALLOCATOR(Locale);
 
 public:
     static NonnullGCPtr<Locale> create(Realm&, NonnullGCPtr<Locale> source_locale, String);

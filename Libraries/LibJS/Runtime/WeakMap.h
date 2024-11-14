@@ -7,7 +7,7 @@
 #pragma once
 
 #include <AK/HashMap.h>
-#include <LibJS/Heap/WeakContainer.h>
+#include <LibGC/WeakContainer.h>
 #include <LibJS/Runtime/GlobalObject.h>
 #include <LibJS/Runtime/Object.h>
 
@@ -17,7 +17,7 @@ class WeakMap final
     : public Object
     , public WeakContainer {
     JS_OBJECT(WeakMap, Object);
-    JS_DECLARE_ALLOCATOR(WeakMap);
+    GC_DECLARE_ALLOCATOR(WeakMap);
 
 public:
     static NonnullGCPtr<WeakMap> create(Realm&);

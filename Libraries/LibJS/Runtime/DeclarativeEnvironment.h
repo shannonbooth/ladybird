@@ -17,7 +17,7 @@ namespace JS {
 
 class DeclarativeEnvironment : public Environment {
     JS_ENVIRONMENT(DeclarativeEnvironment, Environment);
-    JS_DECLARE_ALLOCATOR(DeclarativeEnvironment);
+    GC_DECLARE_ALLOCATOR(DeclarativeEnvironment);
 
     struct Binding {
         DeprecatedFlyString name;

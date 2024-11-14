@@ -12,7 +12,7 @@ namespace JS::Intl {
 
 class CollatorCompareFunction : public NativeFunction {
     JS_OBJECT(CollatorCompareFunction, NativeFunction);
-    JS_DECLARE_ALLOCATOR(CollatorCompareFunction);
+    GC_DECLARE_ALLOCATOR(CollatorCompareFunction);
 
 public:
     static NonnullGCPtr<CollatorCompareFunction> create(Realm&, Collator&);

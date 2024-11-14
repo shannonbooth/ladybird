@@ -12,7 +12,7 @@ namespace JS {
 
 class NumberObject : public Object {
     JS_OBJECT(NumberObject, Object);
-    JS_DECLARE_ALLOCATOR(NumberObject);
+    GC_DECLARE_ALLOCATOR(NumberObject);
 
 public:
     static NonnullGCPtr<NumberObject> create(Realm&, double);

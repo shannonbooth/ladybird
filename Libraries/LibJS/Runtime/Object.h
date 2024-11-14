@@ -10,10 +10,10 @@
 #include <AK/Badge.h>
 #include <AK/HashMap.h>
 #include <AK/StringView.h>
+#include <LibGC/CellAllocator.h>
+#include <LibGC/MarkedVector.h>
 #include <LibJS/Forward.h>
 #include <LibJS/Heap/Cell.h>
-#include <LibJS/Heap/CellAllocator.h>
-#include <LibJS/Heap/MarkedVector.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/IndexedProperties.h>
 #include <LibJS/Runtime/PrimitiveString.h>
@@ -25,7 +25,7 @@
 
 namespace JS {
 
-#define JS_OBJECT(class_, base_class) JS_CELL(class_, base_class)
+#define JS_OBJECT(class_, base_class) GC_CELL(class_, base_class)
 
 struct PrivateElement {
     enum class Kind {
@@ -53,8 +53,8 @@ struct CacheablePropertyMetadata {
 };
 
 class Object : public Cell {
-    JS_CELL(Object, Cell);
-    JS_DECLARE_ALLOCATOR(Object);
+    GC_CELL(Object, Cell);
+    GC_DECLARE_ALLOCATOR(Object);
 
 public:
     static NonnullGCPtr<Object> create_prototype(Realm&, Object* prototype);

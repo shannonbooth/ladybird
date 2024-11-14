@@ -17,7 +17,7 @@ namespace JS::Intl {
 
 class Collator final : public Object {
     JS_OBJECT(Collator, Object);
-    JS_DECLARE_ALLOCATOR(Collator);
+    GC_DECLARE_ALLOCATOR(Collator);
 
 public:
     static constexpr auto relevant_extension_keys()

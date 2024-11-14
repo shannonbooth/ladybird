@@ -12,7 +12,7 @@ namespace JS {
 
 class BigIntConstructor final : public NativeFunction {
     JS_OBJECT(BigIntConstructor, NativeFunction);
-    JS_DECLARE_ALLOCATOR(BigIntConstructor);
+    GC_DECLARE_ALLOCATOR(BigIntConstructor);
 
 public:
     virtual void initialize(Realm&) override;

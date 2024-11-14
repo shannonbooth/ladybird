@@ -29,7 +29,7 @@ enum CompactTraceback {
 
 class Error : public Object {
     JS_OBJECT(Error, Object);
-    JS_DECLARE_ALLOCATOR(Error);
+    GC_DECLARE_ALLOCATOR(Error);
 
 public:
     static NonnullGCPtr<Error> create(Realm&);
@@ -58,7 +58,7 @@ private:
 #define DECLARE_NATIVE_ERROR(ClassName, snake_name, PrototypeName, ConstructorName) \
     class ClassName final : public Error {                                          \
         JS_OBJECT(ClassName, Error);                                                \
-        JS_DECLARE_ALLOCATOR(ClassName);                                            \
+        GC_DECLARE_ALLOCATOR(ClassName);                                            \
                                                                                     \
     public:                                                                         \
         static NonnullGCPtr<ClassName> create(Realm&);                              \

@@ -13,9 +13,9 @@
 #include <AK/String.h>
 #include <AK/Vector.h>
 #include <LibCore/ElapsedTimer.h>
+#include <LibGC/CellAllocator.h>
 #include <LibJS/Forward.h>
 #include <LibJS/Heap/Cell.h>
-#include <LibJS/Heap/CellAllocator.h>
 #include <LibJS/Runtime/Value.h>
 
 namespace JS {
@@ -24,8 +24,8 @@ class ConsoleClient;
 
 // https://console.spec.whatwg.org
 class Console : public Cell {
-    JS_CELL(Console, Cell);
-    JS_DECLARE_ALLOCATOR(Console);
+    GC_CELL(Console, Cell);
+    GC_DECLARE_ALLOCATOR(Console);
 
 public:
     virtual ~Console() override;
@@ -107,8 +107,8 @@ private:
 };
 
 class ConsoleClient : public Cell {
-    JS_CELL(ConsoleClient, Cell);
-    JS_DECLARE_ALLOCATOR(ConsoleClient);
+    GC_CELL(ConsoleClient, Cell);
+    GC_DECLARE_ALLOCATOR(ConsoleClient);
 
 public:
     using PrinterArguments = Variant<Console::Group, Console::Trace, MarkedVector<Value>>;

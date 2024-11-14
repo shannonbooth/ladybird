@@ -13,7 +13,7 @@ namespace JS {
 
 class BigIntObject final : public Object {
     JS_OBJECT(BigIntObject, Object);
-    JS_DECLARE_ALLOCATOR(BigIntObject);
+    GC_DECLARE_ALLOCATOR(BigIntObject);
 
 public:
     static NonnullGCPtr<BigIntObject> create(Realm&, BigInt&);

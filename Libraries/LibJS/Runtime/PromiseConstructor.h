@@ -12,7 +12,7 @@ namespace JS {
 
 class PromiseConstructor final : public NativeFunction {
     JS_OBJECT(PromiseConstructor, NativeFunction);
-    JS_DECLARE_ALLOCATOR(PromiseConstructor);
+    GC_DECLARE_ALLOCATOR(PromiseConstructor);
 
 public:
     virtual void initialize(Realm&) override;

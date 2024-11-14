@@ -15,6 +15,7 @@
 #include <AK/RefPtr.h>
 #include <AK/Variant.h>
 #include <AK/Vector.h>
+#include <LibGC/Handle.h>
 #include <LibJS/Bytecode/CodeGenerationError.h>
 #include <LibJS/Bytecode/Executable.h>
 #include <LibJS/Bytecode/IdentifierTable.h>
@@ -22,7 +23,6 @@
 #include <LibJS/Bytecode/Operand.h>
 #include <LibJS/Bytecode/ScopedOperand.h>
 #include <LibJS/Forward.h>
-#include <LibJS/Heap/Handle.h>
 #include <LibJS/Runtime/ClassFieldDefinition.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/EnvironmentCoordinate.h>

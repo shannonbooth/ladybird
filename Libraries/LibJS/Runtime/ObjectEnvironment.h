@@ -12,7 +12,7 @@ namespace JS {
 
 class ObjectEnvironment final : public Environment {
     JS_ENVIRONMENT(ObjectEnvironment, Environment);
-    JS_DECLARE_ALLOCATOR(ObjectEnvironment);
+    GC_DECLARE_ALLOCATOR(ObjectEnvironment);
 
 public:
     enum class IsWithEnvironment {

@@ -8,10 +8,10 @@
 
 #include <AK/Badge.h>
 #include <AK/String.h>
+#include <LibGC/Handle.h>
 #include <LibJS/Bytecode/Executable.h>
 #include <LibJS/Bytecode/ScopedOperand.h>
 #include <LibJS/Forward.h>
-#include <LibJS/Heap/Handle.h>
 
 namespace JS::Bytecode {
 

@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <LibJS/Heap/HeapFunction.h>
+#include <LibGC/Function.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/GeneratorObject.h>
 #include <LibJS/Runtime/Iterator.h>
@@ -16,7 +16,7 @@ namespace JS {
 
 class IteratorHelper final : public GeneratorObject {
     JS_OBJECT(IteratorHelper, GeneratorObject);
-    JS_DECLARE_ALLOCATOR(IteratorHelper);
+    GC_DECLARE_ALLOCATOR(IteratorHelper);
 
 public:
     using Closure = JS::HeapFunction<ThrowCompletionOr<Value>(VM&, IteratorHelper&)>;

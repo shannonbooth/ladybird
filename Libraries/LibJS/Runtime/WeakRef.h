@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <LibJS/Heap/WeakContainer.h>
+#include <LibGC/WeakContainer.h>
 #include <LibJS/Runtime/GlobalObject.h>
 #include <LibJS/Runtime/Object.h>
 
@@ -16,7 +16,7 @@ class WeakRef final
     : public Object
     , public WeakContainer {
     JS_OBJECT(WeakRef, Object);
-    JS_DECLARE_ALLOCATOR(WeakRef);
+    GC_DECLARE_ALLOCATOR(WeakRef);
 
 public:
     static NonnullGCPtr<WeakRef> create(Realm&, Object&);

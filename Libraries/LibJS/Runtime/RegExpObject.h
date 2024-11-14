@@ -27,7 +27,7 @@ ThrowCompletionOr<ByteString> parse_regex_pattern(VM& vm, StringView pattern, bo
 
 class RegExpObject : public Object {
     JS_OBJECT(RegExpObject, Object);
-    JS_DECLARE_ALLOCATOR(RegExpObject);
+    GC_DECLARE_ALLOCATOR(RegExpObject);
 
 public:
     // JS regexps are all 'global' by default as per our definition, but the "global" flag enables "stateful".

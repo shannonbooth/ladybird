@@ -292,8 +292,8 @@ JS_DEFINE_NATIVE_FUNCTION(IteratorPrototype::find)
 }
 
 class FlatMapIterator : public Cell {
-    JS_CELL(FlatMapIterator, Cell);
-    JS_DECLARE_ALLOCATOR(FlatMapIterator);
+    GC_CELL(FlatMapIterator, Cell);
+    GC_DECLARE_ALLOCATOR(FlatMapIterator);
 
 public:
     ThrowCompletionOr<Value> next(VM& vm, IteratorRecord& iterated, IteratorHelper& iterator, FunctionObject& mapper)

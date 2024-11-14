@@ -12,7 +12,7 @@ namespace JS::Temporal {
 
 class PlainDateConstructor final : public NativeFunction {
     JS_OBJECT(PlainDateConstructor, NativeFunction);
-    JS_DECLARE_ALLOCATOR(PlainDateConstructor);
+    GC_DECLARE_ALLOCATOR(PlainDateConstructor);
 
 public:
     virtual void initialize(Realm&) override;

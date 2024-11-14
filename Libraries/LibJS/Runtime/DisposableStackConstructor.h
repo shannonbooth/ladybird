@@ -12,7 +12,7 @@ namespace JS {
 
 class DisposableStackConstructor final : public NativeFunction {
     JS_OBJECT(DisposableStackConstructor, NativeFunction);
-    JS_DECLARE_ALLOCATOR(DisposableStackConstructor);
+    GC_DECLARE_ALLOCATOR(DisposableStackConstructor);
 
 public:
     virtual void initialize(Realm&) override;

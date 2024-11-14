@@ -9,8 +9,8 @@
 #include <AK/Concepts.h>
 #include <AK/Forward.h>
 #include <LibCrypto/Forward.h>
+#include <LibGC/MarkedVector.h>
 #include <LibJS/Forward.h>
-#include <LibJS/Heap/MarkedVector.h>
 #include <LibJS/Runtime/CanonicalIndex.h>
 #include <LibJS/Runtime/FunctionObject.h>
 #include <LibJS/Runtime/GlobalObject.h>

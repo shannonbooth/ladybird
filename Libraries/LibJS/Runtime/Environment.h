@@ -17,10 +17,10 @@ struct Variable {
     DeclarationKind declaration_kind;
 };
 
-#define JS_ENVIRONMENT(class_, base_class) JS_CELL(class_, base_class)
+#define JS_ENVIRONMENT(class_, base_class) GC_CELL(class_, base_class)
 
 class Environment : public Cell {
-    JS_CELL(Environment, Cell);
+    GC_CELL(Environment, Cell);
 
 public:
     enum class InitializeBindingHint {

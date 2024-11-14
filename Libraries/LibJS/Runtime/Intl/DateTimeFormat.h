@@ -20,7 +20,7 @@ namespace JS::Intl {
 
 class DateTimeFormat final : public Object {
     JS_OBJECT(DateTimeFormat, Object);
-    JS_DECLARE_ALLOCATOR(DateTimeFormat);
+    GC_DECLARE_ALLOCATOR(DateTimeFormat);
 
     using Patterns = Unicode::CalendarPattern;
 

@@ -15,7 +15,7 @@ namespace JS {
 
 class DataView : public Object {
     JS_OBJECT(DataView, Object);
-    JS_DECLARE_ALLOCATOR(DataView);
+    GC_DECLARE_ALLOCATOR(DataView);
 
 public:
     static NonnullGCPtr<DataView> create(Realm&, ArrayBuffer*, ByteLength byte_length, size_t byte_offset);

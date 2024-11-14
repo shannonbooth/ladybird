@@ -14,7 +14,7 @@ namespace JS {
 
 class ArgumentsObject final : public Object {
     JS_OBJECT(ArgumentsObject, Object);
-    JS_DECLARE_ALLOCATOR(ArgumentsObject);
+    GC_DECLARE_ALLOCATOR(ArgumentsObject);
 
 public:
     virtual void initialize(Realm&) override;

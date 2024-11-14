@@ -13,7 +13,7 @@ namespace JS {
 
 class FunctionEnvironment final : public DeclarativeEnvironment {
     JS_ENVIRONMENT(FunctionEnvironment, DeclarativeEnvironment);
-    JS_DECLARE_ALLOCATOR(FunctionEnvironment);
+    GC_DECLARE_ALLOCATOR(FunctionEnvironment);
 
 public:
     enum class ThisBindingStatus : u8 {

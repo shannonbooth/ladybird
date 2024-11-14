@@ -24,8 +24,8 @@ enum class ModuleStatus {
 
 // 16.2.1.5 Cyclic Module Records, https://tc39.es/ecma262/#cyclic-module-record
 class CyclicModule : public Module {
-    JS_CELL(CyclicModule, Module);
-    JS_DECLARE_ALLOCATOR(CyclicModule);
+    GC_CELL(CyclicModule, Module);
+    GC_DECLARE_ALLOCATOR(CyclicModule);
 
 public:
     virtual ~CyclicModule() override;

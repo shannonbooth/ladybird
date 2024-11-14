@@ -7,7 +7,7 @@
 #pragma once
 
 #include <AK/OwnPtr.h>
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/Handle.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/FunctionObject.h>
 #include <LibJS/Runtime/VM.h>
@@ -16,8 +16,8 @@ namespace JS {
 
 // 9.5.1 JobCallback Records, https://tc39.es/ecma262/#sec-jobcallback-records
 class JobCallback : public JS::Cell {
-    JS_CELL(JobCallback, JS::Cell);
-    JS_DECLARE_ALLOCATOR(JobCallback);
+    GC_CELL(JobCallback, JS::Cell);
+    GC_DECLARE_ALLOCATOR(JobCallback);
 
 public:
     struct CustomData {

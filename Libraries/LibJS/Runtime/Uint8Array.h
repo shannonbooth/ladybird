@@ -9,8 +9,8 @@
 #include <AK/ByteBuffer.h>
 #include <AK/Optional.h>
 #include <AK/StringView.h>
+#include <LibGC/Ptr.h>
 #include <LibJS/Forward.h>
-#include <LibJS/Heap/GCPtr.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/Value.h>
 

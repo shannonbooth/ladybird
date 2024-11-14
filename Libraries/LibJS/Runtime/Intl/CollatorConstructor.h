@@ -12,7 +12,7 @@ namespace JS::Intl {
 
 class CollatorConstructor final : public NativeFunction {
     JS_OBJECT(CollatorConstructor, NativeFunction);
-    JS_DECLARE_ALLOCATOR(CollatorConstructor);
+    GC_DECLARE_ALLOCATOR(CollatorConstructor);
 
 public:
     virtual void initialize(Realm&) override;

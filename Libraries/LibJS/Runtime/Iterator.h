@@ -19,7 +19,7 @@ namespace JS {
 // 7.4.1 Iterator Records, https://tc39.es/ecma262/#sec-iterator-records
 class IteratorRecord final : public Object {
     JS_OBJECT(IteratorRecord, Object);
-    JS_DECLARE_ALLOCATOR(IteratorRecord);
+    GC_DECLARE_ALLOCATOR(IteratorRecord);
 
 public:
     IteratorRecord(Realm& realm, GCPtr<Object> iterator, Value next_method, bool done)
@@ -44,7 +44,7 @@ inline bool Object::fast_is<IteratorRecord>() const { return is_iterator_record(
 
 class Iterator : public Object {
     JS_OBJECT(Iterator, Object);
-    JS_DECLARE_ALLOCATOR(Iterator);
+    GC_DECLARE_ALLOCATOR(Iterator);
 
 public:
     static NonnullGCPtr<Iterator> create(Realm&, Object& prototype, NonnullGCPtr<IteratorRecord> iterated);

@@ -18,7 +18,7 @@ namespace JS::Temporal {
 
 class Instant final : public Object {
     JS_OBJECT(Instant, Object);
-    JS_DECLARE_ALLOCATOR(Instant);
+    GC_DECLARE_ALLOCATOR(Instant);
 
 public:
     virtual ~Instant() override = default;

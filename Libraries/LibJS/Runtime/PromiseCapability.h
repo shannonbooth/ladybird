@@ -14,8 +14,8 @@ namespace JS {
 
 // 27.2.1.1 PromiseCapability Records, https://tc39.es/ecma262/#sec-promisecapability-records
 class PromiseCapability final : public Cell {
-    JS_CELL(PromiseCapability, Cell);
-    JS_DECLARE_ALLOCATOR(PromiseCapability);
+    GC_CELL(PromiseCapability, Cell);
+    GC_DECLARE_ALLOCATOR(PromiseCapability);
 
 public:
     static NonnullGCPtr<PromiseCapability> create(VM& vm, NonnullGCPtr<Object> promise, NonnullGCPtr<FunctionObject> resolve, NonnullGCPtr<FunctionObject> reject);

@@ -15,9 +15,9 @@
 #include <AK/RefCounted.h>
 #include <AK/StackInfo.h>
 #include <AK/Variant.h>
+#include <LibGC/Heap.h>
+#include <LibGC/MarkedVector.h>
 #include <LibJS/CyclicModule.h>
-#include <LibJS/Heap/Heap.h>
-#include <LibJS/Heap/MarkedVector.h>
 #include <LibJS/ModuleLoading.h>
 #include <LibJS/Runtime/CommonPropertyNames.h>
 #include <LibJS/Runtime/Completion.h>

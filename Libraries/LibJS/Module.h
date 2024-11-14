@@ -8,7 +8,7 @@
 #pragma once
 
 #include <AK/DeprecatedFlyString.h>
-#include <LibJS/Heap/GCPtr.h>
+#include <LibGC/Ptr.h>
 #include <LibJS/ModuleLoading.h>
 #include <LibJS/Runtime/Environment.h>
 #include <LibJS/Runtime/Realm.h>
@@ -58,12 +58,12 @@ struct ResolvedBinding {
 
 // https://tc39.es/ecma262/#graphloadingstate-record
 struct GraphLoadingState : public Cell {
-    JS_CELL(GraphLoadingState, Cell);
-    JS_DECLARE_ALLOCATOR(GraphLoadingState);
+    GC_CELL(GraphLoadingState, Cell);
+    GC_DECLARE_ALLOCATOR(GraphLoadingState);
 
 public:
     struct HostDefined : Cell {
-        JS_CELL(HostDefined, Cell);
+        GC_CELL(HostDefined, Cell);
 
     public:
         virtual ~HostDefined() = default;
@@ -89,8 +89,8 @@ private:
 
 // 16.2.1.4 Abstract Module Records, https://tc39.es/ecma262/#sec-abstract-module-records
 class Module : public Cell {
-    JS_CELL(Module, Cell);
-    JS_DECLARE_ALLOCATOR(Module);
+    GC_CELL(Module, Cell);
+    GC_DECLARE_ALLOCATOR(Module);
 
 public:
     virtual ~Module() override;

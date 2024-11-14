@@ -11,10 +11,10 @@
 #include <AK/OwnPtr.h>
 #include <AK/StringView.h>
 #include <AK/Weakable.h>
+#include <LibGC/CellAllocator.h>
+#include <LibGC/Heap.h>
 #include <LibJS/Bytecode/Builtins.h>
 #include <LibJS/Heap/Cell.h>
-#include <LibJS/Heap/CellAllocator.h>
-#include <LibJS/Heap/Heap.h>
 #include <LibJS/Runtime/Intrinsics.h>
 #include <LibJS/Runtime/Value.h>
 
@@ -22,8 +22,8 @@ namespace JS {
 
 // 9.3 Realms, https://tc39.es/ecma262/#realm-record
 class Realm final : public Cell {
-    JS_CELL(Realm, Cell);
-    JS_DECLARE_ALLOCATOR(Realm);
+    GC_CELL(Realm, Cell);
+    GC_DECLARE_ALLOCATOR(Realm);
 
 public:
     struct HostDefined {

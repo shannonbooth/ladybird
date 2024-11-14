@@ -9,7 +9,7 @@
 
 #include <AK/Badge.h>
 #include <AK/Optional.h>
-#include <LibJS/Heap/HeapFunction.h>
+#include <LibGC/Function.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/FunctionObject.h>
 #include <LibJS/Runtime/PropertyKey.h>
@@ -18,7 +18,7 @@ namespace JS {
 
 class NativeFunction : public FunctionObject {
     JS_OBJECT(NativeFunction, FunctionObject);
-    JS_DECLARE_ALLOCATOR(NativeFunction);
+    GC_DECLARE_ALLOCATOR(NativeFunction);
 
 public:
     static NonnullGCPtr<NativeFunction> create(Realm&, ESCAPING Function<ThrowCompletionOr<Value>(VM&)> behaviour, i32 length, PropertyKey const& name, Optional<Realm*> = {}, Optional<Object*> prototype = {}, Optional<StringView> const& prefix = {});

@@ -15,8 +15,8 @@ namespace JS {
 
 // 27.2.1.2 PromiseReaction Records, https://tc39.es/ecma262/#sec-promisereaction-records
 class PromiseReaction final : public Cell {
-    JS_CELL(PromiseReaction, Cell);
-    JS_DECLARE_ALLOCATOR(PromiseReaction);
+    GC_CELL(PromiseReaction, Cell);
+    GC_DECLARE_ALLOCATOR(PromiseReaction);
 
 public:
     enum class Type {

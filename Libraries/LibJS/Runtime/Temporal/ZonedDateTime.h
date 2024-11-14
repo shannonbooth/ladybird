@@ -14,7 +14,7 @@ namespace JS::Temporal {
 
 class ZonedDateTime final : public Object {
     JS_OBJECT(ZonedDateTime, Object);
-    JS_DECLARE_ALLOCATOR(ZonedDateTime);
+    GC_DECLARE_ALLOCATOR(ZonedDateTime);
 
 public:
     virtual ~ZonedDateTime() override = default;

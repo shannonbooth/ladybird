@@ -15,7 +15,7 @@ ThrowCompletionOr<Object*> promise_resolve(VM&, Object& constructor, Value);
 
 class Promise : public Object {
     JS_OBJECT(Promise, Object);
-    JS_DECLARE_ALLOCATOR(Promise);
+    GC_DECLARE_ALLOCATOR(Promise);
 
 public:
     enum class State {

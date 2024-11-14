@@ -17,7 +17,7 @@ namespace JS {
 
 class Map : public Object {
     JS_OBJECT(Map, Object);
-    JS_DECLARE_ALLOCATOR(Map);
+    GC_DECLARE_ALLOCATOR(Map);
 
 public:
     static NonnullGCPtr<Map> create(Realm&);

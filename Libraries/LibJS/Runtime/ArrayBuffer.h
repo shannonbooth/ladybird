@@ -56,7 +56,7 @@ struct DataBlock {
 
 class ArrayBuffer : public Object {
     JS_OBJECT(ArrayBuffer, Object);
-    JS_DECLARE_ALLOCATOR(ArrayBuffer);
+    GC_DECLARE_ALLOCATOR(ArrayBuffer);
 
 public:
     static ThrowCompletionOr<NonnullGCPtr<ArrayBuffer>> create(Realm&, size_t);

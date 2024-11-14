@@ -7,8 +7,8 @@
 #pragma once
 
 #include <AK/NonnullRefPtr.h>
-#include <LibJS/Heap/GCPtr.h>
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/Handle.h>
+#include <LibGC/Ptr.h>
 #include <LibJS/ParserError.h>
 #include <LibJS/Runtime/Realm.h>
 
@@ -16,8 +16,8 @@ namespace JS {
 
 // 16.1.4 Script Records, https://tc39.es/ecma262/#sec-script-records
 class Script final : public Cell {
-    JS_CELL(Script, Cell);
-    JS_DECLARE_ALLOCATOR(Script);
+    GC_CELL(Script, Cell);
+    GC_DECLARE_ALLOCATOR(Script);
 
 public:
     struct HostDefined {

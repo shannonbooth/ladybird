@@ -20,7 +20,7 @@ namespace JS::Intl {
 
 class RelativeTimeFormat final : public Object {
     JS_OBJECT(RelativeTimeFormat, Object);
-    JS_DECLARE_ALLOCATOR(RelativeTimeFormat);
+    GC_DECLARE_ALLOCATOR(RelativeTimeFormat);
 
 public:
     static constexpr auto relevant_extension_keys()

@@ -35,8 +35,8 @@ void PromiseCapability::visit_edges(Cell::Visitor& visitor)
 
 namespace {
 struct ResolvingFunctions final : public Cell {
-    JS_CELL(ResolvingFunctions, Cell);
-    JS_DECLARE_ALLOCATOR(ResolvingFunctions);
+    GC_CELL(ResolvingFunctions, Cell);
+    GC_DECLARE_ALLOCATOR(ResolvingFunctions);
 
     Value resolve { js_undefined() };
     Value reject { js_undefined() };

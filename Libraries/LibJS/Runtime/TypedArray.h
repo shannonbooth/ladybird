@@ -503,7 +503,7 @@ ThrowCompletionOr<double> compare_typed_array_elements(VM&, Value x, Value y, Fu
 #define JS_DECLARE_TYPED_ARRAY(ClassName, snake_name, PrototypeName, ConstructorName, Type)                       \
     class ClassName : public TypedArray<Type> {                                                                   \
         JS_OBJECT(ClassName, TypedArray);                                                                         \
-        JS_DECLARE_ALLOCATOR(ClassName);                                                                          \
+        GC_DECLARE_ALLOCATOR(ClassName);                                                                          \
                                                                                                                   \
     public:                                                                                                       \
         virtual ~ClassName();                                                                                     \
@@ -517,7 +517,7 @@ ThrowCompletionOr<double> compare_typed_array_elements(VM&, Value x, Value y, Fu
     };                                                                                                            \
     class PrototypeName final : public Object {                                                                   \
         JS_OBJECT(PrototypeName, Object);                                                                         \
-        JS_DECLARE_ALLOCATOR(PrototypeName);                                                                      \
+        GC_DECLARE_ALLOCATOR(PrototypeName);                                                                      \
                                                                                                                   \
     public:                                                                                                       \
         virtual void initialize(Realm&) override;                                                                 \
@@ -528,7 +528,7 @@ ThrowCompletionOr<double> compare_typed_array_elements(VM&, Value x, Value y, Fu
     };                                                                                                            \
     class ConstructorName final : public NativeFunction {                                                         \
         JS_OBJECT(ConstructorName, NativeFunction);                                                               \
-        JS_DECLARE_ALLOCATOR(ConstructorName);                                                                    \
+        GC_DECLARE_ALLOCATOR(ConstructorName);                                                                    \
                                                                                                                   \
     public:                                                                                                       \
         virtual void initialize(Realm&) override;                                                                 \

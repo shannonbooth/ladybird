@@ -35,8 +35,8 @@ struct TransitionKey {
 };
 
 class PrototypeChainValidity final : public Cell {
-    JS_CELL(PrototypeChainValidity, Cell);
-    JS_DECLARE_ALLOCATOR(PrototypeChainValidity);
+    GC_CELL(PrototypeChainValidity, Cell);
+    GC_DECLARE_ALLOCATOR(PrototypeChainValidity);
 
 public:
     [[nodiscard]] bool is_valid() const { return m_valid; }
@@ -48,8 +48,8 @@ private:
 };
 
 class Shape final : public Cell {
-    JS_CELL(Shape, Cell);
-    JS_DECLARE_ALLOCATOR(Shape);
+    GC_CELL(Shape, Cell);
+    GC_DECLARE_ALLOCATOR(Shape);
 
 public:
     virtual ~Shape() override;

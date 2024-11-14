@@ -7,8 +7,8 @@
 #pragma once
 
 #include <AK/Forward.h>
+#include <LibGC/Handle.h>
 #include <LibJS/Forward.h>
-#include <LibJS/Heap/Handle.h>
 #include <LibJS/Runtime/Environment.h>
 
 namespace JS {

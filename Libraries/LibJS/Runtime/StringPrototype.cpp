@@ -9,7 +9,7 @@
 #include <AK/Function.h>
 #include <AK/StringBuilder.h>
 #include <AK/Utf16View.h>
-#include <LibJS/Heap/Heap.h>
+#include <LibGC/Heap.h>
 #include <LibJS/Runtime/AbstractOperations.h>
 #include <LibJS/Runtime/Array.h>
 #include <LibJS/Runtime/Completion.h>

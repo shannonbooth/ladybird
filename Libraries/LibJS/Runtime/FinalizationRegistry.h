@@ -7,8 +7,8 @@
 #pragma once
 
 #include <AK/SinglyLinkedList.h>
-#include <LibJS/Heap/GCPtr.h>
-#include <LibJS/Heap/WeakContainer.h>
+#include <LibGC/Ptr.h>
+#include <LibGC/WeakContainer.h>
 #include <LibJS/Runtime/FunctionObject.h>
 #include <LibJS/Runtime/GlobalObject.h>
 #include <LibJS/Runtime/JobCallback.h>
@@ -21,7 +21,7 @@ class FinalizationRegistry final
     : public Object
     , public WeakContainer {
     JS_OBJECT(FinalizationRegistry, Object);
-    JS_DECLARE_ALLOCATOR(FinalizationRegistry);
+    GC_DECLARE_ALLOCATOR(FinalizationRegistry);
 
 public:
     virtual ~FinalizationRegistry() override = default;

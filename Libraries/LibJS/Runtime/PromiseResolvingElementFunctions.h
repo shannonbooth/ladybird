@@ -13,8 +13,8 @@
 namespace JS {
 
 struct RemainingElements final : public Cell {
-    JS_CELL(RemainingElements, Cell);
-    JS_DECLARE_ALLOCATOR(RemainingElements);
+    GC_CELL(RemainingElements, Cell);
+    GC_DECLARE_ALLOCATOR(RemainingElements);
 
     u64 value { 0 };
 
@@ -28,8 +28,8 @@ private:
 };
 
 class PromiseValueList final : public Cell {
-    JS_CELL(PromiseValueList, Cell);
-    JS_DECLARE_ALLOCATOR(PromiseValueList);
+    GC_CELL(PromiseValueList, Cell);
+    GC_DECLARE_ALLOCATOR(PromiseValueList);
 
 public:
     Vector<Value>& values() { return m_values; }
@@ -45,7 +45,7 @@ private:
 
 class PromiseResolvingElementFunction : public NativeFunction {
     JS_OBJECT(PromiseResolvingElementFunction, NativeFunction);
-    JS_DECLARE_ALLOCATOR(PromiseResolvingElementFunction);
+    GC_DECLARE_ALLOCATOR(PromiseResolvingElementFunction);
 
 public:
     virtual void initialize(Realm&) override;
@@ -72,7 +72,7 @@ private:
 // 27.2.4.1.3 Promise.all Resolve Element Functions, https://tc39.es/ecma262/#sec-promise.all-resolve-element-functions
 class PromiseAllResolveElementFunction final : public PromiseResolvingElementFunction {
     JS_OBJECT(PromiseAllResolveElementFunction, PromiseResolvingElementFunction);
-    JS_DECLARE_ALLOCATOR(PromiseAllResolveElementFunction);
+    GC_DECLARE_ALLOCATOR(PromiseAllResolveElementFunction);
 
 public:
     static NonnullGCPtr<PromiseAllResolveElementFunction> create(Realm&, size_t, PromiseValueList&, NonnullGCPtr<PromiseCapability const>, RemainingElements&);
@@ -88,7 +88,7 @@ private:
 // 27.2.4.2.2 Promise.allSettled Resolve Element Functions, https://tc39.es/ecma262/#sec-promise.allsettled-resolve-element-functions
 class PromiseAllSettledResolveElementFunction final : public PromiseResolvingElementFunction {
     JS_OBJECT(PromiseAllSettledResolveElementFunction, PromiseResolvingElementFunction);
-    JS_DECLARE_ALLOCATOR(PromiseAllSettledResolveElementFunction);
+    GC_DECLARE_ALLOCATOR(PromiseAllSettledResolveElementFunction);
 
 public:
     static NonnullGCPtr<PromiseAllSettledResolveElementFunction> create(Realm&, size_t, PromiseValueList&, NonnullGCPtr<PromiseCapability const>, RemainingElements&);
@@ -104,7 +104,7 @@ private:
 // 27.2.4.2.3 Promise.allSettled Reject Element Functions, https://tc39.es/ecma262/#sec-promise.allsettled-reject-element-functions
 class PromiseAllSettledRejectElementFunction final : public PromiseResolvingElementFunction {
     JS_OBJECT(PromiseAllSettledRejectElementFunction, PromiseResolvingElementFunction);
-    JS_DECLARE_ALLOCATOR(PromiseAllSettledRejectElementFunction);
+    GC_DECLARE_ALLOCATOR(PromiseAllSettledRejectElementFunction);
 
 public:
     static NonnullGCPtr<PromiseAllSettledRejectElementFunction> create(Realm&, size_t, PromiseValueList&, NonnullGCPtr<PromiseCapability const>, RemainingElements&);
@@ -120,7 +120,7 @@ private:
 // 27.2.4.3.2 Promise.any Reject Element Functions, https://tc39.es/ecma262/#sec-promise.any-reject-element-functions
 class PromiseAnyRejectElementFunction final : public PromiseResolvingElementFunction {
     JS_OBJECT(PromiseAnyRejectElementFunction, PromiseResolvingElementFunction);
-    JS_DECLARE_ALLOCATOR(PromiseAnyRejectElementFunction);
+    GC_DECLARE_ALLOCATOR(PromiseAnyRejectElementFunction);
 
 public:
     static NonnullGCPtr<PromiseAnyRejectElementFunction> create(Realm&, size_t, PromiseValueList&, NonnullGCPtr<PromiseCapability const>, RemainingElements&);

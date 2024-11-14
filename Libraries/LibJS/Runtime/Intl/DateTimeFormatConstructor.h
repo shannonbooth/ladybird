@@ -12,7 +12,7 @@ namespace JS::Intl {
 
 class DateTimeFormatConstructor final : public NativeFunction {
     JS_OBJECT(DateTimeFormatConstructor, NativeFunction);
-    JS_DECLARE_ALLOCATOR(DateTimeFormatConstructor);
+    GC_DECLARE_ALLOCATOR(DateTimeFormatConstructor);
 
 public:
     virtual void initialize(Realm&) override;

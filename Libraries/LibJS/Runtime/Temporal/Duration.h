@@ -8,7 +8,7 @@
 #pragma once
 
 #include <AK/Optional.h>
-#include <LibJS/Heap/Handle.h>
+#include <LibGC/Handle.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/Date.h>
 #include <LibJS/Runtime/Object.h>
@@ -21,7 +21,7 @@ namespace JS::Temporal {
 
 class Duration final : public Object {
     JS_OBJECT(Duration, Object);
-    JS_DECLARE_ALLOCATOR(Duration);
+    GC_DECLARE_ALLOCATOR(Duration);
 
 public:
     virtual ~Duration() override = default;

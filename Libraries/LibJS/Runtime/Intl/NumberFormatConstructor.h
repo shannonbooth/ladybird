@@ -13,7 +13,7 @@ namespace JS::Intl {
 
 class NumberFormatConstructor final : public NativeFunction {
     JS_OBJECT(NumberFormatConstructor, NativeFunction);
-    JS_DECLARE_ALLOCATOR(NumberFormatConstructor);
+    GC_DECLARE_ALLOCATOR(NumberFormatConstructor);
 
 public:
     virtual void initialize(Realm&) override;

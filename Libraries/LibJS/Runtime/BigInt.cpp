@@ -5,7 +5,7 @@
  */
 
 #include <LibCrypto/BigInt/SignedBigInteger.h>
-#include <LibJS/Heap/Heap.h>
+#include <LibGC/Heap.h>
 #include <LibJS/Runtime/BigInt.h>
 #include <LibJS/Runtime/GlobalObject.h>
 
