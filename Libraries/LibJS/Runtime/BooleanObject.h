@@ -15,7 +15,7 @@ class BooleanObject : public Object {
     GC_DECLARE_ALLOCATOR(BooleanObject);
 
 public:
-    static NonnullGCPtr<BooleanObject> create(Realm&, bool);
+    static GC::Ref<BooleanObject> create(Realm&, bool);
 
     virtual ~BooleanObject() override = default;
 

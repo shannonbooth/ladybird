@@ -18,7 +18,7 @@ class Date final : public Object {
     GC_DECLARE_ALLOCATOR(Date);
 
 public:
-    static NonnullGCPtr<Date> create(Realm&, double date_value);
+    static GC::Ref<Date> create(Realm&, double date_value);
 
     // Out of line to ensure we have a key function
     virtual ~Date() override;

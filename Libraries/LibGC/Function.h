@@ -42,7 +42,7 @@ private:
 };
 
 template<typename Callable, typename T = EquivalentFunctionType<Callable>>
-static Ref<Function<T>> create_heap_function(Heap& heap, Callable&& function)
+static Ref<Function<T>> create_function(Heap& heap, Callable&& function)
 {
     return Function<T>::create(heap, AK::Function<T> { forward<Callable>(function) });
 }

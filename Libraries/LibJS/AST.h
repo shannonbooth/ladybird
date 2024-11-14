@@ -163,7 +163,7 @@ public:
     void set_bytecode_executable(Bytecode::Executable* bytecode_executable) { m_bytecode_executable = make_handle(bytecode_executable); }
 
 private:
-    Handle<Bytecode::Executable> m_bytecode_executable;
+    GC::Handle<Bytecode::Executable> m_bytecode_executable;
 };
 
 // 14.13 Labelled Statements, https://tc39.es/ecma262/#sec-labelled-statements
@@ -690,7 +690,7 @@ struct FunctionParameter {
     Variant<NonnullRefPtr<Identifier const>, NonnullRefPtr<BindingPattern const>> binding;
     RefPtr<Expression const> default_value;
     bool is_rest { false };
-    Handle<Bytecode::Executable> bytecode_executable {};
+    GC::Handle<Bytecode::Executable> bytecode_executable {};
 };
 
 struct FunctionParsingInsights {

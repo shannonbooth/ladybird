@@ -28,8 +28,8 @@ private:
     explicit JSONObject(Realm&);
 
     struct StringifyState {
-        GCPtr<FunctionObject> replacer_function;
-        HashTable<GCPtr<Object>> seen_objects;
+        GC::Ptr<FunctionObject> replacer_function;
+        HashTable<GC::Ptr<Object>> seen_objects;
         ByteString indent { ByteString::empty() };
         ByteString gap;
         Optional<Vector<ByteString>> property_list;

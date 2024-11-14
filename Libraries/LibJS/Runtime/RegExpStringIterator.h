@@ -17,7 +17,7 @@ class RegExpStringIterator final : public Object {
     GC_DECLARE_ALLOCATOR(RegExpStringIterator);
 
 public:
-    static NonnullGCPtr<RegExpStringIterator> create(Realm&, Object& regexp_object, Utf16String string, bool global, bool unicode);
+    static GC::Ref<RegExpStringIterator> create(Realm&, Object& regexp_object, Utf16String string, bool global, bool unicode);
 
     virtual ~RegExpStringIterator() override = default;
 
@@ -34,7 +34,7 @@ private:
 
     virtual void visit_edges(Cell::Visitor&) override;
 
-    NonnullGCPtr<Object> m_regexp_object;
+    GC::Ref<Object> m_regexp_object;
     Utf16String m_string;
     bool m_global { false };
     bool m_unicode { false };

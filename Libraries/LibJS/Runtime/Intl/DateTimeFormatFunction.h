@@ -17,7 +17,7 @@ class DateTimeFormatFunction final : public NativeFunction {
     GC_DECLARE_ALLOCATOR(DateTimeFormatFunction);
 
 public:
-    static NonnullGCPtr<DateTimeFormatFunction> create(Realm&, DateTimeFormat&);
+    static GC::Ref<DateTimeFormatFunction> create(Realm&, DateTimeFormat&);
 
     virtual ~DateTimeFormatFunction() override = default;
     virtual void initialize(Realm&) override;
@@ -29,7 +29,7 @@ private:
 
     virtual void visit_edges(Visitor&) override;
 
-    NonnullGCPtr<DateTimeFormat> m_date_time_format; // [[DateTimeFormat]]
+    GC::Ref<DateTimeFormat> m_date_time_format; // [[DateTimeFormat]]
 };
 
 }

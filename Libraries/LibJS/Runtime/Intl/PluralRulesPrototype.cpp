@@ -13,7 +13,7 @@
 
 namespace JS::Intl {
 
-JS_DEFINE_ALLOCATOR(PluralRulesPrototype);
+GC_DEFINE_ALLOCATOR(PluralRulesPrototype);
 
 // 16.3 Properties of the Intl.PluralRules Prototype Object, https://tc39.es/ecma402/#sec-properties-of-intl-pluralrules-prototype-object
 PluralRulesPrototype::PluralRulesPrototype(Realm& realm)

@@ -12,7 +12,7 @@
 
 namespace JS {
 
-using ImportedModuleReferrer = Variant<NonnullGCPtr<Script>, NonnullGCPtr<CyclicModule>, NonnullGCPtr<Realm>>;
-using ImportedModulePayload = Variant<NonnullGCPtr<GraphLoadingState>, NonnullGCPtr<PromiseCapability>>;
+using ImportedModuleReferrer = Variant<GC::Ref<Script>, GC::Ref<CyclicModule>, GC::Ref<Realm>>;
+using ImportedModulePayload = Variant<GC::Ref<GraphLoadingState>, GC::Ref<PromiseCapability>>;
 
 }

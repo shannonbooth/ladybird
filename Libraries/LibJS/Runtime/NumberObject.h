@@ -15,7 +15,7 @@ class NumberObject : public Object {
     GC_DECLARE_ALLOCATOR(NumberObject);
 
 public:
-    static NonnullGCPtr<NumberObject> create(Realm&, double);
+    static GC::Ref<NumberObject> create(Realm&, double);
 
     virtual ~NumberObject() override = default;
 

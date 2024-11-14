@@ -24,7 +24,7 @@ public:
         virtual ~CustomData() = default;
     };
 
-    [[nodiscard]] static JS::NonnullGCPtr<JobCallback> create(JS::VM& vm, FunctionObject& callback, OwnPtr<CustomData> custom_data);
+    [[nodiscard]] static GC::Ref<JobCallback> create(JS::VM& vm, FunctionObject& callback, OwnPtr<CustomData> custom_data);
 
     JobCallback(FunctionObject& callback, OwnPtr<CustomData> custom_data)
         : m_callback(callback)
@@ -38,11 +38,11 @@ public:
     CustomData* custom_data() { return m_custom_data; }
 
 private:
-    JS::NonnullGCPtr<FunctionObject> m_callback;
+    GC::Ref<FunctionObject> m_callback;
     OwnPtr<CustomData> m_custom_data { nullptr };
 };
 
-JS::NonnullGCPtr<JobCallback> make_job_callback(FunctionObject& callback);
-ThrowCompletionOr<Value> call_job_callback(VM&, JS::NonnullGCPtr<JobCallback>, Value this_value, ReadonlySpan<Value> arguments_list);
+GC::Ref<JobCallback> make_job_callback(FunctionObject& callback);
+ThrowCompletionOr<Value> call_job_callback(VM&, GC::Ref<JobCallback>, Value this_value, ReadonlySpan<Value> arguments_list);
 
 }

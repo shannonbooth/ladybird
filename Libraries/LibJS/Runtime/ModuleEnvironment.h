@@ -35,7 +35,7 @@ private:
 
     struct IndirectBinding {
         DeprecatedFlyString name;
-        GCPtr<Module> module;
+        GC::Ptr<Module> module;
         DeprecatedFlyString binding_name;
     };
     IndirectBinding const* get_indirect_binding(DeprecatedFlyString const& name) const;

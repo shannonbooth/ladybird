@@ -20,7 +20,7 @@ class Map : public Object {
     GC_DECLARE_ALLOCATOR(Map);
 
 public:
-    static NonnullGCPtr<Map> create(Realm&);
+    static GC::Ref<Map> create(Realm&);
 
     virtual ~Map() override = default;
 
@@ -95,7 +95,7 @@ public:
                 m_index = it.key();
         }
 
-        Conditional<IsConst, NonnullGCPtr<Map const>, NonnullGCPtr<Map>> m_map;
+        Conditional<IsConst, GC::Ref<Map const>, GC::Ref<Map>> m_map;
         mutable size_t m_index { 0 };
     };
 

@@ -649,7 +649,7 @@ private:
 namespace GC {
 
 template<>
-class Handle<JS::Value> {
+class GC::Handle<JS::Value> {
 public:
     Handle() = default;
 
@@ -666,7 +666,7 @@ public:
     bool is_null() const { return m_handle.is_null() && !m_value.has_value(); }
 
     bool operator==(JS::Value const& value) const { return value == m_value; }
-    bool operator==(Handle<JS::Value> const& other) const { return other.m_value == this->m_value; }
+    bool operator==(GC::Handle<JS::Value> const& other) const { return other.m_value == this->m_value; }
 
 private:
     explicit Handle(JS::Value value)
@@ -676,17 +676,17 @@ private:
 
     explicit Handle(JS::Value value, Cell* cell, SourceLocation location)
         : m_value(value)
-        , m_handle(Handle<Cell>::create(cell, location))
+        , m_handle(GC::Handle<Cell>::create(cell, location))
     {
     }
 
     Optional<JS::Value> m_value;
-    Handle<Cell> m_handle;
+    GC::Handle<Cell> m_handle;
 };
 
-inline Handle<JS::Value> make_handle(JS::Value value, SourceLocation location = SourceLocation::current())
+inline GC::Handle<JS::Value> make_handle(JS::Value value, SourceLocation location = SourceLocation::current())
 {
-    return Handle<JS::Value>::create(value, location);
+    return GC::Handle<JS::Value>::create(value, location);
 }
 
 }

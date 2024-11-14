@@ -16,7 +16,7 @@ class AggregateError : public Error {
     GC_DECLARE_ALLOCATOR(AggregateError);
 
 public:
-    static NonnullGCPtr<AggregateError> create(Realm&);
+    static GC::Ref<AggregateError> create(Realm&);
     virtual ~AggregateError() override = default;
 
 private:

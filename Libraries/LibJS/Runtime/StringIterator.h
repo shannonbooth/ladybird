@@ -17,7 +17,7 @@ class StringIterator final : public Object {
     GC_DECLARE_ALLOCATOR(StringIterator);
 
 public:
-    static NonnullGCPtr<StringIterator> create(Realm&, String string);
+    static GC::Ref<StringIterator> create(Realm&, String string);
 
     virtual ~StringIterator() override = default;
 

@@ -69,8 +69,8 @@ private:
 
     mutable bool m_is_rope { false };
 
-    mutable GCPtr<PrimitiveString> m_lhs;
-    mutable GCPtr<PrimitiveString> m_rhs;
+    mutable GC::Ptr<PrimitiveString> m_lhs;
+    mutable GC::Ptr<PrimitiveString> m_rhs;
 
     mutable Optional<String> m_utf8_string;
     mutable Optional<ByteString> m_byte_string;

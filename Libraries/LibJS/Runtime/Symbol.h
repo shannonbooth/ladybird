@@ -17,7 +17,7 @@ class Symbol final : public Cell {
     GC_DECLARE_ALLOCATOR(Symbol);
 
 public:
-    [[nodiscard]] static NonnullGCPtr<Symbol> create(VM&, Optional<String> description, bool is_global);
+    [[nodiscard]] static GC::Ref<Symbol> create(VM&, Optional<String> description, bool is_global);
 
     virtual ~Symbol() = default;
 

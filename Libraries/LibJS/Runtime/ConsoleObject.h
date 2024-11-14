@@ -43,7 +43,7 @@ private:
     JS_DECLARE_NATIVE_FUNCTION(time_log);
     JS_DECLARE_NATIVE_FUNCTION(time_end);
 
-    GCPtr<Console> m_console;
+    GC::Ptr<Console> m_console;
 };
 
 }

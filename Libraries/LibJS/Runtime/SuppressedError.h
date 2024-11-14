@@ -15,7 +15,7 @@ class SuppressedError : public Error {
     GC_DECLARE_ALLOCATOR(SuppressedError);
 
 public:
-    static NonnullGCPtr<SuppressedError> create(Realm&);
+    static GC::Ref<SuppressedError> create(Realm&);
     virtual ~SuppressedError() override = default;
 
 private:

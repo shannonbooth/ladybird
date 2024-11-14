@@ -30,7 +30,7 @@ class PromiseResolvingFunction final : public NativeFunction {
 public:
     using FunctionType = Function<Value(VM&, Promise&, AlreadyResolved&)>;
 
-    static NonnullGCPtr<PromiseResolvingFunction> create(Realm&, Promise&, AlreadyResolved&, FunctionType);
+    static GC::Ref<PromiseResolvingFunction> create(Realm&, Promise&, AlreadyResolved&, FunctionType);
 
     virtual void initialize(Realm&) override;
     virtual ~PromiseResolvingFunction() override = default;
@@ -42,8 +42,8 @@ private:
 
     virtual void visit_edges(Visitor&) override;
 
-    NonnullGCPtr<Promise> m_promise;
-    NonnullGCPtr<AlreadyResolved> m_already_resolved;
+    GC::Ref<Promise> m_promise;
+    GC::Ref<AlreadyResolved> m_already_resolved;
     FunctionType m_native_function;
 };
 

@@ -29,7 +29,7 @@ private:
 
     virtual void visit_edges(Visitor&) override;
 
-    GCPtr<$262Object> m_$262;
+    GC::Ptr<$262Object> m_$262;
 
     JS_DECLARE_NATIVE_FUNCTION(print);
 };

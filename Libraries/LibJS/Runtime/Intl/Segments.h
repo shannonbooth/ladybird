@@ -18,7 +18,7 @@ class Segments final : public Object {
     GC_DECLARE_ALLOCATOR(Segments);
 
 public:
-    static NonnullGCPtr<Segments> create(Realm&, Unicode::Segmenter const&, Utf16String);
+    static GC::Ref<Segments> create(Realm&, Unicode::Segmenter const&, Utf16String);
 
     virtual ~Segments() override = default;
 

@@ -16,7 +16,7 @@ class SymbolObject : public Object {
     GC_DECLARE_ALLOCATOR(SymbolObject);
 
 public:
-    static NonnullGCPtr<SymbolObject> create(Realm&, Symbol&);
+    static GC::Ref<SymbolObject> create(Realm&, Symbol&);
 
     virtual ~SymbolObject() override = default;
 
@@ -28,7 +28,7 @@ private:
 
     virtual void visit_edges(Visitor&) override;
 
-    NonnullGCPtr<Symbol> m_symbol;
+    GC::Ref<Symbol> m_symbol;
 };
 
 }

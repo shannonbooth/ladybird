@@ -20,7 +20,7 @@ class BigInt final : public Cell {
     GC_DECLARE_ALLOCATOR(BigInt);
 
 public:
-    [[nodiscard]] static NonnullGCPtr<BigInt> create(VM&, Crypto::SignedBigInteger);
+    [[nodiscard]] static GC::Ref<BigInt> create(VM&, Crypto::SignedBigInteger);
 
     virtual ~BigInt() override = default;
 

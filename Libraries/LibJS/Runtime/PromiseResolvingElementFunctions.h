@@ -54,14 +54,14 @@ public:
     virtual ThrowCompletionOr<Value> call() override;
 
 protected:
-    explicit PromiseResolvingElementFunction(size_t, PromiseValueList&, NonnullGCPtr<PromiseCapability const>, RemainingElements&, Object& prototype);
+    explicit PromiseResolvingElementFunction(size_t, PromiseValueList&, GC::Ref<PromiseCapability const>, RemainingElements&, Object& prototype);
 
     virtual ThrowCompletionOr<Value> resolve_element() = 0;
 
     size_t m_index { 0 };
-    NonnullGCPtr<PromiseValueList> m_values;
-    NonnullGCPtr<PromiseCapability const> m_capability;
-    NonnullGCPtr<RemainingElements> m_remaining_elements;
+    GC::Ref<PromiseValueList> m_values;
+    GC::Ref<PromiseCapability const> m_capability;
+    GC::Ref<RemainingElements> m_remaining_elements;
 
 private:
     virtual void visit_edges(Visitor&) override;
@@ -75,12 +75,12 @@ class PromiseAllResolveElementFunction final : public PromiseResolvingElementFun
     GC_DECLARE_ALLOCATOR(PromiseAllResolveElementFunction);
 
 public:
-    static NonnullGCPtr<PromiseAllResolveElementFunction> create(Realm&, size_t, PromiseValueList&, NonnullGCPtr<PromiseCapability const>, RemainingElements&);
+    static GC::Ref<PromiseAllResolveElementFunction> create(Realm&, size_t, PromiseValueList&, GC::Ref<PromiseCapability const>, RemainingElements&);
 
     virtual ~PromiseAllResolveElementFunction() override = default;
 
 private:
-    explicit PromiseAllResolveElementFunction(size_t, PromiseValueList&, NonnullGCPtr<PromiseCapability const>, RemainingElements&, Object& prototype);
+    explicit PromiseAllResolveElementFunction(size_t, PromiseValueList&, GC::Ref<PromiseCapability const>, RemainingElements&, Object& prototype);
 
     virtual ThrowCompletionOr<Value> resolve_element() override;
 };
@@ -91,12 +91,12 @@ class PromiseAllSettledResolveElementFunction final : public PromiseResolvingEle
     GC_DECLARE_ALLOCATOR(PromiseAllSettledResolveElementFunction);
 
 public:
-    static NonnullGCPtr<PromiseAllSettledResolveElementFunction> create(Realm&, size_t, PromiseValueList&, NonnullGCPtr<PromiseCapability const>, RemainingElements&);
+    static GC::Ref<PromiseAllSettledResolveElementFunction> create(Realm&, size_t, PromiseValueList&, GC::Ref<PromiseCapability const>, RemainingElements&);
 
     virtual ~PromiseAllSettledResolveElementFunction() override = default;
 
 private:
-    explicit PromiseAllSettledResolveElementFunction(size_t, PromiseValueList&, NonnullGCPtr<PromiseCapability const>, RemainingElements&, Object& prototype);
+    explicit PromiseAllSettledResolveElementFunction(size_t, PromiseValueList&, GC::Ref<PromiseCapability const>, RemainingElements&, Object& prototype);
 
     virtual ThrowCompletionOr<Value> resolve_element() override;
 };
@@ -107,12 +107,12 @@ class PromiseAllSettledRejectElementFunction final : public PromiseResolvingElem
     GC_DECLARE_ALLOCATOR(PromiseAllSettledRejectElementFunction);
 
 public:
-    static NonnullGCPtr<PromiseAllSettledRejectElementFunction> create(Realm&, size_t, PromiseValueList&, NonnullGCPtr<PromiseCapability const>, RemainingElements&);
+    static GC::Ref<PromiseAllSettledRejectElementFunction> create(Realm&, size_t, PromiseValueList&, GC::Ref<PromiseCapability const>, RemainingElements&);
 
     virtual ~PromiseAllSettledRejectElementFunction() override = default;
 
 private:
-    explicit PromiseAllSettledRejectElementFunction(size_t, PromiseValueList&, NonnullGCPtr<PromiseCapability const>, RemainingElements&, Object& prototype);
+    explicit PromiseAllSettledRejectElementFunction(size_t, PromiseValueList&, GC::Ref<PromiseCapability const>, RemainingElements&, Object& prototype);
 
     virtual ThrowCompletionOr<Value> resolve_element() override;
 };
@@ -123,12 +123,12 @@ class PromiseAnyRejectElementFunction final : public PromiseResolvingElementFunc
     GC_DECLARE_ALLOCATOR(PromiseAnyRejectElementFunction);
 
 public:
-    static NonnullGCPtr<PromiseAnyRejectElementFunction> create(Realm&, size_t, PromiseValueList&, NonnullGCPtr<PromiseCapability const>, RemainingElements&);
+    static GC::Ref<PromiseAnyRejectElementFunction> create(Realm&, size_t, PromiseValueList&, GC::Ref<PromiseCapability const>, RemainingElements&);
 
     virtual ~PromiseAnyRejectElementFunction() override = default;
 
 private:
-    explicit PromiseAnyRejectElementFunction(size_t, PromiseValueList&, NonnullGCPtr<PromiseCapability const>, RemainingElements&, Object& prototype);
+    explicit PromiseAnyRejectElementFunction(size_t, PromiseValueList&, GC::Ref<PromiseCapability const>, RemainingElements&, Object& prototype);
 
     virtual ThrowCompletionOr<Value> resolve_element() override;
 };

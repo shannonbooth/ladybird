@@ -57,7 +57,7 @@ private:
 
 Vector<Unicode::ListFormat::Partition> create_parts_from_list(ListFormat const&, ReadonlySpan<String> list);
 String format_list(ListFormat const&, ReadonlySpan<String> list);
-NonnullGCPtr<Array> format_list_to_parts(VM&, ListFormat const&, ReadonlySpan<String> list);
+GC::Ref<Array> format_list_to_parts(VM&, ListFormat const&, ReadonlySpan<String> list);
 ThrowCompletionOr<Vector<String>> string_list_from_iterable(VM&, Value iterable);
 
 }

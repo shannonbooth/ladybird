@@ -18,7 +18,7 @@ class AsyncFromSyncIterator final : public Object {
     GC_DECLARE_ALLOCATOR(AsyncFromSyncIterator);
 
 public:
-    static NonnullGCPtr<AsyncFromSyncIterator> create(Realm&, NonnullGCPtr<IteratorRecord> sync_iterator_record);
+    static GC::Ref<AsyncFromSyncIterator> create(Realm&, GC::Ref<IteratorRecord> sync_iterator_record);
 
     virtual ~AsyncFromSyncIterator() override = default;
 
@@ -28,9 +28,9 @@ public:
     IteratorRecord const& sync_iterator_record() const { return m_sync_iterator_record; }
 
 private:
-    AsyncFromSyncIterator(Realm&, NonnullGCPtr<IteratorRecord> sync_iterator_record);
+    AsyncFromSyncIterator(Realm&, GC::Ref<IteratorRecord> sync_iterator_record);
 
-    NonnullGCPtr<IteratorRecord> m_sync_iterator_record; // [[SyncIteratorRecord]]
+    GC::Ref<IteratorRecord> m_sync_iterator_record; // [[SyncIteratorRecord]]
 };
 
 }
