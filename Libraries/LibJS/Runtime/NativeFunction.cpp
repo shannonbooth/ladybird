@@ -53,7 +53,7 @@ GC::Ref<NativeFunction> NativeFunction::create(Realm& allocating_realm, Function
     // 7. Set func.[[Extensible]] to true.
     // 8. Set func.[[Realm]] to realm.
     // 9. Set func.[[InitialName]] to null.
-    auto function = allocating_realm.create<NativeFunction>(JS::GC::create_function(vm.heap(), move(behaviour)), prototype.value(), *realm.value());
+    auto function = allocating_realm.create<NativeFunction>(GC::create_function(vm.heap(), move(behaviour)), prototype.value(), *realm.value());
 
     // 10. Perform SetFunctionLength(func, length).
     function->set_function_length(length);
@@ -70,7 +70,7 @@ GC::Ref<NativeFunction> NativeFunction::create(Realm& allocating_realm, Function
 
 GC::Ref<NativeFunction> NativeFunction::create(Realm& realm, DeprecatedFlyString const& name, Function<ThrowCompletionOr<Value>(VM&)> function)
 {
-    return realm.create<NativeFunction>(name, JS::GC::create_function(realm.heap(), move(function)), realm.intrinsics().function_prototype());
+    return realm.create<NativeFunction>(name, GC::create_function(realm.heap(), move(function)), realm.intrinsics().function_prototype());
 }
 
 NativeFunction::NativeFunction(GC::Ptr<GC::Function<ThrowCompletionOr<Value>(VM&)>> native_function, Object* prototype, Realm& realm)

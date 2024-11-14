@@ -49,7 +49,7 @@ static inline bool same_type_for_equality(Value const& lhs, Value const& rhs)
     // If the top two bytes are identical then either:
     // both are NaN boxed Values with the same type
     // or they are doubles which happen to have the same top bytes.
-    if ((lhs.encoded() & TAG_EXTRACTION) == (rhs.encoded() & TAG_EXTRACTION))
+    if ((lhs.encoded() & GC::TAG_EXTRACTION) == (rhs.encoded() & GC::TAG_EXTRACTION))
         return true;
 
     if (lhs.is_number() && rhs.is_number())

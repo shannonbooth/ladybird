@@ -208,7 +208,7 @@ ThrowCompletionOr<Value> shadow_realm_import_value(VM& vm, ByteString specifier_
     TRY(vm.push_execution_context(*eval_context, {}));
 
     // 6. Let referrer be the Realm component of evalContext.
-    auto referrer = JS::GC::Ref { *eval_context->realm };
+    auto referrer = GC::Ref { *eval_context->realm };
 
     // 7. Perform HostLoadImportedModule(referrer, specifierString, empty, innerCapability).
     vm.host_load_imported_module(referrer, ModuleRequest { specifier_string }, nullptr, inner_capability);
