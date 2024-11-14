@@ -9,7 +9,7 @@
 #include <AK/Traits.h>
 #include <AK/Types.h>
 
-namespace JS {
+namespace GC {
 
 template<typename T>
 class GCPtr;
@@ -223,16 +223,16 @@ inline bool operator==(NonnullGCPtr<T> const& a, GCPtr<U> const& b)
 namespace AK {
 
 template<typename T>
-struct Traits<JS::GCPtr<T>> : public DefaultTraits<JS::GCPtr<T>> {
-    static unsigned hash(JS::GCPtr<T> const& value)
+struct Traits<GC::GCPtr<T>> : public DefaultTraits<GC::GCPtr<T>> {
+    static unsigned hash(GC::GCPtr<T> const& value)
     {
         return Traits<T*>::hash(value.ptr());
     }
 };
 
 template<typename T>
-struct Traits<JS::NonnullGCPtr<T>> : public DefaultTraits<JS::NonnullGCPtr<T>> {
-    static unsigned hash(JS::NonnullGCPtr<T> const& value)
+struct Traits<GC::NonnullGCPtr<T>> : public DefaultTraits<GC::NonnullGCPtr<T>> {
+    static unsigned hash(GC::NonnullGCPtr<T> const& value)
     {
         return Traits<T*>::hash(value.ptr());
     }

@@ -19,16 +19,7 @@ set(SOURCES
     Contrib/Test262/GlobalObject.cpp
     Contrib/Test262/IsHTMLDDA.cpp
     CyclicModule.cpp
-    Heap/BlockAllocator.cpp
     Heap/Cell.cpp
-    Heap/CellImpl.cpp
-    Heap/CellAllocator.cpp
-    Heap/ConservativeVector.cpp
-    Heap/Handle.cpp
-    Heap/Heap.cpp
-    Heap/HeapBlock.cpp
-    Heap/MarkedVector.cpp
-    Heap/WeakContainer.cpp
     Lexer.cpp
     MarkupGenerator.cpp
     Module.cpp

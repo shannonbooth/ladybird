@@ -12,10 +12,10 @@
 #include <AK/RefCounted.h>
 #include <AK/RefPtr.h>
 #include <AK/SourceLocation.h>
-#include <LibJS/Forward.h>
-#include <LibJS/Heap/GCPtr.h>
+#include <LibGC/Forward.h>
+#include <LibGC/GCPtr.h>
 
-namespace JS {
+namespace GC {
 
 class HandleImpl : public RefCounted<HandleImpl> {
     AK_MAKE_NONCOPYABLE(HandleImpl);
@@ -24,8 +24,8 @@ class HandleImpl : public RefCounted<HandleImpl> {
 public:
     ~HandleImpl();
 
-    CellImpl* cell() { return m_cell; }
-    CellImpl const* cell() const { return m_cell; }
+    Cell* cell() { return m_cell; }
+    Cell const* cell() const { return m_cell; }
 
     SourceLocation const& source_location() const { return m_location; }
 
@@ -33,8 +33,8 @@ private:
     template<class T>
     friend class Handle;
 
-    explicit HandleImpl(CellImpl*, SourceLocation location);
-    GCPtr<CellImpl> m_cell;
+    explicit HandleImpl(Cell*, SourceLocation location);
+    GCPtr<Cell> m_cell;
     SourceLocation m_location;
 
     IntrusiveListNode<HandleImpl> m_list_node;
@@ -154,16 +154,16 @@ inline Handle<T> make_handle(NonnullGCPtr<T> cell, SourceLocation location = Sou
 namespace AK {
 
 template<typename T>
-struct Traits<JS::Handle<T>> : public DefaultTraits<JS::Handle<T>> {
-    static unsigned hash(JS::Handle<T> const& handle) { return Traits<T>::hash(handle); }
+struct Traits<GC::Handle<T>> : public DefaultTraits<GC::Handle<T>> {
+    static unsigned hash(GC::Handle<T> const& handle) { return Traits<T>::hash(handle); }
 };
 
 namespace Detail {
 template<typename T>
-inline constexpr bool IsHashCompatible<JS::Handle<T>, T> = true;
+inline constexpr bool IsHashCompatible<GC::Handle<T>, T> = true;
 
 template<typename T>
-inline constexpr bool IsHashCompatible<T, JS::Handle<T>> = true;
+inline constexpr bool IsHashCompatible<T, GC::Handle<T>> = true;
 
 }
 }
