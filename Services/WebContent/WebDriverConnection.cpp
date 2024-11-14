@@ -2855,7 +2855,7 @@ void WebDriverConnection::wait_for_visibility_state(JS::NonnullGCPtr<JS::HeapFun
 
 class ElementLocator final : public JS::Cell {
     JS_CELL(ElementLocator, JS::Cell);
-    JS_DECLARE_ALLOCATOR(ElementLocator);
+    GC_DECLARE_ALLOCATOR(ElementLocator);
 
 public:
     ElementLocator(
@@ -2938,7 +2938,7 @@ private:
     JS::NonnullGCPtr<Web::WebDriver::HeapTimer> m_timer;
 };
 
-JS_DEFINE_ALLOCATOR(ElementLocator);
+GC_DEFINE_ALLOCATOR(ElementLocator);
 
 // https://w3c.github.io/webdriver/#dfn-find
 void WebDriverConnection::find(Web::WebDriver::LocationStrategy location_strategy, ByteString selector, GetStartNode get_start_node, OnFindComplete on_complete)

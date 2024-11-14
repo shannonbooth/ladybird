@@ -16,7 +16,7 @@ namespace Web::HTML {
 
 // https://html.spec.whatwg.org/multipage/canvas.html#canvasimagesource
 // NOTE: This is the Variant created by the IDL wrapper generator, and needs to be updated accordingly.
-using CanvasImageSource = Variant<JS::Handle<HTMLImageElement>, JS::Handle<SVG::SVGImageElement>, JS::Handle<HTMLCanvasElement>, JS::Handle<ImageBitmap>, JS::Handle<HTMLVideoElement>>;
+using CanvasImageSource = Variant<GC::Handle<HTMLImageElement>, GC::Handle<SVG::SVGImageElement>, GC::Handle<HTMLCanvasElement>, GC::Handle<ImageBitmap>, GC::Handle<HTMLVideoElement>>;
 
 // https://html.spec.whatwg.org/multipage/canvas.html#canvasdrawimage
 class CanvasDrawImage {

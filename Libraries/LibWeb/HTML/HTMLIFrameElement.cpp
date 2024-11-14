@@ -18,7 +18,7 @@
 
 namespace Web::HTML {
 
-JS_DEFINE_ALLOCATOR(HTMLIFrameElement);
+GC_DEFINE_ALLOCATOR(HTMLIFrameElement);
 
 HTMLIFrameElement::HTMLIFrameElement(DOM::Document& document, DOM::QualifiedName qualified_name)
     : NavigableContainer(document, move(qualified_name))
@@ -33,7 +33,7 @@ void HTMLIFrameElement::initialize(JS::Realm& realm)
     WEB_SET_PROTOTYPE_FOR_INTERFACE(HTMLIFrameElement);
 }
 
-JS::GCPtr<Layout::Node> HTMLIFrameElement::create_layout_node(CSS::StyleProperties style)
+GC::Ptr<Layout::Node> HTMLIFrameElement::create_layout_node(CSS::StyleProperties style)
 {
     return heap().allocate<Layout::FrameBox>(document(), *this, move(style));
 }

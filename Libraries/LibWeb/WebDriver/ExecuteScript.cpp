@@ -84,7 +84,7 @@ static JS::ThrowCompletionOr<JS::Value> execute_a_function_body(HTML::BrowsingCo
     return completion;
 }
 
-void execute_script(HTML::BrowsingContext const& browsing_context, ByteString body, JS::MarkedVector<JS::Value> arguments, Optional<u64> const& timeout_ms, JS::NonnullGCPtr<OnScriptComplete> on_complete)
+void execute_script(HTML::BrowsingContext const& browsing_context, ByteString body, GC::MarkedVector<JS::Value> arguments, Optional<u64> const& timeout_ms, GC::Ref<OnScriptComplete> on_complete)
 {
     auto const* document = browsing_context.active_document();
     auto& realm = document->realm();
@@ -141,7 +141,7 @@ void execute_script(HTML::BrowsingContext const& browsing_context, ByteString bo
     WebIDL::react_to_promise(promise, reaction_steps, reaction_steps);
 }
 
-void execute_async_script(HTML::BrowsingContext const& browsing_context, ByteString body, JS::MarkedVector<JS::Value> arguments, Optional<u64> const& timeout_ms, JS::NonnullGCPtr<OnScriptComplete> on_complete)
+void execute_async_script(HTML::BrowsingContext const& browsing_context, ByteString body, GC::MarkedVector<JS::Value> arguments, Optional<u64> const& timeout_ms, GC::Ref<OnScriptComplete> on_complete)
 {
     auto const* document = browsing_context.active_document();
     auto& realm = document->realm();

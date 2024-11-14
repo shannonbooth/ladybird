@@ -28,7 +28,7 @@
 
 namespace GC {
 
-Heap::Heap(void* private_data, Function<void(HashMap<Cell*, GC::HeapRoot>&)> gather_embedder_roots)
+Heap::Heap(void* private_data, AK::Function<void(HashMap<Cell*, GC::HeapRoot>&)> gather_embedder_roots)
     : HeapBase(private_data)
     , m_gather_embedder_roots(move(gather_embedder_roots))
 {

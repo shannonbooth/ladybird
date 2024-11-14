@@ -24,7 +24,7 @@
 
 namespace Web::HTML {
 
-JS_DEFINE_ALLOCATOR(HTMLVideoElement);
+GC_DEFINE_ALLOCATOR(HTMLVideoElement);
 
 HTMLVideoElement::HTMLVideoElement(DOM::Document& document, DOM::QualifiedName qualified_name)
     : HTMLMediaElement(document, move(qualified_name))
@@ -63,7 +63,7 @@ void HTMLVideoElement::attribute_changed(FlyString const& name, Optional<String>
     }
 }
 
-JS::GCPtr<Layout::Node> HTMLVideoElement::create_layout_node(CSS::StyleProperties style)
+GC::Ptr<Layout::Node> HTMLVideoElement::create_layout_node(CSS::StyleProperties style)
 {
     return heap().allocate<Layout::VideoBox>(document(), *this, move(style));
 }
@@ -107,7 +107,7 @@ u32 HTMLVideoElement::video_height() const
     return m_video_height;
 }
 
-void HTMLVideoElement::set_video_track(JS::GCPtr<HTML::VideoTrack> video_track)
+void HTMLVideoElement::set_video_track(GC::Ptr<HTML::VideoTrack> video_track)
 {
     set_needs_style_update(true);
     document().set_needs_layout();

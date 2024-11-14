@@ -61,7 +61,7 @@ bool build_xml_document(DOM::Document& document, ByteBuffer const& data, Optiona
 }
 
 // https://html.spec.whatwg.org/multipage/document-lifecycle.html#navigate-html
-static WebIDL::ExceptionOr<JS::NonnullGCPtr<DOM::Document>> load_html_document(HTML::NavigationParams const& navigation_params)
+static WebIDL::ExceptionOr<GC::Ref<DOM::Document>> load_html_document(HTML::NavigationParams const& navigation_params)
 {
     // To load an HTML document, given navigation params navigationParams:
 
@@ -112,7 +112,7 @@ static WebIDL::ExceptionOr<JS::NonnullGCPtr<DOM::Document>> load_html_document(H
 }
 
 // https://html.spec.whatwg.org/multipage/document-lifecycle.html#read-xml
-static WebIDL::ExceptionOr<JS::NonnullGCPtr<DOM::Document>> load_xml_document(HTML::NavigationParams const& navigation_params, MimeSniff::MimeType type)
+static WebIDL::ExceptionOr<GC::Ref<DOM::Document>> load_xml_document(HTML::NavigationParams const& navigation_params, MimeSniff::MimeType type)
 {
     // When faced with displaying an XML file inline, provided navigation params navigationParams and a string type, user agents
     // must follow the requirements defined in XML and Namespaces in XML, XML Media Types, DOM, and other relevant specifications
@@ -201,7 +201,7 @@ static WebIDL::ExceptionOr<JS::NonnullGCPtr<DOM::Document>> load_xml_document(HT
 }
 
 // https://html.spec.whatwg.org/multipage/document-lifecycle.html#navigate-text
-static WebIDL::ExceptionOr<JS::NonnullGCPtr<DOM::Document>> load_text_document(HTML::NavigationParams const& navigation_params, MimeSniff::MimeType type)
+static WebIDL::ExceptionOr<GC::Ref<DOM::Document>> load_text_document(HTML::NavigationParams const& navigation_params, MimeSniff::MimeType type)
 {
     // To load a text document, given a navigation params navigationParams and a string type:
 
@@ -265,7 +265,7 @@ static WebIDL::ExceptionOr<JS::NonnullGCPtr<DOM::Document>> load_text_document(H
 }
 
 // https://html.spec.whatwg.org/multipage/document-lifecycle.html#navigate-media
-static WebIDL::ExceptionOr<JS::NonnullGCPtr<DOM::Document>> load_media_document(HTML::NavigationParams const& navigation_params, MimeSniff::MimeType type)
+static WebIDL::ExceptionOr<GC::Ref<DOM::Document>> load_media_document(HTML::NavigationParams const& navigation_params, MimeSniff::MimeType type)
 {
     // To load a media document, given navigationParams and a string type:
 
@@ -393,7 +393,7 @@ bool can_load_document_with_type(MimeSniff::MimeType const& type)
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#loading-a-document
-JS::GCPtr<DOM::Document> load_document(HTML::NavigationParams const& navigation_params)
+GC::Ptr<DOM::Document> load_document(HTML::NavigationParams const& navigation_params)
 {
     // To load a document given navigation params navigationParams, source snapshot params sourceSnapshotParams,
     // and origin initiatorOrigin, perform the following steps. They return a Document or null.
@@ -404,7 +404,7 @@ JS::GCPtr<DOM::Document> load_document(HTML::NavigationParams const& navigation_
         navigation_params.response->body()->source().visit(
             [](Empty) { return ReadonlyBytes {}; },
             [](ByteBuffer const& buffer) { return ReadonlyBytes { buffer }; },
-            [](JS::Handle<FileAPI::Blob> const& blob) { return blob->raw_bytes(); }),
+            [](GC::Handle<FileAPI::Blob> const& blob) { return blob->raw_bytes(); }),
         MimeSniff::SniffingConfiguration {
             .sniffing_context = MimeSniff::SniffingContext::Browsing,
             .supplied_type = move(supplied_type) });

@@ -56,9 +56,9 @@
 
 namespace Web::XHR {
 
-JS_DEFINE_ALLOCATOR(XMLHttpRequest);
+GC_DEFINE_ALLOCATOR(XMLHttpRequest);
 
-WebIDL::ExceptionOr<JS::NonnullGCPtr<XMLHttpRequest>> XMLHttpRequest::construct_impl(JS::Realm& realm)
+WebIDL::ExceptionOr<GC::Ref<XMLHttpRequest>> XMLHttpRequest::construct_impl(JS::Realm& realm)
 {
     auto upload_object = realm.create<XMLHttpRequestUpload>(realm);
     auto author_request_headers = Fetch::Infrastructure::HeaderList::create(realm.vm());
@@ -95,7 +95,7 @@ void XMLHttpRequest::visit_edges(Cell::Visitor& visitor)
     visitor.visit(m_response);
     visitor.visit(m_fetch_controller);
 
-    if (auto* value = m_response_object.get_pointer<JS::NonnullGCPtr<JS::Object>>())
+    if (auto* value = m_response_object.get_pointer<GC::Ref<JS::Object>>())
         visitor.visit(*value);
 }
 
@@ -129,7 +129,7 @@ WebIDL::ExceptionOr<String> XMLHttpRequest::response_text() const
 }
 
 // https://xhr.spec.whatwg.org/#dom-xmlhttprequest-responsexml
-WebIDL::ExceptionOr<JS::GCPtr<DOM::Document>> XMLHttpRequest::response_xml()
+WebIDL::ExceptionOr<GC::Ptr<DOM::Document>> XMLHttpRequest::response_xml()
 {
     // 1. If this’s response type is not the empty string or "document", then throw an "InvalidStateError" DOMException.
     if (m_response_type != Bindings::XMLHttpRequestResponseType::Empty && m_response_type != Bindings::XMLHttpRequestResponseType::Document)
@@ -144,7 +144,7 @@ WebIDL::ExceptionOr<JS::GCPtr<DOM::Document>> XMLHttpRequest::response_xml()
 
     // 4. If this’s response object is non-null, then return it.
     if (!m_response_object.has<Empty>())
-        return &verify_cast<DOM::Document>(*m_response_object.get<JS::NonnullGCPtr<JS::Object>>());
+        return &verify_cast<DOM::Document>(*m_response_object.get<GC::Ref<JS::Object>>());
 
     // 5. Set a document response for this.
     set_document_response();
@@ -152,7 +152,7 @@ WebIDL::ExceptionOr<JS::GCPtr<DOM::Document>> XMLHttpRequest::response_xml()
     // 6. Return this’s response object.
     if (m_response_object.has<Empty>())
         return nullptr;
-    return &verify_cast<DOM::Document>(*m_response_object.get<JS::NonnullGCPtr<JS::Object>>());
+    return &verify_cast<DOM::Document>(*m_response_object.get<GC::Ref<JS::Object>>());
 }
 
 // https://xhr.spec.whatwg.org/#dom-xmlhttprequest-responsetype
@@ -199,7 +199,7 @@ WebIDL::ExceptionOr<JS::Value> XMLHttpRequest::response()
 
     // 4. If this’s response object is non-null, then return it.
     if (!m_response_object.has<Empty>())
-        return m_response_object.get<JS::NonnullGCPtr<JS::Object>>();
+        return m_response_object.get<GC::Ref<JS::Object>>();
 
     // 5. If this’s response type is "arraybuffer",
     if (m_response_type == Bindings::XMLHttpRequestResponseType::Arraybuffer) {
@@ -212,14 +212,14 @@ WebIDL::ExceptionOr<JS::Value> XMLHttpRequest::response()
 
         auto buffer = buffer_result.release_value();
         buffer->buffer().overwrite(0, m_received_bytes.data(), m_received_bytes.size());
-        m_response_object = JS::NonnullGCPtr<JS::Object> { buffer };
+        m_response_object = GC::Ref<JS::Object> { buffer };
     }
     // 6. Otherwise, if this’s response type is "blob", set this’s response object to a new Blob object representing this’s received bytes with type set to the result of get a final MIME type for this.
     else if (m_response_type == Bindings::XMLHttpRequestResponseType::Blob) {
         auto mime_type_as_string = get_final_mime_type().serialized();
         auto blob_part = FileAPI::Blob::create(realm(), m_received_bytes, move(mime_type_as_string));
         auto blob = FileAPI::Blob::create(realm(), Vector<FileAPI::BlobPart> { JS::make_handle(*blob_part) });
-        m_response_object = JS::NonnullGCPtr<JS::Object> { blob };
+        m_response_object = GC::Ref<JS::Object> { blob };
     }
     // 7. Otherwise, if this’s response type is "document", set a document response for this.
     else if (m_response_type == Bindings::XMLHttpRequestResponseType::Document) {
@@ -241,14 +241,14 @@ WebIDL::ExceptionOr<JS::Value> XMLHttpRequest::response()
 
         // 4. Set this’s response object to jsonObject.
         if (json_object_result.value().is_object())
-            m_response_object = JS::NonnullGCPtr<JS::Object> { json_object_result.release_value().as_object() };
+            m_response_object = GC::Ref<JS::Object> { json_object_result.release_value().as_object() };
         else
             m_response_object = Empty {};
     }
 
     // 9. Return this’s response object.
     return m_response_object.visit(
-        [](JS::NonnullGCPtr<JS::Object> object) -> JS::Value { return object; },
+        [](GC::Ref<JS::Object> object) -> JS::Value { return object; },
         [](auto const&) -> JS::Value { return JS::js_null(); });
 }
 
@@ -300,7 +300,7 @@ void XMLHttpRequest::set_document_response()
 
     // 5. If finalMIME is an HTML MIME type, then:
     Optional<String> charset;
-    JS::GCPtr<DOM::Document> document;
+    GC::Ptr<DOM::Document> document;
     if (final_mime.is_html()) {
         // 5.1. Let charset be the result of get a final encoding for xhr.
         if (auto final_encoding = get_final_encoding(); final_encoding.has_value())
@@ -350,7 +350,7 @@ void XMLHttpRequest::set_document_response()
     document->set_origin(HTML::relevant_settings_object(*this).origin());
 
     // 12. Set xhr’s response object to document.
-    m_response_object = JS::NonnullGCPtr<JS::Object> { *document };
+    m_response_object = GC::Ref<JS::Object> { *document };
 }
 
 // https://xhr.spec.whatwg.org/#final-mime-type
@@ -572,8 +572,8 @@ WebIDL::ExceptionOr<void> XMLHttpRequest::send(Optional<DocumentOrXMLHttpRequest
         Optional<ByteBuffer> extracted_content_type;
 
         // 2. If body is a Document, then set this’s request body to body, serialized, converted, and UTF-8 encoded.
-        if (body->has<JS::Handle<DOM::Document>>()) {
-            auto string_serialized_document = TRY(body->get<JS::Handle<DOM::Document>>().cell()->serialize_fragment(DOMParsing::RequireWellFormed::No));
+        if (body->has<GC::Handle<DOM::Document>>()) {
+            auto string_serialized_document = TRY(body->get<GC::Handle<DOM::Document>>().cell()->serialize_fragment(DOMParsing::RequireWellFormed::No));
             m_request_body = TRY(Fetch::Infrastructure::byte_sequence_as_body(realm, string_serialized_document.bytes()));
         }
         // 3. Otherwise:
@@ -594,7 +594,7 @@ WebIDL::ExceptionOr<void> XMLHttpRequest::send(Optional<DocumentOrXMLHttpRequest
         // 5. If originalAuthorContentType is non-null, then:
         if (original_author_content_type.has_value()) {
             // 1. If body is a Document or a USVString, then:
-            if (body->has<JS::Handle<DOM::Document>>() || body->has<String>()) {
+            if (body->has<GC::Handle<DOM::Document>>() || body->has<String>()) {
                 // 1. Let contentTypeRecord be the result of parsing originalAuthorContentType.
                 auto content_type_record = MimeSniff::MimeType::parse(original_author_content_type.value());
 
@@ -617,8 +617,8 @@ WebIDL::ExceptionOr<void> XMLHttpRequest::send(Optional<DocumentOrXMLHttpRequest
         }
         // 6. Otherwise:
         else {
-            if (body->has<JS::Handle<DOM::Document>>()) {
-                auto document = body->get<JS::Handle<DOM::Document>>();
+            if (body->has<GC::Handle<DOM::Document>>()) {
+                auto document = body->get<GC::Handle<DOM::Document>>();
 
                 // NOTE: A document can only be an HTML document or XML document.
                 // 1. If body is an HTML document, then set (`Content-Type`, `text/html;charset=UTF-8`) in this’s author request headers.
@@ -773,7 +773,7 @@ WebIDL::ExceptionOr<void> XMLHttpRequest::send(Optional<DocumentOrXMLHttpRequest
 
         // 9. Let processResponse, given a response, be these steps:
         // NOTE: `this` is kept alive by FetchAlgorithms using JS::HeapFunction.
-        auto process_response = [this](JS::NonnullGCPtr<Fetch::Infrastructure::Response> response) {
+        auto process_response = [this](GC::Ref<Fetch::Infrastructure::Response> response) {
             // 1. Set this’s response to response.
             m_response = response;
 
@@ -853,7 +853,7 @@ WebIDL::ExceptionOr<void> XMLHttpRequest::send(Optional<DocumentOrXMLHttpRequest
             });
 
             // 13. Incrementally read this’s response’s body, given processBodyChunk, processEndOfBody, processBodyError, and this’s relevant global object.
-            auto global_object = JS::NonnullGCPtr<JS::Object> { HTML::relevant_global_object(*this) };
+            auto global_object = GC::Ref<JS::Object> { HTML::relevant_global_object(*this) };
             response->body()->incrementally_read(process_body_chunks, process_end_of_body, process_body_error, global_object);
         };
 
@@ -895,7 +895,7 @@ WebIDL::ExceptionOr<void> XMLHttpRequest::send(Optional<DocumentOrXMLHttpRequest
         bool processed_response = false;
 
         // 2. Let processResponseConsumeBody, given a response and nullOrFailureOrBytes, be these steps:
-        auto process_response_consume_body = [this, &processed_response](JS::NonnullGCPtr<Fetch::Infrastructure::Response> response, Variant<Empty, Fetch::Infrastructure::FetchAlgorithms::ConsumeBodyFailureTag, ByteBuffer> null_or_failure_or_bytes) {
+        auto process_response_consume_body = [this, &processed_response](GC::Ref<Fetch::Infrastructure::Response> response, Variant<Empty, Fetch::Infrastructure::FetchAlgorithms::ConsumeBodyFailureTag, ByteBuffer> null_or_failure_or_bytes) {
             // 1. If nullOrFailureOrBytes is not failure, then set this’s response to response.
             if (!null_or_failure_or_bytes.has<Fetch::Infrastructure::FetchAlgorithms::ConsumeBodyFailureTag>())
                 m_response = response;
@@ -1145,7 +1145,7 @@ void XMLHttpRequest::abort()
 }
 
 // https://xhr.spec.whatwg.org/#dom-xmlhttprequest-upload
-JS::NonnullGCPtr<XMLHttpRequestUpload> XMLHttpRequest::upload() const
+GC::Ref<XMLHttpRequestUpload> XMLHttpRequest::upload() const
 {
     // The upload getter steps are to return this’s upload object.
     return m_upload_object;
@@ -1236,7 +1236,7 @@ WebIDL::ExceptionOr<void> XMLHttpRequest::handle_errors()
     return {};
 }
 
-JS::ThrowCompletionOr<void> XMLHttpRequest::request_error_steps(FlyString const& event_name, JS::GCPtr<WebIDL::DOMException> exception)
+JS::ThrowCompletionOr<void> XMLHttpRequest::request_error_steps(FlyString const& event_name, GC::Ptr<WebIDL::DOMException> exception)
 {
     // 1. Set xhr’s state to done.
     m_state = State::Done;

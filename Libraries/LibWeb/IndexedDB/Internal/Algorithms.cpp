@@ -17,7 +17,7 @@
 namespace Web::IndexedDB {
 
 // https://w3c.github.io/IndexedDB/#open-a-database-connection
-WebIDL::ExceptionOr<JS::NonnullGCPtr<IDBDatabase>> open_a_database_connection(JS::Realm& realm, StorageAPI::StorageKey storage_key, String name, Optional<u64> maybe_version, JS::NonnullGCPtr<IDBRequest> request)
+WebIDL::ExceptionOr<GC::Ref<IDBDatabase>> open_a_database_connection(JS::Realm& realm, StorageAPI::StorageKey storage_key, String name, Optional<u64> maybe_version, GC::Ref<IDBRequest> request)
 {
     // 1. Let queue be the connection queue for storageKey and name.
     auto& queue = ConnectionQueueHandler::for_key_and_name(storage_key, name);
@@ -32,7 +32,7 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<IDBDatabase>> open_a_database_connection(JS
 
     // 4. Let db be the database named name in storageKey, or null otherwise.
     auto maybe_db = Database::for_key_and_name(storage_key, name);
-    JS::GCPtr<Database> db;
+    GC::Ptr<Database> db;
 
     // 5. If version is undefined, let version be 1 if db is null, or db’s version otherwise.
     auto version = maybe_version.value_or(maybe_db.has_value() ? maybe_db.value()->version() : 1);
@@ -115,7 +115,7 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<IDBDatabase>> open_a_database_connection(JS
     return connection;
 }
 
-bool fire_a_version_change_event(JS::Realm& realm, FlyString const& event_name, JS::NonnullGCPtr<DOM::EventTarget> target, u64 old_version, Optional<u64> new_version)
+bool fire_a_version_change_event(JS::Realm& realm, FlyString const& event_name, GC::Ref<DOM::EventTarget> target, u64 old_version, Optional<u64> new_version)
 {
     IDBVersionChangeEventInit event_init = {};
     // 4. Set event’s oldVersion attribute to oldVersion.

@@ -24,7 +24,7 @@
 
 namespace WebContent {
 
-JS_DEFINE_ALLOCATOR(WebContentConsoleClient);
+GC_DEFINE_ALLOCATOR(WebContentConsoleClient);
 
 WebContentConsoleClient::WebContentConsoleClient(JS::Console& console, JS::Realm& realm, PageClient& client)
     : ConsoleClient(console)

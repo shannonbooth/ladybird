@@ -14,9 +14,9 @@
 
 namespace Web::IndexedDB {
 
-class ConnectionQueue : public AK::Vector<JS::Handle<IDBRequest>> {
+class ConnectionQueue : public AK::Vector<GC::Handle<IDBRequest>> {
 public:
-    bool all_previous_requests_processed(JS::NonnullGCPtr<IDBRequest> const& request) const
+    bool all_previous_requests_processed(GC::Ref<IDBRequest> const& request) const
     {
         for (auto const& entry : *this) {
             if (entry == request)

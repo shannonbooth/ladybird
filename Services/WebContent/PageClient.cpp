@@ -33,7 +33,7 @@ namespace WebContent {
 
 static PageClient::UseSkiaPainter s_use_skia_painter = PageClient::UseSkiaPainter::GPUBackendIfAvailable;
 
-JS_DEFINE_ALLOCATOR(PageClient);
+GC_DEFINE_ALLOCATOR(PageClient);
 
 void PageClient::set_use_skia_painter(UseSkiaPainter use_skia_painter)
 {

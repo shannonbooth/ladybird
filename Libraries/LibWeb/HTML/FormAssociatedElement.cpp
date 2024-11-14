@@ -691,7 +691,7 @@ void FormAssociatedTextControlElement::select_all()
     selection_was_changed();
 }
 
-void FormAssociatedTextControlElement::set_selection_anchor(JS::NonnullGCPtr<DOM::Node> anchor_node, size_t anchor_offset)
+void FormAssociatedTextControlElement::set_selection_anchor(GC::Ref<DOM::Node> anchor_node, size_t anchor_offset)
 {
     auto text_node = form_associated_element_to_text_node();
     if (!text_node || anchor_node != text_node)
@@ -700,7 +700,7 @@ void FormAssociatedTextControlElement::set_selection_anchor(JS::NonnullGCPtr<DOM
     selection_was_changed();
 }
 
-void FormAssociatedTextControlElement::set_selection_focus(JS::NonnullGCPtr<DOM::Node> focus_node, size_t focus_offset)
+void FormAssociatedTextControlElement::set_selection_focus(GC::Ref<DOM::Node> focus_node, size_t focus_offset)
 {
     auto text_node = form_associated_element_to_text_node();
     if (!text_node || focus_node != text_node)
@@ -811,7 +811,7 @@ void FormAssociatedTextControlElement::decrement_cursor_position_to_previous_wor
     selection_was_changed();
 }
 
-JS::GCPtr<DOM::Position> FormAssociatedTextControlElement::cursor_position() const
+GC::Ptr<DOM::Position> FormAssociatedTextControlElement::cursor_position() const
 {
     auto const node = form_associated_element_to_text_node();
     if (!node)

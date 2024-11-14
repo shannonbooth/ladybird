@@ -41,7 +41,7 @@
 
 namespace Web::DOM {
 
-JS_DEFINE_ALLOCATOR(EventTarget);
+GC_DEFINE_ALLOCATOR(EventTarget);
 
 EventTarget::EventTarget(JS::Realm& realm, MayInterfereWithIndexedPropertyAccess may_interfere_with_indexed_property_access)
     : PlatformObject(realm, may_interfere_with_indexed_property_access)
@@ -51,7 +51,7 @@ EventTarget::EventTarget(JS::Realm& realm, MayInterfereWithIndexedPropertyAccess
 EventTarget::~EventTarget() = default;
 
 // https://dom.spec.whatwg.org/#dom-eventtarget-eventtarget
-WebIDL::ExceptionOr<JS::NonnullGCPtr<EventTarget>> EventTarget::construct_impl(JS::Realm& realm)
+WebIDL::ExceptionOr<GC::Ref<EventTarget>> EventTarget::construct_impl(JS::Realm& realm)
 {
     // The new EventTarget() constructor steps are to do nothing.
     return realm.create<EventTarget>(realm);
@@ -77,9 +77,9 @@ void EventTarget::visit_edges(Cell::Visitor& visitor)
     }
 }
 
-Vector<JS::Handle<DOMEventListener>> EventTarget::event_listener_list()
+Vector<GC::Handle<DOMEventListener>> EventTarget::event_listener_list()
 {
-    Vector<JS::Handle<DOMEventListener>> list;
+    Vector<GC::Handle<DOMEventListener>> list;
     if (!m_data)
         return list;
     for (auto& listener : m_data->event_listener_list)
@@ -112,7 +112,7 @@ struct FlattenedAddEventListenerOptions {
     bool capture { false };
     bool passive { false };
     bool once { false };
-    JS::GCPtr<AbortSignal> signal;
+    GC::Ptr<AbortSignal> signal;
 };
 
 // https://dom.spec.whatwg.org/#event-flatten-more
@@ -126,7 +126,7 @@ static FlattenedAddEventListenerOptions flatten_add_event_listener_options(Varia
     bool passive = false;
 
     // 3. Let signal be null.
-    JS::GCPtr<AbortSignal> signal;
+    GC::Ptr<AbortSignal> signal;
 
     // 4. If options is a dictionary, then:
     if (options.has<AddEventListenerOptions>()) {
@@ -369,8 +369,8 @@ WebIDL::CallbackType* EventTarget::get_current_value_of_event_handler(FlyString 
     if (event_handler->value.has<ByteString>()) {
         // 1. If eventTarget is an element, then let element be eventTarget, and document be element's node document.
         //    Otherwise, eventTarget is a Window object, let element be null, and document be eventTarget's associated Document.
-        JS::GCPtr<Element> element;
-        JS::GCPtr<Document> document;
+        GC::Ptr<Element> element;
+        GC::Ptr<Document> document;
 
         if (is<Element>(this)) {
             auto* element_event_target = verify_cast<Element>(this);
@@ -394,7 +394,7 @@ WebIDL::CallbackType* EventTarget::get_current_value_of_event_handler(FlyString 
         // FIXME: 4. Let location be the location where the script body originated, as given by eventHandler's value.
 
         // 5. If element is not null and element has a form owner, let form owner be that form owner. Otherwise, let form owner be null.
-        JS::GCPtr<HTML::HTMLFormElement> form_owner;
+        GC::Ptr<HTML::HTMLFormElement> form_owner;
         if (is<HTML::FormAssociatedElement>(element.ptr())) {
             auto* form_associated_element = dynamic_cast<HTML::FormAssociatedElement*>(element.ptr());
             VERIFY(form_associated_element);
@@ -471,7 +471,7 @@ WebIDL::CallbackType* EventTarget::get_current_value_of_event_handler(FlyString 
         auto& realm = settings_object.realm();
 
         //  2. Let scope be realm.[[GlobalEnv]].
-        auto scope = JS::NonnullGCPtr<JS::Environment> { realm.global_environment() };
+        auto scope = GC::Ref<JS::Environment> { realm.global_environment() };
 
         // 3. If eventHandler is an element's event handler, then set scope to NewObjectEnvironment(document, true, scope).
         //    (Otherwise, eventHandler is a Window object's event handler.)
@@ -503,8 +503,8 @@ WebIDL::CallbackType* EventTarget::get_current_value_of_event_handler(FlyString 
     }
 
     // 4. Return eventHandler's value.
-    VERIFY(event_handler->value.has<JS::GCPtr<WebIDL::CallbackType>>());
-    return *event_handler->value.get_pointer<JS::GCPtr<WebIDL::CallbackType>>();
+    VERIFY(event_handler->value.has<GC::Ptr<WebIDL::CallbackType>>());
+    return *event_handler->value.get_pointer<GC::Ptr<WebIDL::CallbackType>>();
 }
 
 // https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-attributes:event-handler-idl-attributes-3

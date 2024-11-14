@@ -71,7 +71,7 @@
 
 namespace Web::HTML {
 
-JS_DEFINE_ALLOCATOR(Window);
+GC_DEFINE_ALLOCATOR(Window);
 
 // https://html.spec.whatwg.org/#run-the-animation-frame-callbacks
 void run_animation_frame_callbacks(DOM::Document& document, double now)
@@ -82,22 +82,22 @@ void run_animation_frame_callbacks(DOM::Document& document, double now)
 
 class IdleCallback : public RefCounted<IdleCallback> {
 public:
-    explicit IdleCallback(ESCAPING Function<JS::Completion(JS::NonnullGCPtr<RequestIdleCallback::IdleDeadline>)> handler, u32 handle)
+    explicit IdleCallback(ESCAPING Function<JS::Completion(GC::Ref<RequestIdleCallback::IdleDeadline>)> handler, u32 handle)
         : m_handler(move(handler))
         , m_handle(handle)
     {
     }
     ~IdleCallback() = default;
 
-    JS::Completion invoke(JS::NonnullGCPtr<RequestIdleCallback::IdleDeadline> deadline) { return m_handler(deadline); }
+    JS::Completion invoke(GC::Ref<RequestIdleCallback::IdleDeadline> deadline) { return m_handler(deadline); }
     u32 handle() const { return m_handle; }
 
 private:
-    Function<JS::Completion(JS::NonnullGCPtr<RequestIdleCallback::IdleDeadline>)> m_handler;
+    Function<JS::Completion(GC::Ref<RequestIdleCallback::IdleDeadline>)> m_handler;
     u32 m_handle { 0 };
 };
 
-JS::NonnullGCPtr<Window> Window::create(JS::Realm& realm)
+GC::Ref<Window> Window::create(JS::Realm& realm)
 {
     return realm.create<Window>(realm);
 }
@@ -141,7 +141,7 @@ void Window::finalize()
 Window::~Window() = default;
 
 // https://html.spec.whatwg.org/multipage/window-object.html#window-open-steps
-WebIDL::ExceptionOr<JS::GCPtr<WindowProxy>> Window::window_open_steps(StringView url, StringView target, StringView features)
+WebIDL::ExceptionOr<GC::Ptr<WindowProxy>> Window::window_open_steps(StringView url, StringView target, StringView features)
 {
     auto [target_navigable, no_opener, window_type] = TRY(window_open_steps_internal(url, target, features));
     if (target_navigable == nullptr)
@@ -433,22 +433,22 @@ void Window::fire_a_page_transition_event(FlyString const& event_name, bool pers
 }
 
 // https://html.spec.whatwg.org/multipage/webstorage.html#dom-localstorage
-WebIDL::ExceptionOr<JS::NonnullGCPtr<Storage>> Window::local_storage()
+WebIDL::ExceptionOr<GC::Ref<Storage>> Window::local_storage()
 {
     // FIXME: Implement according to spec.
-    static HashMap<URL::Origin, JS::Handle<Storage>> local_storage_per_origin;
-    auto storage = local_storage_per_origin.ensure(associated_document().origin(), [this]() -> JS::Handle<Storage> {
+    static HashMap<URL::Origin, GC::Handle<Storage>> local_storage_per_origin;
+    auto storage = local_storage_per_origin.ensure(associated_document().origin(), [this]() -> GC::Handle<Storage> {
         return Storage::create(realm());
     });
     return JS::NonnullGCPtr { *storage };
 }
 
 // https://html.spec.whatwg.org/multipage/webstorage.html#dom-sessionstorage
-WebIDL::ExceptionOr<JS::NonnullGCPtr<Storage>> Window::session_storage()
+WebIDL::ExceptionOr<GC::Ref<Storage>> Window::session_storage()
 {
     // FIXME: Implement according to spec.
-    static HashMap<URL::Origin, JS::Handle<Storage>> session_storage_per_origin;
-    auto storage = session_storage_per_origin.ensure(associated_document().origin(), [this]() -> JS::Handle<Storage> {
+    static HashMap<URL::Origin, GC::Handle<Storage>> session_storage_per_origin;
+    auto storage = session_storage_per_origin.ensure(associated_document().origin(), [this]() -> GC::Handle<Storage> {
         return Storage::create(realm());
     });
     return JS::NonnullGCPtr { *storage };
@@ -514,7 +514,7 @@ void Window::consume_history_action_user_activation()
     auto navigables = top->active_document()->inclusive_descendant_navigables();
 
     // 4. Let windows be the list of Window objects constructed by taking the active window of each item in navigables.
-    JS::MarkedVector<JS::GCPtr<Window>> windows(heap());
+    GC::MarkedVector<GC::Ptr<Window>> windows(heap());
     for (auto& n : navigables)
         windows.append(n->active_window());
 
@@ -539,7 +539,7 @@ void Window::consume_user_activation()
     auto navigables = top->active_document()->inclusive_descendant_navigables();
 
     // 4. Let windows be the list of Window objects constructed by taking the active window of each item in navigables.
-    JS::MarkedVector<JS::GCPtr<Window>> windows(heap());
+    GC::MarkedVector<GC::Ptr<Window>> windows(heap());
     for (auto& n : navigables)
         windows.append(n->active_window());
 
@@ -620,14 +620,14 @@ BrowsingContext* Window::browsing_context()
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#window-navigable
-JS::GCPtr<Navigable> Window::navigable() const
+GC::Ptr<Navigable> Window::navigable() const
 {
     // A Window's navigable is the navigable whose active document is the Window's associated Document's, or null if there is no such navigable.
     return Navigable::navigable_with_active_document(*m_associated_document);
 }
 
 // https://html.spec.whatwg.org/multipage/system-state.html#pdf-viewer-plugin-objects
-Vector<JS::NonnullGCPtr<Plugin>> Window::pdf_viewer_plugin_objects()
+Vector<GC::Ref<Plugin>> Window::pdf_viewer_plugin_objects()
 {
     // Each Window object has a PDF viewer plugin objects list. If the user agent's PDF viewer supported is false, then it is the empty list.
     // Otherwise, it is a list containing five Plugin objects, whose names are, respectively:
@@ -653,7 +653,7 @@ Vector<JS::NonnullGCPtr<Plugin>> Window::pdf_viewer_plugin_objects()
 }
 
 // https://html.spec.whatwg.org/multipage/system-state.html#pdf-viewer-mime-type-objects
-Vector<JS::NonnullGCPtr<MimeType>> Window::pdf_viewer_mime_type_objects()
+Vector<GC::Ref<MimeType>> Window::pdf_viewer_mime_type_objects()
 {
     // Each Window object has a PDF viewer mime type objects list. If the user agent's PDF viewer supported is false, then it is the empty list.
     // Otherwise, it is a list containing two MimeType objects, whose types are, respectively:
@@ -672,7 +672,7 @@ Vector<JS::NonnullGCPtr<MimeType>> Window::pdf_viewer_mime_type_objects()
 }
 
 // https://streams.spec.whatwg.org/#count-queuing-strategy-size-function
-JS::NonnullGCPtr<WebIDL::CallbackType> Window::count_queuing_strategy_size_function()
+GC::Ref<WebIDL::CallbackType> Window::count_queuing_strategy_size_function()
 {
     auto& realm = this->realm();
 
@@ -694,7 +694,7 @@ JS::NonnullGCPtr<WebIDL::CallbackType> Window::count_queuing_strategy_size_funct
 }
 
 // https://streams.spec.whatwg.org/#byte-length-queuing-strategy-size-function
-JS::NonnullGCPtr<WebIDL::CallbackType> Window::byte_length_queuing_strategy_size_function()
+GC::Ref<WebIDL::CallbackType> Window::byte_length_queuing_strategy_size_function()
 {
     auto& realm = this->realm();
 
@@ -756,21 +756,21 @@ JS::ThrowCompletionOr<bool> Window::internal_set_prototype_of(JS::Object* protot
 }
 
 // https://html.spec.whatwg.org/multipage/window-object.html#dom-window
-JS::NonnullGCPtr<WindowProxy> Window::window() const
+GC::Ref<WindowProxy> Window::window() const
 {
     // The window, frames, and self getter steps are to return this's relevant realm.[[GlobalEnv]].[[GlobalThisValue]].
     return verify_cast<WindowProxy>(relevant_realm(*this).global_environment().global_this_value());
 }
 
 // https://html.spec.whatwg.org/multipage/window-object.html#dom-self
-JS::NonnullGCPtr<WindowProxy> Window::self() const
+GC::Ref<WindowProxy> Window::self() const
 {
     // The window, frames, and self getter steps are to return this's relevant realm.[[GlobalEnv]].[[GlobalThisValue]].
     return verify_cast<WindowProxy>(relevant_realm(*this).global_environment().global_this_value());
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-document-2
-JS::NonnullGCPtr<DOM::Document const> Window::document() const
+GC::Ref<DOM::Document const> Window::document() const
 {
     // The document getter steps are to return this's associated Document.
     return associated_document();
@@ -872,7 +872,7 @@ void Window::set_status(String const& status)
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-location
-JS::NonnullGCPtr<Location> Window::location()
+GC::Ref<Location> Window::location()
 {
     auto& realm = this->realm();
 
@@ -883,7 +883,7 @@ JS::NonnullGCPtr<Location> Window::location()
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-history
-JS::NonnullGCPtr<History> Window::history() const
+GC::Ref<History> Window::history() const
 {
     // The history getter steps are to return this's associated Document's history object.
     return associated_document().history();
@@ -915,7 +915,7 @@ void Window::blur()
 }
 
 // https://html.spec.whatwg.org/multipage/window-object.html#dom-frames
-JS::NonnullGCPtr<WindowProxy> Window::frames() const
+GC::Ref<WindowProxy> Window::frames() const
 {
     // The window, frames, and self getter steps are to return this's relevant realm.[[GlobalEnv]].[[GlobalThisValue]].
     return verify_cast<WindowProxy>(relevant_realm(*this).global_environment().global_this_value());
@@ -929,7 +929,7 @@ u32 Window::length()
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-top
-JS::GCPtr<WindowProxy const> Window::top() const
+GC::Ptr<WindowProxy const> Window::top() const
 {
     // 1. If this's navigable is null, then return null.
     auto navigable = this->navigable();
@@ -941,7 +941,7 @@ JS::GCPtr<WindowProxy const> Window::top() const
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-opener
-JS::GCPtr<WindowProxy const> Window::opener() const
+GC::Ptr<WindowProxy const> Window::opener() const
 {
     // 1. Let current be this's browsing context.
     auto const* current = browsing_context();
@@ -976,7 +976,7 @@ WebIDL::ExceptionOr<void> Window::set_opener(JS::Value value)
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-parent
-JS::GCPtr<WindowProxy const> Window::parent() const
+GC::Ptr<WindowProxy const> Window::parent() const
 {
     // 1. Let navigable be this's navigable.
     auto navigable = this->navigable();
@@ -995,7 +995,7 @@ JS::GCPtr<WindowProxy const> Window::parent() const
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-frameelement
 // https://whatpr.org/html/9893/nav-history-apis.html#dom-frameelement
-JS::GCPtr<DOM::Element const> Window::frame_element() const
+GC::Ptr<DOM::Element const> Window::frame_element() const
 {
     // 1. Let current be this's node navigable.
     auto current = navigable();
@@ -1020,14 +1020,14 @@ JS::GCPtr<DOM::Element const> Window::frame_element() const
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-open
-WebIDL::ExceptionOr<JS::GCPtr<WindowProxy>> Window::open(Optional<String> const& url, Optional<String> const& target, Optional<String> const& features)
+WebIDL::ExceptionOr<GC::Ptr<WindowProxy>> Window::open(Optional<String> const& url, Optional<String> const& target, Optional<String> const& features)
 {
     // The open(url, target, features) method steps are to run the window open steps with url, target, and features.
     return window_open_steps(*url, *target, *features);
 }
 
 // https://html.spec.whatwg.org/multipage/system-state.html#dom-navigator
-JS::NonnullGCPtr<Navigator> Window::navigator()
+GC::Ref<Navigator> Window::navigator()
 {
     auto& realm = this->realm();
 
@@ -1038,7 +1038,7 @@ JS::NonnullGCPtr<Navigator> Window::navigator()
 }
 
 // https://html.spec.whatwg.org/multipage/interaction.html#close-watcher-manager
-JS::NonnullGCPtr<CloseWatcherManager> Window::close_watcher_manager()
+GC::Ref<CloseWatcherManager> Window::close_watcher_manager()
 {
     auto& realm = this->realm();
 
@@ -1148,7 +1148,7 @@ WebIDL::ExceptionOr<void> Window::window_post_message_steps(JS::Value message, W
         // 6. Let newPorts be a new frozen array consisting of all MessagePort objects in deserializeRecord.[[TransferredValues]],
         //    if any, maintaining their relative order.
         // FIXME: Use a FrozenArray
-        Vector<JS::Handle<MessagePort>> new_ports;
+        Vector<GC::Handle<MessagePort>> new_ports;
         for (auto const& object : deserialize_record.transferred_values) {
             if (is<HTML::MessagePort>(*object)) {
                 new_ports.append(verify_cast<MessagePort>(*object));
@@ -1180,7 +1180,7 @@ WebIDL::ExceptionOr<void> Window::post_message(JS::Value message, WindowPostMess
 }
 
 // https://html.spec.whatwg.org/multipage/web-messaging.html#dom-window-postmessage
-WebIDL::ExceptionOr<void> Window::post_message(JS::Value message, String const& target_origin, Vector<JS::Handle<JS::Object>> const& transfer)
+WebIDL::ExceptionOr<void> Window::post_message(JS::Value message, String const& target_origin, Vector<GC::Handle<JS::Object>> const& transfer)
 {
     // The Window interface's postMessage(message, targetOrigin, transfer) method steps are to run the window post message
     // steps given this, message, and «[ "targetOrigin" → targetOrigin, "transfer" → transfer ]».
@@ -1188,7 +1188,7 @@ WebIDL::ExceptionOr<void> Window::post_message(JS::Value message, String const& 
 }
 
 // https://dom.spec.whatwg.org/#dom-window-event
-Variant<JS::Handle<DOM::Event>, JS::Value> Window::event() const
+Variant<GC::Handle<DOM::Event>, JS::Value> Window::event() const
 {
     // The event getter steps are to return this’s current event.
     if (auto* current_event = this->current_event())
@@ -1197,7 +1197,7 @@ Variant<JS::Handle<DOM::Event>, JS::Value> Window::event() const
 }
 
 // https://w3c.github.io/csswg-drafts/cssom/#dom-window-getcomputedstyle
-JS::NonnullGCPtr<CSS::CSSStyleDeclaration> Window::get_computed_style(DOM::Element& element, Optional<String> const& pseudo_element) const
+GC::Ref<CSS::CSSStyleDeclaration> Window::get_computed_style(DOM::Element& element, Optional<String> const& pseudo_element) const
 {
     // 1. Let doc be elt’s node document.
 
@@ -1247,7 +1247,7 @@ JS::NonnullGCPtr<CSS::CSSStyleDeclaration> Window::get_computed_style(DOM::Eleme
 }
 
 // https://w3c.github.io/csswg-drafts/cssom-view/#dom-window-matchmedia
-WebIDL::ExceptionOr<JS::NonnullGCPtr<CSS::MediaQueryList>> Window::match_media(String const& query)
+WebIDL::ExceptionOr<GC::Ref<CSS::MediaQueryList>> Window::match_media(String const& query)
 {
     // 1. Let parsed media query list be the result of parsing query.
     auto parsed_media_query_list = parse_media_query_list(CSS::Parser::ParsingContext(associated_document()), query);
@@ -1259,7 +1259,7 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<CSS::MediaQueryList>> Window::match_media(S
 }
 
 // https://w3c.github.io/csswg-drafts/cssom-view/#dom-window-screen
-JS::NonnullGCPtr<CSS::Screen> Window::screen()
+GC::Ref<CSS::Screen> Window::screen()
 {
     // The screen attribute must return the Screen object associated with the Window object.
     if (!m_screen)
@@ -1267,7 +1267,7 @@ JS::NonnullGCPtr<CSS::Screen> Window::screen()
     return JS::NonnullGCPtr { *m_screen };
 }
 
-JS::GCPtr<CSS::VisualViewport> Window::visual_viewport()
+GC::Ptr<CSS::VisualViewport> Window::visual_viewport()
 {
     // If the associated document is fully active, the visualViewport attribute must return
     // the VisualViewport object associated with the Window object’s associated document.
@@ -1543,7 +1543,7 @@ double Window::device_pixel_ratio() const
 }
 
 // https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#dom-animationframeprovider-requestanimationframe
-WebIDL::UnsignedLong Window::request_animation_frame(JS::NonnullGCPtr<WebIDL::CallbackType> callback)
+WebIDL::UnsignedLong Window::request_animation_frame(GC::Ref<WebIDL::CallbackType> callback)
 {
     // FIXME: Make this fully spec compliant. Currently implements a mix of 'requestAnimationFrame()' and 'run the animation frame callbacks'.
     return animation_frame_callback_driver().add(JS::create_heap_function(heap(), [this, callback](double now) {
@@ -1591,7 +1591,7 @@ u32 Window::request_idle_callback(WebIDL::CallbackType& callback, RequestIdleCal
     auto handle = m_idle_callback_identifier;
 
     // 4. Push callback to the end of window's list of idle request callbacks, associated with handle.
-    auto handler = [callback = JS::make_handle(callback)](JS::NonnullGCPtr<RequestIdleCallback::IdleDeadline> deadline) -> JS::Completion {
+    auto handler = [callback = JS::make_handle(callback)](GC::Ref<RequestIdleCallback::IdleDeadline> deadline) -> JS::Completion {
         return WebIDL::invoke_callback(*callback, {}, deadline.ptr());
     };
     m_idle_request_callbacks.append(adopt_ref(*new IdleCallback(move(handler), handle)));
@@ -1624,7 +1624,7 @@ void Window::cancel_idle_callback(u32 handle)
 }
 
 // https://w3c.github.io/selection-api/#dom-window-getselection
-JS::GCPtr<Selection::Selection> Window::get_selection() const
+GC::Ptr<Selection::Selection> Window::get_selection() const
 {
     // The method must invoke and return the result of getSelection() on this's Window.document attribute.
     return associated_document().get_selection();
@@ -1643,7 +1643,7 @@ void Window::release_events()
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-navigation
-JS::NonnullGCPtr<Navigation> Window::navigation()
+GC::Ref<Navigation> Window::navigation()
 {
     // Upon creation of the Window object, its navigation API must be set
     // to a new Navigation object created in the Window object's relevant realm.
@@ -1657,7 +1657,7 @@ JS::NonnullGCPtr<Navigation> Window::navigation()
 }
 
 // https://html.spec.whatwg.org/multipage/custom-elements.html#dom-window-customelements
-JS::NonnullGCPtr<CustomElementRegistry> Window::custom_elements()
+GC::Ref<CustomElementRegistry> Window::custom_elements()
 {
     auto& realm = this->realm();
 
@@ -1668,7 +1668,7 @@ JS::NonnullGCPtr<CustomElementRegistry> Window::custom_elements()
 }
 
 // https://html.spec.whatwg.org/#document-tree-child-navigable-target-name-property-set
-OrderedHashMap<FlyString, JS::NonnullGCPtr<Navigable>> Window::document_tree_child_navigable_target_name_property_set()
+OrderedHashMap<FlyString, GC::Ref<Navigable>> Window::document_tree_child_navigable_target_name_property_set()
 {
     // The document-tree child navigable target name property set of a Window object window is the return value of running these steps:
 
@@ -1676,7 +1676,7 @@ OrderedHashMap<FlyString, JS::NonnullGCPtr<Navigable>> Window::document_tree_chi
     auto children = associated_document().document_tree_child_navigables();
 
     // 2. Let firstNamedChildren be an empty ordered set.
-    OrderedHashMap<FlyString, JS::NonnullGCPtr<Navigable>> first_named_children;
+    OrderedHashMap<FlyString, GC::Ref<Navigable>> first_named_children;
 
     // 3. For each navigable of children:
     for (auto const& navigable : children) {
@@ -1696,7 +1696,7 @@ OrderedHashMap<FlyString, JS::NonnullGCPtr<Navigable>> Window::document_tree_chi
     }
 
     // 4. Let names be an empty ordered set.
-    OrderedHashMap<FlyString, JS::NonnullGCPtr<Navigable>> names;
+    OrderedHashMap<FlyString, GC::Ref<Navigable>> names;
 
     // 5. For each navigable of firstNamedChildren:
     for (auto const& [name, navigable] : first_named_children) {
@@ -1758,7 +1758,7 @@ JS::Value Window::named_item_value(FlyString const& name) const
     // 2. If objects contains a navigable, then:
     if (!objects.navigables.is_empty()) {
         // 1. Let container be the first navigable container in window's associated Document's descendants whose content navigable is in objects.
-        JS::GCPtr<NavigableContainer> container = nullptr;
+        GC::Ptr<NavigableContainer> container = nullptr;
         mutable_this.associated_document().for_each_in_subtree_of_type<HTML::NavigableContainer>([&](HTML::NavigableContainer& navigable_container) {
             if (!navigable_container.content_navigable())
                 return TraversalDecision::Continue;

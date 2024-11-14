@@ -18,7 +18,7 @@ class NanBoxedValue;
 class WeakContainer;
 
 template<typename T>
-class HeapFunction;
+class Function;
 
 template<class T>
 class Handle;

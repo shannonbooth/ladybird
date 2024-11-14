@@ -18,7 +18,7 @@
 
 namespace Web::IndexedDB {
 
-JS_DEFINE_ALLOCATOR(IDBFactory);
+GC_DEFINE_ALLOCATOR(IDBFactory);
 
 IDBFactory::IDBFactory(JS::Realm& realm)
     : Bindings::PlatformObject(realm)
@@ -34,7 +34,7 @@ void IDBFactory::initialize(JS::Realm& realm)
 }
 
 // https://w3c.github.io/IndexedDB/#dom-idbfactory-open
-WebIDL::ExceptionOr<JS::NonnullGCPtr<IDBOpenDBRequest>> IDBFactory::open(String const& name, Optional<u64> version)
+WebIDL::ExceptionOr<GC::Ref<IDBOpenDBRequest>> IDBFactory::open(String const& name, Optional<u64> version)
 {
     auto& realm = this->realm();
 
@@ -69,7 +69,7 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<IDBOpenDBRequest>> IDBFactory::open(String 
                 request->set_result(JS::js_undefined());
 
                 // 2. Set request’s error to result.
-                request->set_error(result.exception().get<JS::NonnullGCPtr<WebIDL::DOMException>>());
+                request->set_error(result.exception().get<GC::Ref<WebIDL::DOMException>>());
 
                 // 3. Set request’s done flag to true.
                 request->set_done(true);

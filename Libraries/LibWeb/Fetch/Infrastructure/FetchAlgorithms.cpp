@@ -4,15 +4,15 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include <LibJS/Heap/Heap.h>
+#include <LibGC/Heap.h>
 #include <LibJS/Runtime/VM.h>
 #include <LibWeb/Fetch/Infrastructure/FetchAlgorithms.h>
 
 namespace Web::Fetch::Infrastructure {
 
-JS_DEFINE_ALLOCATOR(FetchAlgorithms);
+GC_DEFINE_ALLOCATOR(FetchAlgorithms);
 
-JS::NonnullGCPtr<FetchAlgorithms> FetchAlgorithms::create(JS::VM& vm, Input input)
+GC::Ref<FetchAlgorithms> FetchAlgorithms::create(JS::VM& vm, Input input)
 {
     auto process_request_body_chunk_length = JS::create_heap_function(vm.heap(), move(input.process_request_body_chunk_length));
     auto process_request_end_of_body = JS::create_heap_function(vm.heap(), move(input.process_request_end_of_body));

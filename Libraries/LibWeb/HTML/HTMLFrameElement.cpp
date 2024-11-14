@@ -16,7 +16,7 @@
 
 namespace Web::HTML {
 
-JS_DEFINE_ALLOCATOR(HTMLFrameElement);
+GC_DEFINE_ALLOCATOR(HTMLFrameElement);
 
 HTMLFrameElement::HTMLFrameElement(DOM::Document& document, DOM::QualifiedName qualified_name)
     : NavigableContainer(document, move(qualified_name))

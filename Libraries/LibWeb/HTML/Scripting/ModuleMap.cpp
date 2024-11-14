@@ -8,7 +8,7 @@
 
 namespace Web::HTML {
 
-JS_DEFINE_ALLOCATOR(ModuleMap);
+GC_DEFINE_ALLOCATOR(ModuleMap);
 
 void ModuleMap::visit_edges(Visitor& visitor)
 {

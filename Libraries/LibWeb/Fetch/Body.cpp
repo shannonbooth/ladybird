@@ -38,7 +38,7 @@ bool BodyMixin::is_unusable() const
 }
 
 // https://fetch.spec.whatwg.org/#dom-body-body
-JS::GCPtr<Streams::ReadableStream> BodyMixin::body() const
+GC::Ptr<Streams::ReadableStream> BodyMixin::body() const
 {
     // The body getter steps are to return null if this’s body is null; otherwise this’s body’s stream.
     auto const& body = body_impl();
@@ -54,7 +54,7 @@ bool BodyMixin::body_used() const
 }
 
 // https://fetch.spec.whatwg.org/#dom-body-arraybuffer
-WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> BodyMixin::array_buffer() const
+WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> BodyMixin::array_buffer() const
 {
     auto& vm = Bindings::main_thread_vm();
     auto& realm = *vm.current_realm();
@@ -64,7 +64,7 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> BodyMixin::array_buffer()
 }
 
 // https://fetch.spec.whatwg.org/#dom-body-blob
-WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> BodyMixin::blob() const
+WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> BodyMixin::blob() const
 {
     auto& vm = Bindings::main_thread_vm();
     auto& realm = *vm.current_realm();
@@ -74,7 +74,7 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> BodyMixin::blob() const
 }
 
 // https://fetch.spec.whatwg.org/#dom-body-bytes
-WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> BodyMixin::bytes() const
+WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> BodyMixin::bytes() const
 {
     auto& vm = Bindings::main_thread_vm();
     auto& realm = *vm.current_realm();
@@ -84,7 +84,7 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> BodyMixin::bytes() const
 }
 
 // https://fetch.spec.whatwg.org/#dom-body-formdata
-WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> BodyMixin::form_data() const
+WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> BodyMixin::form_data() const
 {
     auto& vm = Bindings::main_thread_vm();
     auto& realm = *vm.current_realm();
@@ -94,7 +94,7 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> BodyMixin::form_data() co
 }
 
 // https://fetch.spec.whatwg.org/#dom-body-json
-WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> BodyMixin::json() const
+WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> BodyMixin::json() const
 {
     auto& vm = Bindings::main_thread_vm();
     auto& realm = *vm.current_realm();
@@ -104,7 +104,7 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> BodyMixin::json() const
 }
 
 // https://fetch.spec.whatwg.org/#dom-body-text
-WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> BodyMixin::text() const
+WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> BodyMixin::text() const
 {
     auto& vm = Bindings::main_thread_vm();
     auto& realm = *vm.current_realm();
@@ -174,7 +174,7 @@ WebIDL::ExceptionOr<JS::Value> package_data(JS::Realm& realm, ByteBuffer bytes, 
 }
 
 // https://fetch.spec.whatwg.org/#concept-body-consume-body
-WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> consume_body(JS::Realm& realm, BodyMixin const& object, PackageDataType type)
+WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> consume_body(JS::Realm& realm, BodyMixin const& object, PackageDataType type)
 {
     // 1. If object is unusable, then return a promise rejected with a TypeError.
     if (object.is_unusable()) {

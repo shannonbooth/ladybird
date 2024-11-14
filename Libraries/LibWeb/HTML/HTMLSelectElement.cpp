@@ -29,7 +29,7 @@
 
 namespace Web::HTML {
 
-JS_DEFINE_ALLOCATOR(HTMLSelectElement);
+GC_DEFINE_ALLOCATOR(HTMLSelectElement);
 
 HTMLSelectElement::HTMLSelectElement(DOM::Document& document, DOM::QualifiedName qualified_name)
     : HTMLElement(document, move(qualified_name))
@@ -100,7 +100,7 @@ WebIDL::ExceptionOr<void> HTMLSelectElement::set_size(WebIDL::UnsignedLong size)
 }
 
 // https://html.spec.whatwg.org/multipage/form-elements.html#dom-select-options
-JS::GCPtr<HTMLOptionsCollection> const& HTMLSelectElement::options()
+GC::Ptr<HTMLOptionsCollection> const& HTMLSelectElement::options()
 {
     if (!m_options) {
         m_options = HTMLOptionsCollection::create(*this, [](DOM::Element const& element) {
@@ -166,7 +166,7 @@ void HTMLSelectElement::remove(WebIDL::Long index)
 }
 
 // https://html.spec.whatwg.org/multipage/form-elements.html#dom-select-selectedoptions
-JS::NonnullGCPtr<DOM::HTMLCollection> HTMLSelectElement::selected_options()
+GC::Ref<DOM::HTMLCollection> HTMLSelectElement::selected_options()
 {
     // The selectedOptions IDL attribute must return an HTMLCollection rooted at the select node,
     // whose filter matches the elements in the list of options that have their selectedness set to true.
@@ -183,11 +183,11 @@ JS::NonnullGCPtr<DOM::HTMLCollection> HTMLSelectElement::selected_options()
 }
 
 // https://html.spec.whatwg.org/multipage/form-elements.html#concept-select-option-list
-Vector<JS::Handle<HTMLOptionElement>> HTMLSelectElement::list_of_options() const
+Vector<GC::Handle<HTMLOptionElement>> HTMLSelectElement::list_of_options() const
 {
     // The list of options for a select element consists of all the option element children of the select element,
     // and all the option element children of all the optgroup element children of the select element, in tree order.
-    Vector<JS::Handle<HTMLOptionElement>> list;
+    Vector<GC::Handle<HTMLOptionElement>> list;
 
     for_each_child_of_type<HTMLOptionElement>([&](HTMLOptionElement& option_element) {
         list.append(JS::make_handle(option_element));
@@ -562,7 +562,7 @@ void HTMLSelectElement::update_inner_text_element()
 }
 
 // https://html.spec.whatwg.org/multipage/form-elements.html#selectedness-setting-algorithm
-void HTMLSelectElement::update_selectedness(JS::GCPtr<HTML::HTMLOptionElement> last_selected_option)
+void HTMLSelectElement::update_selectedness(GC::Ptr<HTML::HTMLOptionElement> last_selected_option)
 {
     if (has_attribute(AttributeNames::multiple))
         return;

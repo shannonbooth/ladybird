@@ -26,9 +26,9 @@
 
 namespace Web::FileAPI {
 
-JS_DEFINE_ALLOCATOR(Blob);
+GC_DEFINE_ALLOCATOR(Blob);
 
-JS::NonnullGCPtr<Blob> Blob::create(JS::Realm& realm, ByteBuffer byte_buffer, String type)
+GC::Ref<Blob> Blob::create(JS::Realm& realm, ByteBuffer byte_buffer, String type)
 {
     return realm.create<Blob>(realm, move(byte_buffer), move(type));
 }
@@ -103,12 +103,12 @@ ErrorOr<ByteBuffer> process_blob_parts(Vector<BlobPart> const& blob_parts, Optio
                 return bytes.try_append(s.bytes());
             },
             // 2. If element is a BufferSource, get a copy of the bytes held by the buffer source, and append those bytes to bytes.
-            [&](JS::Handle<WebIDL::BufferSource> const& buffer_source) -> ErrorOr<void> {
+            [&](GC::Handle<WebIDL::BufferSource> const& buffer_source) -> ErrorOr<void> {
                 auto data_buffer = TRY(WebIDL::get_buffer_source_copy(*buffer_source->raw_object()));
                 return bytes.try_append(data_buffer.bytes());
             },
             // 3. If element is a Blob, append the bytes it represents to bytes.
-            [&](JS::Handle<Blob> const& blob) -> ErrorOr<void> {
+            [&](GC::Handle<Blob> const& blob) -> ErrorOr<void> {
                 return bytes.try_append(blob->raw_bytes());
             }));
     }
@@ -184,7 +184,7 @@ WebIDL::ExceptionOr<void> Blob::deserialization_steps(ReadonlySpan<u32> const& r
 }
 
 // https://w3c.github.io/FileAPI/#ref-for-dom-blob-blob
-JS::NonnullGCPtr<Blob> Blob::create(JS::Realm& realm, Optional<Vector<BlobPart>> const& blob_parts, Optional<BlobPropertyBag> const& options)
+GC::Ref<Blob> Blob::create(JS::Realm& realm, Optional<Vector<BlobPart>> const& blob_parts, Optional<BlobPropertyBag> const& options)
 {
     // 1. If invoked with zero parameters, return a new Blob object consisting of 0 bytes, with size set to 0, and with type set to the empty string.
     if (!blob_parts.has_value() && !options.has_value())
@@ -216,13 +216,13 @@ JS::NonnullGCPtr<Blob> Blob::create(JS::Realm& realm, Optional<Vector<BlobPart>>
     return realm.create<Blob>(realm, move(byte_buffer), move(type));
 }
 
-WebIDL::ExceptionOr<JS::NonnullGCPtr<Blob>> Blob::construct_impl(JS::Realm& realm, Optional<Vector<BlobPart>> const& blob_parts, Optional<BlobPropertyBag> const& options)
+WebIDL::ExceptionOr<GC::Ref<Blob>> Blob::construct_impl(JS::Realm& realm, Optional<Vector<BlobPart>> const& blob_parts, Optional<BlobPropertyBag> const& options)
 {
     return Blob::create(realm, blob_parts, options);
 }
 
 // https://w3c.github.io/FileAPI/#dfn-slice
-WebIDL::ExceptionOr<JS::NonnullGCPtr<Blob>> Blob::slice(Optional<i64> start, Optional<i64> end, Optional<String> const& content_type)
+WebIDL::ExceptionOr<GC::Ref<Blob>> Blob::slice(Optional<i64> start, Optional<i64> end, Optional<String> const& content_type)
 {
     // 1. Let sliceStart, sliceEnd, and sliceContentType be null.
     // 2. If start is given, set sliceStart to start.
@@ -233,7 +233,7 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<Blob>> Blob::slice(Optional<i64> start, Opt
 }
 
 // https://w3c.github.io/FileAPI/#slice-blob
-WebIDL::ExceptionOr<JS::NonnullGCPtr<Blob>> Blob::slice_blob(Optional<i64> start, Optional<i64> end, Optional<String> const& content_type)
+WebIDL::ExceptionOr<GC::Ref<Blob>> Blob::slice_blob(Optional<i64> start, Optional<i64> end, Optional<String> const& content_type)
 {
     auto& vm = realm().vm();
 
@@ -309,14 +309,14 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<Blob>> Blob::slice_blob(Optional<i64> start
 }
 
 // https://w3c.github.io/FileAPI/#dom-blob-stream
-JS::NonnullGCPtr<Streams::ReadableStream> Blob::stream()
+GC::Ref<Streams::ReadableStream> Blob::stream()
 {
     // The stream() method, when invoked, must return the result of calling get stream on this.
     return get_stream();
 }
 
 // https://w3c.github.io/FileAPI/#blob-get-stream
-JS::NonnullGCPtr<Streams::ReadableStream> Blob::get_stream()
+GC::Ref<Streams::ReadableStream> Blob::get_stream()
 {
     auto& realm = this->realm();
 
@@ -378,7 +378,7 @@ JS::NonnullGCPtr<Streams::ReadableStream> Blob::get_stream()
 }
 
 // https://w3c.github.io/FileAPI/#dom-blob-text
-JS::NonnullGCPtr<WebIDL::Promise> Blob::text()
+GC::Ref<WebIDL::Promise> Blob::text()
 {
     auto& realm = this->realm();
     auto& vm = realm.vm();
@@ -408,7 +408,7 @@ JS::NonnullGCPtr<WebIDL::Promise> Blob::text()
 }
 
 // https://w3c.github.io/FileAPI/#dom-blob-arraybuffer
-JS::NonnullGCPtr<WebIDL::Promise> Blob::array_buffer()
+GC::Ref<WebIDL::Promise> Blob::array_buffer()
 {
     auto& realm = this->realm();
 
@@ -435,7 +435,7 @@ JS::NonnullGCPtr<WebIDL::Promise> Blob::array_buffer()
 }
 
 // https://w3c.github.io/FileAPI/#dom-blob-bytes
-JS::NonnullGCPtr<WebIDL::Promise> Blob::bytes()
+GC::Ref<WebIDL::Promise> Blob::bytes()
 {
     auto& realm = this->realm();
 

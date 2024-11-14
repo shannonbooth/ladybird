@@ -21,9 +21,9 @@
 
 namespace Web::HTML {
 
-JS_DEFINE_ALLOCATOR(SharedResourceRequest);
+GC_DEFINE_ALLOCATOR(SharedResourceRequest);
 
-JS::NonnullGCPtr<SharedResourceRequest> SharedResourceRequest::get_or_create(JS::Realm& realm, JS::NonnullGCPtr<Page> page, URL::URL const& url)
+GC::Ref<SharedResourceRequest> SharedResourceRequest::get_or_create(JS::Realm& realm, GC::Ref<Page> page, URL::URL const& url)
 {
     auto document = Bindings::principal_host_defined_environment_settings_object(realm).responsible_document();
     VERIFY(document);
@@ -35,7 +35,7 @@ JS::NonnullGCPtr<SharedResourceRequest> SharedResourceRequest::get_or_create(JS:
     return request;
 }
 
-SharedResourceRequest::SharedResourceRequest(JS::NonnullGCPtr<Page> page, URL::URL url, JS::NonnullGCPtr<DOM::Document> document)
+SharedResourceRequest::SharedResourceRequest(GC::Ref<Page> page, URL::URL url, GC::Ref<DOM::Document> document)
     : m_page(page)
     , m_url(move(url))
     , m_document(document)
@@ -64,25 +64,25 @@ void SharedResourceRequest::visit_edges(JS::Cell::Visitor& visitor)
     visitor.visit(m_image_data);
 }
 
-JS::GCPtr<DecodedImageData> SharedResourceRequest::image_data() const
+GC::Ptr<DecodedImageData> SharedResourceRequest::image_data() const
 {
     return m_image_data;
 }
 
-JS::GCPtr<Fetch::Infrastructure::FetchController> SharedResourceRequest::fetch_controller()
+GC::Ptr<Fetch::Infrastructure::FetchController> SharedResourceRequest::fetch_controller()
 {
     return m_fetch_controller.ptr();
 }
 
-void SharedResourceRequest::set_fetch_controller(JS::GCPtr<Fetch::Infrastructure::FetchController> fetch_controller)
+void SharedResourceRequest::set_fetch_controller(GC::Ptr<Fetch::Infrastructure::FetchController> fetch_controller)
 {
     m_fetch_controller = move(fetch_controller);
 }
 
-void SharedResourceRequest::fetch_resource(JS::Realm& realm, JS::NonnullGCPtr<Fetch::Infrastructure::Request> request)
+void SharedResourceRequest::fetch_resource(JS::Realm& realm, GC::Ref<Fetch::Infrastructure::Request> request)
 {
     Fetch::Infrastructure::FetchAlgorithms::Input fetch_algorithms_input {};
-    fetch_algorithms_input.process_response = [this, &realm, request](JS::NonnullGCPtr<Fetch::Infrastructure::Response> response) {
+    fetch_algorithms_input.process_response = [this, &realm, request](GC::Ref<Fetch::Infrastructure::Response> response) {
         // FIXME: If the response is CORS cross-origin, we must use its internal response to query any of its data. See:
         //        https://github.com/whatwg/html/issues/9355
         response = response->unsafe_response();

@@ -13,17 +13,17 @@
 
 namespace Web::Geometry {
 
-JS_DEFINE_ALLOCATOR(DOMRectList);
+GC_DEFINE_ALLOCATOR(DOMRectList);
 
-JS::NonnullGCPtr<DOMRectList> DOMRectList::create(JS::Realm& realm, Vector<JS::Handle<DOMRect>> rect_handles)
+GC::Ref<DOMRectList> DOMRectList::create(JS::Realm& realm, Vector<GC::Handle<DOMRect>> rect_handles)
 {
-    Vector<JS::NonnullGCPtr<DOMRect>> rects;
+    Vector<GC::Ref<DOMRect>> rects;
     for (auto& rect : rect_handles)
         rects.append(*rect);
     return realm.create<DOMRectList>(realm, move(rects));
 }
 
-DOMRectList::DOMRectList(JS::Realm& realm, Vector<JS::NonnullGCPtr<DOMRect>> rects)
+DOMRectList::DOMRectList(JS::Realm& realm, Vector<GC::Ref<DOMRect>> rects)
     : Bindings::PlatformObject(realm)
     , m_rects(move(rects))
 {

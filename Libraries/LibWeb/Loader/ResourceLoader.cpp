@@ -230,7 +230,7 @@ static bool should_block_request(LoadRequest const& request)
     return false;
 }
 
-void ResourceLoader::load(LoadRequest& request, JS::Handle<SuccessCallback> success_callback, JS::Handle<ErrorCallback> error_callback, Optional<u32> timeout, JS::Handle<TimeoutCallback> timeout_callback)
+void ResourceLoader::load(LoadRequest& request, GC::Handle<SuccessCallback> success_callback, GC::Handle<ErrorCallback> error_callback, Optional<u32> timeout, GC::Handle<TimeoutCallback> timeout_callback)
 {
     auto const& url = request.url();
 
@@ -242,7 +242,7 @@ void ResourceLoader::load(LoadRequest& request, JS::Handle<SuccessCallback> succ
         return;
     }
 
-    auto respond_directory_page = [](LoadRequest const& request, URL::URL const& url, JS::Handle<SuccessCallback> success_callback, JS::Handle<ErrorCallback> error_callback) {
+    auto respond_directory_page = [](LoadRequest const& request, URL::URL const& url, GC::Handle<SuccessCallback> success_callback, GC::Handle<ErrorCallback> error_callback) {
         auto maybe_response = load_file_directory_page(url);
         if (maybe_response.is_error()) {
             log_failure(request, maybe_response.error());
@@ -465,7 +465,7 @@ void ResourceLoader::load(LoadRequest& request, JS::Handle<SuccessCallback> succ
         error_callback->function()(not_implemented_error, {}, {}, {}, {});
 }
 
-void ResourceLoader::load_unbuffered(LoadRequest& request, JS::Handle<OnHeadersReceived> on_headers_received, JS::Handle<OnDataReceived> on_data_received, JS::Handle<OnComplete> on_complete)
+void ResourceLoader::load_unbuffered(LoadRequest& request, GC::Handle<OnHeadersReceived> on_headers_received, GC::Handle<OnDataReceived> on_data_received, GC::Handle<OnComplete> on_complete)
 {
     auto const& url = request.url();
 

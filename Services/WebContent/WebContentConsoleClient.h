@@ -20,7 +20,7 @@ namespace WebContent {
 
 class WebContentConsoleClient final : public JS::ConsoleClient {
     JS_CELL(WebContentConsoleClient, JS::ConsoleClient);
-    JS_DECLARE_ALLOCATOR(WebContentConsoleClient);
+    GC_DECLARE_ALLOCATOR(WebContentConsoleClient);
 
 public:
     virtual ~WebContentConsoleClient() override;

@@ -6,7 +6,7 @@
  */
 
 #include <LibCore/EventLoop.h>
-#include <LibJS/Heap/HeapFunction.h>
+#include <LibGC/Function.h>
 #include <LibJS/Runtime/ModuleRequest.h>
 #include <LibTextCodec/Decoder.h>
 #include <LibWeb/DOM/Document.h>
@@ -30,14 +30,14 @@
 
 namespace Web::HTML {
 
-JS_DEFINE_ALLOCATOR(FetchContext);
+GC_DEFINE_ALLOCATOR(FetchContext);
 
-OnFetchScriptComplete create_on_fetch_script_complete(JS::Heap& heap, Function<void(JS::GCPtr<Script>)> function)
+OnFetchScriptComplete create_on_fetch_script_complete(JS::Heap& heap, Function<void(GC::Ptr<Script>)> function)
 {
     return JS::create_heap_function(heap, move(function));
 }
 
-PerformTheFetchHook create_perform_the_fetch_hook(JS::Heap& heap, Function<WebIDL::ExceptionOr<void>(JS::NonnullGCPtr<Fetch::Infrastructure::Request>, TopLevelModule, Fetch::Infrastructure::FetchAlgorithms::ProcessResponseConsumeBodyFunction)> function)
+PerformTheFetchHook create_perform_the_fetch_hook(JS::Heap& heap, Function<WebIDL::ExceptionOr<void>(GC::Ref<Fetch::Infrastructure::Request>, TopLevelModule, Fetch::Infrastructure::FetchAlgorithms::ProcessResponseConsumeBodyFunction)> function)
 {
     return JS::create_heap_function(heap, move(function));
 }
@@ -319,7 +319,7 @@ WebIDL::ExceptionOr<String> resolve_a_module_integrity_metadata(const URL::URL& 
 }
 
 // https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-classic-script
-WebIDL::ExceptionOr<void> fetch_classic_script(JS::NonnullGCPtr<HTMLScriptElement> element, URL::URL const& url, EnvironmentSettingsObject& settings_object, ScriptFetchOptions options, CORSSettingAttribute cors_setting, String character_encoding, OnFetchScriptComplete on_complete)
+WebIDL::ExceptionOr<void> fetch_classic_script(GC::Ref<HTMLScriptElement> element, URL::URL const& url, EnvironmentSettingsObject& settings_object, ScriptFetchOptions options, CORSSettingAttribute cors_setting, String character_encoding, OnFetchScriptComplete on_complete)
 {
     auto& realm = element->realm();
     auto& vm = realm.vm();
@@ -464,13 +464,13 @@ WebIDL::ExceptionOr<void> fetch_classic_worker_script(URL::URL const& url, Envir
 }
 
 // https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-classic-worker-imported-script
-WebIDL::ExceptionOr<JS::NonnullGCPtr<ClassicScript>> fetch_a_classic_worker_imported_script(URL::URL const& url, HTML::EnvironmentSettingsObject& settings_object, PerformTheFetchHook perform_fetch)
+WebIDL::ExceptionOr<GC::Ref<ClassicScript>> fetch_a_classic_worker_imported_script(URL::URL const& url, HTML::EnvironmentSettingsObject& settings_object, PerformTheFetchHook perform_fetch)
 {
     auto& realm = settings_object.realm();
     auto& vm = realm.vm();
 
     // 1. Let response be null.
-    JS::GCPtr<Fetch::Infrastructure::Response> response = nullptr;
+    GC::Ptr<Fetch::Infrastructure::Response> response = nullptr;
 
     // 2. Let bodyBytes be null.
     Fetch::Infrastructure::FetchAlgorithms::BodyBytes body_bytes;
@@ -485,7 +485,7 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<ClassicScript>> fetch_a_classic_worker_impo
     request->set_parser_metadata(Fetch::Infrastructure::Request::ParserMetadata::NotParserInserted);
     request->set_use_url_credentials(true);
 
-    auto process_response_consume_body = [&response, &body_bytes](JS::NonnullGCPtr<Fetch::Infrastructure::Response> res, Fetch::Infrastructure::FetchAlgorithms::BodyBytes bb) {
+    auto process_response_consume_body = [&response, &body_bytes](GC::Ref<Fetch::Infrastructure::Response> res, Fetch::Infrastructure::FetchAlgorithms::BodyBytes bb) {
         // 1. Set bodyBytes to bb.
         body_bytes = move(bb);
 
@@ -803,7 +803,7 @@ void fetch_single_module_script(JS::Realm& realm,
     // 13. If performFetch was given, run performFetch with request, isTopLevel, and with processResponseConsumeBody as defined below.
     //     Otherwise, fetch request with processResponseConsumeBody set to processResponseConsumeBody as defined below.
     //     In both cases, let processResponseConsumeBody given response response and null, failure, or a byte sequence bodyBytes be the following algorithm:
-    auto process_response_consume_body = [&module_map, url, module_type, &module_map_realm, on_complete](JS::NonnullGCPtr<Fetch::Infrastructure::Response> response, Fetch::Infrastructure::FetchAlgorithms::BodyBytes body_bytes) {
+    auto process_response_consume_body = [&module_map, url, module_type, &module_map_realm, on_complete](GC::Ref<Fetch::Infrastructure::Response> response, Fetch::Infrastructure::FetchAlgorithms::BodyBytes body_bytes) {
         // 1. If either of the following conditions are met:
         //    - bodyBytes is null or failure; or
         //    - response's status is not an ok status,
@@ -823,7 +823,7 @@ void fetch_single_module_script(JS::Realm& realm,
         auto mime_type = response->header_list()->extract_mime_type();
 
         // 4. Let moduleScript be null.
-        JS::GCPtr<JavaScriptModuleScript> module_script;
+        GC::Ptr<JavaScriptModuleScript> module_script;
 
         // FIXME: 5. Let referrerPolicy be the result of parsing the `Referrer-Policy` header given response. [REFERRERPOLICY]
         // FIXME: 6. If referrerPolicy is not the empty string, set options's referrer policy to referrerPolicy.

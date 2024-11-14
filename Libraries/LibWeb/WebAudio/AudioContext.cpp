@@ -15,10 +15,10 @@
 
 namespace Web::WebAudio {
 
-JS_DEFINE_ALLOCATOR(AudioContext);
+GC_DEFINE_ALLOCATOR(AudioContext);
 
 // https://webaudio.github.io/web-audio-api/#dom-audiocontext-audiocontext
-WebIDL::ExceptionOr<JS::NonnullGCPtr<AudioContext>> AudioContext::construct_impl(JS::Realm& realm, AudioContextOptions const& context_options)
+WebIDL::ExceptionOr<GC::Ref<AudioContext>> AudioContext::construct_impl(JS::Realm& realm, AudioContextOptions const& context_options)
 {
     return realm.create<AudioContext>(realm, context_options);
 }
@@ -104,7 +104,7 @@ AudioTimestamp AudioContext::get_output_timestamp()
 }
 
 // https://www.w3.org/TR/webaudio/#dom-audiocontext-resume
-WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> AudioContext::resume()
+WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> AudioContext::resume()
 {
     auto& realm = this->realm();
 
@@ -196,7 +196,7 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> AudioContext::resume()
 }
 
 // https://www.w3.org/TR/webaudio/#dom-audiocontext-suspend
-WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> AudioContext::suspend()
+WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> AudioContext::suspend()
 {
     auto& realm = this->realm();
 
@@ -255,7 +255,7 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> AudioContext::suspend()
 }
 
 // https://www.w3.org/TR/webaudio/#dom-audiocontext-close
-WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> AudioContext::close()
+WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> AudioContext::close()
 {
     auto& realm = this->realm();
 

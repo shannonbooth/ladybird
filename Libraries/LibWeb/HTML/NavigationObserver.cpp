@@ -10,7 +10,7 @@
 
 namespace Web::HTML {
 
-JS_DEFINE_ALLOCATOR(NavigationObserver);
+GC_DEFINE_ALLOCATOR(NavigationObserver);
 
 NavigationObserver::NavigationObserver(JS::Realm& realm, Navigable& navigable)
     : Bindings::PlatformObject(realm)

@@ -33,7 +33,7 @@ class Heap : public HeapBase {
     AK_MAKE_NONMOVABLE(Heap);
 
 public:
-    explicit Heap(void* private_data, Function<void(HashMap<Cell*, GC::HeapRoot>&)> gather_embedder_roots);
+    explicit Heap(void* private_data, AK::Function<void(HashMap<Cell*, GC::HeapRoot>&)> gather_embedder_roots);
     ~Heap();
 
     template<typename T, typename... Args>
@@ -146,7 +146,7 @@ private:
 
     bool m_collecting_garbage { false };
     StackInfo m_stack_info;
-    Function<void(HashMap<Cell*, GC::HeapRoot>&)> m_gather_embedder_roots;
+    AK::Function<void(HashMap<Cell*, GC::HeapRoot>&)> m_gather_embedder_roots;
 };
 
 inline void Heap::did_create_handle(Badge<HandleImpl>, HandleImpl& impl)

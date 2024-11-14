@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include <LibJS/Heap/Heap.h>
+#include <LibGC/Heap.h>
 #include <LibJS/Runtime/Realm.h>
 #include <LibJS/Runtime/VM.h>
 #include <LibWeb/Bindings/ExceptionOrUtils.h>
@@ -30,18 +30,18 @@
 
 namespace Web::HTML {
 
-JS_DEFINE_ALLOCATOR(Navigation);
-JS_DEFINE_ALLOCATOR(NavigationAPIMethodTracker);
+GC_DEFINE_ALLOCATOR(Navigation);
+GC_DEFINE_ALLOCATOR(NavigationAPIMethodTracker);
 
-static NavigationResult navigation_api_method_tracker_derived_result(JS::NonnullGCPtr<NavigationAPIMethodTracker> api_method_tracker);
+static NavigationResult navigation_api_method_tracker_derived_result(GC::Ref<NavigationAPIMethodTracker> api_method_tracker);
 
-NavigationAPIMethodTracker::NavigationAPIMethodTracker(JS::NonnullGCPtr<Navigation> navigation,
+NavigationAPIMethodTracker::NavigationAPIMethodTracker(GC::Ref<Navigation> navigation,
     Optional<String> key,
     JS::Value info,
     Optional<SerializationRecord> serialized_state,
-    JS::GCPtr<NavigationHistoryEntry> commited_to_entry,
-    JS::NonnullGCPtr<WebIDL::Promise> committed_promise,
-    JS::NonnullGCPtr<WebIDL::Promise> finished_promise)
+    GC::Ptr<NavigationHistoryEntry> commited_to_entry,
+    GC::Ref<WebIDL::Promise> committed_promise,
+    GC::Ref<WebIDL::Promise> finished_promise)
     : navigation(navigation)
     , key(move(key))
     , info(info)
@@ -62,7 +62,7 @@ void NavigationAPIMethodTracker::visit_edges(Cell::Visitor& visitor)
     visitor.visit(finished_promise);
 }
 
-JS::NonnullGCPtr<Navigation> Navigation::create(JS::Realm& realm)
+GC::Ref<Navigation> Navigation::create(JS::Realm& realm)
 {
     return realm.create<Navigation>(realm);
 }
@@ -92,7 +92,7 @@ void Navigation::visit_edges(JS::Cell::Visitor& visitor)
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-navigation-entries
-Vector<JS::NonnullGCPtr<NavigationHistoryEntry>> Navigation::entries() const
+Vector<GC::Ref<NavigationHistoryEntry>> Navigation::entries() const
 {
     // The entries() method steps are:
 
@@ -108,7 +108,7 @@ Vector<JS::NonnullGCPtr<NavigationHistoryEntry>> Navigation::entries() const
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#navigation-current-entry
-JS::GCPtr<NavigationHistoryEntry> Navigation::current_entry() const
+GC::Ptr<NavigationHistoryEntry> Navigation::current_entry() const
 {
     // The current entry of a Navigation navigation is the result of running the following steps:
 
@@ -506,7 +506,7 @@ NavigationResult Navigation::early_error_result(AnyException e)
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#navigation-api-method-tracker-derived-result
-NavigationResult navigation_api_method_tracker_derived_result(JS::NonnullGCPtr<NavigationAPIMethodTracker> api_method_tracker)
+NavigationResult navigation_api_method_tracker_derived_result(GC::Ref<NavigationAPIMethodTracker> api_method_tracker)
 {
     // A navigation API method tracker-derived result for a navigation API method tracker is a NavigationResult
     /// dictionary instance given by «[ "committed" apiMethodTracker's committed promise, "finished" → apiMethodTracker's finished promise ]».
@@ -517,7 +517,7 @@ NavigationResult navigation_api_method_tracker_derived_result(JS::NonnullGCPtr<N
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#upcoming-non-traverse-api-method-tracker
-JS::NonnullGCPtr<NavigationAPIMethodTracker> Navigation::maybe_set_the_upcoming_non_traverse_api_method_tracker(JS::Value info, Optional<SerializationRecord> serialized_state)
+GC::Ref<NavigationAPIMethodTracker> Navigation::maybe_set_the_upcoming_non_traverse_api_method_tracker(JS::Value info, Optional<SerializationRecord> serialized_state)
 {
     auto& realm = relevant_realm(*this);
     auto& vm = this->vm();
@@ -574,7 +574,7 @@ JS::NonnullGCPtr<NavigationAPIMethodTracker> Navigation::maybe_set_the_upcoming_
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#add-an-upcoming-traverse-api-method-tracker
-JS::NonnullGCPtr<NavigationAPIMethodTracker> Navigation::add_an_upcoming_traverse_api_method_tracker(String destination_key, JS::Value info)
+GC::Ref<NavigationAPIMethodTracker> Navigation::add_an_upcoming_traverse_api_method_tracker(String destination_key, JS::Value info)
 {
     auto& vm = this->vm();
     auto& realm = relevant_realm(*this);
@@ -733,7 +733,7 @@ WebIDL::ExceptionOr<NavigationResult> Navigation::perform_a_navigation_api_trave
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#abort-the-ongoing-navigation
-void Navigation::abort_the_ongoing_navigation(JS::GCPtr<WebIDL::DOMException> error)
+void Navigation::abort_the_ongoing_navigation(GC::Ptr<WebIDL::DOMException> error)
 {
     auto& realm = relevant_realm(*this);
 
@@ -826,7 +826,7 @@ void Navigation::promote_an_upcoming_api_method_tracker_to_ongoing(Optional<Stri
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#navigation-api-method-tracker-clean-up
-void Navigation::clean_up(JS::NonnullGCPtr<NavigationAPIMethodTracker> api_method_tracker)
+void Navigation::clean_up(GC::Ref<NavigationAPIMethodTracker> api_method_tracker)
 {
     // 1. Let navigation be apiMethodTracker's navigation object.
     VERIFY(api_method_tracker->navigation == this);
@@ -852,7 +852,7 @@ void Navigation::clean_up(JS::NonnullGCPtr<NavigationAPIMethodTracker> api_metho
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#resolve-the-finished-promise
-void Navigation::resolve_the_finished_promise(JS::NonnullGCPtr<NavigationAPIMethodTracker> api_method_tracker)
+void Navigation::resolve_the_finished_promise(GC::Ref<NavigationAPIMethodTracker> api_method_tracker)
 {
     auto& realm = this->realm();
 
@@ -870,7 +870,7 @@ void Navigation::resolve_the_finished_promise(JS::NonnullGCPtr<NavigationAPIMeth
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#reject-the-finished-promise
-void Navigation::reject_the_finished_promise(JS::NonnullGCPtr<NavigationAPIMethodTracker> api_method_tracker, JS::Value exception)
+void Navigation::reject_the_finished_promise(GC::Ref<NavigationAPIMethodTracker> api_method_tracker, JS::Value exception)
 {
     auto& realm = this->realm();
 
@@ -887,7 +887,7 @@ void Navigation::reject_the_finished_promise(JS::NonnullGCPtr<NavigationAPIMetho
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#notify-about-the-committed-to-entry
-void Navigation::notify_about_the_committed_to_entry(JS::NonnullGCPtr<NavigationAPIMethodTracker> api_method_tracker, JS::NonnullGCPtr<NavigationHistoryEntry> nhe)
+void Navigation::notify_about_the_committed_to_entry(GC::Ref<NavigationAPIMethodTracker> api_method_tracker, GC::Ref<NavigationHistoryEntry> nhe)
 {
     auto& realm = this->realm();
 
@@ -911,7 +911,7 @@ void Navigation::notify_about_the_committed_to_entry(JS::NonnullGCPtr<Navigation
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#inner-navigate-event-firing-algorithm
 bool Navigation::inner_navigate_event_firing_algorithm(
     Bindings::NavigationType navigation_type,
-    JS::NonnullGCPtr<NavigationDestination> destination,
+    GC::Ref<NavigationDestination> destination,
     UserNavigationInvolvement user_involvement,
     Optional<Vector<XHR::FormDataEntry>&> form_data_entry_list,
     Optional<String> download_request_filename,
@@ -1131,7 +1131,7 @@ bool Navigation::inner_navigate_event_firing_algorithm(
     // 33. If endResultIsSameDocument is true:
     if (end_result_is_same_document) {
         // 1. Let promisesList be an empty list.
-        JS::MarkedVector<JS::NonnullGCPtr<WebIDL::Promise>> promises_list(realm.heap());
+        GC::MarkedVector<GC::Ref<WebIDL::Promise>> promises_list(realm.heap());
 
         // 2. For each handler of event's navigation handler list:
         for (auto const& handler : event->navigation_handler_list()) {
@@ -1251,7 +1251,7 @@ bool Navigation::inner_navigate_event_firing_algorithm(
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#fire-a-traverse-navigate-event
-bool Navigation::fire_a_traverse_navigate_event(JS::NonnullGCPtr<SessionHistoryEntry> destination_she, UserNavigationInvolvement user_involvement)
+bool Navigation::fire_a_traverse_navigate_event(GC::Ref<SessionHistoryEntry> destination_she, UserNavigationInvolvement user_involvement)
 {
     auto& realm = relevant_realm(*this);
     auto& vm = this->vm();
@@ -1373,7 +1373,7 @@ bool Navigation::fire_a_download_request_navigate_event(URL::URL destination_url
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#initialize-the-navigation-api-entries-for-a-new-document
-void Navigation::initialize_the_navigation_api_entries_for_a_new_document(Vector<JS::NonnullGCPtr<SessionHistoryEntry>> const& new_shes, JS::NonnullGCPtr<SessionHistoryEntry> initial_she)
+void Navigation::initialize_the_navigation_api_entries_for_a_new_document(Vector<GC::Ref<SessionHistoryEntry>> const& new_shes, GC::Ref<SessionHistoryEntry> initial_she)
 {
     auto& realm = relevant_realm(*this);
 
@@ -1403,7 +1403,7 @@ void Navigation::initialize_the_navigation_api_entries_for_a_new_document(Vector
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#update-the-navigation-api-entries-for-a-same-document-navigation
 // https://whatpr.org/html/9893/nav-history-apis.html#update-the-navigation-api-entries-for-a-same-document-navigation
-void Navigation::update_the_navigation_api_entries_for_a_same_document_navigation(JS::NonnullGCPtr<SessionHistoryEntry> destination_she, Bindings::NavigationType navigation_type)
+void Navigation::update_the_navigation_api_entries_for_a_same_document_navigation(GC::Ref<SessionHistoryEntry> destination_she, Bindings::NavigationType navigation_type)
 {
     auto& realm = relevant_realm(*this);
 
@@ -1415,7 +1415,7 @@ void Navigation::update_the_navigation_api_entries_for_a_same_document_navigatio
     auto old_current_nhe = current_entry();
 
     // 3. Let disposedNHEs be a new empty list.
-    Vector<JS::NonnullGCPtr<NavigationHistoryEntry>> disposed_nhes;
+    Vector<GC::Ref<NavigationHistoryEntry>> disposed_nhes;
 
     // 4. If navigationType is "traverse", then:
     if (navigation_type == Bindings::NavigationType::Traverse) {

@@ -8,7 +8,7 @@
 #include <AK/Base64.h>
 #include <AK/ByteBuffer.h>
 #include <AK/Time.h>
-#include <LibJS/Heap/Heap.h>
+#include <LibGC/Heap.h>
 #include <LibJS/Runtime/Promise.h>
 #include <LibJS/Runtime/Realm.h>
 #include <LibJS/Runtime/TypedArray.h>
@@ -32,7 +32,7 @@
 
 namespace Web::FileAPI {
 
-JS_DEFINE_ALLOCATOR(FileReader);
+GC_DEFINE_ALLOCATOR(FileReader);
 
 FileReader::~FileReader() = default;
 
@@ -53,12 +53,12 @@ void FileReader::visit_edges(JS::Cell::Visitor& visitor)
     visitor.visit(m_error);
 }
 
-JS::NonnullGCPtr<FileReader> FileReader::create(JS::Realm& realm)
+GC::Ref<FileReader> FileReader::create(JS::Realm& realm)
 {
     return realm.create<FileReader>(realm);
 }
 
-JS::NonnullGCPtr<FileReader> FileReader::construct_impl(JS::Realm& realm)
+GC::Ref<FileReader> FileReader::construct_impl(JS::Realm& realm)
 {
     return FileReader::create(realm);
 }

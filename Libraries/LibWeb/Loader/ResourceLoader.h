@@ -26,17 +26,17 @@ public:
 
     RefPtr<Resource> load_resource(Resource::Type, LoadRequest&);
 
-    using SuccessCallback = JS::HeapFunction<void(ReadonlyBytes, HTTP::HeaderMap const& response_headers, Optional<u32> status_code, Optional<String> const& reason_phrase)>;
-    using ErrorCallback = JS::HeapFunction<void(ByteString const&, Optional<u32> status_code, Optional<String> const& reason_phrase, ReadonlyBytes payload, HTTP::HeaderMap const& response_headers)>;
-    using TimeoutCallback = JS::HeapFunction<void()>;
+    using SuccessCallback = GC::Function<void(ReadonlyBytes, HTTP::HeaderMap const& response_headers, Optional<u32> status_code, Optional<String> const& reason_phrase)>;
+    using ErrorCallback = GC::Function<void(ByteString const&, Optional<u32> status_code, Optional<String> const& reason_phrase, ReadonlyBytes payload, HTTP::HeaderMap const& response_headers)>;
+    using TimeoutCallback = GC::Function<void()>;
 
-    void load(LoadRequest&, JS::Handle<SuccessCallback> success_callback, JS::Handle<ErrorCallback> error_callback = nullptr, Optional<u32> timeout = {}, JS::Handle<TimeoutCallback> timeout_callback = nullptr);
+    void load(LoadRequest&, GC::Handle<SuccessCallback> success_callback, GC::Handle<ErrorCallback> error_callback = nullptr, Optional<u32> timeout = {}, GC::Handle<TimeoutCallback> timeout_callback = nullptr);
 
-    using OnHeadersReceived = JS::HeapFunction<void(HTTP::HeaderMap const& response_headers, Optional<u32> status_code, Optional<String> const& reason_phrase)>;
-    using OnDataReceived = JS::HeapFunction<void(ReadonlyBytes data)>;
-    using OnComplete = JS::HeapFunction<void(bool success, Optional<StringView> error_message)>;
+    using OnHeadersReceived = GC::Function<void(HTTP::HeaderMap const& response_headers, Optional<u32> status_code, Optional<String> const& reason_phrase)>;
+    using OnDataReceived = GC::Function<void(ReadonlyBytes data)>;
+    using OnComplete = GC::Function<void(bool success, Optional<StringView> error_message)>;
 
-    void load_unbuffered(LoadRequest&, JS::Handle<OnHeadersReceived>, JS::Handle<OnDataReceived>, JS::Handle<OnComplete>);
+    void load_unbuffered(LoadRequest&, GC::Handle<OnHeadersReceived>, GC::Handle<OnDataReceived>, GC::Handle<OnComplete>);
 
     Requests::RequestClient& request_client() { return *m_request_client; }
 
@@ -93,7 +93,7 @@ private:
     Vector<String> m_preferred_languages = { "en"_string };
     NavigatorCompatibilityMode m_navigator_compatibility_mode;
     bool m_enable_do_not_track { false };
-    Optional<JS::GCPtr<Page>> m_page {};
+    Optional<GC::Ptr<Page>> m_page {};
 };
 
 }

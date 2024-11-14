@@ -5,10 +5,10 @@
  */
 
 #include <LibCore/Promise.h>
+#include <LibGC/Heap.h>
 #include <LibGfx/Font/Typeface.h>
 #include <LibGfx/Font/WOFF/Loader.h>
 #include <LibGfx/Font/WOFF2/Loader.h>
-#include <LibJS/Heap/Heap.h>
 #include <LibJS/Runtime/ArrayBuffer.h>
 #include <LibJS/Runtime/Realm.h>
 #include <LibWeb/Bindings/FontFacePrototype.h>
@@ -55,7 +55,7 @@ static NonnullRefPtr<Core::Promise<NonnullRefPtr<Gfx::Typeface>>> load_vector_fo
     return promise;
 }
 
-JS_DEFINE_ALLOCATOR(FontFace);
+GC_DEFINE_ALLOCATOR(FontFace);
 
 template<CSS::PropertyID PropertyID>
 RefPtr<CSSStyleValue const> parse_property_string(JS::Realm& realm, StringView value)
@@ -65,7 +65,7 @@ RefPtr<CSSStyleValue const> parse_property_string(JS::Realm& realm, StringView v
 }
 
 // https://drafts.csswg.org/css-font-loading/#font-face-constructor
-JS::NonnullGCPtr<FontFace> FontFace::construct_impl(JS::Realm& realm, String family, FontFaceSource source, FontFaceDescriptors const& descriptors)
+GC::Ref<FontFace> FontFace::construct_impl(JS::Realm& realm, String family, FontFaceSource source, FontFaceDescriptors const& descriptors)
 {
     auto& vm = realm.vm();
     auto base_url = HTML::relevant_settings_object(realm.global_object()).api_base_url();
@@ -93,7 +93,7 @@ JS::NonnullGCPtr<FontFace> FontFace::construct_impl(JS::Realm& realm, String fam
         if (sources.is_empty())
             WebIDL::reject_promise(realm, promise, WebIDL::SyntaxError::create(realm, "FontFace constructor: Invalid source string"_string));
     } else {
-        auto buffer_source = source.get<JS::Handle<WebIDL::BufferSource>>();
+        auto buffer_source = source.get<GC::Handle<WebIDL::BufferSource>>();
         auto maybe_buffer = WebIDL::get_buffer_source_copy(buffer_source->raw_object());
         if (maybe_buffer.is_error()) {
             VERIFY(maybe_buffer.error().code() == ENOMEM);
@@ -163,7 +163,7 @@ JS::NonnullGCPtr<FontFace> FontFace::construct_impl(JS::Realm& realm, String fam
     return font;
 }
 
-FontFace::FontFace(JS::Realm& realm, JS::NonnullGCPtr<WebIDL::Promise> font_status_promise, Vector<ParsedFontFace::Source> urls, ByteBuffer data, String font_family, FontFaceDescriptors const& descriptors)
+FontFace::FontFace(JS::Realm& realm, GC::Ref<WebIDL::Promise> font_status_promise, Vector<ParsedFontFace::Source> urls, ByteBuffer data, String font_family, FontFaceDescriptors const& descriptors)
     : Bindings::PlatformObject(realm)
     , m_font_status_promise(font_status_promise)
     , m_urls(move(urls))
@@ -205,7 +205,7 @@ void FontFace::visit_edges(JS::Cell::Visitor& visitor)
     visitor.visit(m_font_status_promise);
 }
 
-JS::NonnullGCPtr<WebIDL::Promise> FontFace::loaded() const
+GC::Ref<WebIDL::Promise> FontFace::loaded() const
 {
     return m_font_status_promise;
 }
@@ -320,7 +320,7 @@ WebIDL::ExceptionOr<void> FontFace::set_line_gap_override(String const&)
 }
 
 // https://drafts.csswg.org/css-font-loading/#dom-fontface-load
-JS::NonnullGCPtr<WebIDL::Promise> FontFace::load()
+GC::Ref<WebIDL::Promise> FontFace::load()
 {
     //  1. Let font face be the FontFace object on which this method was called.
     auto& font_face = *this;

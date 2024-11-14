@@ -34,14 +34,14 @@
 
 namespace Web::WebAssembly {
 
-static JS::NonnullGCPtr<WebIDL::Promise> asynchronously_compile_webassembly_module(JS::VM&, ByteBuffer, HTML::Task::Source = HTML::Task::Source::Unspecified);
-static JS::NonnullGCPtr<WebIDL::Promise> instantiate_promise_of_module(JS::VM&, JS::NonnullGCPtr<WebIDL::Promise>, JS::GCPtr<JS::Object> import_object);
-static JS::NonnullGCPtr<WebIDL::Promise> asynchronously_instantiate_webassembly_module(JS::VM&, JS::NonnullGCPtr<Module>, JS::GCPtr<JS::Object> import_object);
-static JS::NonnullGCPtr<WebIDL::Promise> compile_potential_webassembly_response(JS::VM&, JS::NonnullGCPtr<WebIDL::Promise>);
+static GC::Ref<WebIDL::Promise> asynchronously_compile_webassembly_module(JS::VM&, ByteBuffer, HTML::Task::Source = HTML::Task::Source::Unspecified);
+static GC::Ref<WebIDL::Promise> instantiate_promise_of_module(JS::VM&, GC::Ref<WebIDL::Promise>, GC::Ptr<JS::Object> import_object);
+static GC::Ref<WebIDL::Promise> asynchronously_instantiate_webassembly_module(JS::VM&, GC::Ref<Module>, GC::Ptr<JS::Object> import_object);
+static GC::Ref<WebIDL::Promise> compile_potential_webassembly_response(JS::VM&, GC::Ref<WebIDL::Promise>);
 
 namespace Detail {
 
-HashMap<JS::GCPtr<JS::Object>, WebAssemblyCache> s_caches;
+HashMap<GC::Ptr<JS::Object>, WebAssemblyCache> s_caches;
 
 WebAssemblyCache& get_cache(JS::Realm& realm)
 {
@@ -68,7 +68,7 @@ void finalize(JS::Object& object)
 }
 
 // https://webassembly.github.io/spec/js-api/#dom-webassembly-validate
-bool validate(JS::VM& vm, JS::Handle<WebIDL::BufferSource>& bytes)
+bool validate(JS::VM& vm, GC::Handle<WebIDL::BufferSource>& bytes)
 {
     // 1. Let stableBytes be a copy of the bytes held by the buffer bytes.
     auto stable_bytes = WebIDL::get_buffer_source_copy(*bytes->raw_object());
@@ -89,7 +89,7 @@ bool validate(JS::VM& vm, JS::Handle<WebIDL::BufferSource>& bytes)
 }
 
 // https://webassembly.github.io/spec/js-api/#dom-webassembly-compile
-WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> compile(JS::VM& vm, JS::Handle<WebIDL::BufferSource>& bytes)
+WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> compile(JS::VM& vm, GC::Handle<WebIDL::BufferSource>& bytes)
 {
     auto& realm = *vm.current_realm();
 
@@ -105,14 +105,14 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> compile(JS::VM& vm, JS::H
 }
 
 // https://webassembly.github.io/spec/web-api/index.html#dom-webassembly-compilestreaming
-WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> compile_streaming(JS::VM& vm, JS::Handle<WebIDL::Promise> source)
+WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> compile_streaming(JS::VM& vm, GC::Handle<WebIDL::Promise> source)
 {
     //  The compileStreaming(source) method, when invoked, returns the result of compiling a potential WebAssembly response with source.
     return compile_potential_webassembly_response(vm, *source);
 }
 
 // https://webassembly.github.io/spec/js-api/#dom-webassembly-instantiate
-WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> instantiate(JS::VM& vm, JS::Handle<WebIDL::BufferSource>& bytes, Optional<JS::Handle<JS::Object>>& import_object_handle)
+WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> instantiate(JS::VM& vm, GC::Handle<WebIDL::BufferSource>& bytes, Optional<GC::Handle<JS::Object>>& import_object_handle)
 {
     auto& realm = *vm.current_realm();
 
@@ -127,21 +127,21 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> instantiate(JS::VM& vm, J
     auto promise_of_module = asynchronously_compile_webassembly_module(vm, stable_bytes.release_value());
 
     // 3. Instantiate promiseOfModule with imports importObject and return the result.
-    JS::GCPtr<JS::Object> const import_object = import_object_handle.has_value() ? import_object_handle.value().ptr() : nullptr;
+    GC::Ptr<JS::Object> const import_object = import_object_handle.has_value() ? import_object_handle.value().ptr() : nullptr;
     return instantiate_promise_of_module(vm, promise_of_module, import_object);
 }
 
 // https://webassembly.github.io/spec/js-api/#dom-webassembly-instantiate-moduleobject-importobject
-WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> instantiate(JS::VM& vm, Module const& module_object, Optional<JS::Handle<JS::Object>>& import_object)
+WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> instantiate(JS::VM& vm, Module const& module_object, Optional<GC::Handle<JS::Object>>& import_object)
 {
     // 1. Asynchronously instantiate the WebAssembly module moduleObject importing importObject, and return the result.
-    JS::NonnullGCPtr<Module> module { const_cast<Module&>(module_object) };
-    JS::GCPtr<JS::Object> const imports = import_object.has_value() ? import_object.value().ptr() : nullptr;
+    GC::Ref<Module> module { const_cast<Module&>(module_object) };
+    GC::Ptr<JS::Object> const imports = import_object.has_value() ? import_object.value().ptr() : nullptr;
     return asynchronously_instantiate_webassembly_module(vm, module, imports);
 }
 
 // https://webassembly.github.io/spec/web-api/index.html#dom-webassembly-instantiatestreaming
-WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> instantiate_streaming(JS::VM& vm, JS::Handle<WebIDL::Promise> source, Optional<JS::Handle<JS::Object>>& import_object)
+WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> instantiate_streaming(JS::VM& vm, GC::Handle<WebIDL::Promise> source, Optional<GC::Handle<JS::Object>>& import_object)
 {
     // The instantiateStreaming(source, importObject) method, when invoked, performs the following steps:
 
@@ -155,7 +155,7 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> instantiate_streaming(JS:
 
 namespace Detail {
 
-JS::ThrowCompletionOr<NonnullOwnPtr<Wasm::ModuleInstance>> instantiate_module(JS::VM& vm, Wasm::Module const& module, JS::GCPtr<JS::Object> import_object)
+JS::ThrowCompletionOr<NonnullOwnPtr<Wasm::ModuleInstance>> instantiate_module(JS::VM& vm, Wasm::Module const& module, GC::Ptr<JS::Object> import_object)
 {
     Wasm::Linker linker { module };
     HashMap<Wasm::Linker::Name, Wasm::ExternValue> resolved_imports;
@@ -189,7 +189,7 @@ JS::ThrowCompletionOr<NonnullOwnPtr<Wasm::ModuleInstance>> instantiate_module(JS
                     //        just extract its address and resolve to that.
                     Wasm::HostFunction host_function {
                         [&](auto&, auto& arguments) -> Wasm::Result {
-                            JS::MarkedVector<JS::Value> argument_values { vm.heap() };
+                            GC::MarkedVector<JS::Value> argument_values { vm.heap() };
                             size_t index = 0;
                             for (auto& entry : arguments) {
                                 argument_values.append(to_js_value(vm, entry, type.parameters()[index]));
@@ -359,7 +359,7 @@ JS::NativeFunction* create_native_function(JS::VM& vm, Wasm::FunctionAddress add
                 return to_js_value(vm, result.values().first(), type.results().first());
 
             // Put result values into a JS::Array in reverse order.
-            auto js_result_values = JS::MarkedVector<JS::Value> { realm.heap() };
+            auto js_result_values = GC::MarkedVector<JS::Value> { realm.heap() };
             js_result_values.ensure_capacity(result.values().size());
 
             for (size_t i = result.values().size(); i > 0; i--) {
@@ -498,7 +498,7 @@ JS::Value to_js_value(JS::VM& vm, Wasm::Value& wasm_value, Wasm::ValueType type)
 }
 
 // https://webassembly.github.io/spec/js-api/#asynchronously-compile-a-webassembly-module
-JS::NonnullGCPtr<WebIDL::Promise> asynchronously_compile_webassembly_module(JS::VM& vm, ByteBuffer bytes, HTML::Task::Source task_source)
+GC::Ref<WebIDL::Promise> asynchronously_compile_webassembly_module(JS::VM& vm, ByteBuffer bytes, HTML::Task::Source task_source)
 {
     auto& realm = *vm.current_realm();
 
@@ -538,7 +538,7 @@ JS::NonnullGCPtr<WebIDL::Promise> asynchronously_compile_webassembly_module(JS::
 }
 
 // https://webassembly.github.io/spec/js-api/#asynchronously-instantiate-a-webassembly-module
-JS::NonnullGCPtr<WebIDL::Promise> asynchronously_instantiate_webassembly_module(JS::VM& vm, JS::NonnullGCPtr<Module> module_object, JS::GCPtr<JS::Object> import_object)
+GC::Ref<WebIDL::Promise> asynchronously_instantiate_webassembly_module(JS::VM& vm, GC::Ref<Module> module_object, GC::Ptr<JS::Object> import_object)
 {
     auto& realm = *vm.current_realm();
 
@@ -581,7 +581,7 @@ JS::NonnullGCPtr<WebIDL::Promise> asynchronously_instantiate_webassembly_module(
 }
 
 // https://webassembly.github.io/spec/js-api/#instantiate-a-promise-of-a-module
-JS::NonnullGCPtr<WebIDL::Promise> instantiate_promise_of_module(JS::VM& vm, JS::NonnullGCPtr<WebIDL::Promise> promise_of_module, JS::GCPtr<JS::Object> import_object)
+GC::Ref<WebIDL::Promise> instantiate_promise_of_module(JS::VM& vm, GC::Ref<WebIDL::Promise> promise_of_module, GC::Ptr<JS::Object> import_object)
 {
     auto& realm = *vm.current_realm();
 
@@ -648,7 +648,7 @@ JS::NonnullGCPtr<WebIDL::Promise> instantiate_promise_of_module(JS::VM& vm, JS::
 }
 
 // https://webassembly.github.io/spec/web-api/index.html#compile-a-potential-webassembly-response
-JS::NonnullGCPtr<WebIDL::Promise> compile_potential_webassembly_response(JS::VM& vm, JS::NonnullGCPtr<WebIDL::Promise> source)
+GC::Ref<WebIDL::Promise> compile_potential_webassembly_response(JS::VM& vm, GC::Ref<WebIDL::Promise> source)
 {
     auto& realm = *vm.current_realm();
 

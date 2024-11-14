@@ -21,7 +21,7 @@ public:
     ~DocumentLoadEventDelayer();
 
 private:
-    JS::Handle<Document> m_document;
+    GC::Handle<Document> m_document;
 };
 
 }

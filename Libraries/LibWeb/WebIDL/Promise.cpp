@@ -6,7 +6,7 @@
 
 #include <AK/Function.h>
 #include <AK/TypeCasts.h>
-#include <LibJS/Heap/HeapFunction.h>
+#include <LibGC/Function.h>
 #include <LibJS/Runtime/PromiseCapability.h>
 #include <LibJS/Runtime/PromiseConstructor.h>
 #include <LibJS/Runtime/Realm.h>
@@ -17,7 +17,7 @@
 namespace Web::WebIDL {
 
 // https://webidl.spec.whatwg.org/#a-new-promise
-JS::NonnullGCPtr<Promise> create_promise(JS::Realm& realm)
+GC::Ref<Promise> create_promise(JS::Realm& realm)
 {
     auto& vm = realm.vm();
 
@@ -30,7 +30,7 @@ JS::NonnullGCPtr<Promise> create_promise(JS::Realm& realm)
 }
 
 // https://webidl.spec.whatwg.org/#a-promise-resolved-with
-JS::NonnullGCPtr<Promise> create_resolved_promise(JS::Realm& realm, JS::Value value)
+GC::Ref<Promise> create_resolved_promise(JS::Realm& realm, JS::Value value)
 {
     auto& vm = realm.vm();
 
@@ -51,7 +51,7 @@ JS::NonnullGCPtr<Promise> create_resolved_promise(JS::Realm& realm, JS::Value va
 }
 
 // https://webidl.spec.whatwg.org/#a-promise-rejected-with
-JS::NonnullGCPtr<Promise> create_rejected_promise(JS::Realm& realm, JS::Value reason)
+GC::Ref<Promise> create_rejected_promise(JS::Realm& realm, JS::Value reason)
 {
     auto& vm = realm.vm();
 
@@ -92,7 +92,7 @@ void reject_promise(JS::Realm& realm, Promise const& promise, JS::Value reason)
 }
 
 // https://webidl.spec.whatwg.org/#dfn-perform-steps-once-promise-is-settled
-JS::NonnullGCPtr<Promise> react_to_promise(Promise const& promise, JS::GCPtr<ReactionSteps> on_fulfilled_callback, JS::GCPtr<ReactionSteps> on_rejected_callback)
+GC::Ref<Promise> react_to_promise(Promise const& promise, GC::Ptr<ReactionSteps> on_fulfilled_callback, GC::Ptr<ReactionSteps> on_rejected_callback)
 {
     auto& realm = promise.promise()->shape().realm();
     auto& vm = realm.vm();
@@ -149,7 +149,7 @@ JS::NonnullGCPtr<Promise> react_to_promise(Promise const& promise, JS::GCPtr<Rea
 }
 
 // https://webidl.spec.whatwg.org/#upon-fulfillment
-JS::NonnullGCPtr<Promise> upon_fulfillment(Promise const& promise, JS::NonnullGCPtr<ReactionSteps> steps)
+GC::Ref<Promise> upon_fulfillment(Promise const& promise, GC::Ref<ReactionSteps> steps)
 {
     // 1. Return the result of reacting to promise:
     return react_to_promise(promise,
@@ -160,7 +160,7 @@ JS::NonnullGCPtr<Promise> upon_fulfillment(Promise const& promise, JS::NonnullGC
 }
 
 // https://webidl.spec.whatwg.org/#upon-rejection
-JS::NonnullGCPtr<Promise> upon_rejection(Promise const& promise, JS::NonnullGCPtr<ReactionSteps> steps)
+GC::Ref<Promise> upon_rejection(Promise const& promise, GC::Ref<ReactionSteps> steps)
 {
     // 1. Return the result of reacting to promise:
     return react_to_promise(promise, {},
@@ -178,10 +178,10 @@ void mark_promise_as_handled(Promise const& promise)
 }
 
 struct WaitForAllResults : JS::Cell {
-    JS_CELL(WaitForAllResults, JS::Cell);
-    JS_DECLARE_ALLOCATOR(WaitForAllResults);
+    GC_CELL(WaitForAllResults, JS::Cell);
+    GC_DECLARE_ALLOCATOR(WaitForAllResults);
 
-    WaitForAllResults(JS::NonnullGCPtr<JS::HeapFunction<void(Vector<JS::Value> const&)>> s, size_t t)
+    WaitForAllResults(GC::Ref<GC::Function<void(Vector<JS::Value> const&)>> s, size_t t)
         : success_steps(s)
         , total(t)
     {
@@ -198,16 +198,16 @@ struct WaitForAllResults : JS::Cell {
         visitor.visit(result);
     }
 
-    JS::NonnullGCPtr<JS::HeapFunction<void(Vector<JS::Value> const&)>> success_steps;
+    GC::Ref<GC::Function<void(Vector<JS::Value> const&)>> success_steps;
     Vector<JS::Value> result;
     size_t total = 0;
     size_t fulfilled_count = 0;
 };
 
-JS_DEFINE_ALLOCATOR(WaitForAllResults);
+GC_DEFINE_ALLOCATOR(WaitForAllResults);
 
 // https://webidl.spec.whatwg.org/#wait-for-all
-void wait_for_all(JS::Realm& realm, Vector<JS::NonnullGCPtr<Promise>> const& promises, Function<void(Vector<JS::Value> const&)> success_steps, Function<void(JS::Value)> failure_steps)
+void wait_for_all(JS::Realm& realm, Vector<GC::Ref<Promise>> const& promises, Function<void(Vector<JS::Value> const&)> success_steps, Function<void(JS::Value)> failure_steps)
 {
     // FIXME: Fix spec typo, fullfilled --> fulfilled
     // 1. Let fullfilledCount be 0.
@@ -290,7 +290,7 @@ void wait_for_all(JS::Realm& realm, Vector<JS::NonnullGCPtr<Promise>> const& pro
     }
 }
 
-JS::NonnullGCPtr<Promise> create_rejected_promise_from_exception(JS::Realm& realm, Exception exception)
+GC::Ref<Promise> create_rejected_promise_from_exception(JS::Realm& realm, Exception exception)
 {
     auto throw_completion = Bindings::dom_exception_to_throw_completion(realm.vm(), move(exception));
     return WebIDL::create_rejected_promise(realm, *throw_completion.value());

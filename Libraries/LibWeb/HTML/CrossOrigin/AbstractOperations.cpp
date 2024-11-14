@@ -148,7 +148,7 @@ Optional<JS::PropertyDescriptor> cross_origin_get_own_property_helper(Variant<HT
         // 5. Otherwise:
         else {
             // 1. Let crossOriginGet be undefined.
-            Optional<JS::GCPtr<JS::FunctionObject>> cross_origin_get;
+            Optional<GC::Ptr<JS::FunctionObject>> cross_origin_get;
 
             // 2. If e.[[NeedsGet]] is true, then set crossOriginGet to an anonymous built-in function, created in the current Realm Record, that performs the same steps as the getter of the IDL attribute P on object O.
             if (*entry.needs_get) {
@@ -160,7 +160,7 @@ Optional<JS::PropertyDescriptor> cross_origin_get_own_property_helper(Variant<HT
             }
 
             // 3. Let crossOriginSet be undefined.
-            Optional<JS::GCPtr<JS::FunctionObject>> cross_origin_set;
+            Optional<GC::Ptr<JS::FunctionObject>> cross_origin_set;
 
             // If e.[[NeedsSet]] is true, then set crossOriginSet to an anonymous built-in function, created in the current Realm Record, that performs the same steps as the setter of the IDL attribute P on object O.
             if (*entry.needs_set) {
@@ -237,13 +237,13 @@ JS::ThrowCompletionOr<bool> cross_origin_set(JS::VM& vm, JS::Object& object, JS:
 }
 
 // 7.2.3.7 CrossOriginOwnPropertyKeys ( O ), https://html.spec.whatwg.org/multipage/browsers.html#crossoriginownpropertykeys-(-o-)
-JS::MarkedVector<JS::Value> cross_origin_own_property_keys(Variant<HTML::Location const*, HTML::Window const*> const& object)
+GC::MarkedVector<JS::Value> cross_origin_own_property_keys(Variant<HTML::Location const*, HTML::Window const*> const& object)
 {
     auto& event_loop = HTML::main_thread_event_loop();
     auto& vm = event_loop.vm();
 
     // 1. Let keys be a new empty List.
-    auto keys = JS::MarkedVector<JS::Value> { vm.heap() };
+    auto keys = GC::MarkedVector<JS::Value> { vm.heap() };
 
     // 2. For each e of CrossOriginProperties(O), append e.[[Property]] to keys.
     for (auto& entry : cross_origin_properties(object))

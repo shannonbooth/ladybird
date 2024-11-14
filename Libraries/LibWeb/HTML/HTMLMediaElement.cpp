@@ -162,7 +162,7 @@ void HTMLMediaElement::set_decoder_error(String error_message)
 }
 
 // https://html.spec.whatwg.org/multipage/media.html#dom-media-buffered
-JS::NonnullGCPtr<TimeRanges> HTMLMediaElement::buffered() const
+GC::Ref<TimeRanges> HTMLMediaElement::buffered() const
 {
     auto& realm = this->realm();
 
@@ -332,7 +332,7 @@ void HTMLMediaElement::set_duration(double duration)
         paintable->set_needs_display();
 }
 
-WebIDL::ExceptionOr<JS::NonnullGCPtr<WebIDL::Promise>> HTMLMediaElement::play()
+WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> HTMLMediaElement::play()
 {
     auto& realm = this->realm();
 
@@ -458,7 +458,7 @@ double HTMLMediaElement::effective_media_volume() const
 }
 
 // https://html.spec.whatwg.org/multipage/media.html#dom-media-addtexttrack
-JS::NonnullGCPtr<TextTrack> HTMLMediaElement::add_text_track(Bindings::TextTrackKind kind, String const& label, String const& language)
+GC::Ref<TextTrack> HTMLMediaElement::add_text_track(Bindings::TextTrackKind kind, String const& label, String const& language)
 {
     // 1. Create a new TextTrack object.
     auto text_track = TextTrack::create(this->realm());
@@ -593,11 +593,11 @@ enum class SelectMode {
 };
 
 class SourceElementSelector final : public JS::Cell {
-    JS_CELL(SourceElementSelector, JS::Cell);
-    JS_DECLARE_ALLOCATOR(SourceElementSelector);
+    GC_CELL(SourceElementSelector, JS::Cell);
+    GC_DECLARE_ALLOCATOR(SourceElementSelector);
 
 public:
-    SourceElementSelector(JS::NonnullGCPtr<HTMLMediaElement> media_element, JS::NonnullGCPtr<HTMLSourceElement> candidate)
+    SourceElementSelector(GC::Ref<HTMLMediaElement> media_element, GC::Ref<HTMLSourceElement> candidate)
         : m_media_element(media_element)
         , m_candidate(candidate)
     {
@@ -682,10 +682,10 @@ private:
         return {};
     }
 
-    WebIDL::ExceptionOr<void> find_next_candidate(JS::NonnullGCPtr<DOM::Node> previous_candidate)
+    WebIDL::ExceptionOr<void> find_next_candidate(GC::Ref<DOM::Node> previous_candidate)
     {
         // 12. ⌛ Find next candidate: Let candidate be null.
-        JS::GCPtr<HTMLSourceElement> candidate;
+        GC::Ptr<HTMLSourceElement> candidate;
 
         // 13. ⌛ Search loop: If the node after pointer is the end of the list, then jump to the waiting step below.
         auto* next_sibling = previous_candidate->next_sibling();
@@ -713,7 +713,7 @@ private:
         return {};
     }
 
-    WebIDL::ExceptionOr<void> waiting(JS::NonnullGCPtr<DOM::Node> previous_candidate)
+    WebIDL::ExceptionOr<void> waiting(GC::Ref<DOM::Node> previous_candidate)
     {
         // 17. ⌛ Waiting: Set the element's networkState attribute to the NETWORK_NO_SOURCE value.
         m_media_element->m_network_state = HTMLMediaElement::NetworkState::NoSource;
@@ -735,7 +735,7 @@ private:
         return {};
     }
 
-    WebIDL::ExceptionOr<void> wait_for_next_candidate(JS::NonnullGCPtr<DOM::Node> previous_candidate)
+    WebIDL::ExceptionOr<void> wait_for_next_candidate(GC::Ref<DOM::Node> previous_candidate)
     {
         // NOTE: If there isn't another candidate to check, we implement the "waiting" step by returning until the media
         //       element's children have changed.
@@ -762,12 +762,12 @@ private:
         return {};
     }
 
-    JS::NonnullGCPtr<HTMLMediaElement> m_media_element;
-    JS::NonnullGCPtr<HTMLSourceElement> m_candidate;
-    JS::GCPtr<DOM::Node> m_previously_failed_candidate;
+    GC::Ref<HTMLMediaElement> m_media_element;
+    GC::Ref<HTMLSourceElement> m_candidate;
+    GC::Ptr<DOM::Node> m_previously_failed_candidate;
 };
 
-JS_DEFINE_ALLOCATOR(SourceElementSelector);
+GC_DEFINE_ALLOCATOR(SourceElementSelector);
 
 void HTMLMediaElement::children_changed()
 {
@@ -795,7 +795,7 @@ WebIDL::ExceptionOr<void> HTMLMediaElement::select_resource()
     // FIXME: 5. ⌛ If the media element's blocked-on-parser flag is false, then populate the list of pending text tracks.
 
     Optional<SelectMode> mode;
-    JS::GCPtr<HTMLSourceElement> candidate;
+    GC::Ptr<HTMLSourceElement> candidate;
 
     // 6. FIXME: ⌛ If the media element has an assigned media provider object, then let mode be object.
 
@@ -1075,7 +1075,7 @@ WebIDL::ExceptionOr<void> HTMLMediaElement::fetch_resource(URL::URL const& url_r
 }
 
 // https://html.spec.whatwg.org/multipage/media.html#verify-a-media-response
-bool HTMLMediaElement::verify_response(JS::NonnullGCPtr<Fetch::Infrastructure::Response> response, ByteRange const& byte_range)
+bool HTMLMediaElement::verify_response(GC::Ref<Fetch::Infrastructure::Response> response, ByteRange const& byte_range)
 {
     // 1. If response is a network error, then return false.
     if (response->is_network_error())
@@ -1112,8 +1112,8 @@ WebIDL::ExceptionOr<void> HTMLMediaElement::process_media_data(Function<void(Str
         return {};
     }
 
-    JS::GCPtr<AudioTrack> audio_track;
-    JS::GCPtr<VideoTrack> video_track;
+    GC::Ptr<AudioTrack> audio_track;
+    GC::Ptr<VideoTrack> video_track;
 
     // -> If the media resource is found to have an audio track
     if (!audio_loader.is_error()) {
@@ -1265,7 +1265,7 @@ WebIDL::ExceptionOr<void> HTMLMediaElement::process_media_data(Function<void(Str
 }
 
 // https://html.spec.whatwg.org/multipage/media.html#dedicated-media-source-failure-steps
-WebIDL::ExceptionOr<void> HTMLMediaElement::handle_media_source_failure(Span<JS::NonnullGCPtr<WebIDL::Promise>> promises, String error_message)
+WebIDL::ExceptionOr<void> HTMLMediaElement::handle_media_source_failure(Span<GC::Ref<WebIDL::Promise>> promises, String error_message)
 {
     auto& realm = this->realm();
 
@@ -1863,12 +1863,12 @@ void HTMLMediaElement::time_marches_on(TimeMarchesOnReason reason)
 }
 
 // https://html.spec.whatwg.org/multipage/media.html#take-pending-play-promises
-JS::MarkedVector<JS::NonnullGCPtr<WebIDL::Promise>> HTMLMediaElement::take_pending_play_promises()
+GC::MarkedVector<GC::Ref<WebIDL::Promise>> HTMLMediaElement::take_pending_play_promises()
 {
     // 1. Let promises be an empty list of promises.
     // 2. Copy the media element's list of pending play promises to promises.
     // 3. Clear the media element's list of pending play promises.
-    JS::MarkedVector<JS::NonnullGCPtr<WebIDL::Promise>> promises(heap());
+    GC::MarkedVector<GC::Ref<WebIDL::Promise>> promises(heap());
     promises.extend(move(m_pending_play_promises));
 
     // 4. Return promises.
@@ -1876,7 +1876,7 @@ JS::MarkedVector<JS::NonnullGCPtr<WebIDL::Promise>> HTMLMediaElement::take_pendi
 }
 
 // https://html.spec.whatwg.org/multipage/media.html#resolve-pending-play-promises
-void HTMLMediaElement::resolve_pending_play_promises(ReadonlySpan<JS::NonnullGCPtr<WebIDL::Promise>> promises)
+void HTMLMediaElement::resolve_pending_play_promises(ReadonlySpan<GC::Ref<WebIDL::Promise>> promises)
 {
     auto& realm = this->realm();
 
@@ -1890,7 +1890,7 @@ void HTMLMediaElement::resolve_pending_play_promises(ReadonlySpan<JS::NonnullGCP
 }
 
 // https://html.spec.whatwg.org/multipage/media.html#reject-pending-play-promises
-void HTMLMediaElement::reject_pending_play_promises(ReadonlySpan<JS::NonnullGCPtr<WebIDL::Promise>> promises, JS::NonnullGCPtr<WebIDL::DOMException> error)
+void HTMLMediaElement::reject_pending_play_promises(ReadonlySpan<GC::Ref<WebIDL::Promise>> promises, GC::Ref<WebIDL::DOMException> error)
 {
     auto& realm = this->realm();
 

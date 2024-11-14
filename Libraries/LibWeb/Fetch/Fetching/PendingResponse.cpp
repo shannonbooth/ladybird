@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include <LibJS/Heap/Heap.h>
+#include <LibGC/Heap.h>
 #include <LibJS/Runtime/VM.h>
 #include <LibWeb/Fetch/Fetching/PendingResponse.h>
 #include <LibWeb/Fetch/Infrastructure/HTTP/Requests.h>
@@ -12,19 +12,19 @@
 
 namespace Web::Fetch::Fetching {
 
-JS_DEFINE_ALLOCATOR(PendingResponse);
+GC_DEFINE_ALLOCATOR(PendingResponse);
 
-JS::NonnullGCPtr<PendingResponse> PendingResponse::create(JS::VM& vm, JS::NonnullGCPtr<Infrastructure::Request> request)
+GC::Ref<PendingResponse> PendingResponse::create(JS::VM& vm, GC::Ref<Infrastructure::Request> request)
 {
     return vm.heap().allocate<PendingResponse>(request);
 }
 
-JS::NonnullGCPtr<PendingResponse> PendingResponse::create(JS::VM& vm, JS::NonnullGCPtr<Infrastructure::Request> request, JS::NonnullGCPtr<Infrastructure::Response> response)
+GC::Ref<PendingResponse> PendingResponse::create(JS::VM& vm, GC::Ref<Infrastructure::Request> request, GC::Ref<Infrastructure::Response> response)
 {
     return vm.heap().allocate<PendingResponse>(request, response);
 }
 
-PendingResponse::PendingResponse(JS::NonnullGCPtr<Infrastructure::Request> request, JS::GCPtr<Infrastructure::Response> response)
+PendingResponse::PendingResponse(GC::Ref<Infrastructure::Request> request, GC::Ptr<Infrastructure::Response> response)
     : m_request(request)
     , m_response(response)
 {
@@ -47,7 +47,7 @@ void PendingResponse::when_loaded(Callback callback)
         run_callback();
 }
 
-void PendingResponse::resolve(JS::NonnullGCPtr<Infrastructure::Response> response)
+void PendingResponse::resolve(GC::Ref<Infrastructure::Response> response)
 {
     VERIFY(!m_response);
     m_response = response;
