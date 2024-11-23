@@ -274,10 +274,33 @@ WebIDL::ExceptionOr<String> Location::pathname() const
     return url().serialize_path();
 }
 
-WebIDL::ExceptionOr<void> Location::set_pathname(String const&)
+// https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-location-pathname
+WebIDL::ExceptionOr<void> Location::set_pathname(String const& input)
 {
-    auto& vm = this->vm();
-    return vm.throw_completion<JS::InternalError>(JS::ErrorType::NotImplemented, "Location.pathname setter");
+    // 1. If this's relevant Document is null, then return.
+    auto const relevant_document = this->relevant_document();
+    if (!relevant_document)
+        return {};
+
+    // 2. If this's relevant Document's origin is not same origin-domain with the entry settings object's origin, then throw a "SecurityError" DOMException.
+    if (!relevant_document->origin().is_same_origin_domain(entry_settings_object().origin()))
+        return WebIDL::SecurityError::create(realm(), "Location's relevant document is not same origin-domain with the entry settings object's origin"_string);
+
+    // 3. Let copyURL be a copy of this's url.
+    auto copy_url = this->url();
+
+    // FIXME: 4. If copyURL has an opaque path, then return.
+    if (copy_url.cannot_be_a_base_url())
+        return {};
+
+    // 5. Set copyURL's path to the empty list.
+    copy_url.set_paths({});
+
+    // 6. Basic URL parse the given value, with copyURL as url and path start state as state override.
+    (void)URL::Parser::basic_parse(input, {}, &copy_url, URL::Parser::State::PathStart);
+
+    // 7. Location-object navigate this to copyURL.
+    return navigate(copy_url);
 }
 
 // https://html.spec.whatwg.org/multipage/history.html#dom-location-search
