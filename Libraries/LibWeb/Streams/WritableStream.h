@@ -85,6 +85,8 @@ public:
 
     SinglyLinkedList<GC::Ref<WebIDL::Promise>>& write_requests() { return m_write_requests; }
 
+    void set_up_cross_realm_transform_writable(GC::Ref<HTML::MessagePort>);
+
 private:
     explicit WritableStream(JS::Realm&);
 
