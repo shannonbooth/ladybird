@@ -40,6 +40,9 @@ public:
 
     void disentangle();
 
+    GC::Ptr<MessagePort> entangled_port() { return m_remote_port; }
+    GC::Ptr<MessagePort const> entangled_port() const { return m_remote_port; }
+
     // https://html.spec.whatwg.org/multipage/web-messaging.html#dom-messageport-postmessage
     WebIDL::ExceptionOr<void> post_message(JS::Value message, Vector<GC::Root<JS::Object>> const& transfer);
 
@@ -64,6 +67,8 @@ public:
 
     void set_worker_event_target(GC::Ref<DOM::EventTarget>);
 
+    WebIDL::ExceptionOr<void> message_port_post_message_steps(GC::Ptr<MessagePort> target_port, JS::Value message, StructuredSerializeOptions const& options);
+
 private:
     explicit MessagePort(JS::Realm&);
 
@@ -72,7 +77,6 @@ private:
 
     bool is_entangled() const;
 
-    WebIDL::ExceptionOr<void> message_port_post_message_steps(GC::Ptr<MessagePort> target_port, JS::Value message, StructuredSerializeOptions const& options);
     void post_message_task_steps(SerializedTransferRecord&);
     void post_port_message(SerializedTransferRecord);
     ErrorOr<void> send_message_on_transport(SerializedTransferRecord const&);
