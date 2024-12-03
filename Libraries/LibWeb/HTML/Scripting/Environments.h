@@ -127,6 +127,24 @@ private:
     bool m_discarded { false };
 };
 
+// FIXME: Put in a proper location
+//
+// https://html.spec.whatwg.org/multipage/webappapis.html#specifier-resolution-record
+// A specifier resolution record is a struct. It has the following items:
+struct SpecifierResolutionRecord {
+    // A serialized base URL
+    //    A string-or-null that represents the base URL of the specifier, when one exists.
+    Optional<String> serialized_base_url;
+
+    // A specifier
+    //     A string representing the specifier.
+    String specifier;
+
+    // A specifier as a URL
+    //     A URL-or-null that represents the URL in case of a URL-like module specifier.
+    Optional<URL::URL> specifier_as_a_url;
+};
+
 JS::ExecutionContext const& execution_context_of_realm(JS::Realm const&);
 inline JS::ExecutionContext& execution_context_of_realm(JS::Realm& realm) { return const_cast<JS::ExecutionContext&>(execution_context_of_realm(const_cast<JS::Realm const&>(realm))); }
 
@@ -139,7 +157,8 @@ void prepare_to_run_callback(JS::Realm&);
 void clean_up_after_running_callback(JS::Realm const&);
 ModuleMap& module_map_of_realm(JS::Realm&);
 bool module_type_allowed(JS::Realm const&, StringView module_type);
-void disallow_further_import_maps(JS::Realm&);
+
+void add_module_to_resolved_module_set(JS::Realm&, String const& serialized_base_url, String const& normalized_specifier, Optional<URL::URL> const& as_url);
 
 EnvironmentSettingsObject& incumbent_settings_object();
 JS::Realm& incumbent_realm();

@@ -21,7 +21,6 @@
 #include <LibWeb/HTML/MimeType.h>
 #include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/Plugin.h>
-#include <LibWeb/HTML/Scripting/ImportMap.h>
 #include <LibWeb/HTML/ScrollOptions.h>
 #include <LibWeb/HTML/StructuredSerializeOptions.h>
 #include <LibWeb/HTML/UniversalGlobalScope.h>
@@ -95,12 +94,6 @@ public:
     BrowsingContext* browsing_context();
 
     GC::Ptr<Navigable> navigable() const;
-
-    ImportMap const& import_map() const { return m_import_map; }
-    void set_import_map(ImportMap const& import_map) { m_import_map = import_map; }
-
-    bool import_maps_allowed() const { return m_import_maps_allowed; }
-    void set_import_maps_allowed(bool import_maps_allowed) { m_import_maps_allowed = import_maps_allowed; }
 
     WebIDL::ExceptionOr<GC::Ptr<WindowProxy>> window_open_steps(StringView url, StringView target, StringView features);
 
@@ -267,12 +260,6 @@ private:
     GC::Ptr<DOM::Document> m_associated_document;
 
     GC::Ptr<DOM::Event> m_current_event;
-
-    // https://html.spec.whatwg.org/multipage/webappapis.html#concept-window-import-map
-    ImportMap m_import_map;
-
-    // https://html.spec.whatwg.org/multipage/webappapis.html#import-maps-allowed
-    bool m_import_maps_allowed { true };
 
     GC::Ptr<CSS::Screen> m_screen;
     GC::Ptr<Navigator> m_navigator;
