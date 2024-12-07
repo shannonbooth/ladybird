@@ -1357,6 +1357,43 @@ GC::Ref<WebIDL::Promise> readable_stream_cancel(ReadableStream& stream, JS::Valu
     return react_result;
 }
 
+// https://streams.spec.whatwg.org/#readable-stream-close
+void readable_stream_close(ReadableStream& stream)
+{
+    auto& realm = stream.realm();
+
+    // 1. Assert: stream.[[state]] is "readable".
+    VERIFY(stream.state() == ReadableStream::State::Readable);
+
+    // 2. Set stream.[[state]] to "closed".
+    stream.set_state(ReadableStream::State::Closed);
+
+    // 3. Let reader be stream.[[reader]].
+    auto reader = stream.reader();
+
+    // 4. If reader is undefined, return.
+    if (!reader.has_value())
+        return;
+
+    // 5. Resolve reader.[[closedPromise]] with undefined.
+    WebIDL::resolve_promise(realm, *reader->visit([](auto& reader) {
+        return reader->closed_promise_capability();
+    }));
+
+    // 6. If reader implements ReadableStreamDefaultReader,
+    if (reader->has<GC::Ref<ReadableStreamDefaultReader>>()) {
+        // 1. Let readRequests be reader.[[readRequests]].
+        // 2. Set reader.[[readRequests]] to an empty list.
+        auto read_requests = move(reader->get<GC::Ref<ReadableStreamDefaultReader>>()->read_requests());
+
+        // 3. For each readRequest of readRequests,
+        for (auto& read_request : read_requests) {
+            // 1. Perform readRequest’s close steps.
+            read_request->on_close();
+        }
+    }
+}
+
 // https://streams.spec.whatwg.org/#readable-stream-error
 void readable_stream_error(ReadableStream& stream, JS::Value error)
 {
@@ -1698,19 +1735,6 @@ void readable_stream_default_reader_read(ReadableStreamDefaultReader& reader, Re
     }
 }
 
-// https://streams.spec.whatwg.org/#make-size-algorithm-from-size-function
-GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM& vm, QueuingStrategy const& strategy)
-{
-    // 1. If strategy["size"] does not exist, return an algorithm that returns 1.
-    if (!strategy.size)
-        return GC::create_function(vm.heap(), [](JS::Value) { return JS::normal_completion(JS::Value(1)); });
-
-    // 2. Return an algorithm that performs the following steps, taking a chunk argument:
-    return GC::create_function(vm.heap(), [size = strategy.size](JS::Value chunk) {
-        return WebIDL::invoke_callback(*size, JS::js_undefined(), chunk);
-    });
-}
-
 // https://streams.spec.whatwg.org/#abstract-opdef-readablestreamdefaultreaderrelease
 void readable_stream_default_reader_release(ReadableStreamDefaultReader& reader)
 {
@@ -1760,59 +1784,359 @@ WebIDL::ExceptionOr<void> set_up_readable_stream_default_reader(ReadableStreamDe
     return {};
 }
 
-// https://streams.spec.whatwg.org/#validate-and-normalize-high-water-mark
-WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const& strategy, double default_hwm)
+// https://streams.spec.whatwg.org/#readable-stream-default-controller-call-pull-if-needed
+void readable_stream_default_controller_can_pull_if_needed(ReadableStreamDefaultController& controller)
 {
-    // 1. If strategy["highWaterMark"] does not exist, return defaultHWM.
-    if (!strategy.high_water_mark.has_value())
-        return default_hwm;
+    // 1. Let shouldPull be ! ReadableStreamDefaultControllerShouldCallPull(controller).
+    auto should_pull = readable_stream_default_controller_should_call_pull(controller);
 
-    // 2. Let highWaterMark be strategy["highWaterMark"].
-    auto high_water_mark = strategy.high_water_mark.value();
+    // 2. If shouldPull is false, return.
+    if (!should_pull)
+        return;
 
-    // 3. If highWaterMark is NaN or highWaterMark < 0, throw a RangeError exception.
-    if (isnan(high_water_mark) || high_water_mark < 0)
-        return WebIDL::SimpleException { WebIDL::SimpleExceptionType::RangeError, "Invalid value for high water mark"sv };
+    // 3. If controller.[[pulling]] is true,
+    if (controller.pulling()) {
+        // 1. Set controller.[[pullAgain]] to true.
+        controller.set_pull_again(true);
 
-    // 4. Return highWaterMark.
-    return high_water_mark;
+        // 2. Return.
+        return;
+    }
+
+    // 4. Assert: controller.[[pullAgain]] is false.
+    VERIFY(!controller.pull_again());
+
+    // 5. Set controller.[[pulling]] to true.
+    controller.set_pulling(true);
+
+    // 6. Let pullPromise be the result of performing controller.[[pullAlgorithm]].
+    auto pull_promise = controller.pull_algorithm()->function()();
+
+    // 7. Upon fulfillment of pullPromise,
+    WebIDL::upon_fulfillment(*pull_promise, GC::create_function(controller.heap(), [&controller](JS::Value) -> WebIDL::ExceptionOr<JS::Value> {
+        // 1. Set controller.[[pulling]] to false.
+        controller.set_pulling(false);
+
+        // 2. If controller.[[pullAgain]] is true,
+        if (controller.pull_again()) {
+            // 1. Set controller.[[pullAgain]] to false.
+            controller.set_pull_again(false);
+
+            // 2. Perform ! ReadableStreamDefaultControllerCallPullIfNeeded(controller).
+            readable_stream_default_controller_can_pull_if_needed(controller);
+        }
+
+        return JS::js_undefined();
+    }));
+
+    // 8. Upon rejection of pullPromise with reason e,
+    WebIDL::upon_rejection(*pull_promise, GC::create_function(controller.heap(), [&controller](JS::Value e) -> WebIDL::ExceptionOr<JS::Value> {
+        // 1. Perform ! ReadableStreamDefaultControllerError(controller, e).
+        readable_stream_default_controller_error(controller, e);
+
+        return JS::js_undefined();
+    }));
 }
 
-// https://streams.spec.whatwg.org/#readable-stream-close
-void readable_stream_close(ReadableStream& stream)
+// https://streams.spec.whatwg.org/#readable-stream-default-controller-should-call-pull
+bool readable_stream_default_controller_should_call_pull(ReadableStreamDefaultController& controller)
+{
+    // 1. Let stream be controller.[[stream]].
+    auto stream = controller.stream();
+
+    // 2. If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(controller) is false, return false.
+    if (!readable_stream_default_controller_can_close_or_enqueue(controller))
+        return false;
+
+    // 3. If controller.[[started]] is false, return false.
+    if (!controller.started())
+        return false;
+
+    // 4. If ! IsReadableStreamLocked(stream) is true and ! ReadableStreamGetNumReadRequests(stream) > 0, return true.
+    if (is_readable_stream_locked(*stream) && readable_stream_get_num_read_requests(*stream) > 0)
+        return true;
+
+    // 5. Let desiredSize be ! ReadableStreamDefaultControllerGetDesiredSize(controller).
+    auto desired_size = readable_stream_default_controller_get_desired_size(controller);
+
+    // 6. Assert: desiredSize is not null.
+    VERIFY(desired_size.has_value());
+
+    // 7. If desiredSize > 0, return true.
+    if (desired_size.release_value() > 0.0)
+        return true;
+
+    // 8. Return false.
+    return false;
+}
+
+// https://streams.spec.whatwg.org/#readable-stream-default-controller-clear-algorithms
+void readable_stream_default_controller_clear_algorithms(ReadableStreamDefaultController& controller)
+{
+    // 1. Set controller.[[pullAlgorithm]] to undefined.
+    controller.set_pull_algorithm({});
+
+    // 2. Set controller.[[cancelAlgorithm]] to undefined.
+    controller.set_cancel_algorithm({});
+
+    // 3. Set controller.[[strategySizeAlgorithm]] to undefined.
+    controller.set_strategy_size_algorithm({});
+}
+
+// https://streams.spec.whatwg.org/#readable-stream-default-controller-close
+void readable_stream_default_controller_close(ReadableStreamDefaultController& controller)
+{
+    // 1. If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(controller) is false, return.
+    if (!readable_stream_default_controller_can_close_or_enqueue(controller))
+        return;
+
+    // 2. Let stream be controller.[[stream]].
+    auto stream = controller.stream();
+
+    // 3. Set controller.[[closeRequested]] to true.
+    controller.set_close_requested(true);
+
+    // 4. If controller.[[queue]] is empty,
+    if (controller.queue().is_empty()) {
+        // 1. Perform ! ReadableStreamDefaultControllerClearAlgorithms(controller).
+        readable_stream_default_controller_clear_algorithms(controller);
+
+        // 2. Perform ! ReadableStreamClose(stream).
+        readable_stream_close(*stream);
+    }
+}
+
+// https://streams.spec.whatwg.org/#readable-stream-default-controller-enqueue
+WebIDL::ExceptionOr<void> readable_stream_default_controller_enqueue(ReadableStreamDefaultController& controller, JS::Value chunk)
+{
+    auto& vm = controller.vm();
+
+    // 1. If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(controller) is false, return.
+    if (!readable_stream_default_controller_can_close_or_enqueue(controller))
+        return {};
+
+    // 2. Let stream be controller.[[stream]].
+    auto stream = controller.stream();
+
+    // 3. If ! IsReadableStreamLocked(stream) is true and ! ReadableStreamGetNumReadRequests(stream) > 0, perform ! ReadableStreamFulfillReadRequest(stream, chunk, false).
+    if (is_readable_stream_locked(*stream) && readable_stream_get_num_read_requests(*stream) > 0) {
+        readable_stream_fulfill_read_request(*stream, chunk, false);
+    }
+    // 4. Otherwise,
+    else {
+        // 1. Let result be the result of performing controller.[[strategySizeAlgorithm]], passing in chunk, and interpreting the result as a completion record.
+        auto result = controller.strategy_size_algorithm()->function()(chunk);
+
+        // 2. If result is an abrupt completion,
+        if (result.is_abrupt()) {
+            // 1. Perform ! ReadableStreamDefaultControllerError(controller, result.[[Value]]).
+            readable_stream_default_controller_error(controller, result.value().value());
+
+            // 2. Return result.
+            return result;
+        }
+
+        // 3. Let chunkSize be result.[[Value]].
+        auto chunk_size = result.release_value().release_value();
+
+        // 4. Let enqueueResult be EnqueueValueWithSize(controller, chunk, chunkSize).
+        auto enqueue_result = enqueue_value_with_size(controller, chunk, chunk_size);
+
+        // 5. If enqueueResult is an abrupt completion,
+        if (enqueue_result.is_error()) {
+            auto throw_completion = Bindings::throw_dom_exception_if_needed(vm, [&] { return enqueue_result; }).throw_completion();
+
+            // 1. Perform ! ReadableStreamDefaultControllerError(controller, enqueueResult.[[Value]]).
+            readable_stream_default_controller_error(controller, throw_completion.value().value());
+
+            // 2. Return enqueueResult.
+            // Note: We need to return the throw_completion object here, as enqueue needs to throw the same object that the controller is errored with
+            return throw_completion;
+        }
+    }
+
+    // 5. Perform ! ReadableStreamDefaultControllerCallPullIfNeeded(controller).
+    readable_stream_default_controller_can_pull_if_needed(controller);
+    return {};
+}
+
+// https://streams.spec.whatwg.org/#readable-stream-default-controller-error
+void readable_stream_default_controller_error(ReadableStreamDefaultController& controller, JS::Value error)
+{
+    // 1. Let stream be controller.[[stream]].
+    auto stream = controller.stream();
+
+    // 2. If stream.[[state]] is not "readable", return.
+    if (!stream->is_readable())
+        return;
+
+    // 3. Perform ! ResetQueue(controller).
+    reset_queue(controller);
+
+    // 4. Perform ! ReadableStreamDefaultControllerClearAlgorithms(controller).
+    readable_stream_default_controller_clear_algorithms(controller);
+
+    // 5. Perform ! ReadableStreamError(stream, e).
+    readable_stream_error(*stream, error);
+}
+
+// https://streams.spec.whatwg.org/#readable-stream-default-controller-get-desired-size
+Optional<double> readable_stream_default_controller_get_desired_size(ReadableStreamDefaultController& controller)
+{
+    auto stream = controller.stream();
+
+    // 1. Let state be controller.[[stream]].[[state]].
+
+    // 2. If state is "errored", return null.
+    if (stream->is_errored())
+        return {};
+
+    // 3. If state is "closed", return 0.
+    if (stream->is_closed())
+        return 0.0;
+
+    // 4. Return controller.[[strategyHWM]] − controller.[[queueTotalSize]].
+    return controller.strategy_hwm() - controller.queue_total_size();
+}
+
+// https://streams.spec.whatwg.org/#rs-default-controller-has-backpressure
+bool readable_stream_default_controller_has_backpressure(ReadableStreamDefaultController& controller)
+{
+    // 1. If ! ReadableStreamDefaultControllerShouldCallPull(controller) is true, return false.
+    if (readable_stream_default_controller_should_call_pull(controller))
+        return false;
+
+    // 2. Otherwise, return true.
+    return true;
+}
+
+// https://streams.spec.whatwg.org/#readable-stream-default-controller-can-close-or-enqueue
+bool readable_stream_default_controller_can_close_or_enqueue(ReadableStreamDefaultController& controller)
+{
+    // 1. Let state be controller.[[stream]].[[state]].
+    // 2. If controller.[[closeRequested]] is false and state is "readable", return true.
+    // 3. Otherwise, return false.
+    return !controller.close_requested() && controller.stream()->is_readable();
+}
+
+// https://streams.spec.whatwg.org/#set-up-readable-stream-default-controller
+WebIDL::ExceptionOr<void> set_up_readable_stream_default_controller(ReadableStream& stream, ReadableStreamDefaultController& controller, GC::Ref<StartAlgorithm> start_algorithm, GC::Ref<PullAlgorithm> pull_algorithm, GC::Ref<CancelAlgorithm> cancel_algorithm, double high_water_mark, GC::Ref<SizeAlgorithm> size_algorithm)
 {
     auto& realm = stream.realm();
 
-    // 1. Assert: stream.[[state]] is "readable".
-    VERIFY(stream.state() == ReadableStream::State::Readable);
+    // 1. Assert: stream.[[controller]] is undefined.
+    VERIFY(!stream.controller().has_value());
 
-    // 2. Set stream.[[state]] to "closed".
-    stream.set_state(ReadableStream::State::Closed);
+    // 2. Set controller.[[stream]] to stream.
+    controller.set_stream(stream);
 
-    // 3. Let reader be stream.[[reader]].
-    auto reader = stream.reader();
+    // 3. Perform ! ResetQueue(controller).
+    reset_queue(controller);
 
-    // 4. If reader is undefined, return.
-    if (!reader.has_value())
-        return;
+    // 4. Set controller.[[started]], controller.[[closeRequested]], controller.[[pullAgain]], and controller.[[pulling]] to false.
+    controller.set_started(false);
+    controller.set_close_requested(false);
+    controller.set_pull_again(false);
+    controller.set_pulling(false);
 
-    // 5. Resolve reader.[[closedPromise]] with undefined.
-    WebIDL::resolve_promise(realm, *reader->visit([](auto& reader) {
-        return reader->closed_promise_capability();
+    // 5. Set controller.[[strategySizeAlgorithm]] to sizeAlgorithm and controller.[[strategyHWM]] to highWaterMark.
+    controller.set_strategy_size_algorithm(size_algorithm);
+    controller.set_strategy_hwm(high_water_mark);
+
+    // 6. Set controller.[[pullAlgorithm]] to pullAlgorithm.
+    controller.set_pull_algorithm(pull_algorithm);
+
+    // 7. Set controller.[[cancelAlgorithm]] to cancelAlgorithm.
+    controller.set_cancel_algorithm(cancel_algorithm);
+
+    // 8. Set stream.[[controller]] to controller.
+    stream.set_controller(ReadableStreamController { controller });
+
+    // 9. Let startResult be the result of performing startAlgorithm. (This might throw an exception.)
+    auto start_result = TRY(start_algorithm->function()());
+
+    // 10. Let startPromise be a promise resolved with startResult.
+    auto start_promise = WebIDL::create_resolved_promise(realm, start_result);
+
+    // 11. Upon fulfillment of startPromise,
+    WebIDL::upon_fulfillment(start_promise, GC::create_function(controller.heap(), [&controller](JS::Value) -> WebIDL::ExceptionOr<JS::Value> {
+        // 1. Set controller.[[started]] to true.
+        controller.set_started(true);
+
+        // 2. Assert: controller.[[pulling]] is false.
+        VERIFY(!controller.pulling());
+
+        // 3. Assert: controller.[[pullAgain]] is false.
+        VERIFY(!controller.pull_again());
+
+        // 4. Perform ! ReadableStreamDefaultControllerCallPullIfNeeded(controller).
+        readable_stream_default_controller_can_pull_if_needed(controller);
+
+        return JS::js_undefined();
     }));
 
-    // 6. If reader implements ReadableStreamDefaultReader,
-    if (reader->has<GC::Ref<ReadableStreamDefaultReader>>()) {
-        // 1. Let readRequests be reader.[[readRequests]].
-        // 2. Set reader.[[readRequests]] to an empty list.
-        auto read_requests = move(reader->get<GC::Ref<ReadableStreamDefaultReader>>()->read_requests());
+    // 12. Upon rejection of startPromise with reason r,
+    WebIDL::upon_rejection(start_promise, GC::create_function(controller.heap(), [&controller](JS::Value r) -> WebIDL::ExceptionOr<JS::Value> {
+        // 1. Perform ! ReadableStreamDefaultControllerError(controller, r).
+        readable_stream_default_controller_error(controller, r);
 
-        // 3. For each readRequest of readRequests,
-        for (auto& read_request : read_requests) {
-            // 1. Perform readRequest’s close steps.
-            read_request->on_close();
-        }
+        return JS::js_undefined();
+    }));
+
+    return {};
+}
+
+// https://streams.spec.whatwg.org/#set-up-readable-stream-default-controller-from-underlying-source
+WebIDL::ExceptionOr<void> set_up_readable_stream_default_controller_from_underlying_source(ReadableStream& stream, JS::Value underlying_source_value, UnderlyingSource underlying_source, double high_water_mark, GC::Ref<SizeAlgorithm> size_algorithm)
+{
+    auto& realm = stream.realm();
+
+    // 1. Let controller be a new ReadableStreamDefaultController.
+    auto controller = realm.create<ReadableStreamDefaultController>(realm);
+
+    // 2. Let startAlgorithm be an algorithm that returns undefined.
+    auto start_algorithm = GC::create_function(realm.heap(), []() -> WebIDL::ExceptionOr<JS::Value> {
+        return JS::js_undefined();
+    });
+
+    // 3. Let pullAlgorithm be an algorithm that returns a promise resolved with undefined.
+    auto pull_algorithm = GC::create_function(realm.heap(), [&realm]() {
+        return WebIDL::create_resolved_promise(realm, JS::js_undefined());
+    });
+
+    // 4. Let cancelAlgorithm be an algorithm that returns a promise resolved with undefined.
+    auto cancel_algorithm = GC::create_function(realm.heap(), [&realm](JS::Value) {
+        return WebIDL::create_resolved_promise(realm, JS::js_undefined());
+    });
+
+    // 5. If underlyingSourceDict["start"] exists, then set startAlgorithm to an algorithm which returns the result of invoking underlyingSourceDict["start"] with argument list « controller » and callback this value underlyingSource.
+    if (underlying_source.start) {
+        start_algorithm = GC::create_function(realm.heap(), [controller, underlying_source_value, callback = underlying_source.start]() -> WebIDL::ExceptionOr<JS::Value> {
+            // Note: callback does not return a promise, so invoke_callback may return an abrupt completion
+            return TRY(WebIDL::invoke_callback(*callback, underlying_source_value, controller)).release_value();
+        });
     }
+
+    // 6. If underlyingSourceDict["pull"] exists, then set pullAlgorithm to an algorithm which returns the result of invoking underlyingSourceDict["pull"] with argument list « controller » and callback this value underlyingSource.
+    if (underlying_source.pull) {
+        pull_algorithm = GC::create_function(realm.heap(), [&realm, controller, underlying_source_value, callback = underlying_source.pull]() {
+            // Note: callback returns a promise, so invoke_callback will never return an abrupt completion
+            auto result = MUST(WebIDL::invoke_callback(*callback, underlying_source_value, controller)).release_value();
+            return WebIDL::create_resolved_promise(realm, result);
+        });
+    }
+
+    // 7. If underlyingSourceDict["cancel"] exists, then set cancelAlgorithm to an algorithm which takes an argument reason and returns the result of invoking underlyingSourceDict["cancel"] with argument list « reason » and callback this value underlyingSource.
+    if (underlying_source.cancel) {
+        cancel_algorithm = GC::create_function(realm.heap(), [&realm, underlying_source_value, callback = underlying_source.cancel](JS::Value reason) {
+            // Note: callback returns a promise, so invoke_callback will never return an abrupt completion
+            auto result = MUST(WebIDL::invoke_callback(*callback, underlying_source_value, reason)).release_value();
+            return WebIDL::create_resolved_promise(realm, result);
+        });
+    }
+
+    // 8. Perform ? SetUpReadableStreamDefaultController(stream, controller, startAlgorithm, pullAlgorithm, cancelAlgorithm, highWaterMark, sizeAlgorithm).
+    return set_up_readable_stream_default_controller(stream, controller, start_algorithm, pull_algorithm, cancel_algorithm, high_water_mark, size_algorithm);
 }
 
 // https://streams.spec.whatwg.org/#readable-byte-stream-controller-fill-head-pull-into-descriptor
@@ -2095,180 +2419,6 @@ void readable_byte_stream_controller_pull_into(ReadableByteStreamController& con
     readable_byte_stream_controller_call_pull_if_needed(controller);
 }
 
-// https://streams.spec.whatwg.org/#readable-stream-default-controller-close
-void readable_stream_default_controller_close(ReadableStreamDefaultController& controller)
-{
-    // 1. If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(controller) is false, return.
-    if (!readable_stream_default_controller_can_close_or_enqueue(controller))
-        return;
-
-    // 2. Let stream be controller.[[stream]].
-    auto stream = controller.stream();
-
-    // 3. Set controller.[[closeRequested]] to true.
-    controller.set_close_requested(true);
-
-    // 4. If controller.[[queue]] is empty,
-    if (controller.queue().is_empty()) {
-        // 1. Perform ! ReadableStreamDefaultControllerClearAlgorithms(controller).
-        readable_stream_default_controller_clear_algorithms(controller);
-
-        // 2. Perform ! ReadableStreamClose(stream).
-        readable_stream_close(*stream);
-    }
-}
-
-// https://streams.spec.whatwg.org/#rs-default-controller-has-backpressure
-bool readable_stream_default_controller_has_backpressure(ReadableStreamDefaultController& controller)
-{
-    // 1. If ! ReadableStreamDefaultControllerShouldCallPull(controller) is true, return false.
-    if (readable_stream_default_controller_should_call_pull(controller))
-        return false;
-
-    // 2. Otherwise, return true.
-    return true;
-}
-
-// https://streams.spec.whatwg.org/#readable-stream-default-controller-enqueue
-WebIDL::ExceptionOr<void> readable_stream_default_controller_enqueue(ReadableStreamDefaultController& controller, JS::Value chunk)
-{
-    auto& vm = controller.vm();
-
-    // 1. If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(controller) is false, return.
-    if (!readable_stream_default_controller_can_close_or_enqueue(controller))
-        return {};
-
-    // 2. Let stream be controller.[[stream]].
-    auto stream = controller.stream();
-
-    // 3. If ! IsReadableStreamLocked(stream) is true and ! ReadableStreamGetNumReadRequests(stream) > 0, perform ! ReadableStreamFulfillReadRequest(stream, chunk, false).
-    if (is_readable_stream_locked(*stream) && readable_stream_get_num_read_requests(*stream) > 0) {
-        readable_stream_fulfill_read_request(*stream, chunk, false);
-    }
-    // 4. Otherwise,
-    else {
-        // 1. Let result be the result of performing controller.[[strategySizeAlgorithm]], passing in chunk, and interpreting the result as a completion record.
-        auto result = controller.strategy_size_algorithm()->function()(chunk);
-
-        // 2. If result is an abrupt completion,
-        if (result.is_abrupt()) {
-            // 1. Perform ! ReadableStreamDefaultControllerError(controller, result.[[Value]]).
-            readable_stream_default_controller_error(controller, result.value().value());
-
-            // 2. Return result.
-            return result;
-        }
-
-        // 3. Let chunkSize be result.[[Value]].
-        auto chunk_size = result.release_value().release_value();
-
-        // 4. Let enqueueResult be EnqueueValueWithSize(controller, chunk, chunkSize).
-        auto enqueue_result = enqueue_value_with_size(controller, chunk, chunk_size);
-
-        // 5. If enqueueResult is an abrupt completion,
-        if (enqueue_result.is_error()) {
-            auto throw_completion = Bindings::throw_dom_exception_if_needed(vm, [&] { return enqueue_result; }).throw_completion();
-
-            // 1. Perform ! ReadableStreamDefaultControllerError(controller, enqueueResult.[[Value]]).
-            readable_stream_default_controller_error(controller, throw_completion.value().value());
-
-            // 2. Return enqueueResult.
-            // Note: We need to return the throw_completion object here, as enqueue needs to throw the same object that the controller is errored with
-            return throw_completion;
-        }
-    }
-
-    // 5. Perform ! ReadableStreamDefaultControllerCallPullIfNeeded(controller).
-    readable_stream_default_controller_can_pull_if_needed(controller);
-    return {};
-}
-
-// https://streams.spec.whatwg.org/#readable-stream-default-controller-call-pull-if-needed
-void readable_stream_default_controller_can_pull_if_needed(ReadableStreamDefaultController& controller)
-{
-    // 1. Let shouldPull be ! ReadableStreamDefaultControllerShouldCallPull(controller).
-    auto should_pull = readable_stream_default_controller_should_call_pull(controller);
-
-    // 2. If shouldPull is false, return.
-    if (!should_pull)
-        return;
-
-    // 3. If controller.[[pulling]] is true,
-    if (controller.pulling()) {
-        // 1. Set controller.[[pullAgain]] to true.
-        controller.set_pull_again(true);
-
-        // 2. Return.
-        return;
-    }
-
-    // 4. Assert: controller.[[pullAgain]] is false.
-    VERIFY(!controller.pull_again());
-
-    // 5. Set controller.[[pulling]] to true.
-    controller.set_pulling(true);
-
-    // 6. Let pullPromise be the result of performing controller.[[pullAlgorithm]].
-    auto pull_promise = controller.pull_algorithm()->function()();
-
-    // 7. Upon fulfillment of pullPromise,
-    WebIDL::upon_fulfillment(*pull_promise, GC::create_function(controller.heap(), [&controller](JS::Value) -> WebIDL::ExceptionOr<JS::Value> {
-        // 1. Set controller.[[pulling]] to false.
-        controller.set_pulling(false);
-
-        // 2. If controller.[[pullAgain]] is true,
-        if (controller.pull_again()) {
-            // 1. Set controller.[[pullAgain]] to false.
-            controller.set_pull_again(false);
-
-            // 2. Perform ! ReadableStreamDefaultControllerCallPullIfNeeded(controller).
-            readable_stream_default_controller_can_pull_if_needed(controller);
-        }
-
-        return JS::js_undefined();
-    }));
-
-    // 8. Upon rejection of pullPromise with reason e,
-    WebIDL::upon_rejection(*pull_promise, GC::create_function(controller.heap(), [&controller](JS::Value e) -> WebIDL::ExceptionOr<JS::Value> {
-        // 1. Perform ! ReadableStreamDefaultControllerError(controller, e).
-        readable_stream_default_controller_error(controller, e);
-
-        return JS::js_undefined();
-    }));
-}
-
-// https://streams.spec.whatwg.org/#readable-stream-default-controller-should-call-pull
-bool readable_stream_default_controller_should_call_pull(ReadableStreamDefaultController& controller)
-{
-    // 1. Let stream be controller.[[stream]].
-    auto stream = controller.stream();
-
-    // 2. If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(controller) is false, return false.
-    if (!readable_stream_default_controller_can_close_or_enqueue(controller))
-        return false;
-
-    // 3. If controller.[[started]] is false, return false.
-    if (!controller.started())
-        return false;
-
-    // 4. If ! IsReadableStreamLocked(stream) is true and ! ReadableStreamGetNumReadRequests(stream) > 0, return true.
-    if (is_readable_stream_locked(*stream) && readable_stream_get_num_read_requests(*stream) > 0)
-        return true;
-
-    // 5. Let desiredSize be ! ReadableStreamDefaultControllerGetDesiredSize(controller).
-    auto desired_size = readable_stream_default_controller_get_desired_size(controller);
-
-    // 6. Assert: desiredSize is not null.
-    VERIFY(desired_size.has_value());
-
-    // 7. If desiredSize > 0, return true.
-    if (desired_size.release_value() > 0.0)
-        return true;
-
-    // 8. Return false.
-    return false;
-}
-
 // https://streams.spec.whatwg.org/#abstract-opdef-readablebytestreamcontrollergetbyobrequest
 GC::Ptr<ReadableStreamBYOBRequest> readable_byte_stream_controller_get_byob_request(GC::Ref<ReadableByteStreamController> controller)
 {
@@ -2299,19 +2449,6 @@ GC::Ptr<ReadableStreamBYOBRequest> readable_byte_stream_controller_get_byob_requ
 
     // 2. Return controller.[[byobRequest]].
     return controller->raw_byob_request();
-}
-
-// https://streams.spec.whatwg.org/#readable-stream-default-controller-clear-algorithms
-void readable_stream_default_controller_clear_algorithms(ReadableStreamDefaultController& controller)
-{
-    // 1. Set controller.[[pullAlgorithm]] to undefined.
-    controller.set_pull_algorithm({});
-
-    // 2. Set controller.[[cancelAlgorithm]] to undefined.
-    controller.set_cancel_algorithm({});
-
-    // 3. Set controller.[[strategySizeAlgorithm]] to undefined.
-    controller.set_strategy_size_algorithm({});
 }
 
 // https://streams.spec.whatwg.org/#readable-byte-stream-controller-respond-in-readable-state
@@ -2556,174 +2693,6 @@ WebIDL::ExceptionOr<void> readable_byte_stream_controller_respond_with_new_view(
     TRY(readable_byte_stream_controller_respond_internal(controller, view_byte_length));
 
     return {};
-}
-
-// https://streams.spec.whatwg.org/#readable-stream-default-controller-error
-void readable_stream_default_controller_error(ReadableStreamDefaultController& controller, JS::Value error)
-{
-    // 1. Let stream be controller.[[stream]].
-    auto stream = controller.stream();
-
-    // 2. If stream.[[state]] is not "readable", return.
-    if (!stream->is_readable())
-        return;
-
-    // 3. Perform ! ResetQueue(controller).
-    reset_queue(controller);
-
-    // 4. Perform ! ReadableStreamDefaultControllerClearAlgorithms(controller).
-    readable_stream_default_controller_clear_algorithms(controller);
-
-    // 5. Perform ! ReadableStreamError(stream, e).
-    readable_stream_error(*stream, error);
-}
-
-// https://streams.spec.whatwg.org/#readable-stream-default-controller-get-desired-size
-Optional<double> readable_stream_default_controller_get_desired_size(ReadableStreamDefaultController& controller)
-{
-    auto stream = controller.stream();
-
-    // 1. Let state be controller.[[stream]].[[state]].
-
-    // 2. If state is "errored", return null.
-    if (stream->is_errored())
-        return {};
-
-    // 3. If state is "closed", return 0.
-    if (stream->is_closed())
-        return 0.0;
-
-    // 4. Return controller.[[strategyHWM]] − controller.[[queueTotalSize]].
-    return controller.strategy_hwm() - controller.queue_total_size();
-}
-
-// https://streams.spec.whatwg.org/#readable-stream-default-controller-can-close-or-enqueue
-bool readable_stream_default_controller_can_close_or_enqueue(ReadableStreamDefaultController& controller)
-{
-    // 1. Let state be controller.[[stream]].[[state]].
-    // 2. If controller.[[closeRequested]] is false and state is "readable", return true.
-    // 3. Otherwise, return false.
-    return !controller.close_requested() && controller.stream()->is_readable();
-}
-
-// https://streams.spec.whatwg.org/#set-up-readable-stream-default-controller
-WebIDL::ExceptionOr<void> set_up_readable_stream_default_controller(ReadableStream& stream, ReadableStreamDefaultController& controller, GC::Ref<StartAlgorithm> start_algorithm, GC::Ref<PullAlgorithm> pull_algorithm, GC::Ref<CancelAlgorithm> cancel_algorithm, double high_water_mark, GC::Ref<SizeAlgorithm> size_algorithm)
-{
-    auto& realm = stream.realm();
-
-    // 1. Assert: stream.[[controller]] is undefined.
-    VERIFY(!stream.controller().has_value());
-
-    // 2. Set controller.[[stream]] to stream.
-    controller.set_stream(stream);
-
-    // 3. Perform ! ResetQueue(controller).
-    reset_queue(controller);
-
-    // 4. Set controller.[[started]], controller.[[closeRequested]], controller.[[pullAgain]], and controller.[[pulling]] to false.
-    controller.set_started(false);
-    controller.set_close_requested(false);
-    controller.set_pull_again(false);
-    controller.set_pulling(false);
-
-    // 5. Set controller.[[strategySizeAlgorithm]] to sizeAlgorithm and controller.[[strategyHWM]] to highWaterMark.
-    controller.set_strategy_size_algorithm(size_algorithm);
-    controller.set_strategy_hwm(high_water_mark);
-
-    // 6. Set controller.[[pullAlgorithm]] to pullAlgorithm.
-    controller.set_pull_algorithm(pull_algorithm);
-
-    // 7. Set controller.[[cancelAlgorithm]] to cancelAlgorithm.
-    controller.set_cancel_algorithm(cancel_algorithm);
-
-    // 8. Set stream.[[controller]] to controller.
-    stream.set_controller(ReadableStreamController { controller });
-
-    // 9. Let startResult be the result of performing startAlgorithm. (This might throw an exception.)
-    auto start_result = TRY(start_algorithm->function()());
-
-    // 10. Let startPromise be a promise resolved with startResult.
-    auto start_promise = WebIDL::create_resolved_promise(realm, start_result);
-
-    // 11. Upon fulfillment of startPromise,
-    WebIDL::upon_fulfillment(start_promise, GC::create_function(controller.heap(), [&controller](JS::Value) -> WebIDL::ExceptionOr<JS::Value> {
-        // 1. Set controller.[[started]] to true.
-        controller.set_started(true);
-
-        // 2. Assert: controller.[[pulling]] is false.
-        VERIFY(!controller.pulling());
-
-        // 3. Assert: controller.[[pullAgain]] is false.
-        VERIFY(!controller.pull_again());
-
-        // 4. Perform ! ReadableStreamDefaultControllerCallPullIfNeeded(controller).
-        readable_stream_default_controller_can_pull_if_needed(controller);
-
-        return JS::js_undefined();
-    }));
-
-    // 12. Upon rejection of startPromise with reason r,
-    WebIDL::upon_rejection(start_promise, GC::create_function(controller.heap(), [&controller](JS::Value r) -> WebIDL::ExceptionOr<JS::Value> {
-        // 1. Perform ! ReadableStreamDefaultControllerError(controller, r).
-        readable_stream_default_controller_error(controller, r);
-
-        return JS::js_undefined();
-    }));
-
-    return {};
-}
-
-// https://streams.spec.whatwg.org/#set-up-readable-stream-default-controller-from-underlying-source
-WebIDL::ExceptionOr<void> set_up_readable_stream_default_controller_from_underlying_source(ReadableStream& stream, JS::Value underlying_source_value, UnderlyingSource underlying_source, double high_water_mark, GC::Ref<SizeAlgorithm> size_algorithm)
-{
-    auto& realm = stream.realm();
-
-    // 1. Let controller be a new ReadableStreamDefaultController.
-    auto controller = realm.create<ReadableStreamDefaultController>(realm);
-
-    // 2. Let startAlgorithm be an algorithm that returns undefined.
-    auto start_algorithm = GC::create_function(realm.heap(), []() -> WebIDL::ExceptionOr<JS::Value> {
-        return JS::js_undefined();
-    });
-
-    // 3. Let pullAlgorithm be an algorithm that returns a promise resolved with undefined.
-    auto pull_algorithm = GC::create_function(realm.heap(), [&realm]() {
-        return WebIDL::create_resolved_promise(realm, JS::js_undefined());
-    });
-
-    // 4. Let cancelAlgorithm be an algorithm that returns a promise resolved with undefined.
-    auto cancel_algorithm = GC::create_function(realm.heap(), [&realm](JS::Value) {
-        return WebIDL::create_resolved_promise(realm, JS::js_undefined());
-    });
-
-    // 5. If underlyingSourceDict["start"] exists, then set startAlgorithm to an algorithm which returns the result of invoking underlyingSourceDict["start"] with argument list « controller » and callback this value underlyingSource.
-    if (underlying_source.start) {
-        start_algorithm = GC::create_function(realm.heap(), [controller, underlying_source_value, callback = underlying_source.start]() -> WebIDL::ExceptionOr<JS::Value> {
-            // Note: callback does not return a promise, so invoke_callback may return an abrupt completion
-            return TRY(WebIDL::invoke_callback(*callback, underlying_source_value, controller)).release_value();
-        });
-    }
-
-    // 6. If underlyingSourceDict["pull"] exists, then set pullAlgorithm to an algorithm which returns the result of invoking underlyingSourceDict["pull"] with argument list « controller » and callback this value underlyingSource.
-    if (underlying_source.pull) {
-        pull_algorithm = GC::create_function(realm.heap(), [&realm, controller, underlying_source_value, callback = underlying_source.pull]() {
-            // Note: callback returns a promise, so invoke_callback will never return an abrupt completion
-            auto result = MUST(WebIDL::invoke_callback(*callback, underlying_source_value, controller)).release_value();
-            return WebIDL::create_resolved_promise(realm, result);
-        });
-    }
-
-    // 7. If underlyingSourceDict["cancel"] exists, then set cancelAlgorithm to an algorithm which takes an argument reason and returns the result of invoking underlyingSourceDict["cancel"] with argument list « reason » and callback this value underlyingSource.
-    if (underlying_source.cancel) {
-        cancel_algorithm = GC::create_function(realm.heap(), [&realm, underlying_source_value, callback = underlying_source.cancel](JS::Value reason) {
-            // Note: callback returns a promise, so invoke_callback will never return an abrupt completion
-            auto result = MUST(WebIDL::invoke_callback(*callback, underlying_source_value, reason)).release_value();
-            return WebIDL::create_resolved_promise(realm, result);
-        });
-    }
-
-    // 8. Perform ? SetUpReadableStreamDefaultController(stream, controller, startAlgorithm, pullAlgorithm, cancelAlgorithm, highWaterMark, sizeAlgorithm).
-    return set_up_readable_stream_default_controller(stream, controller, start_algorithm, pull_algorithm, cancel_algorithm, high_water_mark, size_algorithm);
 }
 
 // https://streams.spec.whatwg.org/#readable-byte-stream-controller-call-pull-if-needed
@@ -5573,6 +5542,37 @@ WebIDL::ExceptionOr<void> set_up_readable_byte_stream_controller_from_underlying
 
     // 10. Perform ? SetUpReadableByteStreamController(stream, controller, startAlgorithm, pullAlgorithm, cancelAlgorithm, highWaterMark, autoAllocateChunkSize).
     return set_up_readable_byte_stream_controller(stream, controller, start_algorithm, pull_algorithm, cancel_algorithm, high_water_mark, auto_allocate_chunk_size);
+}
+
+// https://streams.spec.whatwg.org/#make-size-algorithm-from-size-function
+GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM& vm, QueuingStrategy const& strategy)
+{
+    // 1. If strategy["size"] does not exist, return an algorithm that returns 1.
+    if (!strategy.size)
+        return GC::create_function(vm.heap(), [](JS::Value) { return JS::normal_completion(JS::Value(1)); });
+
+    // 2. Return an algorithm that performs the following steps, taking a chunk argument:
+    return GC::create_function(vm.heap(), [size = strategy.size](JS::Value chunk) {
+        return WebIDL::invoke_callback(*size, JS::js_undefined(), chunk);
+    });
+}
+
+// https://streams.spec.whatwg.org/#validate-and-normalize-high-water-mark
+WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const& strategy, double default_hwm)
+{
+    // 1. If strategy["highWaterMark"] does not exist, return defaultHWM.
+    if (!strategy.high_water_mark.has_value())
+        return default_hwm;
+
+    // 2. Let highWaterMark be strategy["highWaterMark"].
+    auto high_water_mark = strategy.high_water_mark.value();
+
+    // 3. If highWaterMark is NaN or highWaterMark < 0, throw a RangeError exception.
+    if (isnan(high_water_mark) || high_water_mark < 0)
+        return WebIDL::SimpleException { WebIDL::SimpleExceptionType::RangeError, "Invalid value for high water mark"sv };
+
+    // 4. Return highWaterMark.
+    return high_water_mark;
 }
 
 }

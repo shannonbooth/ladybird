@@ -68,6 +68,19 @@ void readable_stream_default_reader_release(ReadableStreamDefaultReader&);
 WebIDL::ExceptionOr<void> set_up_readable_stream_byob_reader(ReadableStreamBYOBReader&, ReadableStream&);
 WebIDL::ExceptionOr<void> set_up_readable_stream_default_reader(ReadableStreamDefaultReader&, ReadableStream&);
 
+// 4.9.4. Default controllers, https://streams.spec.whatwg.org/#rs-default-controller-abstract-ops
+void readable_stream_default_controller_can_pull_if_needed(ReadableStreamDefaultController&);
+bool readable_stream_default_controller_should_call_pull(ReadableStreamDefaultController&);
+void readable_stream_default_controller_clear_algorithms(ReadableStreamDefaultController&);
+void readable_stream_default_controller_close(ReadableStreamDefaultController&);
+WebIDL::ExceptionOr<void> readable_stream_default_controller_enqueue(ReadableStreamDefaultController&, JS::Value chunk);
+void readable_stream_default_controller_error(ReadableStreamDefaultController&, JS::Value error);
+Optional<double> readable_stream_default_controller_get_desired_size(ReadableStreamDefaultController&);
+bool readable_stream_default_controller_has_backpressure(ReadableStreamDefaultController&);
+bool readable_stream_default_controller_can_close_or_enqueue(ReadableStreamDefaultController&);
+WebIDL::ExceptionOr<void> set_up_readable_stream_default_controller(ReadableStream&, ReadableStreamDefaultController&, GC::Ref<StartAlgorithm>, GC::Ref<PullAlgorithm>, GC::Ref<CancelAlgorithm>, double high_water_mark, GC::Ref<SizeAlgorithm>);
+WebIDL::ExceptionOr<void> set_up_readable_stream_default_controller_from_underlying_source(ReadableStream&, JS::Value underlying_source_value, UnderlyingSource, double high_water_mark, GC::Ref<SizeAlgorithm>);
+
 GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM&, QueuingStrategy const&);
 WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const&, double default_hwm);
 
@@ -75,18 +88,6 @@ JS::Value readable_byte_stream_controller_convert_pull_into_descriptor(JS::Realm
 void readable_byte_stream_controller_pull_into(ReadableByteStreamController&, WebIDL::ArrayBufferView&, u64 min, ReadIntoRequest&);
 void readable_byte_stream_controller_fill_head_pull_into_descriptor(ReadableByteStreamController const&, u64 size, PullIntoDescriptor&);
 
-void readable_stream_default_controller_close(ReadableStreamDefaultController&);
-bool readable_stream_default_controller_has_backpressure(ReadableStreamDefaultController&);
-WebIDL::ExceptionOr<void> readable_stream_default_controller_enqueue(ReadableStreamDefaultController&, JS::Value chunk);
-void readable_stream_default_controller_can_pull_if_needed(ReadableStreamDefaultController&);
-bool readable_stream_default_controller_should_call_pull(ReadableStreamDefaultController&);
-void readable_stream_default_controller_clear_algorithms(ReadableStreamDefaultController&);
-
-void readable_stream_default_controller_error(ReadableStreamDefaultController&, JS::Value error);
-Optional<double> readable_stream_default_controller_get_desired_size(ReadableStreamDefaultController&);
-bool readable_stream_default_controller_can_close_or_enqueue(ReadableStreamDefaultController&);
-WebIDL::ExceptionOr<void> set_up_readable_stream_default_controller(ReadableStream&, ReadableStreamDefaultController&, GC::Ref<StartAlgorithm>, GC::Ref<PullAlgorithm>, GC::Ref<CancelAlgorithm>, double high_water_mark, GC::Ref<SizeAlgorithm>);
-WebIDL::ExceptionOr<void> set_up_readable_stream_default_controller_from_underlying_source(ReadableStream&, JS::Value underlying_source_value, UnderlyingSource, double high_water_mark, GC::Ref<SizeAlgorithm>);
 void set_up_readable_stream_controller_with_byte_reading_support(ReadableStream&, GC::Ptr<PullAlgorithm> = {}, GC::Ptr<CancelAlgorithm> = {}, double high_water_mark = 0);
 WebIDL::ExceptionOr<void> set_up_readable_byte_stream_controller(ReadableStream&, ReadableByteStreamController&, GC::Ref<StartAlgorithm>, GC::Ref<PullAlgorithm>, GC::Ref<CancelAlgorithm>, double high_water_mark, JS::Value auto_allocate_chunk_size);
 WebIDL::ExceptionOr<void> set_up_readable_byte_stream_controller_from_underlying_source(ReadableStream&, JS::Value underlying_source, UnderlyingSource const& underlying_source_dict, double high_water_mark);
