@@ -1509,74 +1509,6 @@ bool readable_stream_has_default_reader(ReadableStream const& stream)
     return false;
 }
 
-// https://streams.spec.whatwg.org/#make-size-algorithm-from-size-function
-GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM& vm, QueuingStrategy const& strategy)
-{
-    // 1. If strategy["size"] does not exist, return an algorithm that returns 1.
-    if (!strategy.size)
-        return GC::create_function(vm.heap(), [](JS::Value) { return JS::normal_completion(JS::Value(1)); });
-
-    // 2. Return an algorithm that performs the following steps, taking a chunk argument:
-    return GC::create_function(vm.heap(), [size = strategy.size](JS::Value chunk) {
-        return WebIDL::invoke_callback(*size, JS::js_undefined(), chunk);
-    });
-}
-
-// https://streams.spec.whatwg.org/#validate-and-normalize-high-water-mark
-WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const& strategy, double default_hwm)
-{
-    // 1. If strategy["highWaterMark"] does not exist, return defaultHWM.
-    if (!strategy.high_water_mark.has_value())
-        return default_hwm;
-
-    // 2. Let highWaterMark be strategy["highWaterMark"].
-    auto high_water_mark = strategy.high_water_mark.value();
-
-    // 3. If highWaterMark is NaN or highWaterMark < 0, throw a RangeError exception.
-    if (isnan(high_water_mark) || high_water_mark < 0)
-        return WebIDL::SimpleException { WebIDL::SimpleExceptionType::RangeError, "Invalid value for high water mark"sv };
-
-    // 4. Return highWaterMark.
-    return high_water_mark;
-}
-
-// https://streams.spec.whatwg.org/#readable-stream-close
-void readable_stream_close(ReadableStream& stream)
-{
-    auto& realm = stream.realm();
-
-    // 1. Assert: stream.[[state]] is "readable".
-    VERIFY(stream.state() == ReadableStream::State::Readable);
-
-    // 2. Set stream.[[state]] to "closed".
-    stream.set_state(ReadableStream::State::Closed);
-
-    // 3. Let reader be stream.[[reader]].
-    auto reader = stream.reader();
-
-    // 4. If reader is undefined, return.
-    if (!reader.has_value())
-        return;
-
-    // 5. Resolve reader.[[closedPromise]] with undefined.
-    WebIDL::resolve_promise(realm, *reader->visit([](auto& reader) {
-        return reader->closed_promise_capability();
-    }));
-
-    // 6. If reader implements ReadableStreamDefaultReader,
-    if (reader->has<GC::Ref<ReadableStreamDefaultReader>>()) {
-        // 1. Let readRequests be reader.[[readRequests]].
-        // 2. Set reader.[[readRequests]] to an empty list.
-        auto read_requests = move(reader->get<GC::Ref<ReadableStreamDefaultReader>>()->read_requests());
-
-        // 3. For each readRequest of readRequests,
-        for (auto& read_request : read_requests) {
-            // 1. Perform readRequest’s close steps.
-            read_request->on_close();
-        }
-    }
-}
-
 // https://streams.spec.whatwg.org/#readable-stream-reader-generic-cancel
 GC::Ref<WebIDL::Promise> readable_stream_reader_generic_cancel(ReadableStreamGenericReaderMixin& reader, JS::Value reason)
 {
@@ -1664,6 +1596,60 @@ void readable_stream_reader_generic_release(ReadableStreamGenericReaderMixin& re
     reader.set_stream({});
 }
 
+// https://streams.spec.whatwg.org/#abstract-opdef-readablestreambyobreadererrorreadintorequests
+void readable_stream_byob_reader_error_read_into_requests(ReadableStreamBYOBReader& reader, JS::Value error)
+{
+    // 1. Let readIntoRequests be reader.[[readIntoRequests]].
+    auto read_into_requests = move(reader.read_into_requests());
+
+    // 2. Set reader.[[readIntoRequests]] to a new empty list.
+    reader.read_into_requests().clear();
+
+    // 3. For each readIntoRequest of readIntoRequests,
+    for (auto& read_into_request : read_into_requests) {
+
+        // 1. Perform readIntoRequest’s error steps, given e.
+        read_into_request->on_error(error);
+    }
+}
+
+// https://streams.spec.whatwg.org/#readable-stream-byob-reader-read
+void readable_stream_byob_reader_read(ReadableStreamBYOBReader& reader, WebIDL::ArrayBufferView& view, u64 min, ReadIntoRequest& read_into_request)
+{
+    // 1. Let stream be reader.[[stream]].
+    auto stream = reader.stream();
+
+    // 2. Assert: stream is not undefined.
+    VERIFY(stream);
+
+    // 3. Set stream.[[disturbed]] to true.
+    stream->set_disturbed(true);
+
+    // 4. If stream.[[state]] is "errored", perform readIntoRequest’s error steps given stream.[[storedError]].
+    if (stream->is_errored()) {
+        read_into_request.on_error(stream->stored_error());
+    }
+    // 5. Otherwise, perform ! ReadableByteStreamControllerPullInto(stream.[[controller]], view, readIntoRequest).
+    else {
+        readable_byte_stream_controller_pull_into(*stream->controller()->get<GC::Ref<ReadableByteStreamController>>(), view, min, read_into_request);
+    }
+}
+
+// https://streams.spec.whatwg.org/#abstract-opdef-readablestreambyobreaderrelease
+void readable_stream_byob_reader_release(ReadableStreamBYOBReader& reader)
+{
+    auto& realm = reader.realm();
+
+    // 1. Perform ! ReadableStreamReaderGenericRelease(reader).
+    readable_stream_reader_generic_release(reader);
+
+    // 2. Let e be a new TypeError exception.
+    auto exception = JS::TypeError::create(realm, "Reader has been released"sv);
+
+    // 3. Perform ! ReadableStreamBYOBReaderErrorReadIntoRequests(reader, e).
+    readable_stream_byob_reader_error_read_into_requests(reader, exception);
+}
+
 // https://streams.spec.whatwg.org/#abstract-opdef-readablestreamdefaultreadererrorreadrequests
 void readable_stream_default_reader_error_read_requests(ReadableStreamDefaultReader& reader, JS::Value error)
 {
@@ -1680,20 +1666,152 @@ void readable_stream_default_reader_error_read_requests(ReadableStreamDefaultRea
     }
 }
 
-// https://streams.spec.whatwg.org/#abstract-opdef-readablestreambyobreadererrorreadintorequests
-void readable_stream_byob_reader_error_read_into_requests(ReadableStreamBYOBReader& reader, JS::Value error)
+// https://streams.spec.whatwg.org/#readable-stream-default-reader-read
+void readable_stream_default_reader_read(ReadableStreamDefaultReader& reader, ReadRequest& read_request)
 {
-    // 1. Let readIntoRequests be reader.[[readIntoRequests]].
-    auto read_into_requests = move(reader.read_into_requests());
+    // 1. Let stream be reader.[[stream]].
+    auto stream = reader.stream();
 
-    // 2. Set reader.[[readIntoRequests]] to a new empty list.
+    // 2. Assert: stream is not undefined.
+    VERIFY(stream);
+
+    // 3. Set stream.[[disturbed]] to true.
+    stream->set_disturbed(true);
+
+    // 4. If stream.[[state]] is "closed", perform readRequest’s close steps.
+    if (stream->is_closed()) {
+        read_request.on_close();
+    }
+    // 5. Otherwise, if stream.[[state]] is "errored", perform readRequest’s error steps given stream.[[storedError]].
+    else if (stream->is_errored()) {
+        read_request.on_error(stream->stored_error());
+    }
+    // 6. Otherwise,
+    else {
+        // 1. Assert: stream.[[state]] is "readable".
+        VERIFY(stream->is_readable());
+
+        // 2. Perform ! stream.[[controller]].[[PullSteps]](readRequest).
+        stream->controller()->visit([&](auto const& controller) {
+            return controller->pull_steps(read_request);
+        });
+    }
+}
+
+// https://streams.spec.whatwg.org/#make-size-algorithm-from-size-function
+GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM& vm, QueuingStrategy const& strategy)
+{
+    // 1. If strategy["size"] does not exist, return an algorithm that returns 1.
+    if (!strategy.size)
+        return GC::create_function(vm.heap(), [](JS::Value) { return JS::normal_completion(JS::Value(1)); });
+
+    // 2. Return an algorithm that performs the following steps, taking a chunk argument:
+    return GC::create_function(vm.heap(), [size = strategy.size](JS::Value chunk) {
+        return WebIDL::invoke_callback(*size, JS::js_undefined(), chunk);
+    });
+}
+
+// https://streams.spec.whatwg.org/#abstract-opdef-readablestreamdefaultreaderrelease
+void readable_stream_default_reader_release(ReadableStreamDefaultReader& reader)
+{
+    auto& realm = reader.realm();
+
+    // 1. Perform ! ReadableStreamReaderGenericRelease(reader).
+    readable_stream_reader_generic_release(reader);
+
+    // 2. Let e be a new TypeError exception.
+    auto exception = JS::TypeError::create(realm, "Reader has been released"sv);
+
+    // 3. Perform ! ReadableStreamDefaultReaderErrorReadRequests(reader, e).
+    readable_stream_default_reader_error_read_requests(reader, exception);
+}
+
+// https://streams.spec.whatwg.org/#set-up-readable-stream-byob-reader
+WebIDL::ExceptionOr<void> set_up_readable_stream_byob_reader(ReadableStreamBYOBReader& reader, ReadableStream& stream)
+{
+    // 1. If ! IsReadableStreamLocked(stream) is true, throw a TypeError exception.
+    if (is_readable_stream_locked(stream))
+        return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "Cannot create stream reader for a locked stream"sv };
+
+    // 2. If stream.[[controller]] does not implement ReadableByteStreamController, throw a TypeError exception.
+    if (!stream.controller()->has<GC::Ref<ReadableByteStreamController>>())
+        return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "BYOB reader cannot set up reader from non-byte stream"sv };
+
+    // 3. Perform ! ReadableStreamReaderGenericInitialize(reader, stream).
+    readable_stream_reader_generic_initialize(ReadableStreamReader { reader }, stream);
+
+    // 4. Set reader.[[readIntoRequests]] to a new empty list.
     reader.read_into_requests().clear();
 
-    // 3. For each readIntoRequest of readIntoRequests,
-    for (auto& read_into_request : read_into_requests) {
+    return {};
+}
 
-        // 1. Perform readIntoRequest’s error steps, given e.
-        read_into_request->on_error(error);
+// https://streams.spec.whatwg.org/#set-up-readable-stream-default-reader
+WebIDL::ExceptionOr<void> set_up_readable_stream_default_reader(ReadableStreamDefaultReader& reader, ReadableStream& stream)
+{
+    // 1. If ! IsReadableStreamLocked(stream) is true, throw a TypeError exception.
+    if (is_readable_stream_locked(stream))
+        return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "Cannot create stream reader for a locked stream"sv };
+
+    // 2. Perform ! ReadableStreamReaderGenericInitialize(reader, stream).
+    // 3. Set reader.[[readRequests]] to a new empty list.
+    readable_stream_reader_generic_initialize(ReadableStreamReader { reader }, stream);
+
+    return {};
+}
+
+// https://streams.spec.whatwg.org/#validate-and-normalize-high-water-mark
+WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const& strategy, double default_hwm)
+{
+    // 1. If strategy["highWaterMark"] does not exist, return defaultHWM.
+    if (!strategy.high_water_mark.has_value())
+        return default_hwm;
+
+    // 2. Let highWaterMark be strategy["highWaterMark"].
+    auto high_water_mark = strategy.high_water_mark.value();
+
+    // 3. If highWaterMark is NaN or highWaterMark < 0, throw a RangeError exception.
+    if (isnan(high_water_mark) || high_water_mark < 0)
+        return WebIDL::SimpleException { WebIDL::SimpleExceptionType::RangeError, "Invalid value for high water mark"sv };
+
+    // 4. Return highWaterMark.
+    return high_water_mark;
+}
+
+// https://streams.spec.whatwg.org/#readable-stream-close
+void readable_stream_close(ReadableStream& stream)
+{
+    auto& realm = stream.realm();
+
+    // 1. Assert: stream.[[state]] is "readable".
+    VERIFY(stream.state() == ReadableStream::State::Readable);
+
+    // 2. Set stream.[[state]] to "closed".
+    stream.set_state(ReadableStream::State::Closed);
+
+    // 3. Let reader be stream.[[reader]].
+    auto reader = stream.reader();
+
+    // 4. If reader is undefined, return.
+    if (!reader.has_value())
+        return;
+
+    // 5. Resolve reader.[[closedPromise]] with undefined.
+    WebIDL::resolve_promise(realm, *reader->visit([](auto& reader) {
+        return reader->closed_promise_capability();
+    }));
+
+    // 6. If reader implements ReadableStreamDefaultReader,
+    if (reader->has<GC::Ref<ReadableStreamDefaultReader>>()) {
+        // 1. Let readRequests be reader.[[readRequests]].
+        // 2. Set reader.[[readRequests]] to an empty list.
+        auto read_requests = move(reader->get<GC::Ref<ReadableStreamDefaultReader>>()->read_requests());
+
+        // 3. For each readRequest of readRequests,
+        for (auto& read_request : read_requests) {
+            // 1. Perform readRequest’s close steps.
+            read_request->on_close();
+        }
     }
 }
 
@@ -1806,38 +1924,6 @@ bool readable_byte_stream_controller_fill_pull_into_descriptor_from_queue(Readab
 
     // 13. Return ready.
     return ready;
-}
-
-// https://streams.spec.whatwg.org/#readable-stream-default-reader-read
-void readable_stream_default_reader_read(ReadableStreamDefaultReader& reader, ReadRequest& read_request)
-{
-    // 1. Let stream be reader.[[stream]].
-    auto stream = reader.stream();
-
-    // 2. Assert: stream is not undefined.
-    VERIFY(stream);
-
-    // 3. Set stream.[[disturbed]] to true.
-    stream->set_disturbed(true);
-
-    // 4. If stream.[[state]] is "closed", perform readRequest’s close steps.
-    if (stream->is_closed()) {
-        read_request.on_close();
-    }
-    // 5. Otherwise, if stream.[[state]] is "errored", perform readRequest’s error steps given stream.[[storedError]].
-    else if (stream->is_errored()) {
-        read_request.on_error(stream->stored_error());
-    }
-    // 6. Otherwise,
-    else {
-        // 1. Assert: stream.[[state]] is "readable".
-        VERIFY(stream->is_readable());
-
-        // 2. Perform ! stream.[[controller]].[[PullSteps]](readRequest).
-        stream->controller()->visit([&](auto const& controller) {
-            return controller->pull_steps(read_request);
-        });
-    }
 }
 
 // https://streams.spec.whatwg.org/#readable-byte-stream-controller-convert-pull-into-descriptor
@@ -2007,92 +2093,6 @@ void readable_byte_stream_controller_pull_into(ReadableByteStreamController& con
 
     // 16. Perform ! ReadableByteStreamControllerCallPullIfNeeded(controller).
     readable_byte_stream_controller_call_pull_if_needed(controller);
-}
-
-// https://streams.spec.whatwg.org/#readable-stream-byob-reader-read
-void readable_stream_byob_reader_read(ReadableStreamBYOBReader& reader, WebIDL::ArrayBufferView& view, u64 min, ReadIntoRequest& read_into_request)
-{
-    // 1. Let stream be reader.[[stream]].
-    auto stream = reader.stream();
-
-    // 2. Assert: stream is not undefined.
-    VERIFY(stream);
-
-    // 3. Set stream.[[disturbed]] to true.
-    stream->set_disturbed(true);
-
-    // 4. If stream.[[state]] is "errored", perform readIntoRequest’s error steps given stream.[[storedError]].
-    if (stream->is_errored()) {
-        read_into_request.on_error(stream->stored_error());
-    }
-    // 5. Otherwise, perform ! ReadableByteStreamControllerPullInto(stream.[[controller]], view, readIntoRequest).
-    else {
-        readable_byte_stream_controller_pull_into(*stream->controller()->get<GC::Ref<ReadableByteStreamController>>(), view, min, read_into_request);
-    }
-}
-
-// https://streams.spec.whatwg.org/#abstract-opdef-readablestreamdefaultreaderrelease
-void readable_stream_default_reader_release(ReadableStreamDefaultReader& reader)
-{
-    auto& realm = reader.realm();
-
-    // 1. Perform ! ReadableStreamReaderGenericRelease(reader).
-    readable_stream_reader_generic_release(reader);
-
-    // 2. Let e be a new TypeError exception.
-    auto exception = JS::TypeError::create(realm, "Reader has been released"sv);
-
-    // 3. Perform ! ReadableStreamDefaultReaderErrorReadRequests(reader, e).
-    readable_stream_default_reader_error_read_requests(reader, exception);
-}
-
-// https://streams.spec.whatwg.org/#abstract-opdef-readablestreambyobreaderrelease
-void readable_stream_byob_reader_release(ReadableStreamBYOBReader& reader)
-{
-    auto& realm = reader.realm();
-
-    // 1. Perform ! ReadableStreamReaderGenericRelease(reader).
-    readable_stream_reader_generic_release(reader);
-
-    // 2. Let e be a new TypeError exception.
-    auto exception = JS::TypeError::create(realm, "Reader has been released"sv);
-
-    // 3. Perform ! ReadableStreamBYOBReaderErrorReadIntoRequests(reader, e).
-    readable_stream_byob_reader_error_read_into_requests(reader, exception);
-}
-
-// https://streams.spec.whatwg.org/#set-up-readable-stream-default-reader
-WebIDL::ExceptionOr<void> set_up_readable_stream_default_reader(ReadableStreamDefaultReader& reader, ReadableStream& stream)
-{
-    // 1. If ! IsReadableStreamLocked(stream) is true, throw a TypeError exception.
-    if (is_readable_stream_locked(stream))
-        return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "Cannot create stream reader for a locked stream"sv };
-
-    // 2. Perform ! ReadableStreamReaderGenericInitialize(reader, stream).
-    // 3. Set reader.[[readRequests]] to a new empty list.
-    readable_stream_reader_generic_initialize(ReadableStreamReader { reader }, stream);
-
-    return {};
-}
-
-// https://streams.spec.whatwg.org/#set-up-readable-stream-byob-reader
-WebIDL::ExceptionOr<void> set_up_readable_stream_byob_reader(ReadableStreamBYOBReader& reader, ReadableStream& stream)
-{
-    // 1. If ! IsReadableStreamLocked(stream) is true, throw a TypeError exception.
-    if (is_readable_stream_locked(stream))
-        return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "Cannot create stream reader for a locked stream"sv };
-
-    // 2. If stream.[[controller]] does not implement ReadableByteStreamController, throw a TypeError exception.
-    if (!stream.controller()->has<GC::Ref<ReadableByteStreamController>>())
-        return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "BYOB reader cannot set up reader from non-byte stream"sv };
-
-    // 3. Perform ! ReadableStreamReaderGenericInitialize(reader, stream).
-    readable_stream_reader_generic_initialize(ReadableStreamReader { reader }, stream);
-
-    // 4. Set reader.[[readIntoRequests]] to a new empty list.
-    reader.read_into_requests().clear();
-
-    return {};
 }
 
 // https://streams.spec.whatwg.org/#readable-stream-default-controller-close
