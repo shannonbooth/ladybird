@@ -666,54 +666,6 @@ WebIDL::ExceptionOr<ReadableStreamPair> readable_stream_default_tee(JS::Realm& r
     return ReadableStreamPair { *params->branch1, *params->branch2 };
 }
 
-// https://streams.spec.whatwg.org/#readable-stream-cancel
-GC::Ref<WebIDL::Promise> readable_stream_cancel(ReadableStream& stream, JS::Value reason)
-{
-    auto& realm = stream.realm();
-
-    // 1. Set stream.[[disturbed]] to true.
-    stream.set_disturbed(true);
-
-    // 2. If stream.[[state]] is "closed", return a promise resolved with undefined.
-    if (stream.state() == ReadableStream::State::Closed)
-        return WebIDL::create_resolved_promise(realm, JS::js_undefined());
-
-    // 3. If stream.[[state]] is "errored", return a promise rejected with stream.[[storedError]].
-    if (stream.state() == ReadableStream::State::Errored)
-        return WebIDL::create_rejected_promise(realm, stream.stored_error());
-
-    // 4. Perform ! ReadableStreamClose(stream).
-    readable_stream_close(stream);
-
-    // 5. Let reader be stream.[[reader]].
-    auto reader = stream.reader();
-
-    // 6. If reader is not undefined and reader implements ReadableStreamBYOBReader,
-    if (reader.has_value() && reader->has<GC::Ref<ReadableStreamBYOBReader>>()) {
-        // 1. Let readIntoRequests be reader.[[readIntoRequests]].
-        // 2. Set reader.[[readIntoRequests]] to an empty list.
-        auto read_into_requests = move(reader->get<GC::Ref<ReadableStreamBYOBReader>>()->read_into_requests());
-
-        // 3. For each readIntoRequest of readIntoRequests,
-        for (auto& read_into_request : read_into_requests) {
-            // 1. Perform readIntoRequest’s close steps, given undefined.
-            read_into_request->on_close(JS::js_undefined());
-        }
-    }
-
-    // 7. Let sourceCancelPromise be ! stream.[[controller]].[[CancelSteps]](reason).
-    auto source_cancel_promise = stream.controller()->visit([&](auto const& controller) {
-        return controller->cancel_steps(reason);
-    });
-
-    // 8. Return the result of reacting to sourceCancelPromise with a fulfillment step that returns undefined.
-    auto react_result = WebIDL::react_to_promise(*source_cancel_promise,
-        GC::create_function(stream.heap(), [](JS::Value) -> WebIDL::ExceptionOr<JS::Value> { return JS::js_undefined(); }),
-        {});
-
-    return react_result;
-}
-
 struct ByteStreamTeeParams final : JS::Cell {
     GC_CELL(ByteStreamTeeParams, JS::Cell);
     GC_DECLARE_ALLOCATOR(ByteStreamTeeParams);
@@ -1331,6 +1283,124 @@ WebIDL::ExceptionOr<ReadableStreamPair> readable_byte_stream_tee(JS::Realm& real
     return ReadableStreamPair { *params->branch1, *params->branch2 };
 }
 
+// https://streams.spec.whatwg.org/#readable-stream-add-read-into-request
+void readable_stream_add_read_into_request(ReadableStream& stream, GC::Ref<ReadIntoRequest> read_into_request)
+{
+    // 1. Assert: stream.[[reader]] implements ReadableStreamBYOBReader.
+    VERIFY(stream.reader().has_value() && stream.reader()->has<GC::Ref<ReadableStreamBYOBReader>>());
+
+    // 2. Assert: stream.[[state]] is "readable" or "closed".
+    VERIFY(stream.is_readable() || stream.is_closed());
+
+    // 3. Append readRequest to stream.[[reader]].[[readIntoRequests]].
+    stream.reader()->get<GC::Ref<ReadableStreamBYOBReader>>()->read_into_requests().append(read_into_request);
+}
+
+// https://streams.spec.whatwg.org/#readable-stream-add-read-request
+void readable_stream_add_read_request(ReadableStream& stream, GC::Ref<ReadRequest> read_request)
+{
+    // 1. Assert: stream.[[reader]] implements ReadableStreamDefaultReader.
+    VERIFY(stream.reader().has_value() && stream.reader()->has<GC::Ref<ReadableStreamDefaultReader>>());
+
+    // 2. Assert: stream.[[state]] is "readable".
+    VERIFY(stream.state() == ReadableStream::State::Readable);
+
+    // 3. Append readRequest to stream.[[reader]].[[readRequests]].
+    stream.reader()->get<GC::Ref<ReadableStreamDefaultReader>>()->read_requests().append(read_request);
+}
+
+// https://streams.spec.whatwg.org/#readable-stream-cancel
+GC::Ref<WebIDL::Promise> readable_stream_cancel(ReadableStream& stream, JS::Value reason)
+{
+    auto& realm = stream.realm();
+
+    // 1. Set stream.[[disturbed]] to true.
+    stream.set_disturbed(true);
+
+    // 2. If stream.[[state]] is "closed", return a promise resolved with undefined.
+    if (stream.state() == ReadableStream::State::Closed)
+        return WebIDL::create_resolved_promise(realm, JS::js_undefined());
+
+    // 3. If stream.[[state]] is "errored", return a promise rejected with stream.[[storedError]].
+    if (stream.state() == ReadableStream::State::Errored)
+        return WebIDL::create_rejected_promise(realm, stream.stored_error());
+
+    // 4. Perform ! ReadableStreamClose(stream).
+    readable_stream_close(stream);
+
+    // 5. Let reader be stream.[[reader]].
+    auto reader = stream.reader();
+
+    // 6. If reader is not undefined and reader implements ReadableStreamBYOBReader,
+    if (reader.has_value() && reader->has<GC::Ref<ReadableStreamBYOBReader>>()) {
+        // 1. Let readIntoRequests be reader.[[readIntoRequests]].
+        // 2. Set reader.[[readIntoRequests]] to an empty list.
+        auto read_into_requests = move(reader->get<GC::Ref<ReadableStreamBYOBReader>>()->read_into_requests());
+
+        // 3. For each readIntoRequest of readIntoRequests,
+        for (auto& read_into_request : read_into_requests) {
+            // 1. Perform readIntoRequest’s close steps, given undefined.
+            read_into_request->on_close(JS::js_undefined());
+        }
+    }
+
+    // 7. Let sourceCancelPromise be ! stream.[[controller]].[[CancelSteps]](reason).
+    auto source_cancel_promise = stream.controller()->visit([&](auto const& controller) {
+        return controller->cancel_steps(reason);
+    });
+
+    // 8. Return the result of reacting to sourceCancelPromise with a fulfillment step that returns undefined.
+    auto react_result = WebIDL::react_to_promise(*source_cancel_promise,
+        GC::create_function(stream.heap(), [](JS::Value) -> WebIDL::ExceptionOr<JS::Value> { return JS::js_undefined(); }),
+        {});
+
+    return react_result;
+}
+
+// https://streams.spec.whatwg.org/#readable-stream-error
+void readable_stream_error(ReadableStream& stream, JS::Value error)
+{
+    auto& realm = stream.realm();
+
+    // 1. Assert: stream.[[state]] is "readable".
+    VERIFY(stream.state() == ReadableStream::State::Readable);
+
+    // 2. Set stream.[[state]] to "errored".
+    stream.set_state(ReadableStream::State::Errored);
+
+    // 3. Set stream.[[storedError]] to e.
+    stream.set_stored_error(error);
+
+    // 4. Let reader be stream.[[reader]].
+    auto reader = stream.reader();
+
+    // 5. If reader is undefined, return.
+    if (!reader.has_value())
+        return;
+
+    auto closed_promise_capability = reader->visit([](auto& reader) { return reader->closed_promise_capability(); });
+
+    // 6. Reject reader.[[closedPromise]] with e.
+    WebIDL::reject_promise(realm, *closed_promise_capability, error);
+
+    // 7. Set reader.[[closedPromise]].[[PromiseIsHandled]] to true.
+    WebIDL::mark_promise_as_handled(*closed_promise_capability);
+
+    // 8. If reader implements ReadableStreamDefaultReader,
+    if (reader->has<GC::Ref<ReadableStreamDefaultReader>>()) {
+        // 1. Perform ! ReadableStreamDefaultReaderErrorReadRequests(reader, e).
+        readable_stream_default_reader_error_read_requests(*reader->get<GC::Ref<ReadableStreamDefaultReader>>(), error);
+    }
+    // 9. Otherwise,
+    else {
+        // 1. Assert: reader implements ReadableStreamBYOBReader.
+        VERIFY(reader->has<GC::Ref<ReadableStreamBYOBReader>>());
+
+        // 2. Perform ! ReadableStreamBYOBReaderErrorReadIntoRequests(reader, e).
+        readable_stream_byob_reader_error_read_into_requests(*reader->get<GC::Ref<ReadableStreamBYOBReader>>(), error);
+    }
+}
+
 // https://streams.spec.whatwg.org/#readable-stream-fulfill-read-into-request
 void readable_stream_fulfill_read_into_request(ReadableStream& stream, JS::Value chunk, bool done)
 {
@@ -1505,76 +1575,6 @@ void readable_stream_close(ReadableStream& stream)
             read_request->on_close();
         }
     }
-}
-
-// https://streams.spec.whatwg.org/#readable-stream-error
-void readable_stream_error(ReadableStream& stream, JS::Value error)
-{
-    auto& realm = stream.realm();
-
-    // 1. Assert: stream.[[state]] is "readable".
-    VERIFY(stream.state() == ReadableStream::State::Readable);
-
-    // 2. Set stream.[[state]] to "errored".
-    stream.set_state(ReadableStream::State::Errored);
-
-    // 3. Set stream.[[storedError]] to e.
-    stream.set_stored_error(error);
-
-    // 4. Let reader be stream.[[reader]].
-    auto reader = stream.reader();
-
-    // 5. If reader is undefined, return.
-    if (!reader.has_value())
-        return;
-
-    auto closed_promise_capability = reader->visit([](auto& reader) { return reader->closed_promise_capability(); });
-
-    // 6. Reject reader.[[closedPromise]] with e.
-    WebIDL::reject_promise(realm, *closed_promise_capability, error);
-
-    // 7. Set reader.[[closedPromise]].[[PromiseIsHandled]] to true.
-    WebIDL::mark_promise_as_handled(*closed_promise_capability);
-
-    // 8. If reader implements ReadableStreamDefaultReader,
-    if (reader->has<GC::Ref<ReadableStreamDefaultReader>>()) {
-        // 1. Perform ! ReadableStreamDefaultReaderErrorReadRequests(reader, e).
-        readable_stream_default_reader_error_read_requests(*reader->get<GC::Ref<ReadableStreamDefaultReader>>(), error);
-    }
-    // 9. Otherwise,
-    else {
-        // 1. Assert: reader implements ReadableStreamBYOBReader.
-        VERIFY(reader->has<GC::Ref<ReadableStreamBYOBReader>>());
-
-        // 2. Perform ! ReadableStreamBYOBReaderErrorReadIntoRequests(reader, e).
-        readable_stream_byob_reader_error_read_into_requests(*reader->get<GC::Ref<ReadableStreamBYOBReader>>(), error);
-    }
-}
-
-// https://streams.spec.whatwg.org/#readable-stream-add-read-request
-void readable_stream_add_read_request(ReadableStream& stream, GC::Ref<ReadRequest> read_request)
-{
-    // 1. Assert: stream.[[reader]] implements ReadableStreamDefaultReader.
-    VERIFY(stream.reader().has_value() && stream.reader()->has<GC::Ref<ReadableStreamDefaultReader>>());
-
-    // 2. Assert: stream.[[state]] is "readable".
-    VERIFY(stream.state() == ReadableStream::State::Readable);
-
-    // 3. Append readRequest to stream.[[reader]].[[readRequests]].
-    stream.reader()->get<GC::Ref<ReadableStreamDefaultReader>>()->read_requests().append(read_request);
-}
-
-// https://streams.spec.whatwg.org/#readable-stream-add-read-into-request
-void readable_stream_add_read_into_request(ReadableStream& stream, GC::Ref<ReadIntoRequest> read_into_request)
-{
-    // 1. Assert: stream.[[reader]] implements ReadableStreamBYOBReader.
-    VERIFY(stream.reader().has_value() && stream.reader()->has<GC::Ref<ReadableStreamBYOBReader>>());
-
-    // 2. Assert: stream.[[state]] is "readable" or "closed".
-    VERIFY(stream.is_readable() || stream.is_closed());
-
-    // 3. Append readRequest to stream.[[reader]].[[readIntoRequests]].
-    stream.reader()->get<GC::Ref<ReadableStreamBYOBReader>>()->read_into_requests().append(read_into_request);
 }
 
 // https://streams.spec.whatwg.org/#readable-stream-reader-generic-cancel

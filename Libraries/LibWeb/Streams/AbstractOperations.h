@@ -42,20 +42,21 @@ WebIDL::ExceptionOr<ReadableStreamPair> readable_stream_tee(JS::Realm&, Readable
 WebIDL::ExceptionOr<ReadableStreamPair> readable_stream_default_tee(JS::Realm&, ReadableStream&, bool clone_for_branch2);
 WebIDL::ExceptionOr<ReadableStreamPair> readable_byte_stream_tee(JS::Realm&, ReadableStream&);
 
-GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM&, QueuingStrategy const&);
-WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const&, double default_hwm);
-
+// 4.9.2. Interfacing with controllers, https://streams.spec.whatwg.org/#rs-abstract-ops-used-by-controllers
+void readable_stream_add_read_into_request(ReadableStream&, GC::Ref<ReadIntoRequest>);
+void readable_stream_add_read_request(ReadableStream&, GC::Ref<ReadRequest>);
+GC::Ref<WebIDL::Promise> readable_stream_cancel(ReadableStream&, JS::Value reason);
 void readable_stream_close(ReadableStream&);
 void readable_stream_error(ReadableStream&, JS::Value error);
-void readable_stream_add_read_request(ReadableStream&, GC::Ref<ReadRequest>);
-void readable_stream_add_read_into_request(ReadableStream&, GC::Ref<ReadIntoRequest>);
-GC::Ref<WebIDL::Promise> readable_stream_cancel(ReadableStream&, JS::Value reason);
 void readable_stream_fulfill_read_into_request(ReadableStream&, JS::Value chunk, bool done);
 void readable_stream_fulfill_read_request(ReadableStream&, JS::Value chunk, bool done);
 size_t readable_stream_get_num_read_into_requests(ReadableStream const&);
 size_t readable_stream_get_num_read_requests(ReadableStream const&);
 bool readable_stream_has_byob_reader(ReadableStream const&);
 bool readable_stream_has_default_reader(ReadableStream const&);
+
+GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM&, QueuingStrategy const&);
+WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const&, double default_hwm);
 
 GC::Ref<WebIDL::Promise> readable_stream_reader_generic_cancel(ReadableStreamGenericReaderMixin&, JS::Value reason);
 void readable_stream_reader_generic_initialize(ReadableStreamReader, ReadableStream&);
