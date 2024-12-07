@@ -29,16 +29,24 @@ using WriteAlgorithm = GC::Function<GC::Ref<WebIDL::Promise>(JS::Value)>;
 using FlushAlgorithm = GC::Function<GC::Ref<WebIDL::Promise>()>;
 using TransformAlgorithm = GC::Function<GC::Ref<WebIDL::Promise>(JS::Value)>;
 
-WebIDL::ExceptionOr<GC::Ref<ReadableStreamDefaultReader>> acquire_readable_stream_default_reader(ReadableStream&);
+// 4.9.1. Working with readable streams, https://streams.spec.whatwg.org/#rs-abstract-ops
 WebIDL::ExceptionOr<GC::Ref<ReadableStreamBYOBReader>> acquire_readable_stream_byob_reader(ReadableStream&);
+WebIDL::ExceptionOr<GC::Ref<ReadableStreamDefaultReader>> acquire_readable_stream_default_reader(ReadableStream&);
+WebIDL::ExceptionOr<GC::Ref<ReadableStream>> create_readable_stream(JS::Realm&, GC::Ref<StartAlgorithm>, GC::Ref<PullAlgorithm>, GC::Ref<CancelAlgorithm>, Optional<double> high_water_mark = {}, GC::Ptr<SizeAlgorithm> = {});
+WebIDL::ExceptionOr<GC::Ref<ReadableStream>> create_readable_byte_stream(JS::Realm&, GC::Ref<StartAlgorithm>, GC::Ref<PullAlgorithm>, GC::Ref<CancelAlgorithm>);
+void initialize_readable_stream(ReadableStream&);
 bool is_readable_stream_locked(ReadableStream const&);
+WebIDL::ExceptionOr<GC::Ref<ReadableStream>> readable_stream_from_iterable(JS::VM&, JS::Value async_iterable);
+GC::Ref<WebIDL::Promise> readable_stream_pipe_to(ReadableStream& source, WritableStream& dest, bool prevent_close, bool prevent_abort, bool prevent_cancel, Optional<JS::Value> signal);
+WebIDL::ExceptionOr<ReadableStreamPair> readable_stream_tee(JS::Realm&, ReadableStream&, bool clone_for_branch2);
+WebIDL::ExceptionOr<ReadableStreamPair> readable_stream_default_tee(JS::Realm&, ReadableStream&, bool clone_for_branch2);
+WebIDL::ExceptionOr<ReadableStreamPair> readable_byte_stream_tee(JS::Realm&, ReadableStream&);
 
 GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM&, QueuingStrategy const&);
 WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const&, double default_hwm);
 
 void readable_stream_close(ReadableStream&);
 void readable_stream_error(ReadableStream&, JS::Value error);
-WebIDL::ExceptionOr<GC::Ref<ReadableStream>> readable_stream_from_iterable(JS::VM& vm, JS::Value async_iterable);
 void readable_stream_add_read_request(ReadableStream&, GC::Ref<ReadRequest>);
 void readable_stream_add_read_into_request(ReadableStream&, GC::Ref<ReadIntoRequest>);
 GC::Ref<WebIDL::Promise> readable_stream_cancel(ReadableStream&, JS::Value reason);
@@ -48,12 +56,6 @@ size_t readable_stream_get_num_read_into_requests(ReadableStream const&);
 size_t readable_stream_get_num_read_requests(ReadableStream const&);
 bool readable_stream_has_byob_reader(ReadableStream const&);
 bool readable_stream_has_default_reader(ReadableStream const&);
-
-GC::Ref<WebIDL::Promise> readable_stream_pipe_to(ReadableStream& source, WritableStream& dest, bool prevent_close, bool prevent_abort, bool prevent_cancel, Optional<JS::Value> signal);
-
-WebIDL::ExceptionOr<ReadableStreamPair> readable_stream_tee(JS::Realm&, ReadableStream&, bool clone_for_branch2);
-WebIDL::ExceptionOr<ReadableStreamPair> readable_stream_default_tee(JS::Realm& realm, ReadableStream& stream, bool clone_for_branch2);
-WebIDL::ExceptionOr<ReadableStreamPair> readable_byte_stream_tee(JS::Realm& realm, ReadableStream& stream);
 
 GC::Ref<WebIDL::Promise> readable_stream_reader_generic_cancel(ReadableStreamGenericReaderMixin&, JS::Value reason);
 void readable_stream_reader_generic_initialize(ReadableStreamReader, ReadableStream&);
@@ -119,10 +121,7 @@ void readable_byte_stream_controller_invalidate_byob_request(ReadableByteStreamC
 bool readable_byte_stream_controller_should_call_pull(ReadableByteStreamController const&);
 
 WebIDL::ExceptionOr<void> set_up_readable_stream(JS::Realm& realm, ReadableStream& stream, GC::Ref<StartAlgorithm> start_algorithm, GC::Ref<PullAlgorithm> pull_algorithm, GC::Ref<CancelAlgorithm> cancel_algorithm, Optional<double> high_water_mark = {}, GC::Ptr<SizeAlgorithm> size_algorithm = {});
-WebIDL::ExceptionOr<GC::Ref<ReadableStream>> create_readable_stream(JS::Realm& realm, GC::Ref<StartAlgorithm> start_algorithm, GC::Ref<PullAlgorithm> pull_algorithm, GC::Ref<CancelAlgorithm> cancel_algorithm, Optional<double> high_water_mark = {}, GC::Ptr<SizeAlgorithm> size_algorithm = {});
-WebIDL::ExceptionOr<GC::Ref<ReadableStream>> create_readable_byte_stream(JS::Realm& realm, GC::Ref<StartAlgorithm> start_algorithm, GC::Ref<PullAlgorithm> pull_algorithm, GC::Ref<CancelAlgorithm> cancel_algorithm);
 WebIDL::ExceptionOr<GC::Ref<WritableStream>> create_writable_stream(JS::Realm& realm, GC::Ref<StartAlgorithm> start_algorithm, GC::Ref<WriteAlgorithm> write_algorithm, GC::Ref<CloseAlgorithm> close_algorithm, GC::Ref<AbortAlgorithm> abort_algorithm, double high_water_mark, GC::Ref<SizeAlgorithm> size_algorithm);
-void initialize_readable_stream(ReadableStream&);
 void initialize_writable_stream(WritableStream&);
 
 WebIDL::ExceptionOr<GC::Ref<WritableStreamDefaultWriter>> acquire_writable_stream_default_writer(WritableStream&);
