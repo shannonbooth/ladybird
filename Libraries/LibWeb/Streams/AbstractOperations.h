@@ -81,47 +81,46 @@ bool readable_stream_default_controller_can_close_or_enqueue(ReadableStreamDefau
 WebIDL::ExceptionOr<void> set_up_readable_stream_default_controller(ReadableStream&, ReadableStreamDefaultController&, GC::Ref<StartAlgorithm>, GC::Ref<PullAlgorithm>, GC::Ref<CancelAlgorithm>, double high_water_mark, GC::Ref<SizeAlgorithm>);
 WebIDL::ExceptionOr<void> set_up_readable_stream_default_controller_from_underlying_source(ReadableStream&, JS::Value underlying_source_value, UnderlyingSource, double high_water_mark, GC::Ref<SizeAlgorithm>);
 
-GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM&, QueuingStrategy const&);
-WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const&, double default_hwm);
-
-JS::Value readable_byte_stream_controller_convert_pull_into_descriptor(JS::Realm&, PullIntoDescriptor const&);
-void readable_byte_stream_controller_pull_into(ReadableByteStreamController&, WebIDL::ArrayBufferView&, u64 min, ReadIntoRequest&);
-void readable_byte_stream_controller_fill_head_pull_into_descriptor(ReadableByteStreamController const&, u64 size, PullIntoDescriptor&);
-
-void set_up_readable_stream_controller_with_byte_reading_support(ReadableStream&, GC::Ptr<PullAlgorithm> = {}, GC::Ptr<CancelAlgorithm> = {}, double high_water_mark = 0);
-WebIDL::ExceptionOr<void> set_up_readable_byte_stream_controller(ReadableStream&, ReadableByteStreamController&, GC::Ref<StartAlgorithm>, GC::Ref<PullAlgorithm>, GC::Ref<CancelAlgorithm>, double high_water_mark, JS::Value auto_allocate_chunk_size);
-WebIDL::ExceptionOr<void> set_up_readable_byte_stream_controller_from_underlying_source(ReadableStream&, JS::Value underlying_source, UnderlyingSource const& underlying_source_dict, double high_water_mark);
-GC::Ptr<ReadableStreamBYOBRequest> readable_byte_stream_controller_get_byob_request(GC::Ref<ReadableByteStreamController>);
-
-WebIDL::ExceptionOr<void> readable_byte_stream_controller_respond_in_readable_state(ReadableByteStreamController&, u64 bytes_written, PullIntoDescriptor&);
-void readable_byte_stream_controller_respond_in_closed_state(ReadableByteStreamController&, PullIntoDescriptor&);
-WebIDL::ExceptionOr<void> readable_byte_stream_controller_respond_internal(ReadableByteStreamController&, u64 bytes_written);
-WebIDL::ExceptionOr<void> readable_byte_stream_controller_respond(ReadableByteStreamController&, u64 bytes_written);
-WebIDL::ExceptionOr<void> readable_byte_stream_controller_respond_with_new_view(JS::Realm&, ReadableByteStreamController&, WebIDL::ArrayBufferView&);
-
-WebIDL::ExceptionOr<void> readable_stream_enqueue(ReadableStreamController& controller, JS::Value chunk);
-WebIDL::ExceptionOr<void> readable_byte_stream_controller_enqueue(ReadableByteStreamController& controller, JS::Value chunk);
-WebIDL::ExceptionOr<void> readable_stream_pull_from_bytes(ReadableStream&, ByteBuffer bytes);
-WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> transfer_array_buffer(JS::Realm& realm, JS::ArrayBuffer& buffer);
-WebIDL::ExceptionOr<void> readable_byte_stream_controller_enqueue_detached_pull_into_queue(ReadableByteStreamController& controller, PullIntoDescriptor& pull_into_descriptor);
-void readable_byte_stream_controller_commit_pull_into_descriptor(ReadableStream&, PullIntoDescriptor const&);
-void readable_byte_stream_controller_process_read_requests_using_queue(ReadableByteStreamController& controller);
-[[nodiscard]] SinglyLinkedList<PullIntoDescriptor> readable_byte_stream_controller_process_pull_into_descriptors_using_queue(ReadableByteStreamController&);
-void readable_byte_stream_controller_enqueue_chunk_to_queue(ReadableByteStreamController& controller, GC::Ref<JS::ArrayBuffer> buffer, u32 byte_offset, u32 byte_length);
-WebIDL::ExceptionOr<void> readable_byte_stream_controller_enqueue_cloned_chunk_to_queue(ReadableByteStreamController& controller, JS::ArrayBuffer& buffer, u64 byte_offset, u64 byte_length);
-PullIntoDescriptor readable_byte_stream_controller_shift_pending_pull_into(ReadableByteStreamController& controller);
-
+// 4.9.5. Byte stream controllers, https://streams.spec.whatwg.org/#rbs-controller-abstract-ops
 void readable_byte_stream_controller_call_pull_if_needed(ReadableByteStreamController&);
 void readable_byte_stream_controller_clear_algorithms(ReadableByteStreamController&);
 void readable_byte_stream_controller_clear_pending_pull_intos(ReadableByteStreamController&);
 WebIDL::ExceptionOr<void> readable_byte_stream_controller_close(ReadableByteStreamController&);
+void readable_byte_stream_controller_commit_pull_into_descriptor(ReadableStream&, PullIntoDescriptor const&);
+JS::Value readable_byte_stream_controller_convert_pull_into_descriptor(JS::Realm&, PullIntoDescriptor const&);
+WebIDL::ExceptionOr<void> readable_byte_stream_controller_enqueue(ReadableByteStreamController&, JS::Value chunk);
+void readable_byte_stream_controller_enqueue_chunk_to_queue(ReadableByteStreamController&, GC::Ref<JS::ArrayBuffer>, u32 byte_offset, u32 byte_length);
+WebIDL::ExceptionOr<void> readable_byte_stream_controller_enqueue_cloned_chunk_to_queue(ReadableByteStreamController&, JS::ArrayBuffer&, u64 byte_offset, u64 byte_length);
+WebIDL::ExceptionOr<void> readable_byte_stream_controller_enqueue_detached_pull_into_queue(ReadableByteStreamController&, PullIntoDescriptor&);
 void readable_byte_stream_controller_error(ReadableByteStreamController&, JS::Value error);
-void readable_byte_stream_controller_fill_read_request_from_queue(ReadableByteStreamController&, GC::Ref<ReadRequest>);
+void readable_byte_stream_controller_fill_head_pull_into_descriptor(ReadableByteStreamController const&, u64 size, PullIntoDescriptor&);
 bool readable_byte_stream_controller_fill_pull_into_descriptor_from_queue(ReadableByteStreamController&, PullIntoDescriptor&);
+void readable_byte_stream_controller_fill_read_request_from_queue(ReadableByteStreamController&, GC::Ref<ReadRequest>);
+GC::Ptr<ReadableStreamBYOBRequest> readable_byte_stream_controller_get_byob_request(GC::Ref<ReadableByteStreamController>);
 Optional<double> readable_byte_stream_controller_get_desired_size(ReadableByteStreamController const&);
 void readable_byte_stream_controller_handle_queue_drain(ReadableByteStreamController&);
 void readable_byte_stream_controller_invalidate_byob_request(ReadableByteStreamController&);
+[[nodiscard]] SinglyLinkedList<PullIntoDescriptor> readable_byte_stream_controller_process_pull_into_descriptors_using_queue(ReadableByteStreamController&);
+void readable_byte_stream_controller_pull_into(ReadableByteStreamController&, WebIDL::ArrayBufferView&, u64 min, ReadIntoRequest&);
+WebIDL::ExceptionOr<void> readable_byte_stream_controller_respond(ReadableByteStreamController&, u64 bytes_written);
+void readable_byte_stream_controller_respond_in_closed_state(ReadableByteStreamController&, PullIntoDescriptor&);
+WebIDL::ExceptionOr<void> readable_byte_stream_controller_respond_in_readable_state(ReadableByteStreamController&, u64 bytes_written, PullIntoDescriptor&);
+WebIDL::ExceptionOr<void> readable_byte_stream_controller_respond_internal(ReadableByteStreamController&, u64 bytes_written);
+WebIDL::ExceptionOr<void> readable_byte_stream_controller_respond_with_new_view(JS::Realm&, ReadableByteStreamController&, WebIDL::ArrayBufferView&);
+PullIntoDescriptor readable_byte_stream_controller_shift_pending_pull_into(ReadableByteStreamController&);
 bool readable_byte_stream_controller_should_call_pull(ReadableByteStreamController const&);
+WebIDL::ExceptionOr<void> set_up_readable_byte_stream_controller(ReadableStream&, ReadableByteStreamController&, GC::Ref<StartAlgorithm>, GC::Ref<PullAlgorithm>, GC::Ref<CancelAlgorithm>, double high_water_mark, JS::Value auto_allocate_chunk_size);
+WebIDL::ExceptionOr<void> set_up_readable_byte_stream_controller_from_underlying_source(ReadableStream&, JS::Value underlying_source, UnderlyingSource const& underlying_source_dict, double high_water_mark);
+
+GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM&, QueuingStrategy const&);
+WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const&, double default_hwm);
+
+void set_up_readable_stream_controller_with_byte_reading_support(ReadableStream&, GC::Ptr<PullAlgorithm> = {}, GC::Ptr<CancelAlgorithm> = {}, double high_water_mark = 0);
+
+WebIDL::ExceptionOr<void> readable_stream_enqueue(ReadableStreamController& controller, JS::Value chunk);
+WebIDL::ExceptionOr<void> readable_stream_pull_from_bytes(ReadableStream&, ByteBuffer bytes);
+WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> transfer_array_buffer(JS::Realm& realm, JS::ArrayBuffer& buffer);
+void readable_byte_stream_controller_process_read_requests_using_queue(ReadableByteStreamController& controller);
 
 WebIDL::ExceptionOr<void> set_up_readable_stream(JS::Realm& realm, ReadableStream& stream, GC::Ref<StartAlgorithm> start_algorithm, GC::Ref<PullAlgorithm> pull_algorithm, GC::Ref<CancelAlgorithm> cancel_algorithm, Optional<double> high_water_mark = {}, GC::Ptr<SizeAlgorithm> size_algorithm = {});
 WebIDL::ExceptionOr<GC::Ref<WritableStream>> create_writable_stream(JS::Realm& realm, GC::Ref<StartAlgorithm> start_algorithm, GC::Ref<WriteAlgorithm> write_algorithm, GC::Ref<CloseAlgorithm> close_algorithm, GC::Ref<AbortAlgorithm> abort_algorithm, double high_water_mark, GC::Ref<SizeAlgorithm> size_algorithm);
