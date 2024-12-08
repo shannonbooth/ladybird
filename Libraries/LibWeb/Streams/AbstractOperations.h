@@ -121,18 +121,7 @@ WebIDL::ExceptionOr<void> set_up_writable_stream_default_writer(WritableStreamDe
 GC::Ref<WebIDL::Promise> writable_stream_abort(WritableStream&, JS::Value reason);
 GC::Ref<WebIDL::Promise> writable_stream_close(WritableStream&);
 
-GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM&, QueuingStrategy const&);
-WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const&, double default_hwm);
-
-void set_up_readable_stream_controller_with_byte_reading_support(ReadableStream&, GC::Ptr<PullAlgorithm> = {}, GC::Ptr<CancelAlgorithm> = {}, double high_water_mark = 0);
-
-WebIDL::ExceptionOr<void> readable_stream_enqueue(ReadableStreamController& controller, JS::Value chunk);
-WebIDL::ExceptionOr<void> readable_stream_pull_from_bytes(ReadableStream&, ByteBuffer bytes);
-WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> transfer_array_buffer(JS::Realm& realm, JS::ArrayBuffer& buffer);
-void readable_byte_stream_controller_process_read_requests_using_queue(ReadableByteStreamController& controller);
-
-WebIDL::ExceptionOr<void> set_up_readable_stream(JS::Realm& realm, ReadableStream& stream, GC::Ref<StartAlgorithm> start_algorithm, GC::Ref<PullAlgorithm> pull_algorithm, GC::Ref<CancelAlgorithm> cancel_algorithm, Optional<double> high_water_mark = {}, GC::Ptr<SizeAlgorithm> size_algorithm = {});
-
+// 5.5.2. Interfacing with controllers, https://streams.spec.whatwg.org/#ws-abstract-ops-used-by-controllers
 GC::Ref<WebIDL::Promise> writable_stream_add_write_request(WritableStream&);
 bool writable_stream_close_queued_or_in_flight(WritableStream const&);
 void writable_stream_deal_with_rejection(WritableStream&, JS::Value error);
@@ -147,6 +136,18 @@ void writable_stream_mark_first_write_request_in_flight(WritableStream&);
 void writable_stream_reject_close_and_closed_promise_if_needed(WritableStream&);
 void writable_stream_start_erroring(WritableStream&, JS::Value reason);
 void writable_stream_update_backpressure(WritableStream&, bool backpressure);
+
+GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM&, QueuingStrategy const&);
+WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const&, double default_hwm);
+
+void set_up_readable_stream_controller_with_byte_reading_support(ReadableStream&, GC::Ptr<PullAlgorithm> = {}, GC::Ptr<CancelAlgorithm> = {}, double high_water_mark = 0);
+
+WebIDL::ExceptionOr<void> readable_stream_enqueue(ReadableStreamController& controller, JS::Value chunk);
+WebIDL::ExceptionOr<void> readable_stream_pull_from_bytes(ReadableStream&, ByteBuffer bytes);
+WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> transfer_array_buffer(JS::Realm& realm, JS::ArrayBuffer& buffer);
+void readable_byte_stream_controller_process_read_requests_using_queue(ReadableByteStreamController& controller);
+
+WebIDL::ExceptionOr<void> set_up_readable_stream(JS::Realm& realm, ReadableStream& stream, GC::Ref<StartAlgorithm> start_algorithm, GC::Ref<PullAlgorithm> pull_algorithm, GC::Ref<CancelAlgorithm> cancel_algorithm, Optional<double> high_water_mark = {}, GC::Ptr<SizeAlgorithm> size_algorithm = {});
 
 GC::Ref<WebIDL::Promise> writable_stream_default_writer_abort(WritableStreamDefaultWriter&, JS::Value reason);
 GC::Ref<WebIDL::Promise> writable_stream_default_writer_close(WritableStreamDefaultWriter&);
