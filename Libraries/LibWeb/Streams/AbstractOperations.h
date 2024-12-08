@@ -191,22 +191,23 @@ GC::Ref<WebIDL::Promise> transform_stream_default_source_pull_algorithm(Transfor
 WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const&, double default_hwm);
 GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM&, QueuingStrategy const&);
 
+// 8.3. Miscellaneous, https://streams.spec.whatwg.org/#misc-abstract-ops
+bool can_transfer_array_buffer(JS::ArrayBuffer const&);
+bool is_non_negative_number(JS::Value);
+WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> transfer_array_buffer(JS::Realm&, JS::ArrayBuffer&);
+WebIDL::ExceptionOr<JS::Value> clone_as_uint8_array(JS::Realm&, WebIDL::ArrayBufferView&);
+WebIDL::ExceptionOr<JS::Value> structured_clone(JS::Realm&, JS::Value value);
+bool can_copy_data_block_bytes_buffer(JS::ArrayBuffer const& to_buffer, u64 to_index, JS::ArrayBuffer const& from_buffer, u64 from_index, u64 count);
+
 void set_up_readable_stream_controller_with_byte_reading_support(ReadableStream&, GC::Ptr<PullAlgorithm> = {}, GC::Ptr<CancelAlgorithm> = {}, double high_water_mark = 0);
 
 WebIDL::ExceptionOr<void> readable_stream_enqueue(ReadableStreamController& controller, JS::Value chunk);
 WebIDL::ExceptionOr<void> readable_stream_pull_from_bytes(ReadableStream&, ByteBuffer bytes);
-WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> transfer_array_buffer(JS::Realm& realm, JS::ArrayBuffer& buffer);
 void readable_byte_stream_controller_process_read_requests_using_queue(ReadableByteStreamController& controller);
 
 WebIDL::ExceptionOr<void> set_up_readable_stream(JS::Realm& realm, ReadableStream& stream, GC::Ref<StartAlgorithm> start_algorithm, GC::Ref<PullAlgorithm> pull_algorithm, GC::Ref<CancelAlgorithm> cancel_algorithm, Optional<double> high_water_mark = {}, GC::Ptr<SizeAlgorithm> size_algorithm = {});
 
 void transform_stream_set_up(TransformStream&, GC::Ref<TransformAlgorithm>, GC::Ptr<FlushAlgorithm> = {}, GC::Ptr<CancelAlgorithm> = {});
-
-bool is_non_negative_number(JS::Value);
-bool can_copy_data_block_bytes_buffer(JS::ArrayBuffer const& to_buffer, u64 to_index, JS::ArrayBuffer const& from_buffer, u64 from_index, u64 count);
-bool can_transfer_array_buffer(JS::ArrayBuffer const& array_buffer);
-WebIDL::ExceptionOr<JS::Value> clone_as_uint8_array(JS::Realm&, WebIDL::ArrayBufferView&);
-WebIDL::ExceptionOr<JS::Value> structured_clone(JS::Realm&, JS::Value value);
 
 JS::Value create_close_sentinel();
 bool is_close_sentinel(JS::Value);

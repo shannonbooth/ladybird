@@ -5168,6 +5168,127 @@ GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM& vm, QueuingStrategy const&
     });
 }
 
+// https://streams.spec.whatwg.org/#can-transfer-array-buffer
+bool can_transfer_array_buffer(JS::ArrayBuffer const& array_buffer)
+{
+    // 1. Assert: O is an Object.
+    // 2. Assert: O has an [[ArrayBufferData]] internal slot.
+
+    // 3. If ! IsDetachedBuffer(O) is true, return false.
+    if (array_buffer.is_detached())
+        return false;
+
+    // 4. If SameValue(O.[[ArrayBufferDetachKey]], undefined) is false, return false.
+    if (!JS::same_value(array_buffer.detach_key(), JS::js_undefined()))
+        return false;
+
+    // 5. Return true.
+    return true;
+}
+
+// https://streams.spec.whatwg.org/#is-non-negative-number
+bool is_non_negative_number(JS::Value value)
+{
+    // 1. If v is not a Number, return false.
+    if (!value.is_number())
+        return false;
+
+    // 2. If v is NaN, return false.
+    if (value.is_nan())
+        return false;
+
+    // 3. If v < 0, return false.
+    if (value.as_double() < 0.0)
+        return false;
+
+    // 4. Return true.
+    return true;
+}
+
+// https://streams.spec.whatwg.org/#transfer-array-buffer
+WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> transfer_array_buffer(JS::Realm& realm, JS::ArrayBuffer& buffer)
+{
+    auto& vm = realm.vm();
+
+    // 1. Assert: ! IsDetachedBuffer(O) is false.
+    VERIFY(!buffer.is_detached());
+
+    // 2. Let arrayBufferData be O.[[ArrayBufferData]].
+    // 3. Let arrayBufferByteLength be O.[[ArrayBufferByteLength]].
+    auto array_buffer = buffer.buffer();
+
+    // 4. Perform ? DetachArrayBuffer(O).
+    TRY(JS::detach_array_buffer(vm, buffer));
+
+    // 5. Return a new ArrayBuffer object, created in the current Realm, whose [[ArrayBufferData]] internal slot value is arrayBufferData and whose [[ArrayBufferByteLength]] internal slot value is arrayBufferByteLength.
+    return JS::ArrayBuffer::create(realm, move(array_buffer));
+}
+
+// https://streams.spec.whatwg.org/#abstract-opdef-cloneasuint8array
+WebIDL::ExceptionOr<JS::Value> clone_as_uint8_array(JS::Realm& realm, WebIDL::ArrayBufferView& view)
+{
+    auto& vm = realm.vm();
+
+    // 1. Assert: O is an Object.
+    // 2. Assert: O has an [[ViewedArrayBuffer]] internal slot.
+
+    // 3. Assert: ! IsDetachedBuffer(O.[[ViewedArrayBuffer]]) is false.
+    VERIFY(!view.viewed_array_buffer()->is_detached());
+
+    // 4. Let buffer be ? CloneArrayBuffer(O.[[ViewedArrayBuffer]], O.[[ByteOffset]], O.[[ByteLength]], %ArrayBuffer%).
+    auto* buffer = TRY(JS::clone_array_buffer(vm, *view.viewed_array_buffer(), view.byte_offset(), view.byte_length()));
+
+    // 5. Let array be ! Construct(%Uint8Array%, « buffer »).
+    auto array = MUST(JS::construct(vm, *realm.intrinsics().uint8_array_constructor(), buffer));
+
+    // 5. Return array.
+    return array;
+}
+
+// https://streams.spec.whatwg.org/#abstract-opdef-structuredclone
+WebIDL::ExceptionOr<JS::Value> structured_clone(JS::Realm& realm, JS::Value value)
+{
+    auto& vm = realm.vm();
+
+    // 1. Let serialized be ? StructuredSerialize(v).
+    auto serialized = TRY(HTML::structured_serialize(vm, value));
+
+    // 2. Return ? StructuredDeserialize(serialized, the current Realm).
+    return TRY(HTML::structured_deserialize(vm, serialized, realm));
+}
+
+// https://streams.spec.whatwg.org/#abstract-opdef-cancopydatablockbytes
+bool can_copy_data_block_bytes_buffer(JS::ArrayBuffer const& to_buffer, u64 to_index, JS::ArrayBuffer const& from_buffer, u64 from_index, u64 count)
+{
+    // 1. Assert: toBuffer is an Object.
+    // 2. Assert: toBuffer has an [[ArrayBufferData]] internal slot.
+    // 3. Assert: fromBuffer is an Object.
+    // 4. Assert: fromBuffer has an [[ArrayBufferData]] internal slot.
+
+    // 5. If toBuffer is fromBuffer, return false.
+    if (&to_buffer == &from_buffer)
+        return false;
+
+    // 6. If ! IsDetachedBuffer(toBuffer) is true, return false.
+    if (to_buffer.is_detached())
+        return false;
+
+    // 7. If ! IsDetachedBuffer(fromBuffer) is true, return false.
+    if (from_buffer.is_detached())
+        return false;
+
+    // 8. If toIndex + count > toBuffer.[[ArrayBufferByteLength]], return false.
+    if (to_index + count > to_buffer.byte_length())
+        return false;
+
+    // 9. If fromIndex + count > fromBuffer.[[ArrayBufferByteLength]], return false.
+    if (from_index + count > from_buffer.byte_length())
+        return false;
+
+    // 10. Return true.
+    return true;
+}
+
 // https://streams.spec.whatwg.org/#transformstream-set-up
 void transform_stream_set_up(TransformStream& stream, GC::Ref<TransformAlgorithm> transform_algorithm, GC::Ptr<FlushAlgorithm> flush_algorithm, GC::Ptr<CancelAlgorithm> cancel_algorithm)
 {
@@ -5244,108 +5365,6 @@ void transform_stream_set_up(TransformStream& stream, GC::Ref<TransformAlgorithm
 
     // 11. Perform ! SetUpTransformStreamDefaultController(stream, controller, transformAlgorithmWrapper, flushAlgorithmWrapper, cancelAlgorithmWrapper).
     set_up_transform_stream_default_controller(stream, controller, transform_algorithm_wrapper, flush_algorithm_wrapper, cancel_algorithm_wrapper);
-}
-
-// https://streams.spec.whatwg.org/#is-non-negative-number
-bool is_non_negative_number(JS::Value value)
-{
-    // 1. If v is not a Number, return false.
-    if (!value.is_number())
-        return false;
-
-    // 2. If v is NaN, return false.
-    if (value.is_nan())
-        return false;
-
-    // 3. If v < 0, return false.
-    if (value.as_double() < 0.0)
-        return false;
-
-    // 4. Return true.
-    return true;
-}
-
-// https://streams.spec.whatwg.org/#abstract-opdef-cancopydatablockbytes
-bool can_copy_data_block_bytes_buffer(JS::ArrayBuffer const& to_buffer, u64 to_index, JS::ArrayBuffer const& from_buffer, u64 from_index, u64 count)
-{
-    // 1. Assert: toBuffer is an Object.
-    // 2. Assert: toBuffer has an [[ArrayBufferData]] internal slot.
-    // 3. Assert: fromBuffer is an Object.
-    // 4. Assert: fromBuffer has an [[ArrayBufferData]] internal slot.
-
-    // 5. If toBuffer is fromBuffer, return false.
-    if (&to_buffer == &from_buffer)
-        return false;
-
-    // 6. If ! IsDetachedBuffer(toBuffer) is true, return false.
-    if (to_buffer.is_detached())
-        return false;
-
-    // 7. If ! IsDetachedBuffer(fromBuffer) is true, return false.
-    if (from_buffer.is_detached())
-        return false;
-
-    // 8. If toIndex + count > toBuffer.[[ArrayBufferByteLength]], return false.
-    if (to_index + count > to_buffer.byte_length())
-        return false;
-
-    // 9. If fromIndex + count > fromBuffer.[[ArrayBufferByteLength]], return false.
-    if (from_index + count > from_buffer.byte_length())
-        return false;
-
-    // 10. Return true.
-    return true;
-}
-
-// https://streams.spec.whatwg.org/#can-transfer-array-buffer
-bool can_transfer_array_buffer(JS::ArrayBuffer const& array_buffer)
-{
-    // 1. Assert: O is an Object.
-    // 2. Assert: O has an [[ArrayBufferData]] internal slot.
-
-    // 3. If ! IsDetachedBuffer(O) is true, return false.
-    if (array_buffer.is_detached())
-        return false;
-
-    // 4. If SameValue(O.[[ArrayBufferDetachKey]], undefined) is false, return false.
-    if (!JS::same_value(array_buffer.detach_key(), JS::js_undefined()))
-        return false;
-
-    // 5. Return true.
-    return true;
-}
-
-// https://streams.spec.whatwg.org/#abstract-opdef-cloneasuint8array
-WebIDL::ExceptionOr<JS::Value> clone_as_uint8_array(JS::Realm& realm, WebIDL::ArrayBufferView& view)
-{
-    auto& vm = realm.vm();
-
-    // 1. Assert: O is an Object.
-    // 2. Assert: O has an [[ViewedArrayBuffer]] internal slot.
-
-    // 3. Assert: ! IsDetachedBuffer(O.[[ViewedArrayBuffer]]) is false.
-    VERIFY(!view.viewed_array_buffer()->is_detached());
-
-    // 4. Let buffer be ? CloneArrayBuffer(O.[[ViewedArrayBuffer]], O.[[ByteOffset]], O.[[ByteLength]], %ArrayBuffer%).
-    auto* buffer = TRY(JS::clone_array_buffer(vm, *view.viewed_array_buffer(), view.byte_offset(), view.byte_length()));
-
-    // 5. Let array be ! Construct(%Uint8Array%, « buffer »).
-    auto array = MUST(JS::construct(vm, *realm.intrinsics().uint8_array_constructor(), buffer));
-
-    // 5. Return array.
-    return array;
-}
-
-// https://streams.spec.whatwg.org/#abstract-opdef-structuredclone
-WebIDL::ExceptionOr<JS::Value> structured_clone(JS::Realm& realm, JS::Value value)
-{
-    auto& vm = realm.vm();
-
-    // 1. Let serialized be ? StructuredSerialize(v).
-    auto serialized = TRY(HTML::structured_serialize(vm, value));
-
-    // 2. Return ? StructuredDeserialize(serialized, the current Realm).
-    return TRY(HTML::structured_deserialize(vm, serialized, realm));
 }
 
 // https://streams.spec.whatwg.org/#close-sentinel
@@ -5486,25 +5505,6 @@ WebIDL::ExceptionOr<void> readable_stream_pull_from_bytes(ReadableStream& stream
     return {};
 }
 
-// https://streams.spec.whatwg.org/#transfer-array-buffer
-WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> transfer_array_buffer(JS::Realm& realm, JS::ArrayBuffer& buffer)
-{
-    auto& vm = realm.vm();
-
-    // 1. Assert: ! IsDetachedBuffer(O) is false.
-    VERIFY(!buffer.is_detached());
-
-    // 2. Let arrayBufferData be O.[[ArrayBufferData]].
-    // 3. Let arrayBufferByteLength be O.[[ArrayBufferByteLength]].
-    auto array_buffer = buffer.buffer();
-
-    // 4. Perform ? DetachArrayBuffer(O).
-    TRY(JS::detach_array_buffer(vm, buffer));
-
-    // 5. Return a new ArrayBuffer object, created in the current Realm, whose [[ArrayBufferData]] internal slot value is arrayBufferData and whose [[ArrayBufferByteLength]] internal slot value is arrayBufferByteLength.
-    return JS::ArrayBuffer::create(realm, move(array_buffer));
-}
-
 // https://streams.spec.whatwg.org/#abstract-opdef-readablebytestreamcontrollerprocessreadrequestsusingqueue
 void readable_byte_stream_controller_process_read_requests_using_queue(ReadableByteStreamController& controller)
 {
@@ -5575,4 +5575,5 @@ void set_up_readable_stream_controller_with_byte_reading_support(ReadableStream&
     // 6. Perform ! SetUpReadableByteStreamController(stream, controller, startAlgorithm, pullAlgorithmWrapper, cancelAlgorithmWrapper, highWaterMark, undefined).
     MUST(set_up_readable_byte_stream_controller(stream, controller, start_algorithm, pull_algorithm_wrapper, cancel_algorithm_wrapper, high_water_mark, JS::js_undefined()));
 }
+
 }
