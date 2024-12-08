@@ -162,6 +162,13 @@ void writable_stream_default_controller_process_close(WritableStreamDefaultContr
 void writable_stream_default_controller_process_write(WritableStreamDefaultController&, JS::Value chunk);
 void writable_stream_default_controller_write(WritableStreamDefaultController&, JS::Value chunk, JS::Value chunk_size);
 
+// 6.4.1. Working with transform streams, https://streams.spec.whatwg.org/#ts-abstract-ops
+void initialize_transform_stream(TransformStream&, GC::Ref<WebIDL::Promise> start_promise, double writable_high_water_mark, GC::Ref<SizeAlgorithm> writable_size_algorithm, double readable_high_water_mark, GC::Ref<SizeAlgorithm> readable_size_algorithm);
+void transform_stream_error(TransformStream&, JS::Value error);
+void transform_stream_error_writable_and_unblock_write(TransformStream&, JS::Value error);
+void transform_stream_set_backpressure(TransformStream&, bool backpressure);
+void transform_stream_unblock_write(TransformStream&);
+
 GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM&, QueuingStrategy const&);
 WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const&, double default_hwm);
 
@@ -174,7 +181,6 @@ void readable_byte_stream_controller_process_read_requests_using_queue(ReadableB
 
 WebIDL::ExceptionOr<void> set_up_readable_stream(JS::Realm& realm, ReadableStream& stream, GC::Ref<StartAlgorithm> start_algorithm, GC::Ref<PullAlgorithm> pull_algorithm, GC::Ref<CancelAlgorithm> cancel_algorithm, Optional<double> high_water_mark = {}, GC::Ptr<SizeAlgorithm> size_algorithm = {});
 
-void initialize_transform_stream(TransformStream&, GC::Ref<WebIDL::Promise> start_promise, double writable_high_water_mark, GC::Ref<SizeAlgorithm> writable_size_algorithm, double readable_high_water_mark, GC::Ref<SizeAlgorithm> readable_size_algorithm);
 void set_up_transform_stream_default_controller(TransformStream&, TransformStreamDefaultController&, GC::Ref<TransformAlgorithm>, GC::Ref<FlushAlgorithm>, GC::Ref<CancelAlgorithm>);
 void set_up_transform_stream_default_controller_from_transformer(TransformStream&, JS::Value transformer, Transformer&);
 void transform_stream_default_controller_clear_algorithms(TransformStreamDefaultController&);
@@ -187,11 +193,7 @@ GC::Ref<WebIDL::Promise> transform_stream_default_sink_close_algorithm(Transform
 GC::Ref<WebIDL::Promise> transform_stream_default_sink_write_algorithm(TransformStream&, JS::Value chunk);
 GC::Ref<WebIDL::Promise> transform_stream_default_source_pull_algorithm(TransformStream&);
 GC::Ref<WebIDL::Promise> transform_stream_default_source_cancel_algorithm(TransformStream&, JS::Value reason);
-void transform_stream_error(TransformStream&, JS::Value error);
-void transform_stream_error_writable_and_unblock_write(TransformStream&, JS::Value error);
-void transform_stream_set_backpressure(TransformStream&, bool backpressure);
 void transform_stream_set_up(TransformStream&, GC::Ref<TransformAlgorithm>, GC::Ptr<FlushAlgorithm> = {}, GC::Ptr<CancelAlgorithm> = {});
-void transform_stream_unblock_write(TransformStream&);
 
 bool is_non_negative_number(JS::Value);
 bool can_copy_data_block_bytes_buffer(JS::ArrayBuffer const& to_buffer, u64 to_index, JS::ArrayBuffer const& from_buffer, u64 from_index, u64 count);

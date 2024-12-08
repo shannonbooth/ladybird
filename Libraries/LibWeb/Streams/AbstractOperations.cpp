@@ -4654,6 +4654,13 @@ void initialize_transform_stream(TransformStream& stream, GC::Ref<WebIDL::Promis
     stream.set_controller({});
 }
 
+// https://streams.spec.whatwg.org/#transform-stream-default-controller-error
+void transform_stream_default_controller_error(TransformStreamDefaultController& controller, JS::Value error)
+{
+    // 1. Perform ! TransformStreamError(controller.[[stream]], e).
+    transform_stream_error(*controller.stream(), error);
+}
+
 // https://streams.spec.whatwg.org/#set-up-transform-stream-default-controller
 void set_up_transform_stream_default_controller(TransformStream& stream, TransformStreamDefaultController& controller, GC::Ref<TransformAlgorithm> transform_algorithm, GC::Ref<FlushAlgorithm> flush_algorithm, GC::Ref<CancelAlgorithm> cancel_algorithm)
 {
@@ -4803,13 +4810,6 @@ WebIDL::ExceptionOr<void> transform_stream_default_controller_enqueue(TransformS
     }
 
     return {};
-}
-
-// https://streams.spec.whatwg.org/#transform-stream-default-controller-error
-void transform_stream_default_controller_error(TransformStreamDefaultController& controller, JS::Value error)
-{
-    // 1. Perform ! TransformStreamError(controller.[[stream]], e).
-    transform_stream_error(*controller.stream(), error);
 }
 
 // https://streams.spec.whatwg.org/#transform-stream-default-controller-terminate
@@ -5128,6 +5128,14 @@ void transform_stream_set_backpressure(TransformStream& stream, bool backpressur
     stream.set_backpressure(backpressure);
 }
 
+// https://streams.spec.whatwg.org/#transform-stream-unblock-write
+void transform_stream_unblock_write(TransformStream& stream)
+{
+    // 1. If stream.[[backpressure]] is true, perform ! TransformStreamSetBackpressure(stream, false).
+    if (stream.backpressure().has_value() && stream.backpressure().value())
+        transform_stream_set_backpressure(stream, false);
+}
+
 // https://streams.spec.whatwg.org/#transformstream-set-up
 void transform_stream_set_up(TransformStream& stream, GC::Ref<TransformAlgorithm> transform_algorithm, GC::Ptr<FlushAlgorithm> flush_algorithm, GC::Ptr<CancelAlgorithm> cancel_algorithm)
 {
@@ -5204,14 +5212,6 @@ void transform_stream_set_up(TransformStream& stream, GC::Ref<TransformAlgorithm
 
     // 11. Perform ! SetUpTransformStreamDefaultController(stream, controller, transformAlgorithmWrapper, flushAlgorithmWrapper, cancelAlgorithmWrapper).
     set_up_transform_stream_default_controller(stream, controller, transform_algorithm_wrapper, flush_algorithm_wrapper, cancel_algorithm_wrapper);
-}
-
-// https://streams.spec.whatwg.org/#transform-stream-unblock-write
-void transform_stream_unblock_write(TransformStream& stream)
-{
-    // 1. If stream.[[backpressure]] is true, perform ! TransformStreamSetBackpressure(stream, false).
-    if (stream.backpressure().has_value() && stream.backpressure().value())
-        transform_stream_set_backpressure(stream, false);
 }
 
 // https://streams.spec.whatwg.org/#is-non-negative-number
