@@ -187,8 +187,9 @@ GC::Ref<WebIDL::Promise> transform_stream_default_sink_close_algorithm(Transform
 GC::Ref<WebIDL::Promise> transform_stream_default_source_cancel_algorithm(TransformStream&, JS::Value reason);
 GC::Ref<WebIDL::Promise> transform_stream_default_source_pull_algorithm(TransformStream&);
 
-GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM&, QueuingStrategy const&);
+// 7.4. (Queuing Strategy) Abstract Operations, https://streams.spec.whatwg.org/#qs-abstract-ops
 WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const&, double default_hwm);
+GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM&, QueuingStrategy const&);
 
 void set_up_readable_stream_controller_with_byte_reading_support(ReadableStream&, GC::Ptr<PullAlgorithm> = {}, GC::Ptr<CancelAlgorithm> = {}, double high_water_mark = 0);
 

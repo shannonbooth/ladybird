@@ -5137,6 +5137,37 @@ GC::Ref<WebIDL::Promise> transform_stream_default_source_pull_algorithm(Transfor
     return GC::Ref { *stream.backpressure_change_promise() };
 }
 
+// https://streams.spec.whatwg.org/#validate-and-normalize-high-water-mark
+WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const& strategy, double default_hwm)
+{
+    // 1. If strategy["highWaterMark"] does not exist, return defaultHWM.
+    if (!strategy.high_water_mark.has_value())
+        return default_hwm;
+
+    // 2. Let highWaterMark be strategy["highWaterMark"].
+    auto high_water_mark = strategy.high_water_mark.value();
+
+    // 3. If highWaterMark is NaN or highWaterMark < 0, throw a RangeError exception.
+    if (isnan(high_water_mark) || high_water_mark < 0)
+        return WebIDL::SimpleException { WebIDL::SimpleExceptionType::RangeError, "Invalid value for high water mark"sv };
+
+    // 4. Return highWaterMark.
+    return high_water_mark;
+}
+
+// https://streams.spec.whatwg.org/#make-size-algorithm-from-size-function
+GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM& vm, QueuingStrategy const& strategy)
+{
+    // 1. If strategy["size"] does not exist, return an algorithm that returns 1.
+    if (!strategy.size)
+        return GC::create_function(vm.heap(), [](JS::Value) { return JS::normal_completion(JS::Value(1)); });
+
+    // 2. Return an algorithm that performs the following steps, taking a chunk argument:
+    return GC::create_function(vm.heap(), [size = strategy.size](JS::Value chunk) {
+        return WebIDL::invoke_callback(*size, JS::js_undefined(), chunk);
+    });
+}
+
 // https://streams.spec.whatwg.org/#transformstream-set-up
 void transform_stream_set_up(TransformStream& stream, GC::Ref<TransformAlgorithm> transform_algorithm, GC::Ptr<FlushAlgorithm> flush_algorithm, GC::Ptr<CancelAlgorithm> cancel_algorithm)
 {
@@ -5346,37 +5377,6 @@ JS::ThrowCompletionOr<GC::Root<WebIDL::CallbackType>> property_to_callback(JS::V
         return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAFunction, property.to_string_without_side_effects());
 
     return vm.heap().allocate<WebIDL::CallbackType>(property.as_object(), HTML::incumbent_realm(), operation_returns_promise);
-}
-
-// https://streams.spec.whatwg.org/#make-size-algorithm-from-size-function
-GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM& vm, QueuingStrategy const& strategy)
-{
-    // 1. If strategy["size"] does not exist, return an algorithm that returns 1.
-    if (!strategy.size)
-        return GC::create_function(vm.heap(), [](JS::Value) { return JS::normal_completion(JS::Value(1)); });
-
-    // 2. Return an algorithm that performs the following steps, taking a chunk argument:
-    return GC::create_function(vm.heap(), [size = strategy.size](JS::Value chunk) {
-        return WebIDL::invoke_callback(*size, JS::js_undefined(), chunk);
-    });
-}
-
-// https://streams.spec.whatwg.org/#validate-and-normalize-high-water-mark
-WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const& strategy, double default_hwm)
-{
-    // 1. If strategy["highWaterMark"] does not exist, return defaultHWM.
-    if (!strategy.high_water_mark.has_value())
-        return default_hwm;
-
-    // 2. Let highWaterMark be strategy["highWaterMark"].
-    auto high_water_mark = strategy.high_water_mark.value();
-
-    // 3. If highWaterMark is NaN or highWaterMark < 0, throw a RangeError exception.
-    if (isnan(high_water_mark) || high_water_mark < 0)
-        return WebIDL::SimpleException { WebIDL::SimpleExceptionType::RangeError, "Invalid value for high water mark"sv };
-
-    // 4. Return highWaterMark.
-    return high_water_mark;
 }
 
 // NON-STANDARD: Can be used instead of CreateReadableStream in cases where we need to set up a newly allocated
