@@ -169,6 +169,15 @@ void transform_stream_error_writable_and_unblock_write(TransformStream&, JS::Val
 void transform_stream_set_backpressure(TransformStream&, bool backpressure);
 void transform_stream_unblock_write(TransformStream&);
 
+// 6.4.2. Default controllers, https://streams.spec.whatwg.org/#ts-default-controller-abstract-ops
+void set_up_transform_stream_default_controller(TransformStream&, TransformStreamDefaultController&, GC::Ref<TransformAlgorithm>, GC::Ref<FlushAlgorithm>, GC::Ref<CancelAlgorithm>);
+void set_up_transform_stream_default_controller_from_transformer(TransformStream&, JS::Value transformer, Transformer&);
+void transform_stream_default_controller_clear_algorithms(TransformStreamDefaultController&);
+WebIDL::ExceptionOr<void> transform_stream_default_controller_enqueue(TransformStreamDefaultController&, JS::Value chunk);
+void transform_stream_default_controller_error(TransformStreamDefaultController&, JS::Value error);
+GC::Ref<WebIDL::Promise> transform_stream_default_controller_perform_transform(TransformStreamDefaultController&, JS::Value chunk);
+void transform_stream_default_controller_terminate(TransformStreamDefaultController&);
+
 GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM&, QueuingStrategy const&);
 WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const&, double default_hwm);
 
@@ -181,13 +190,6 @@ void readable_byte_stream_controller_process_read_requests_using_queue(ReadableB
 
 WebIDL::ExceptionOr<void> set_up_readable_stream(JS::Realm& realm, ReadableStream& stream, GC::Ref<StartAlgorithm> start_algorithm, GC::Ref<PullAlgorithm> pull_algorithm, GC::Ref<CancelAlgorithm> cancel_algorithm, Optional<double> high_water_mark = {}, GC::Ptr<SizeAlgorithm> size_algorithm = {});
 
-void set_up_transform_stream_default_controller(TransformStream&, TransformStreamDefaultController&, GC::Ref<TransformAlgorithm>, GC::Ref<FlushAlgorithm>, GC::Ref<CancelAlgorithm>);
-void set_up_transform_stream_default_controller_from_transformer(TransformStream&, JS::Value transformer, Transformer&);
-void transform_stream_default_controller_clear_algorithms(TransformStreamDefaultController&);
-WebIDL::ExceptionOr<void> transform_stream_default_controller_enqueue(TransformStreamDefaultController&, JS::Value chunk);
-void transform_stream_default_controller_error(TransformStreamDefaultController&, JS::Value error);
-void transform_stream_default_controller_terminate(TransformStreamDefaultController&);
-GC::Ref<WebIDL::Promise> transform_stream_default_controller_perform_transform(TransformStreamDefaultController&, JS::Value chunk);
 GC::Ref<WebIDL::Promise> transform_stream_default_sink_abort_algorithm(TransformStream&, JS::Value reason);
 GC::Ref<WebIDL::Promise> transform_stream_default_sink_close_algorithm(TransformStream&);
 GC::Ref<WebIDL::Promise> transform_stream_default_sink_write_algorithm(TransformStream&, JS::Value chunk);
