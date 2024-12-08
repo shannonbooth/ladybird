@@ -178,6 +178,11 @@ void transform_stream_default_controller_error(TransformStreamDefaultController&
 GC::Ref<WebIDL::Promise> transform_stream_default_controller_perform_transform(TransformStreamDefaultController&, JS::Value chunk);
 void transform_stream_default_controller_terminate(TransformStreamDefaultController&);
 
+// 6.4.3. Default sinks, https://streams.spec.whatwg.org/#ts-default-sink-abstract-ops
+GC::Ref<WebIDL::Promise> transform_stream_default_sink_write_algorithm(TransformStream&, JS::Value chunk);
+GC::Ref<WebIDL::Promise> transform_stream_default_sink_abort_algorithm(TransformStream&, JS::Value reason);
+GC::Ref<WebIDL::Promise> transform_stream_default_sink_close_algorithm(TransformStream&);
+
 GC::Ref<SizeAlgorithm> extract_size_algorithm(JS::VM&, QueuingStrategy const&);
 WebIDL::ExceptionOr<double> extract_high_water_mark(QueuingStrategy const&, double default_hwm);
 
@@ -190,9 +195,6 @@ void readable_byte_stream_controller_process_read_requests_using_queue(ReadableB
 
 WebIDL::ExceptionOr<void> set_up_readable_stream(JS::Realm& realm, ReadableStream& stream, GC::Ref<StartAlgorithm> start_algorithm, GC::Ref<PullAlgorithm> pull_algorithm, GC::Ref<CancelAlgorithm> cancel_algorithm, Optional<double> high_water_mark = {}, GC::Ptr<SizeAlgorithm> size_algorithm = {});
 
-GC::Ref<WebIDL::Promise> transform_stream_default_sink_abort_algorithm(TransformStream&, JS::Value reason);
-GC::Ref<WebIDL::Promise> transform_stream_default_sink_close_algorithm(TransformStream&);
-GC::Ref<WebIDL::Promise> transform_stream_default_sink_write_algorithm(TransformStream&, JS::Value chunk);
 GC::Ref<WebIDL::Promise> transform_stream_default_source_pull_algorithm(TransformStream&);
 GC::Ref<WebIDL::Promise> transform_stream_default_source_cancel_algorithm(TransformStream&, JS::Value reason);
 void transform_stream_set_up(TransformStream&, GC::Ref<TransformAlgorithm>, GC::Ptr<FlushAlgorithm> = {}, GC::Ptr<CancelAlgorithm> = {});
