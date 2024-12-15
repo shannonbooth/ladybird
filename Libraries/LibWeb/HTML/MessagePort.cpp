@@ -413,15 +413,22 @@ void MessagePort::post_message_task_steps(SerializedTransferRecord& serialize_wi
     message_event_target->dispatch_event(event);
 }
 
+bool MessagePort::is_port_message_queue_enabled() const
+{
+    return m_transport.has_value();
+}
+
+void MessagePort::enable_port_message_queue()
+{
+    // FIXME: Implement whatever the spec means by "enable port's 'port message queue'"
+}
+
 // https://html.spec.whatwg.org/multipage/web-messaging.html#dom-messageport-start
 void MessagePort::start()
 {
-    if (!is_entangled())
-        return;
-
-    VERIFY(m_transport.has_value());
-
-    // TODO: The start() method steps are to enable this's port message queue, if it is not already enabled.
+    // The start() method steps are to enable this's port message queue, if it is not already enabled.
+    if (!is_port_message_queue_enabled())
+        enable_port_message_queue();
 }
 
 // https://html.spec.whatwg.org/multipage/web-messaging.html#dom-messageport-close

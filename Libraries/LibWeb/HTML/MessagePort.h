@@ -42,6 +42,9 @@ public:
     // https://html.spec.whatwg.org/multipage/web-messaging.html#dom-messageport-postmessage-options
     WebIDL::ExceptionOr<void> post_message(JS::Value message, StructuredSerializeOptions const& options);
 
+    void enable_port_message_queue();
+    bool is_port_message_queue_enabled() const;
+
     void start();
 
     void close();
