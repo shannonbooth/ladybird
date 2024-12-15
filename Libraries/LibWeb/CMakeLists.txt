@@ -699,9 +699,10 @@ set(SOURCES
     Streams/ReadableStreamDefaultController.cpp
     Streams/ReadableStreamDefaultReader.cpp
     Streams/ReadableStreamGenericReader.cpp
-    Streams/Transformer.cpp
+    Streams/Transferable.cpp
     Streams/TransformStream.cpp
     Streams/TransformStreamDefaultController.cpp
+    Streams/Transformer.cpp
     Streams/UnderlyingSink.cpp
     Streams/UnderlyingSource.cpp
     Streams/WritableStream.cpp
