@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2022, Linus Groh <linusg@serenityos.org>
  * Copyright (c) 2024, Kenneth Myhra <kennethmyhra@serenityos.org>
+ * Copyright (c) 2024, Shannon Booth <shannon@serenityos.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -11,6 +12,8 @@
 #include <LibJS/Forward.h>
 #include <LibWeb/Bindings/PlatformObject.h>
 #include <LibWeb/Bindings/ReadableStreamPrototype.h>
+#include <LibWeb/Bindings/Serializable.h>
+#include <LibWeb/Bindings/Transferable.h>
 #include <LibWeb/Forward.h>
 #include <LibWeb/Streams/Algorithms.h>
 #include <LibWeb/Streams/QueuingStrategy.h>
@@ -58,7 +61,9 @@ struct ReadableStreamPair {
 };
 
 // https://streams.spec.whatwg.org/#readablestream
-class ReadableStream final : public Bindings::PlatformObject {
+class ReadableStream final
+    : public Bindings::PlatformObject
+    , public Bindings::Transferable {
     WEB_PLATFORM_OBJECT(ReadableStream, Bindings::PlatformObject);
     GC_DECLARE_ALLOCATOR(ReadableStream);
 
@@ -74,6 +79,11 @@ public:
     static WebIDL::ExceptionOr<GC::Ref<ReadableStream>> from(JS::VM& vm, JS::Value async_iterable);
 
     virtual ~ReadableStream() override;
+
+    // ^Transferable
+    virtual HTML::TransferType primary_interface() const override { return HTML::TransferType::ReadableStream; }
+    virtual WebIDL::ExceptionOr<void> transfer_steps(HTML::TransferDataHolder&) override;
+    virtual WebIDL::ExceptionOr<void> transfer_receiving_steps(HTML::TransferDataHolder&) override;
 
     bool locked() const;
     GC::Ref<WebIDL::Promise> cancel(JS::Value reason);

@@ -46,6 +46,7 @@ struct DeserializedRecord {
 
 enum class TransferType : u8 {
     MessagePort,
+    ReadableStream,
     ArrayBuffer,
     ResizableArrayBuffer,
 };

@@ -115,6 +115,7 @@ WebIDL::ExceptionOr<void> MessagePort::transfer_steps(HTML::TransferDataHolder& 
     return {};
 }
 
+// https://html.spec.whatwg.org/multipage/web-messaging.html#message-ports:transfer-steps
 WebIDL::ExceptionOr<void> MessagePort::transfer_receiving_steps(HTML::TransferDataHolder& data_holder)
 {
     // 1. Set value's has been shipped flag to true.

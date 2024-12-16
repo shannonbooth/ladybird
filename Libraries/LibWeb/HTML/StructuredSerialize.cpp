@@ -48,6 +48,7 @@
 #include <LibWeb/Geometry/DOMRectReadOnly.h>
 #include <LibWeb/HTML/MessagePort.h>
 #include <LibWeb/HTML/StructuredSerialize.h>
+#include <LibWeb/Streams/ReadableStream.h>
 #include <LibWeb/WebIDL/DOMException.h>
 #include <LibWeb/WebIDL/ExceptionOr.h>
 
@@ -1292,7 +1293,8 @@ static bool is_interface_exposed_on_target_realm(TransferType name, JS::Realm& r
     switch (name) {
     case TransferType::MessagePort:
         return intrinsics.is_exposed("MessagePort"sv);
-        break;
+    case TransferType::ReadableStream:
+        return intrinsics.is_exposed("ReadableStream"sv);
     default:
         dbgln("Unknown interface type for transfer: {}", to_underlying(name));
         break;
@@ -1307,6 +1309,11 @@ static WebIDL::ExceptionOr<GC::Ref<Bindings::PlatformObject>> create_transferred
         auto message_port = HTML::MessagePort::create(target_realm);
         TRY(message_port->transfer_receiving_steps(transfer_data_holder));
         return message_port;
+    }
+    case TransferType::ReadableStream: {
+        auto stream = target_realm.create<Streams::ReadableStream>(target_realm);
+        TRY(stream->transfer_receiving_steps(transfer_data_holder));
+        return stream;
     }
     case TransferType::ArrayBuffer:
     case TransferType::ResizableArrayBuffer:

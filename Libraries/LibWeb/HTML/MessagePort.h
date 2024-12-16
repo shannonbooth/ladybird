@@ -61,7 +61,8 @@ public:
     // ^Transferable
     virtual WebIDL::ExceptionOr<void> transfer_steps(HTML::TransferDataHolder&) override;
     virtual WebIDL::ExceptionOr<void> transfer_receiving_steps(HTML::TransferDataHolder&) override;
-    virtual HTML::TransferType primary_interface() const override { return HTML::TransferType::MessagePort; }
+    virtual HTML::TransferType primary_interface() const override { return m_type; }
+    void set_primary_interface(TransferType type) { m_type = type; }
 
     void set_worker_event_target(GC::Ref<DOM::EventTarget>);
 
@@ -85,6 +86,8 @@ private:
         ParseNextMessage,
     };
     ErrorOr<ParseDecision> parse_message();
+
+    TransferType m_type { TransferType::MessagePort };
 
     // The HTML spec implies(!) that this is MessagePort.[[RemotePort]]
     GC::Ptr<MessagePort> m_remote_port;
