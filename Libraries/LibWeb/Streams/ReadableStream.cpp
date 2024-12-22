@@ -16,6 +16,7 @@
 #include <LibWeb/Streams/ReadableByteStreamController.h>
 #include <LibWeb/Streams/ReadableStream.h>
 #include <LibWeb/Streams/ReadableStreamBYOBReader.h>
+#include <LibWeb/Streams/ReadableStreamBYOBRequest.h>
 #include <LibWeb/Streams/ReadableStreamDefaultController.h>
 #include <LibWeb/Streams/ReadableStreamDefaultReader.h>
 #include <LibWeb/Streams/Transferable.h>
@@ -359,6 +360,23 @@ WebIDL::ExceptionOr<void> ReadableStream::pull_from_bytes(ByteBuffer bytes)
     }
 
     return {};
+}
+
+// https://streams.spec.whatwg.org/#readablestream-current-byob-request-view
+GC::Ptr<WebIDL::ArrayBufferView> ReadableStream::current_byob_request_view()
+{
+    // 1. Assert: stream.[[controller]] implements ReadableByteStreamController.
+    VERIFY(m_controller->has<GC::Ref<ReadableByteStreamController>>());
+
+    // 2. Let byobRequest be ! ReadableByteStreamControllerGetBYOBRequest(stream.[[controller]]).
+    auto byob_request = readable_byte_stream_controller_get_byob_request(m_controller->get<GC::Ref<ReadableByteStreamController>>());
+
+    // 3. If byobRequest is null, then return null.
+    if (!byob_request)
+        return {};
+
+    // 4. Return byobRequest.[[view]].
+    return byob_request->view();
 }
 
 // https://streams.spec.whatwg.org/#readablestream-enqueue
