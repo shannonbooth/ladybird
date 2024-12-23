@@ -13,12 +13,19 @@
 
 namespace Web::HTML {
 
+// https://html.spec.whatwg.org/multipage/webstorage.html#storage-2
 class Storage : public Bindings::PlatformObject {
     WEB_PLATFORM_OBJECT(Storage, Bindings::PlatformObject);
     GC_DECLARE_ALLOCATOR(Storage);
 
 public:
-    [[nodiscard]] static GC::Ref<Storage> create(JS::Realm&, u64 quota_limit);
+    // https://html.spec.whatwg.org/multipage/webstorage.html#concept-storage-type
+    enum Type {
+        Local,
+        Session,
+    };
+
+    [[nodiscard]] static GC::Ref<Storage> create(JS::Realm&, Type, u64 quota_limit);
     ~Storage();
 
     size_t length() const;
@@ -29,11 +36,12 @@ public:
     void clear();
 
     auto const& map() const { return m_map; }
+    Type type() const { return m_type; }
 
     void dump() const;
 
 private:
-    explicit Storage(JS::Realm&, u64 quota_limit);
+    explicit Storage(JS::Realm&, Type, u64 quota_limit);
 
     virtual void initialize(JS::Realm&) override;
 
@@ -49,6 +57,8 @@ private:
     void broadcast(StringView key, StringView old_value, StringView new_value);
 
     OrderedHashMap<String, String> m_map;
+    Type m_type {};
+
     u64 m_quota_limit { 0 };
     u64 m_stored_bytes { 0 };
 };

@@ -15,13 +15,14 @@ namespace Web::HTML {
 
 GC_DEFINE_ALLOCATOR(Storage);
 
-GC::Ref<Storage> Storage::create(JS::Realm& realm, u64 quota_limit)
+GC::Ref<Storage> Storage::create(JS::Realm& realm, Type type, u64 quota_limit)
 {
-    return realm.create<Storage>(realm, quota_limit);
+    return realm.create<Storage>(realm, type, quota_limit);
 }
 
-Storage::Storage(JS::Realm& realm, u64 quota_limit)
+Storage::Storage(JS::Realm& realm, Type type, u64 quota_limit)
     : Bindings::PlatformObject(realm)
+    , m_type(type)
     , m_quota_limit(quota_limit)
 {
     m_legacy_platform_object_flags = LegacyPlatformObjectFlags {
