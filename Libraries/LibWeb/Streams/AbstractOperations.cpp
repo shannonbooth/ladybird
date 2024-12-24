@@ -289,9 +289,19 @@ bool readable_stream_has_default_reader(ReadableStream const& stream)
     return false;
 }
 
+struct PipeToAlgorithmState final : GC::Cell {
+    GC_CELL(PipeToAlgorithmState, GC::Cell);
+    GC_DECLARE_ALLOCATOR(PipeToAlgorithmState);
+
+    bool shutting_down { false };
+};
+
+GC_DEFINE_ALLOCATOR(PipeToAlgorithmState);
+
 // https://streams.spec.whatwg.org/#readable-stream-pipe-to
-GC::Ref<WebIDL::Promise> readable_stream_pipe_to(ReadableStream& source, WritableStream& dest, bool, bool, bool, JS::Value signal)
+GC::Ref<WebIDL::Promise> readable_stream_pipe_to(ReadableStream& source, WritableStream& dest, bool prevent_close, bool prevent_abort, bool prevent_cancel, JS::Value signal_value)
 {
+    auto& vm = source.vm();
     auto& realm = source.realm();
 
     // 1. Assert: source implements ReadableStream.
@@ -302,7 +312,7 @@ GC::Ref<WebIDL::Promise> readable_stream_pipe_to(ReadableStream& source, Writabl
     // NOTE: Done by default argument
 
     // 5. Assert: either signal is undefined, or signal implements AbortSignal.
-    VERIFY(signal.is_undefined() || (signal.is_object() && is<DOM::AbortSignal>(signal.as_object())));
+    VERIFY(signal_value.is_undefined() || (signal_value.is_object() && is<DOM::AbortSignal>(signal_value.as_object())));
 
     // 6. Assert: ! IsReadableStreamLocked(source) is false.
     VERIFY(!is_readable_stream_locked(source));
@@ -324,32 +334,207 @@ GC::Ref<WebIDL::Promise> readable_stream_pipe_to(ReadableStream& source, Writabl
     // 11. Set source.[[disturbed]] to true.
     source.set_disturbed(true);
 
-    // FIXME: 12. Let shuttingDown be false.
+    // 12. Let shuttingDown be false.
+    auto state = vm.heap().allocate<PipeToAlgorithmState>();
+    state->shutting_down = false;
 
     // 13. Let promise be a new promise.
     auto promise = WebIDL::create_promise(realm);
 
-    // FIXME 14. If signal is not undefined,
-    //           1. Let abortAlgorithm be the following steps:
-    //              1. Let error be signal’s abort reason.
-    //              2. Let actions be an empty ordered set.
-    //              3. If preventAbort is false, append the following action to actions:
-    //                 1. If dest.[[state]] is "writable", return ! WritableStreamAbort(dest, error).
-    //                 2. Otherwise, return a promise resolved with undefined.
-    //              4. If preventCancel is false, append the following action to actions:
-    //                 1. If source.[[state]] is "readable", return ! ReadableStreamCancel(source, error).
-    //                 2. Otherwise, return a promise resolved with undefined.
-    //              5. Shutdown with an action consisting of getting a promise to wait for all of the actions in actions, and with error.
-    //           2. If signal is aborted, perform abortAlgorithm and return promise.
-    //           3. Add abortAlgorithm to signal.
+    // https://streams.spec.whatwg.org/#rs-pipeTo-finalize
+    // Finalize: both forms of shutdown will eventually ask to finalize, optionally with an error error, which means to perform the following steps:
+    auto finalize = [&realm, &writer, promise](Optional<JS::Value> error = {}) {
+        // 1. Perform ! WritableStreamDefaultWriterRelease(writer).
+        writable_stream_default_writer_release(writer);
+
+        // 2. If reader implements ReadableStreamBYOBReader, perform ! ReadableStreamBYOBReaderRelease(reader).
+        if (auto const* reader = reader.get_pointer<GC::Ref<ReadableStreamBYOBReader>>()) {
+            readable_stream_byob_reader_release(*reader);
+        }
+        // 3. Otherwise, perform ! ReadableStreamDefaultReaderRelease(reader).
+        else {
+            readable_stream_default_reader_release(reader.get<GC::Ref<ReadableStreamBYOBReader>>());
+        }
+
+        // FIXME: 4. If signal is not undefined, remove abortAlgorithm from signal.
+
+        // 5. If error was given, reject promise with error.
+        if (error.has_value()) {
+            WebIDL::reject_promise(realm, promise, error.release_value());
+        }
+        // 6. Otherwise, resolve promise with undefined.
+        else {
+            WebIDL::resolve_promise(realm, promise, JS::js_undefined());
+        }
+    };
+
+    // https://streams.spec.whatwg.org/#rs-pipeTo-shutdown-with-action
+    // Shutdown with an action: if any of the above requirements ask to shutdown with an action action, optionally with an error originalError, then:
+    auto shutdown_with_action = [state, &dest](Function<GC::Ref<WebIDL::Promise>()>, Optional<JS::Value> original_error = {}) {
+        // 1. If shuttingDown is true, abort these substeps.
+        if (state->shutting_down)
+            return;
+
+        // 2. Set shuttingDown to true.
+        state->shutting_down = true;
+
+        // 3. If dest.[[state]] is "writable" and ! WritableStreamCloseQueuedOrInFlight(dest) is false,
+        if (dest.state() == WritableStream::State::Writable && writable_stream_close_queued_or_in_flight(dest)) {
+            // 1. If any chunks have been read but not yet written, write them to dest.
+
+            // 2. Wait until every chunk that has been read has been written (i.e. the corresponding promises have settled).
+        }
+
+        // FIXME: 4. Let p be the result of performing action.
+        auto p = WebIDL::create_promise(realm);
+
+        // 5. Upon fulfillment of p, finalize, passing along originalError if it was given.
+        WebIDL::upon_fulfillment(p, GC::create_function(realm.heap(), [](JS::Value) -> WebIDL::ExceptionOr<JS::Value> {
+            finalize(original_error);
+            return JS::js_undefined();
+        }));
+
+        // 6. Upon rejection of p with reason newError, finalize with newError.
+        WebIDL::upon_rejection(p, GC::create_function(realm.heap(), [](JS::Value new_error) -> WebIDL::ExceptionOr<JS::Value> {
+            finalize(new_error);
+            return JS::js_undefined();
+        }));
+    };
+
+    // https://streams.spec.whatwg.org/#rs-pipeTo-shutdown
+    // Shutdown: if any of the above requirements or steps ask to shutdown, optionally with an error error, then:
+    auto shutdown = [state](Optional<JS::Value> error = {}) {
+        // 1. If shuttingDown is true, abort these substeps.
+        if (state->shutting_down)
+            return;
+
+        // 2. Set shuttingDown to true.
+        state->shutting_down = true;
+
+        // 3. If dest.[[state]] is "writable" and ! WritableStreamCloseQueuedOrInFlight(dest) is false,
+        if (dest.state() == WritableStream::State::Writable && !writable_stream_close_queued_or_in_flight(dest)) {
+            // 1. If any chunks have been read but not yet written, write them to dest.
+
+            // 2. Wait until every chunk that has been read has been written (i.e. the corresponding promises have settled).
+        }
+
+        // 3. Finalize, passing along error if it was given.
+        finalize(error);
+    };
+
+    // 14. If signal is not undefined,
+    if (!signal_value.is_undefined()) {
+        auto& signal = verify_cast<DOM::AbortSignal>(signal_value.as_object());
+
+        // 1. Let abortAlgorithm be the following steps:
+        auto abort_algorithm = [&realm, &source, &dest, &signal, prevent_abort, prevent_cancel, shutdown_with_action]() {
+            // 1. Let error be signal’s abort reason.
+            auto error = signal.reason();
+
+            // 2. Let actions be an empty ordered set.
+            Vector<Function<GC::Ref<WebIDL::Promise>()>> actions;
+
+            // 3. If preventAbort is false, append the following action to actions:
+            if (!prevent_abort) {
+                actions.append([&realm, &dest, &error]() {
+                    // 1. If dest.[[state]] is "writable", return ! WritableStreamAbort(dest, error).
+                    if (dest.state() == WritableStream::State::Writable)
+                        return writable_stream_abort(dest, error);
+
+                    // 2. Otherwise, return a promise resolved with undefined.
+                    return WebIDL::create_resolved_promise(realm, JS::js_undefined());
+                });
+            }
+
+            // 4. If preventCancel is false, append the following action to actions:
+            if (!prevent_cancel) {
+                actions.append([&realm, &source, &error]() {
+                    // 1. If source.[[state]] is "readable", return ! ReadableStreamCancel(source, error).
+                    if (source.state() == ReadableStream::State::Readable)
+                        return readable_stream_cancel(source, error);
+
+                    // 2. Otherwise, return a promise resolved with undefined.
+                    return WebIDL::create_resolved_promise(realm, JS::js_undefined());
+                });
+            }
+
+            // FIXME: 5. Shutdown with an action consisting of getting a promise to wait for all of the actions in actions, and with error.
+            shutdown_with_action([&realm]() {
+                return WebIDL::create_resolved_promise(realm, JS::js_undefined());
+            });
+        };
+
+        // 2. If signal is aborted, perform abortAlgorithm and return promise.
+        if (signal.aborted()) {
+            abort_algorithm();
+            return promise;
+        }
+
+        // 3. Add abortAlgorithm to signal.
+        signal.add_abort_algorithm(move(abort_algorithm));
+    }
 
     // 15. In parallel but not really; see #905, using reader and writer, read all chunks from source and write them to
     //     dest. Due to the locking provided by the reader and writer, the exact manner in which this happens is not
     //     observable to author code, and so there is flexibility in how this is done. The following constraints apply
     //     regardless of the exact algorithm used:
+    //
     //     - Public API must not be used: while reading or writing, or performing any of the operations below, the
     //       JavaScript-modifiable reader, writer, and stream APIs (i.e. methods on the appropriate prototypes) must not
     //       be used. Instead, the streams must be manipulated directly.
+    //
+    //     - Backpressure must be enforced:
+    //         - While WritableStreamDefaultWriterGetDesiredSize(writer) is ≤ 0 or is null, the user agent must not read from reader.
+    //         - If reader is a BYOB reader, WritableStreamDefaultWriterGetDesiredSize(writer) should be used as a basis to determine the size of the chunks read from reader.
+    //         - Reads or writes should not be delayed for reasons other than these backpressure signals.
+    //
+    //     - Shutdown must stop activity: if shuttingDown becomes true, the user agent must not initiate further reads
+    //       from reader, and must only perform writes of already-read chunks, as described below. In particular, the
+    //       user agent must check the below conditions before performing any reads or writes, since they might lead to
+    //       immediate shutdown.
+    //
+    //     - Error and close states must be propagated: the following conditions must be applied in order.
+    //
+    //         1. Errors must be propagated forward: if source.[[state]] is or becomes "errored", then
+    auto on_forwards_error = [prevent_abort]() {
+        // 1. If preventAbort is false, shutdown with an action of ! WritableStreamAbort(dest, source.[[storedError]]) and with source.[[storedError]].
+        if (!prevent_abort) {
+        }
+        // 2. Otherwise, shutdown with source.[[storedError]].
+        else {
+        }
+    };
+    //         2. Errors must be propagated backward: if dest.[[state]] is or becomes "errored", then
+    auto on_backwards_error = [prevent_cancel]() {
+        // 1. If preventCancel is false, shutdown with an action of ! ReadableStreamCancel(source, dest.[[storedError]]) and with dest.[[storedError]].
+        if (!prevent_cancel) {
+        }
+        // 2. Otherwise, shutdown with dest.[[storedError]].
+        else {
+        }
+    };
+    //         3. Closing must be propagated forward: if source.[[state]] is or becomes "closed", then
+    auto on_forward_close = [prevent_close]() {
+        // 1. If preventClose is false, shutdown with an action of ! WritableStreamDefaultWriterCloseWithErrorPropagation(writer).
+        if (!prevent_close) {
+        }
+        // 2. Otherwise, shutdown.
+        else {
+        }
+    };
+    //         4. Closing must be propagated backward: if ! WritableStreamCloseQueuedOrInFlight(dest) is true or dest.[[state]] is "closed", then
+    auto on_backwards_close = [prevent_cancel]() {
+        // 1. Assert: no chunks have been read or written.
+
+        // 2. Let destClosed be a new TypeError.
+
+        // 3. If preventCancel is false, shutdown with an action of ! ReadableStreamCancel(source, destClosed) and with destClosed.
+        if (!prevent_cancel) {
+        }
+        // 4. Otherwise, shutdown with destClosed.
+        else {
+        }
+    };
 
     // FIXME: Currently a naive implementation that uses ReadableStreamDefaultReader::read_all_chunks() to read all chunks
     //        from the source and then through the callback success_steps writes those chunks to the destination.
