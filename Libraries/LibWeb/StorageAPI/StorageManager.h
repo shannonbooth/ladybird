@@ -10,6 +10,7 @@
 
 namespace Web::StorageAPI {
 
+// https://storage.spec.whatwg.org/#storagemanager
 class StorageManager final : public Bindings::PlatformObject {
     WEB_PLATFORM_OBJECT(StorageManager, Bindings::PlatformObject);
     GC_DECLARE_ALLOCATOR(StorageManager);

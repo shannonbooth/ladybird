@@ -14,6 +14,7 @@
 
 namespace Web::StorageAPI {
 
+// https://storage.spec.whatwg.org/#navigatorstorage
 class NavigatorStorage {
 public:
     virtual ~NavigatorStorage() = default;
