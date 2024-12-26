@@ -9,6 +9,7 @@
 
 #include <AK/HashMap.h>
 #include <LibWeb/Bindings/PlatformObject.h>
+#include <LibWeb/StorageAPI/StorageBottleMap.h>
 #include <LibWeb/WebIDL/ExceptionOr.h>
 
 namespace Web::HTML {
@@ -25,7 +26,7 @@ public:
         Session,
     };
 
-    [[nodiscard]] static GC::Ref<Storage> create(JS::Realm&, Type, u64 quota_limit);
+    [[nodiscard]] static GC::Ref<Storage> create(JS::Realm&, Type, NonnullRefPtr<StorageAPI::StorageBottle>);
     ~Storage();
 
     size_t length() const;
@@ -35,13 +36,13 @@ public:
     void remove_item(StringView key);
     void clear();
 
-    auto const& map() const { return m_map; }
+    auto const& map() const { return m_storage_bottle->map; }
     Type type() const { return m_type; }
 
     void dump() const;
 
 private:
-    explicit Storage(JS::Realm&, Type, u64 quota_limit);
+    explicit Storage(JS::Realm&, Type, NonnullRefPtr<StorageAPI::StorageBottle>);
 
     virtual void initialize(JS::Realm&) override;
 
@@ -56,10 +57,9 @@ private:
     void reorder();
     void broadcast(StringView key, StringView old_value, StringView new_value);
 
-    OrderedHashMap<String, String> m_map;
     Type m_type {};
+    NonnullRefPtr<StorageAPI::StorageBottle> m_storage_bottle;
 
-    u64 m_quota_limit { 0 };
     u64 m_stored_bytes { 0 };
 };
 

@@ -690,8 +690,10 @@ set(SOURCES
     ServiceWorker/ServiceWorkerRegistration.cpp
     SRI/SRI.cpp
     StorageAPI/NavigatorStorage.cpp
+    StorageAPI/StorageBottleMap.cpp
     StorageAPI/StorageKey.cpp
     StorageAPI/StorageManager.cpp
+    StorageAPI/StorageShed.cpp
     Streams/AbstractOperations.cpp
     Streams/ByteLengthQueuingStrategy.cpp
     Streams/CountQueuingStrategy.cpp

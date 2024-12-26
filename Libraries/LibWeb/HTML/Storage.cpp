@@ -15,15 +15,15 @@ namespace Web::HTML {
 
 GC_DEFINE_ALLOCATOR(Storage);
 
-GC::Ref<Storage> Storage::create(JS::Realm& realm, Type type, u64 quota_limit)
+GC::Ref<Storage> Storage::create(JS::Realm& realm, Type type, NonnullRefPtr<StorageAPI::StorageBottle> storage_bottle)
 {
-    return realm.create<Storage>(realm, type, quota_limit);
+    return realm.create<Storage>(realm, type, move(storage_bottle));
 }
 
-Storage::Storage(JS::Realm& realm, Type type, u64 quota_limit)
+Storage::Storage(JS::Realm& realm, Type type, NonnullRefPtr<StorageAPI::StorageBottle> storage_bottle)
     : Bindings::PlatformObject(realm)
     , m_type(type)
-    , m_quota_limit(quota_limit)
+    , m_storage_bottle(move(storage_bottle))
 {
     m_legacy_platform_object_flags = LegacyPlatformObjectFlags {
         .supports_indexed_properties = true,
@@ -49,18 +49,18 @@ void Storage::initialize(JS::Realm& realm)
 size_t Storage::length() const
 {
     // The length getter steps are to return this's map's size.
-    return m_map.size();
+    return m_storage_bottle->map.size();
 }
 
 // https://html.spec.whatwg.org/multipage/webstorage.html#dom-storage-key
 Optional<String> Storage::key(size_t index)
 {
     // 1. If index is greater than or equal to this's map's size, then return null.
-    if (index >= m_map.size())
+    if (index >= m_storage_bottle->map.size())
         return {};
 
     // 2. Let keys be the result of running get the keys on this's map.
-    auto keys = m_map.keys();
+    auto keys = m_storage_bottle->map.keys();
 
     // 3. Return keys[index].
     return keys[index];
@@ -70,8 +70,8 @@ Optional<String> Storage::key(size_t index)
 Optional<String> Storage::get_item(StringView key) const
 {
     // 1. If this's map[key] does not exist, then return null.
-    auto it = m_map.find(key);
-    if (it == m_map.end())
+    auto it = m_storage_bottle->map.find(key);
+    if (it == m_storage_bottle->map.end())
         return {};
 
     // 2. Return this's map[key].
@@ -91,7 +91,7 @@ WebIDL::ExceptionOr<void> Storage::set_item(String const& key, String const& val
 
     // 3. If this's map[key] exists:
     auto new_size = m_stored_bytes;
-    if (auto it = m_map.find(key); it != m_map.end()) {
+    if (auto it = m_storage_bottle->map.find(key); it != m_storage_bottle->map.end()) {
         // 1. Set oldValue to this's map[key].
         old_value = it->value;
 
@@ -107,11 +107,11 @@ WebIDL::ExceptionOr<void> Storage::set_item(String const& key, String const& val
 
     // 4. If value cannot be stored, then throw a "QuotaExceededError" DOMException exception.
     new_size += value.bytes().size() - old_value.bytes().size();
-    if (new_size > m_quota_limit)
-        return WebIDL::QuotaExceededError::create(realm, MUST(String::formatted("Unable to store more than {} bytes in storage"sv, m_quota_limit)));
+    if (new_size > *m_storage_bottle->quota)
+        return WebIDL::QuotaExceededError::create(realm, MUST(String::formatted("Unable to store more than {} bytes in storage"sv, *m_storage_bottle->quota)));
 
     // 5. Set this's map[key] to value.
-    m_map.set(key, value);
+    m_storage_bottle->map.set(key, value);
     m_stored_bytes = new_size;
 
     // 6. If reorder is true, then reorder this.
@@ -129,15 +129,15 @@ void Storage::remove_item(StringView key)
 {
     // 1. If this's map[key] does not exist, then return null.
     // FIXME: Return null?
-    auto it = m_map.find(key);
-    if (it == m_map.end())
+    auto it = m_storage_bottle->map.find(key);
+    if (it == m_storage_bottle->map.end())
         return;
 
     // 2. Set oldValue to this's map[key].
     auto old_value = it->value;
 
     // 3. Remove this's map[key].
-    m_map.remove(it);
+    m_storage_bottle->map.remove(it);
     m_stored_bytes = m_stored_bytes - key.bytes().size() - old_value.bytes().size();
 
     // 4. Reorder this.
@@ -151,7 +151,7 @@ void Storage::remove_item(StringView key)
 void Storage::clear()
 {
     // 1. Clear this's map.
-    m_map.clear();
+    m_storage_bottle->map.clear();
 
     // 2. Broadcast this with null, null, and null.
     broadcast({}, {}, {});
@@ -177,8 +177,8 @@ Vector<FlyString> Storage::supported_property_names() const
 {
     // The supported property names on a Storage object storage are the result of running get the keys on storage's map.
     Vector<FlyString> names;
-    names.ensure_capacity(m_map.size());
-    for (auto const& key : m_map.keys())
+    names.ensure_capacity(m_storage_bottle->map.size());
+    for (auto const& key : m_storage_bottle->map.keys())
         names.unchecked_append(key);
     return names;
 }
@@ -226,9 +226,9 @@ WebIDL::ExceptionOr<void> Storage::set_value_of_named_property(String const& key
 
 void Storage::dump() const
 {
-    dbgln("Storage ({} key(s))", m_map.size());
+    dbgln("Storage ({} key(s))", m_storage_bottle->map.size());
     size_t i = 0;
-    for (auto const& it : m_map) {
+    for (auto const& it : m_storage_bottle->map) {
         dbgln("[{}] \"{}\": \"{}\"", i, it.key, it.value);
         ++i;
     }
