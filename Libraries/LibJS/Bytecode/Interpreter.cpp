@@ -757,7 +757,6 @@ Interpreter::ResultAndReturnRegister Interpreter::run_executable(Executable& exe
         return_value = reg(Register::saved_return_value());
     auto exception = reg(Register::exception());
 
-    vm().run_queued_promise_jobs();
     vm().finish_execution_generation();
 
     if (!exception.is_empty())
@@ -1235,10 +1234,13 @@ inline ThrowCompletionOr<Value> perform_call(Interpreter& interpreter, Value thi
             return_value = TRY(perform_eval(vm, !argument_values.is_empty() ? argument_values[0].value_or(JS::js_undefined()) : js_undefined(), vm.in_strict_mode() ? CallerMode::Strict : CallerMode::NonStrict, EvalMode::Direct));
         else
             return_value = TRY(JS::call(vm, function, this_value, argument_values));
-    } else if (call_type == Op::CallType::Call)
+    } else if (call_type == Op::CallType::Call) {
         return_value = TRY(JS::call(vm, function, this_value, argument_values));
-    else
+        if (is<ECMAScriptFunctionObject>(function) && static_cast<ECMAScriptFunctionObject const&>(function).kind() == FunctionKind::Normal)
+            vm.run_queued_promise_jobs();
+    } else {
         return_value = TRY(construct(vm, function, argument_values));
+    }
 
     return return_value;
 }
