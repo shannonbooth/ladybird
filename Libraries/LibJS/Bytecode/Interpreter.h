@@ -36,6 +36,7 @@ public:
     ThrowCompletionOr<Value> run(Bytecode::Executable& executable, Optional<size_t> entry_point = {}, Value initial_accumulator_value = {})
     {
         auto result_and_return_register = run_executable(executable, entry_point, initial_accumulator_value);
+        m_vm.run_queued_promise_jobs();
         return move(result_and_return_register.value);
     }
 

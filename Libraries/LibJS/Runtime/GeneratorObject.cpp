@@ -111,6 +111,7 @@ ThrowCompletionOr<Value> GeneratorObject::execute(VM& vm, Completion const& comp
     VERIFY(next_block.has_value());
 
     auto next_result = bytecode_interpreter.run_executable(*m_generating_function->bytecode_executable(), next_block, completion_object);
+    vm.run_queued_promise_jobs();
 
     vm.pop_execution_context();
 

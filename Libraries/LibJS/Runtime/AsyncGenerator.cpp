@@ -190,6 +190,7 @@ void AsyncGenerator::execute(VM& vm, Completion completion)
         VERIFY(continuation_address.has_value());
 
         auto next_result = bytecode_interpreter.run_executable(*m_generating_function->bytecode_executable(), continuation_address, completion_object);
+        vm.run_queued_promise_jobs();
 
         auto result_value = move(next_result.value);
         if (!result_value.is_throw_completion()) {

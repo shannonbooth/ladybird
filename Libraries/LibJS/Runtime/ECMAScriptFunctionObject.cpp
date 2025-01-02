@@ -732,8 +732,10 @@ void async_block_start(VM& vm, T const& async_body, PromiseCapability const& pro
             auto maybe_executable = Bytecode::compile(vm, async_body, FunctionKind::Async, "AsyncBlockStart"sv);
             if (maybe_executable.is_error())
                 result = maybe_executable.release_error();
-            else
+            else {
                 result = vm.bytecode_interpreter().run_executable(*maybe_executable.value(), {}).value;
+                vm.run_queued_promise_jobs();
+            }
         }
         // c. Else,
         else {
@@ -813,6 +815,7 @@ Completion ECMAScriptFunctionObject::ordinary_call_evaluate_body()
     vm.running_execution_context().registers_and_constants_and_locals.resize(m_local_variables_names.size() + m_bytecode_executable->number_of_registers + m_bytecode_executable->constants.size());
 
     auto result_and_frame = vm.bytecode_interpreter().run_executable(*m_bytecode_executable, {});
+    vm.run_queued_promise_jobs();
 
     if (result_and_frame.value.is_error())
         return result_and_frame.value.release_error();

@@ -691,6 +691,7 @@ ThrowCompletionOr<Value> perform_eval(VM& vm, Value x, CallerMode strict_caller,
     if (Bytecode::g_dump_bytecode)
         executable->dump();
     auto result_or_error = vm.bytecode_interpreter().run_executable(*executable, {});
+    vm.run_queued_promise_jobs();
     if (result_or_error.value.is_error())
         return result_or_error.value.release_error();
 
