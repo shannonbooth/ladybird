@@ -757,7 +757,6 @@ Interpreter::ResultAndReturnRegister Interpreter::run_executable(Executable& exe
         return_value = reg(Register::saved_return_value());
     auto exception = reg(Register::exception());
 
-    vm().run_queued_promise_jobs();
     vm().finish_execution_generation();
 
     if (!exception.is_empty())

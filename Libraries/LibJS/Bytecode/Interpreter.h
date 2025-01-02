@@ -33,12 +33,6 @@ public:
     ThrowCompletionOr<Value> run(Script&, GC::Ptr<Environment> lexical_environment_override = nullptr);
     ThrowCompletionOr<Value> run(SourceTextModule&);
 
-    ThrowCompletionOr<Value> run(Bytecode::Executable& executable, Optional<size_t> entry_point = {}, Value initial_accumulator_value = {})
-    {
-        auto result_and_return_register = run_executable(executable, entry_point, initial_accumulator_value);
-        return move(result_and_return_register.value);
-    }
-
     struct ResultAndReturnRegister {
         ThrowCompletionOr<Value> value;
         Value return_register_value;

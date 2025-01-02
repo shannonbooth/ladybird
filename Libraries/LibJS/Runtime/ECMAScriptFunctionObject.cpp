@@ -813,6 +813,7 @@ Completion ECMAScriptFunctionObject::ordinary_call_evaluate_body()
     vm.running_execution_context().registers_and_constants_and_locals.resize(m_local_variables_names.size() + m_bytecode_executable->number_of_registers + m_bytecode_executable->constants.size());
 
     auto result_and_frame = vm.bytecode_interpreter().run_executable(*m_bytecode_executable, {});
+    vm.run_queued_promise_jobs();
 
     if (result_and_frame.value.is_error())
         return result_and_frame.value.release_error();
