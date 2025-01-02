@@ -324,7 +324,12 @@ private:
     // GlobalSymbolRegistry, https://tc39.es/ecma262/#table-globalsymbolregistry-record-fields
     HashMap<String, GC::Ref<Symbol>> m_global_symbol_registry;
 
-    Vector<GC::Ref<GC::Function<ThrowCompletionOr<Value>()>>> m_promise_jobs;
+    struct PromiseJob {
+        GC::Ref<GC::Function<ThrowCompletionOr<Value>()>> job;
+        GC::Ptr<Realm> caller_realm;
+        ScriptOrModule caller_script_or_module;
+    };
+    Vector<PromiseJob> m_promise_jobs;
 
     Vector<GC::Ptr<FinalizationRegistry>> m_finalization_registry_cleanup_jobs;
 

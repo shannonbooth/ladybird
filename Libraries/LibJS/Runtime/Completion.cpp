@@ -104,6 +104,13 @@ ThrowCompletionOr<Value> await(VM& vm, Value value)
         custom_data->spin_event_loop_until(GC::create_function(vm.heap(), [success] {
             return success.has_value();
         }));
+    } else {
+        vm.save_execution_context_stack();
+        vm.clear_execution_context_stack();
+
+        vm.run_queued_promise_jobs();
+
+        vm.restore_execution_context_stack();
     }
 
     // 8. Remove asyncContext from the execution context stack and restore the execution context that is at the top of the execution context stack as the running execution context.
@@ -112,8 +119,6 @@ ThrowCompletionOr<Value> await(VM& vm, Value value)
     // 9. Set the code evaluation state of asyncContext such that when evaluation is resumed with a Completion Record completion, the following steps of the algorithm that invoked Await will be performed, with completion available.
     // 10. Return NormalCompletion(unused).
     // 11. NOTE: This returns to the evaluation of the operation that had most previously resumed evaluation of asyncContext.
-
-    vm.run_queued_promise_jobs();
 
     // Make sure that the promise _actually_ resolved.
     // Note that this is checked down the chain (result.is_empty()) anyway, but let's make the source of the issue more clear.

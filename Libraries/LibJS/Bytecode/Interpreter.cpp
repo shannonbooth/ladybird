@@ -274,9 +274,8 @@ ThrowCompletionOr<Value> Interpreter::run(Script& script_record, GC::Ptr<Environ
     //        https://tc39.es/ecma262/#sec-jobs for jobs and https://tc39.es/ecma262/#_ref_3508 for ClearKeptObjects
     //        finish_execution_generation is particularly an issue for LibWeb, as the HTML spec wants to run it specifically after performing a microtask checkpoint.
     //        The promise and registry cleanup queues don't cause LibWeb an issue, as LibWeb overrides the hooks that push onto these queues.
-    vm.run_queued_promise_jobs();
-
-    vm.run_queued_finalization_registry_cleanup_jobs();
+    // vm.run_queued_promise_jobs();
+    // vm.run_queued_finalization_registry_cleanup_jobs();
 
     vm.finish_execution_generation();
 
@@ -299,9 +298,8 @@ ThrowCompletionOr<Value> Interpreter::run(SourceTextModule& module)
 
     TRY(vm.link_and_eval_module(Badge<Bytecode::Interpreter> {}, module));
 
-    vm.run_queued_promise_jobs();
-
-    vm.run_queued_finalization_registry_cleanup_jobs();
+    // vm.run_queued_promise_jobs();
+    // vm.run_queued_finalization_registry_cleanup_jobs();
 
     return js_undefined();
 }
@@ -761,7 +759,7 @@ Interpreter::ResultAndReturnRegister Interpreter::run_executable(Executable& exe
 
     // At this point we may have already run any queued promise jobs via on_call_stack_emptied,
     // in which case this is a no-op.
-    vm().run_queued_promise_jobs();
+    // vm().run_queued_promise_jobs();
 
     vm().finish_execution_generation();
 

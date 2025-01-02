@@ -97,6 +97,10 @@ VM::VM(OwnPtr<CustomData> custom_data, ErrorMessages error_messages)
         return call_job_callback(*this, job_callback, this_value, arguments);
     };
 
+    on_call_stack_emptied = [this] {
+        run_queued_promise_jobs();
+    };
+
     host_enqueue_finalization_registry_cleanup_job = [this](FinalizationRegistry& finalization_registry) {
         enqueue_finalization_registry_cleanup_job(finalization_registry);
     };
@@ -271,8 +275,17 @@ void VM::gather_roots(HashMap<GC::Cell*, GC::HeapRoot>& roots)
     for (auto& saved_stack : m_saved_execution_context_stacks)
         gather_roots_from_execution_context_stack(saved_stack);
 
-    for (auto& job : m_promise_jobs)
-        roots.set(job, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
+    for (auto& promise_job : m_promise_jobs) {
+        roots.set(promise_job.job, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
+        if (promise_job.caller_realm)
+            roots.set(promise_job.caller_realm, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
+
+        promise_job.caller_script_or_module.visit(
+            [](Empty) {},
+            [&roots](auto& script_or_module) {
+                roots.set(script_or_module, GC::HeapRoot { .type = GC::HeapRoot::Type::VM });
+            });
+    }
 }
 
 // 9.1.2.1 GetIdentifierReference ( env, name, strict ), https://tc39.es/ecma262/#sec-getidentifierreference
@@ -423,22 +436,29 @@ void VM::run_queued_promise_jobs()
     dbgln_if(PROMISE_DEBUG, "Running queued promise jobs");
 
     while (!m_promise_jobs.is_empty()) {
-        auto job = m_promise_jobs.take_first();
+        auto promise_job = m_promise_jobs.take_first();
         dbgln_if(PROMISE_DEBUG, "Calling promise job function");
 
-        [[maybe_unused]] auto result = job->function()();
+        auto execution_context = JS::ExecutionContext::create();
+        execution_context->script_or_module = promise_job.caller_script_or_module;
+        execution_context->realm = promise_job.caller_realm;
+        push_execution_context(*execution_context);
+
+        [[maybe_unused]] auto result = promise_job.job->function()();
+
+        pop_execution_context();
     }
 }
 
 // 9.5.4 HostEnqueuePromiseJob ( job, realm ), https://tc39.es/ecma262/#sec-hostenqueuepromisejob
-void VM::enqueue_promise_job(GC::Ref<GC::Function<ThrowCompletionOr<Value>()>> job, Realm*)
+void VM::enqueue_promise_job(GC::Ref<GC::Function<ThrowCompletionOr<Value>()>> job, Realm* caller_realm)
 {
     // An implementation of HostEnqueuePromiseJob must conform to the requirements in 9.5 as well as the following:
-    // - FIXME: If realm is not null, each time job is invoked the implementation must perform implementation-defined steps such that execution is prepared to evaluate ECMAScript code at the time of job's invocation.
-    // - FIXME: Let scriptOrModule be GetActiveScriptOrModule() at the time HostEnqueuePromiseJob is invoked. If realm is not null, each time job is invoked the implementation must perform implementation-defined steps
+    // - If realm is not null, each time job is invoked the implementation must perform implementation-defined steps such that execution is prepared to evaluate ECMAScript code at the time of job's invocation.
+    // - Let scriptOrModule be GetActiveScriptOrModule() at the time HostEnqueuePromiseJob is invoked. If realm is not null, each time job is invoked the implementation must perform implementation-defined steps
     //          such that scriptOrModule is the active script or module at the time of job's invocation.
     // - Jobs must run in the same order as the HostEnqueuePromiseJob invocations that scheduled them.
-    m_promise_jobs.append(job);
+    m_promise_jobs.append({ job, caller_realm, get_active_script_or_module() });
 }
 
 void VM::run_queued_finalization_registry_cleanup_jobs()
