@@ -832,20 +832,28 @@ Optional<URL> Parser::basic_parse(StringView raw_input, Optional<URL const&> bas
                 // 1. If state override is given, then:
                 if (state_override.has_value()) {
                     // 1. If url’s scheme is a special scheme and buffer is not a special scheme, then return.
-                    if (is_special_scheme(url->scheme()) && !is_special_scheme(buffer.string_view()))
+                    if (is_special_scheme(url->scheme()) && !is_special_scheme(buffer.string_view())) {
+                        url->m_data->valid = true;
                         return *url;
+                    }
 
                     // 2. If url’s scheme is not a special scheme and buffer is a special scheme, then return.
-                    if (!is_special_scheme(url->scheme()) && is_special_scheme(buffer.string_view()))
+                    if (!is_special_scheme(url->scheme()) && is_special_scheme(buffer.string_view())) {
+                        url->m_data->valid = true;
                         return *url;
+                    }
 
                     // 3. If url includes credentials or has a non-null port, and buffer is "file", then return.
-                    if ((url->includes_credentials() || url->port().has_value()) && buffer.string_view() == "file"sv)
+                    if ((url->includes_credentials() || url->port().has_value()) && buffer.string_view() == "file"sv) {
+                        url->m_data->valid = true;
                         return *url;
+                    }
 
                     // 4. If url’s scheme is "file" and its host is an empty host, then return.
-                    if (url->scheme() == "file"sv && url->host().has_value() && url->host()->is_empty_host())
+                    if (url->scheme() == "file"sv && url->host().has_value() && url->host()->is_empty_host()) {
+                        url->m_data->valid = true;
                         return *url;
+                    }
                 }
 
                 // 2. Set url’s scheme to buffer.
@@ -858,6 +866,7 @@ Optional<URL> Parser::basic_parse(StringView raw_input, Optional<URL const&> bas
                         url->m_data->port = {};
 
                     // 2. Return.
+                    url->m_data->valid = true;
                     return *url;
                 }
 
@@ -1164,8 +1173,10 @@ Optional<URL> Parser::basic_parse(StringView raw_input, Optional<URL const&> bas
                 }
 
                 // 2. If state override is given and state override is hostname state, then return.
-                if (state_override.has_value() && *state_override == State::Hostname)
+                if (state_override.has_value() && *state_override == State::Hostname) {
+                    url->m_data->valid = true;
                     return *url;
+                }
 
                 // 3. Let host be the result of host parsing buffer with url is not special.
                 auto host = parse_host(buffer.string_view(), !url->is_special());
@@ -1194,8 +1205,10 @@ Optional<URL> Parser::basic_parse(StringView raw_input, Optional<URL const&> bas
                 }
 
                 // 2. Otherwise, if state override is given, buffer is the empty string, and either url includes credentials or url’s port is non-null, return.
-                if (state_override.has_value() && buffer.is_empty() && (url->includes_credentials() || url->port().has_value()))
+                if (state_override.has_value() && buffer.is_empty() && (url->includes_credentials() || url->port().has_value())) {
+                    url->m_data->valid = true;
                     return *url;
+                }
 
                 // 3. Let host be the result of host parsing buffer with url is not special.
                 auto host = parse_host(buffer.string_view(), !url->is_special());
@@ -1210,8 +1223,10 @@ Optional<URL> Parser::basic_parse(StringView raw_input, Optional<URL const&> bas
                 state = State::Port;
 
                 // 6. If state override is given, then return.
-                if (state_override.has_value())
+                if (state_override.has_value()) {
+                    url->m_data->valid = true;
                     return *url;
+                }
 
                 continue;
 
@@ -1270,8 +1285,10 @@ Optional<URL> Parser::basic_parse(StringView raw_input, Optional<URL const&> bas
                 }
 
                 // 2. If state override is given, then return.
-                if (state_override.has_value())
+                if (state_override.has_value()) {
+                    url->m_data->valid = true;
                     return *url;
+                }
 
                 // 3. Set state to path start state and decrease pointer by 1.
                 state = State::PathStart;
@@ -1393,8 +1410,10 @@ Optional<URL> Parser::basic_parse(StringView raw_input, Optional<URL const&> bas
                     url->m_data->host = String {};
 
                     // 2. If state override is given, then return.
-                    if (state_override.has_value())
+                    if (state_override.has_value()) {
+                        url->m_data->valid = true;
                         return *url;
+                    }
 
                     // 3. Set state to path start state.
                     state = State::PathStart;
@@ -1416,8 +1435,10 @@ Optional<URL> Parser::basic_parse(StringView raw_input, Optional<URL const&> bas
                     url->m_data->host = host.release_value();
 
                     // 5. If state override is given, then return.
-                    if (state_override.has_value())
+                    if (state_override.has_value()) {
+                        url->m_data->valid = true;
                         return *url;
+                    }
 
                     // 6. Set buffer to the empty string and state to path start state.
                     buffer.clear();
