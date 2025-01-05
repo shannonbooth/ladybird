@@ -798,6 +798,10 @@ class TextEvent;
 class UIEvent;
 }
 
+namespace Web::URLPattern {
+class URLPattern;
+}
+
 namespace Web::DOMURL {
 class DOMURL;
 class URLSearchParams;
