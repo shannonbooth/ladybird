@@ -42,20 +42,20 @@ dictionary URLPatternOptions {
 
 // https://urlpattern.spec.whatwg.org/#dictdef-urlpatternresult
 dictionary URLPatternResult {
-    // FIXME: sequence<URLPatternInput> inputs;
+    required sequence<URLPatternInput> inputs;
 
-    URLPatternComponentResult protocol;
-    URLPatternComponentResult username;
-    URLPatternComponentResult password;
-    URLPatternComponentResult hostname;
-    URLPatternComponentResult port;
-    URLPatternComponentResult pathname;
-    URLPatternComponentResult search;
-    URLPatternComponentResult hash;
+    required URLPatternComponentResult protocol;
+    required URLPatternComponentResult username;
+    required URLPatternComponentResult password;
+    required URLPatternComponentResult hostname;
+    required URLPatternComponentResult port;
+    required URLPatternComponentResult pathname;
+    required URLPatternComponentResult search;
+    required URLPatternComponentResult hash;
 };
 
 // https://urlpattern.spec.whatwg.org/#dictdef-urlpatterncomponentresult
 dictionary URLPatternComponentResult {
-    USVString input;
-    record<USVString, (USVString or undefined)> groups;
+    required USVString input;
+    required record<USVString, (USVString or undefined)> groups;
 };

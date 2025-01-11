@@ -26,7 +26,7 @@ WebIDL::ExceptionOr<String> canonicalize_a_protocol(String const& value)
     auto parse_result = URL::Parser::basic_parse(MUST(String::formatted("{}://dummy.test"sv, value)), {}, &dummy_url);
 
     // 4. If parseResult is failure, then throw a TypeError.
-    if (!parse_result.is_valid())
+    if (!parse_result.has_value())
         return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "Failed to canonicalize URL protocol string"sv };
 
     // 5. Return dummyURL’s scheme.
@@ -81,7 +81,7 @@ WebIDL::ExceptionOr<String> canonicalize_a_hostname(String const& value)
     auto parse_result = URL::Parser::basic_parse(value, {}, &dummy_url, URL::Parser::State::Hostname);
 
     // 4. If parseResult is failure, then throw a TypeError.
-    if (!parse_result.is_valid())
+    if (!parse_result.has_value())
         return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "Failed to canonicalize URL hostname string"sv };
 
     // 5. Return dummyURL’s host, serialized, or empty string if it is null.
@@ -138,7 +138,7 @@ WebIDL::ExceptionOr<String> canonicalize_a_port(String const& port_value, Option
     auto parse_result = URL::Parser::basic_parse(port_value, {}, &dummy_url, URL::Parser::State::Port);
 
     // 4. If parseResult is failure, then throw a TypeError.
-    if (!parse_result.is_valid())
+    if (!parse_result.has_value())
         return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "Failed to canonicalize port string"sv };
 
     // 5. Return dummyURL’s port, serialized, or empty string if it is null.
@@ -172,7 +172,7 @@ WebIDL::ExceptionOr<String> canonicalize_a_pathname(String const& value)
     auto parse_result = URL::Parser::basic_parse(value, {}, &dummy_url, URL::Parser::State::PathStart);
 
     // 7. If parseResult is failure, then throw a TypeError.
-    if (!parse_result.is_valid())
+    if (!parse_result.has_value())
         return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "Failed to canonicalize pathname string"sv };
 
     // 8. Let result be the result of URL path serializing dummyURL.
@@ -208,7 +208,7 @@ WebIDL::ExceptionOr<String> canonicalize_an_opaque_pathname(String const& value)
     auto parse_result = URL::Parser::basic_parse(value, {}, &dummy_url, URL::Parser::State::CannotBeABaseUrlPath);
 
     // 5. If parseResult is failure, then throw a TypeError.
-    if (!parse_result.is_valid())
+    if (!parse_result.has_value())
         return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "Failed to canonicalize opaque pathname string"sv };
 
     // 6. Return the result of URL path serializing dummyURL.
@@ -232,7 +232,7 @@ WebIDL::ExceptionOr<String> canonicalize_a_search(String const& value)
     auto parse_result = URL::Parser::basic_parse(value, {}, &dummy_url, URL::Parser::State::Query);
 
     // 5. If parseResult is failure, then throw a TypeError.
-    if (!parse_result.is_valid())
+    if (!parse_result.has_value())
         return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "Failed to canonicalize query string"sv };
 
     // 6. Return dummyURL’s query.
@@ -257,7 +257,7 @@ WebIDL::ExceptionOr<String> canonicalize_a_hash(String const& value)
     auto parse_result = URL::Parser::basic_parse(value, {}, &dummy_url, URL::Parser::State::Fragment);
 
     // 5. If parseResult is failure, then throw a TypeError.
-    if (!parse_result.is_valid())
+    if (!parse_result.has_value())
         return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "Failed to canonicalize query string"sv };
 
     // 6. Return dummyURL’s fragment.

@@ -258,17 +258,11 @@ WebIDL::ExceptionOr<URLPatternInit> process_a_url_pattern_init(URLPatternInit co
 
         // 6. If init contains neither "protocol" nor "hostname", then:
         if (!init.protocol.has_value() && !init.hostname.has_value()) {
-            // 1. Let baseHost be baseURL’s host.
-            auto const& base_host = base_url->host();
+            // 1. Let baseHost be the serialization of baseURL's host, if it is not null, and the empty string otherwise.
+            String base_host = base_url->host().has_value() ? base_url->host()->serialize() : String {};
 
-            // 2. If baseHost is null, then set baseHost to the empty string.
-            //
-            // FIXME: Spec bug: https://github.com/whatwg/urlpattern/issues/242
-            //        The spec is missing a call to serialize the host.
-            String base_host_string = base_host.has_value() ? base_host->serialize() : String {};
-
-            // 3. Set result["hostname"] to the result of processing a base URL string given baseHost and type.
-            result.hostname = process_a_base_url_string(base_host_string, type);
+            // 2. Set result["hostname"] to the result of processing a base URL string given baseHost and type.
+            result.hostname = process_a_base_url_string(base_host, type);
         }
 
         // 7. If init contains none of "protocol", "hostname", and "port", then:

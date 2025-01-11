@@ -5,8 +5,8 @@ interface mixin TextEncoderCommon {
 
 // https://encoding.spec.whatwg.org/#dictdef-textencoderencodeintoresult
 dictionary TextEncoderEncodeIntoResult {
-    unsigned long long read;
-    unsigned long long written;
+    required unsigned long long read;
+    required unsigned long long written;
 };
 
 // https://encoding.spec.whatwg.org/#textencoder

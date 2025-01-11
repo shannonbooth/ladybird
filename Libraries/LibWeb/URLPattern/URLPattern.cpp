@@ -343,13 +343,12 @@ WebIDL::ExceptionOr<Optional<URLPatternResult>> URLPatternRecord::match(URLPatte
                 inputs.append(base_url_string.value());
             }
 
-            // 3. Set url to the result of parsing input given baseURL.
-            // Set url to the result of running the basic URL parser on input with baseURL.
-            url = URL::Parser::basic_parse(input.get<String>(), base_url);
-
+            // 3. Set url to the result of running the basic URL parser on input with baseURL.
             // 4. If url is failure, return null.
-            if (!url.is_valid())
+            auto maybe_url = URL::Parser::basic_parse(input.get<String>(), base_url);
+            if (!maybe_url.has_value())
                 return OptionalNone {};
+            url = maybe_url.release_value();
         }
 
         // 3. Assert: url is a URL.
