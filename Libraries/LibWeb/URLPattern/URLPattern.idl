@@ -44,18 +44,18 @@ dictionary URLPatternOptions {
 dictionary URLPatternResult {
     // FIXME: sequence<URLPatternInput> inputs;
 
-    // FIXME: URLPatternComponentResult protocol;
-    // FIXME: URLPatternComponentResult username;
-    // FIXME: URLPatternComponentResult password;
-    // FIXME: URLPatternComponentResult hostname;
-    // FIXME: URLPatternComponentResult port;
-    // FIXME: URLPatternComponentResult pathname;
-    // FIXME: URLPatternComponentResult search;
-    // FIXME: URLPatternComponentResult hash;
+    URLPatternComponentResult protocol;
+    URLPatternComponentResult username;
+    URLPatternComponentResult password;
+    URLPatternComponentResult hostname;
+    URLPatternComponentResult port;
+    URLPatternComponentResult pathname;
+    URLPatternComponentResult search;
+    URLPatternComponentResult hash;
 };
 
 // https://urlpattern.spec.whatwg.org/#dictdef-urlpatterncomponentresult
 dictionary URLPatternComponentResult {
     USVString input;
-    // FIXME: record<USVString, (USVString or undefined)> groups;
+    record<USVString, (USVString or undefined)> groups;
 };

@@ -25,7 +25,9 @@ using URLPatternInput = Variant<String, URLPatternInit>;
 struct URLPatternComponentResult {
     String input;
 
-    OrderedHashMap<String, Variant<String, Empty>> groups;
+    // FIXME: It would be better if the IDL generator type for 'undefined' in the record were an 'Empty' variant.
+    //        For now, use JS::Value, with a value of always undefined.
+    OrderedHashMap<String, Variant<String, JS::Value>> groups;
 };
 
 // https://urlpattern.spec.whatwg.org/#dictdef-urlpatternresult

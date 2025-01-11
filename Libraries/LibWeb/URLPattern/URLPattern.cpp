@@ -213,7 +213,7 @@ WebIDL::ExceptionOr<URLPatternRecord> URLPatternRecord::create(URLPatternInput c
 }
 
 // https://urlpattern.spec.whatwg.org/#create-a-component-match-result
-static URLPatternComponentResult create_a_component_match_result(Component const&, String const& input, regex::RegexResult const&)
+static URLPatternComponentResult create_a_component_match_result(Component const& component, String const& input, regex::RegexResult const& exec_result)
 {
     // 1. Let result be a new URLPatternComponentResult.
     URLPatternComponentResult result;
@@ -222,17 +222,22 @@ static URLPatternComponentResult create_a_component_match_result(Component const
     result.input = input;
 
     // 3. Let groups be a record<USVString, (USVString or undefined)>.
-    OrderedHashMap<String, Variant<String, Empty>> groups;
+    OrderedHashMap<String, Variant<String, JS::Value>> groups;
 
     // 4. Let index be 1.
-
     // 5. While index is less than Get(execResult, "length"):
-    while (false) {
+    for (size_t index = 1; index <= exec_result.n_capture_groups; ++index) {
+        auto& capture = exec_result.capture_group_matches[0][index];
+
         // 1. Let name be component’s group name list[index − 1].
+        auto name = component.group_name_list[index - 1];
 
         // 2. Let value be Get(execResult, ToString(index)).
-
         // 3. Set groups[name] to value.
+        if (capture.view.is_null())
+            groups.set(name, JS::js_undefined());
+        else
+            groups.set(name, MUST(capture.view.to_string()));
 
         // 4. Increment index by 1.
     }
@@ -327,7 +332,7 @@ WebIDL::ExceptionOr<Optional<URLPatternResult>> URLPatternRecord::match(URLPatte
 
             // 2. If baseURLString was given, then:
             if (base_url_string.has_value()) {
-                // 1. Set baseURL to the result of parsing baseURLString.
+                // 1. Set baseURL to the result of running the basic URL parser on baseURLString.
                 base_url = URL::Parser::basic_parse(base_url_string.value());
 
                 // 2. If baseURL is failure, return null.
@@ -339,8 +344,8 @@ WebIDL::ExceptionOr<Optional<URLPatternResult>> URLPatternRecord::match(URLPatte
             }
 
             // 3. Set url to the result of parsing input given baseURL.
-            // FIXME: What the heck?
-            url = URL::Parser::basic_parse(input.get<String>());
+            // Set url to the result of running the basic URL parser on input with baseURL.
+            url = URL::Parser::basic_parse(input.get<String>(), base_url);
 
             // 4. If url is failure, return null.
             if (!url.is_valid())
@@ -348,7 +353,6 @@ WebIDL::ExceptionOr<Optional<URLPatternResult>> URLPatternRecord::match(URLPatte
         }
 
         // 3. Assert: url is a URL.
-        // FIXME: Huh!?!
         VERIFY(url.is_valid());
 
         // 4. Set protocol to url’s scheme.
