@@ -19,7 +19,7 @@ namespace Web::DOM {
 // NOTE: This is basically done by children_changed() today:
 // The element's children changed steps run.
 //
-// NOTE: This is basically done by inserted() and removed_from() today:
+// NOTE: This is basically done by inserted() and removed_from() today, along with a call to is_connected().
 // The element is not on the stack of open elements of an HTML parser or XML parser, and it becomes connected or disconnected.
 //
 // https://html.spec.whatwg.org/multipage/semantics.html#update-a-style-block

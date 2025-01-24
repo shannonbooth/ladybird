@@ -40,14 +40,16 @@ void HTMLStyleElement::children_changed()
 
 void HTMLStyleElement::inserted()
 {
-    m_style_element_utils.update_a_style_block(*this);
     Base::inserted();
+    if (is_connected())
+        m_style_element_utils.update_a_style_block(*this);
 }
 
 void HTMLStyleElement::removed_from(Node* old_parent, Node& old_root)
 {
-    m_style_element_utils.update_a_style_block(*this);
     Base::removed_from(old_parent, old_root);
+    if (!is_connected())
+        m_style_element_utils.update_a_style_block(*this);
 }
 
 // https://html.spec.whatwg.org/multipage/semantics.html#dom-style-disabled
