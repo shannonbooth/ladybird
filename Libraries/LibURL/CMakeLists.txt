@@ -9,6 +9,7 @@ set(SOURCES
     ${PUBLIC_SUFFIX_SOURCES}
     Pattern/Canonicalization.cpp
     Pattern/Pattern.cpp
+    Pattern/PatternString.cpp
     Pattern/Tokenizer.cpp
 )
 
