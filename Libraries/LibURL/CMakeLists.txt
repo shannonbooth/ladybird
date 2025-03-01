@@ -8,6 +8,7 @@ set(SOURCES
     URL.cpp
     ${PUBLIC_SUFFIX_SOURCES}
     Pattern/Canonicalization.cpp
+    Pattern/Init.cpp
     Pattern/Pattern.cpp
     Pattern/PatternString.cpp
     Pattern/Tokenizer.cpp
