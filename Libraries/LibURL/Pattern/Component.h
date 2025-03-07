@@ -31,4 +31,6 @@ struct Component {
     bool has_regexp_groups {};
 };
 
+String escape_a_regexp_string(String const&);
+
 }
