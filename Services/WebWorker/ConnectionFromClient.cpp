@@ -69,6 +69,10 @@ void ConnectionFromClient::start_dedicated_worker(URL::URL url, Web::Bindings::W
     m_worker_host->run(page(), move(implicit_port), outside_settings);
 }
 
+void ConnectionFromClient::start_service_worker(URL::URL)
+{
+}
+
 void ConnectionFromClient::handle_file_return(i32 error, Optional<IPC::File> file, i32 request_id)
 {
     auto file_request = m_requested_files.take(request_id);
