@@ -42,6 +42,7 @@ private:
     Web::Page const& page() const;
 
     virtual void start_worker(URL::URL url, Web::Bindings::WorkerType type, Web::Bindings::RequestCredentials credentials, String name, Web::HTML::TransferDataHolder, Web::HTML::SerializedEnvironmentSettingsObject, Web::Bindings::AgentType) override;
+    virtual void setup_service_worker(Web::ServiceWorker::SerializedServiceWorkerRecord) override;
     virtual void handle_file_return(i32 error, Optional<IPC::File> file, i32 request_id) override;
 
     GC::Root<PageHost> m_page_host;
@@ -52,6 +53,7 @@ private:
     int last_id { 0 };
 
     RefPtr<WorkerHost> m_worker_host;
+    RefPtr<ServiceWorkerHost> m_service_worker_host;
 };
 
 }

@@ -4,6 +4,7 @@
 #include <LibWeb/Bindings/WorkerPrototype.h>
 #include <LibWeb/HTML/StructuredSerialize.h>
 #include <LibWeb/HTML/Scripting/SerializedEnvironmentSettingsObject.h>
+#include <LibWeb/ServiceWorker/ServiceWorkerRecord.h>
 
 endpoint WebWorkerServer {
 
@@ -14,6 +15,8 @@ endpoint WebWorkerServer {
                  Web::HTML::TransferDataHolder message_port,
                  Web::HTML::SerializedEnvironmentSettingsObject outside_settings,
                  Web::Bindings::AgentType agent_type) =|
+
+    setup_service_worker(Web::ServiceWorker::SerializedServiceWorkerRecord service_worker) =|
 
     close_worker() =|
 

@@ -745,6 +745,7 @@ set(SOURCES
     ServiceWorker/ServiceWorkerGlobalScope.cpp
     ServiceWorker/ServiceWorkerRecord.cpp
     ServiceWorker/ServiceWorkerRegistration.cpp
+    ServiceWorker/ServiceWorkerEnvironmentSettingsObject.cpp
     SRI/SRI.cpp
     StorageAPI/NavigatorStorage.cpp
     StorageAPI/StorageBottle.cpp

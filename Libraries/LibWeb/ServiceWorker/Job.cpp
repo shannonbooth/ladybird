@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2024, Andrew Kaster <andrew@ladybird.org>
+ * Copyright (c) 2025, Shannon Booth <shannon@serenityos.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -7,10 +8,12 @@
 #include <LibGC/Heap.h>
 #include <LibJS/Runtime/VM.h>
 #include <LibURL/URL.h>
+#include <LibWeb/Bindings/PrincipalHostDefined.h>
 #include <LibWeb/DOMURL/DOMURL.h>
 #include <LibWeb/Fetch/Fetching/Fetching.h>
 #include <LibWeb/Fetch/Infrastructure/FetchController.h>
 #include <LibWeb/Fetch/Response.h>
+#include <LibWeb/HTML/MessagePort.h>
 #include <LibWeb/HTML/Scripting/ClassicScript.h>
 #include <LibWeb/HTML/Scripting/Environments.h>
 #include <LibWeb/HTML/Scripting/Fetching.h>
@@ -18,10 +21,15 @@
 #include <LibWeb/HTML/Scripting/ModuleScript.h>
 #include <LibWeb/HTML/Scripting/Script.h>
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
+#include <LibWeb/HTML/WorkerAgentParent.h>
+#include <LibWeb/Page/Page.h>
 #include <LibWeb/SecureContexts/AbstractOperations.h>
 #include <LibWeb/ServiceWorker/Job.h>
 #include <LibWeb/ServiceWorker/Registration.h>
+#include <LibWeb/ServiceWorker/ServiceWorkerGlobalScope.h>
+#include <LibWeb/ServiceWorker/ServiceWorkerAgentParent.h>
 #include <LibWeb/WebIDL/Promise.h>
+#include <LibWeb/Worker/WebWorkerClient.h>
 
 namespace Web::ServiceWorker {
 
@@ -158,6 +166,9 @@ public:
     bool has_updated_resources() const { return m_has_updated_resources; }
     void set_has_updated_resources(bool b) { m_has_updated_resources = b; }
 
+    URL::URL& url() { return m_url; }
+    void set_url(URL::URL url) { m_url = move(url); }
+
 private:
     UpdateAlgorithmState() = default;
 
@@ -169,7 +180,110 @@ private:
 
     OrderedHashMap<URL::URL, GC::Ref<Fetch::Infrastructure::Response>> m_map;
     bool m_has_updated_resources { false };
+    URL::URL m_url;
 };
+
+// https://html.spec.whatwg.org/multipage/webappapis.html#obtain-a-service-worker-agent
+static GC::Ptr<ServiceWorkerAgentParent> obtain_a_service_worker_agent()
+{
+    // FIXME: This should be setting the javascript Agent Record slot of [[CanBlock]] to false.
+
+    return {};
+}
+
+// https://w3c.github.io/ServiceWorker/#setup-serviceworkerglobalscope
+static GC::Ptr<ServiceWorkerAgentParent> setup_service_worker_global_scope(JS::Realm& realm, ServiceWorkerRecord const& service_worker)
+{
+    (void)realm;
+    (void)service_worker;
+    // 1. Let unsafeCreationTime be the unsafe shared current time.
+
+    // 2. If serviceWorker is running, then return serviceWorker’s global object.
+    if (service_worker.is_running())
+        return service_worker.global_object.ptr();
+
+    // 3. If serviceWorker’s state is "redundant", then return null.
+    if (service_worker.state == Bindings::ServiceWorkerState::Redundant)
+        return {};
+
+    // 4. If serviceWorker’s global object is not null, then return serviceWorker’s global object.
+    if (service_worker.global_object)
+        return service_worker.global_object.ptr();
+
+    // 5. Assert: serviceWorker’s start status is null.
+    VERIFY(!service_worker.start_status.has_value());
+
+    // 6. Let setupFailed be false.
+
+    // 7. Let globalObject be null.
+
+    // 8. Let agent be the result of obtaining a service worker agent, and run the following steps in that context:
+    auto agent = obtain_a_service_worker_agent();
+
+    // FIXME: 9. Wait for globalObject is not null, or for setupFailed to be true.
+
+    // FIXME: 10. If setupFailed is true, then return null.
+
+    // 11. Return globalObject.
+    // NOTE: globalObject is in the process we have just spun up, so we use ServiceWorkerAgentParent as a proxy for the global object.
+    return agent;
+}
+
+// https://w3c.github.io/ServiceWorker/#run-service-worker
+static ErrorOr<JS::Completion> run_service_worker(JS::Realm& realm, ServiceWorkerRecord& service_worker, bool force_bypass_cache = false)
+{
+    (void)force_bypass_cache;
+
+    // 1. If serviceWorker is running, then return serviceWorker’s start status.
+    if (service_worker.is_running()) {
+        VERIFY(service_worker.start_status.has_value());
+        return *service_worker.start_status;
+    }
+
+    // 2. If serviceWorker’s state is "redundant", then return failure.
+    if (service_worker.state == Bindings::ServiceWorkerState::Redundant)
+        return Error::from_string_view("Service worker cannot be started as it is in 'redundant' state"sv);
+
+    // 3. Assert: serviceWorker’s start status is null.
+    VERIFY(!service_worker.start_status.has_value());
+
+    // 4. Let script be serviceWorker’s script resource.
+    auto script = service_worker.script_resource;
+
+    // 5. Assert: script is not null.
+    VERIFY(script);
+
+    // 6. Let startFailed be false.
+    bool start_failed = false;
+
+    // 7. Let workerGlobalScope be serviceWorker’s global object.
+    auto worker_global_scope = service_worker.global_object;
+
+    // 8. If workerGlobalScope is null:
+    if (!worker_global_scope) {
+        // 9. Set workerGlobalScope to be the result of running the Setup ServiceWorkerGlobalScope algorithm with serviceWorker.
+        auto worker_global_scope = setup_service_worker_global_scope(realm, service_worker);
+
+        // 10. If workerGlobalScope is null, then return failure.
+        if (!worker_global_scope)
+            return Error::from_string_view("Unable to setup service worker global scope"sv);
+
+        // 11. Set serviceWorker’s global object to workerGlobalScope.
+        service_worker.global_object = worker_global_scope;
+    }
+
+    // FIXME: 9. Obtain agent for workerGlobalScope’s realm execution context, and run the following steps in that context:
+
+    // FIXME: 10. Wait for serviceWorker to be running, or for startFailed to be true.
+
+    // 12. If startFailed is true, then return failure.
+    if (start_failed)
+        return Error::from_string_view("Service worker failed to start"sv);
+
+    // 13. Return serviceWorker’s start status.
+    VERIFY(service_worker.start_status.has_value());
+    return service_worker.start_status.value();
+}
 
 // https://w3c.github.io/ServiceWorker/#update-algorithm
 static void update(JS::VM& vm, GC::Ref<Job> job)
@@ -330,10 +444,10 @@ static void update(JS::VM& vm, GC::Ref<Job> job)
             }
 
             // 17. Let url be request’s url.
-            auto& url = request->url();
+            state->set_url(request->url());
 
             // 18. Set updatedResourceMap[url] to response.
-            state->updated_resource_map().set(url, response);
+            state->updated_resource_map().set(state->url(), response);
 
             // 19. If response’s cache state is not "local", set registration’s last update check time to the current time.
             if (response->cache_state() != Fetch::Infrastructure::Response::CacheState::Local)
@@ -344,7 +458,7 @@ static void update(JS::VM& vm, GC::Ref<Job> job)
             // - newestWorker’s script url is not url or newestWorker’s type is not job’s worker type.
             // - FIXME: newestWorker’s script resource map[url]'s body is not byte-for-byte identical with response’s body.
             if (newest_worker == nullptr
-                || newest_worker->script_url != url
+                || newest_worker->script_url != state->url()
                 || newest_worker->worker_type != job->worker_type) {
                 state->set_has_updated_resources(true);
             }
@@ -427,15 +541,39 @@ static void update(JS::VM& vm, GC::Ref<Job> job)
             return;
         }
 
-        // FIXME: Actually create service worker
         // 10. Let worker be a new service worker.
-        // 11. Set worker’s script url to job’s script url, worker’s script resource to script, worker’s type to job’s worker type, and worker’s script resource map to updatedResourceMap.
-        (void)state;
+        ServiceWorkerRecord worker;
+
+        // 11. Set worker’s script url to job’s script url, worker’s script resource to script, worker’s type to job’s worker type,
+        //     and worker’s script resource map to updatedResourceMap.
+        worker.script_url = job->script_url;
+        worker.script_resource = script;
+        worker.worker_type = job->worker_type;
+        for (auto const& [url, response] : state->updated_resource_map())
+            worker.script_resource_map.set(url, response);
+
         // 12. Append url to worker’s set of used scripts.
+        worker.set_of_used_scripts.append(state->url());
+
         // 13. Set worker’s script resource’s policy container to policyContainer.
+        // FIXME: CSP not implemented yet.
+
         // 14. Let forceBypassCache be true if job’s force bypass cache flag is set, and false otherwise.
+        bool force_bypass_cache = job->force_cache_bypass;
+
         // 15. Let runResult be the result of running the Run Service Worker algorithm with worker and forceBypassCache.
+        // FIXME: What hsould realm be?
+        auto run_result = run_service_worker(*vm.current_realm(), worker, force_bypass_cache);
+
         // 16. If runResult is failure or an abrupt completion, then:
+        if (run_result.is_error()) {
+            // 1. Invoke Reject Job Promise with job and TypeError.
+
+            // 2. If newestWorker is null, then remove registration map[(registration’s storage key, serialized scopeURL)].
+
+            // 3. Invoke Finish Job with job.
+            finish_job(vm, job);
+        }
         // 17. Else, invoke Install algorithm with job, worker, and registration as its arguments.
         if (job->client) {
             auto& realm = job->client->realm();

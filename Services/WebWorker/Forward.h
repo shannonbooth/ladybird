@@ -11,5 +11,6 @@ namespace WebWorker {
 class ConnectionFromClient;
 class PageHost;
 class WorkerHost;
+class ServiceWorkerHost;
 
 }

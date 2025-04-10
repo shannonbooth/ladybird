@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2023, Andrew Kaster <akaster@serenityos.org>
+ * Copyright (c) 2025, Shannon Booth <shannon@serenityos.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -8,6 +9,7 @@
 #include <WebWorker/ConnectionFromClient.h>
 #include <WebWorker/PageHost.h>
 #include <WebWorker/WorkerHost.h>
+#include <WebWorker/ServiceWorkerHost.h>
 
 namespace WebWorker {
 
@@ -16,6 +18,7 @@ void ConnectionFromClient::close_worker()
     async_did_close_worker();
 
     // FIXME: Invoke a worker shutdown operation that implements the spec
+    m_service_worker_host = nullptr;
     m_worker_host = nullptr;
 
     die();
@@ -73,6 +76,12 @@ void ConnectionFromClient::start_worker(URL::URL url, Web::Bindings::WorkerType 
     // FIXME: Add an assertion that the agent_type passed here is the same that was passed at process creation to initialize_main_thread_vm()
 
     m_worker_host->run(page(), move(implicit_port), outside_settings, credentials, is_shared);
+}
+
+void ConnectionFromClient::setup_service_worker(Web::ServiceWorker::SerializedServiceWorkerRecord service_worker)
+{
+    m_service_worker_host = make_ref_counted<ServiceWorkerHost>(move(service_worker));
+    m_service_worker_host->setup(page());
 }
 
 void ConnectionFromClient::handle_file_return(i32 error, Optional<IPC::File> file, i32 request_id)

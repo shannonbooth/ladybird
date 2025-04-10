@@ -613,6 +613,7 @@ class PluginArray;
 class PopoverInvokerElement;
 class PromiseRejectionEvent;
 class RadioNodeList;
+class Script;
 class SelectedFile;
 class SessionHistoryEntry;
 class SharedResourceRequest;
@@ -878,7 +879,9 @@ class Selection;
 namespace Web::ServiceWorker {
 
 class ServiceWorker;
+class ServiceWorkerAgentParent;
 class ServiceWorkerContainer;
+class ServiceWorkerGlobalScope;
 class ServiceWorkerRegistration;
 
 }
