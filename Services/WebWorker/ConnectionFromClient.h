@@ -42,7 +42,7 @@ private:
     Web::Page const& page() const;
 
     virtual void start_dedicated_worker(URL::URL url, Web::Bindings::WorkerType type, Web::Bindings::RequestCredentials credentials, String name, Web::HTML::TransferDataHolder, Web::HTML::SerializedEnvironmentSettingsObject) override;
-    virtual void start_service_worker(URL::URL url) override;
+    virtual void setup_service_worker(URL::URL url) override;
     virtual void handle_file_return(i32 error, Optional<IPC::File> file, i32 request_id) override;
 
     GC::Root<PageHost> m_page_host;
@@ -52,7 +52,8 @@ private:
     HashMap<int, Web::FileRequest> m_requested_files {};
     int last_id { 0 };
 
-    RefPtr<DedicatedWorkerHost> m_worker_host;
+    RefPtr<DedicatedWorkerHost> m_dedicated_worker_host;
+    RefPtr<ServiceWorkerHost> m_service_worker_host;
 };
 
 }

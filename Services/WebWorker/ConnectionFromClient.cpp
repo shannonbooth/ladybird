@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2023, Andrew Kaster <akaster@serenityos.org>
+ * Copyright (c) 2025, Shannon Booth <shannon@serenityos.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -8,6 +9,7 @@
 #include <WebWorker/ConnectionFromClient.h>
 #include <WebWorker/DedicatedWorkerHost.h>
 #include <WebWorker/PageHost.h>
+#include <WebWorker/ServiceWorkerHost.h>
 
 namespace WebWorker {
 
@@ -16,7 +18,8 @@ void ConnectionFromClient::close_worker()
     async_did_close_worker();
 
     // FIXME: Invoke a worker shutdown operation that implements the spec
-    m_worker_host = nullptr;
+    m_dedicated_worker_host = nullptr;
+    m_service_worker_host = nullptr;
 
     die();
 }
@@ -65,12 +68,14 @@ Web::Page const& ConnectionFromClient::page() const
 
 void ConnectionFromClient::start_dedicated_worker(URL::URL url, Web::Bindings::WorkerType type, Web::Bindings::RequestCredentials, String name, Web::HTML::TransferDataHolder implicit_port, Web::HTML::SerializedEnvironmentSettingsObject outside_settings)
 {
-    m_worker_host = make_ref_counted<DedicatedWorkerHost>(move(url), type, move(name));
-    m_worker_host->run(page(), move(implicit_port), outside_settings);
+    m_dedicated_worker_host = make_ref_counted<DedicatedWorkerHost>(move(url), type, move(name));
+    m_dedicated_worker_host->run(page(), move(implicit_port), outside_settings);
 }
 
-void ConnectionFromClient::start_service_worker(URL::URL)
+void ConnectionFromClient::setup_service_worker(URL::URL url)
 {
+    m_service_worker_host = make_ref_counted<ServiceWorkerHost>(move(url));
+    m_service_worker_host->setup(page());
 }
 
 void ConnectionFromClient::handle_file_return(i32 error, Optional<IPC::File> file, i32 request_id)
