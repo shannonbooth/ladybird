@@ -65,4 +65,20 @@ struct ServiceWorkerRecord {
     // FIXME: A lot more fields after this...
 };
 
+// https://w3c.github.io/ServiceWorker/#dfn-service-worker
+// This is equivalent to ServiceWorkerRecord above, but only contains the fields that are needed to be serialized over IPC.
+struct SerializedServiceWorkerRecord {
+    URL::URL script_url;
+};
+
+}
+
+namespace IPC {
+
+template<>
+ErrorOr<void> encode(Encoder&, Web::ServiceWorker::SerializedServiceWorkerRecord const&);
+
+template<>
+ErrorOr<Web::ServiceWorker::SerializedServiceWorkerRecord> decode(Decoder&);
+
 }

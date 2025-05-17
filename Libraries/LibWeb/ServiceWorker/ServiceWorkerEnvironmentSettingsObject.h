@@ -21,14 +21,10 @@ class ServiceWorkerEnvironmentSettingsObject final
     GC_DECLARE_ALLOCATOR(ServiceWorkerEnvironmentSettingsObject);
 
 public:
-    ServiceWorkerEnvironmentSettingsObject(NonnullOwnPtr<JS::ExecutionContext> execution_context, GC::Ref<ServiceWorkerGlobalScope> worker_global_scope, HighResolutionTime::DOMHighResTimeStamp unsafe_worker_creation_time)
-        : EnvironmentSettingsObject(move(execution_context))
-        , m_worker_global_scope(worker_global_scope)
-        , m_unsafe_worker_creation_time(unsafe_worker_creation_time)
-    {
-    }
-
-    static GC::Ref<ServiceWorkerEnvironmentSettingsObject> setup(GC::Ref<Page> page, NonnullOwnPtr<JS::ExecutionContext> execution_context, HTML::SerializedEnvironmentSettingsObject const& outside_settings, HighResolutionTime::DOMHighResTimeStamp unsafe_worker_creation_time);
+    static GC::Ref<ServiceWorkerEnvironmentSettingsObject> setup(GC::Ref<Page> page,
+        GC::Ref<ServiceWorkerGlobalScope> global_scope,
+        NonnullOwnPtr<JS::ExecutionContext> execution_context,
+        HighResolutionTime::DOMHighResTimeStamp unsafe_worker_creation_time);
 
     virtual ~ServiceWorkerEnvironmentSettingsObject() override = default;
 
@@ -40,12 +36,19 @@ public:
     virtual HTML::CanUseCrossOriginIsolatedAPIs cross_origin_isolated_capability() const override;
     virtual double time_origin() const override;
 
+protected:
+    ServiceWorkerEnvironmentSettingsObject(NonnullOwnPtr<JS::ExecutionContext> execution_context, GC::Ref<ServiceWorkerGlobalScope> global_scope, HighResolutionTime::DOMHighResTimeStamp unsafe_worker_creation_time)
+        : EnvironmentSettingsObject(move(execution_context))
+        , m_worker_global_scope(global_scope)
+        , m_unsafe_worker_creation_time(unsafe_worker_creation_time)
+    {
+    }
+
 private:
     virtual void visit_edges(Visitor&) override;
 
-    // FIXME: Initialize this in the setup function.
-    URL::Origin m_registering_service_worker_clients_origin;
     GC::Ref<ServiceWorkerGlobalScope> m_worker_global_scope;
+    URL::Origin m_registering_service_worker_clients_origin;
     HighResolutionTime::DOMHighResTimeStamp m_unsafe_worker_creation_time { 0 };
 };
 

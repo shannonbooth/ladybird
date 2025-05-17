@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#pragma once
-
 #include <LibWeb/HighResolutionTime/TimeOrigin.h>
 #include <LibWeb/ServiceWorker/ServiceWorkerEnvironmentSettingsObject.h>
 #include <LibWeb/ServiceWorker/ServiceWorkerGlobalScope.h>
@@ -14,7 +12,17 @@ namespace Web::ServiceWorker {
 
 GC_DEFINE_ALLOCATOR(ServiceWorkerEnvironmentSettingsObject);
 
-static GC::Ref<ServiceWorkerEnvironmentSettingsObject> setup(GC::Ref<Page> page, NonnullOwnPtr<JS::ExecutionContext> execution_context, HTML::SerializedEnvironmentSettingsObject const& outside_settings, HighResolutionTime::DOMHighResTimeStamp unsafe_worker_creation_time);
+GC::Ref<ServiceWorkerEnvironmentSettingsObject> ServiceWorkerEnvironmentSettingsObject::setup(GC::Ref<Page> page,
+    GC::Ref<ServiceWorkerGlobalScope> global_scope,
+    NonnullOwnPtr<JS::ExecutionContext> execution_context,
+    HighResolutionTime::DOMHighResTimeStamp unsafe_worker_creation_time)
+{
+    (void)page;
+    auto& realm = *execution_context->realm;
+    auto& heap = realm.heap();
+
+    return heap.allocate<ServiceWorkerEnvironmentSettingsObject>(move(execution_context), global_scope, unsafe_worker_creation_time);
+}
 
 GC::Ptr<DOM::Document> ServiceWorkerEnvironmentSettingsObject::responsible_document()
 {
