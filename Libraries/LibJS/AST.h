@@ -1212,6 +1212,9 @@ public:
     virtual void dump(int indent) const override;
     virtual Bytecode::CodeGenerationErrorOr<Optional<Bytecode::ScopedOperand>> generate_bytecode(Bytecode::Generator&, Optional<Bytecode::ScopedOperand> preferred_dst = {}) const override;
 
+    UnaryOp op() const { return m_op; }
+    Expression const& lhs() const { return *m_lhs; }
+
 private:
     UnaryOp m_op;
     NonnullRefPtr<Expression const> m_lhs;

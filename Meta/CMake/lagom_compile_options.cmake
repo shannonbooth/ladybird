@@ -17,6 +17,7 @@ include(CheckPIESupported)
 check_pie_supported(LANGUAGES CXX)
 if(CMAKE_CXX_LINK_PIE_SUPPORTED)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+    add_cxx_compile_options(-fPIC)
 endif()
 
 if (LINUX)
