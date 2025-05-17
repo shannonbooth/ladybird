@@ -2906,6 +2906,45 @@ private:
     mutable EnvironmentCoordinate m_cache;
 };
 
+class IsTypeof final : public Instruction {
+public:
+    enum class ValueType : u8 {
+        Invalid, // typeof x == 'something that will never be'
+        Number,
+        Undefined,
+        Null,
+        Boolean,
+        String,
+        BigInt,
+        Symbol,
+        Object,
+        Function,
+    };
+
+    IsTypeof(Operand dst, Operand src, ValueType type)
+        : Instruction(Type::IsTypeof)
+        , m_dst(dst)
+        , m_type(type)
+        , m_src(src)
+    {
+    }
+
+    void execute_impl(Bytecode::Interpreter&) const;
+    ByteString to_byte_string_impl(Bytecode::Executable const&) const;
+    void visit_operands_impl(Function<void(Operand&)> visitor)
+    {
+        visitor(m_dst);
+    }
+
+    Operand dst() const { return m_dst; }
+    ValueType type() const { return m_type; }
+
+private:
+    Operand m_dst;
+    ValueType m_type;
+    Operand m_src;
+};
+
 class End final : public Instruction {
 public:
     constexpr static bool IsTerminator = true;

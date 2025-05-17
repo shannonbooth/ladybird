@@ -685,6 +685,7 @@ FLATTEN_ON_CLANG void Interpreter::run_bytecode(size_t entry_point)
             HANDLE_INSTRUCTION(ThrowIfTDZ);
             HANDLE_INSTRUCTION(Typeof);
             HANDLE_INSTRUCTION(TypeofBinding);
+            HANDLE_INSTRUCTION_WITHOUT_EXCEPTION_CHECK(IsTypeof);
             HANDLE_INSTRUCTION(UnaryMinus);
             HANDLE_INSTRUCTION(UnaryPlus);
             HANDLE_INSTRUCTION(UnsignedRightShift);
@@ -3258,6 +3259,39 @@ ThrowCompletionOr<void> TypeofBinding::execute_impl(Bytecode::Interpreter& inter
     return {};
 }
 
+// https://tc39.es/ecma262/#sec-typeof-operator
+static bool is_type_of(Value value, IsTypeof::ValueType type)
+{
+    switch (type) {
+    case IsTypeof::ValueType::Undefined:
+        return value.is_undefined() || (value.is_object() && value.as_object().is_htmldda());
+    case IsTypeof::ValueType::Null:
+        return value.is_null();
+    case IsTypeof::ValueType::Boolean:
+        return value.is_boolean();
+    case IsTypeof::ValueType::Number:
+        return value.is_number();
+    case IsTypeof::ValueType::String:
+        return value.is_string();
+    case IsTypeof::ValueType::Object:
+        return value.is_object();
+    case IsTypeof::ValueType::Symbol:
+        return value.is_symbol();
+    case IsTypeof::ValueType::Function:
+        return value.is_function();
+    case IsTypeof::ValueType::BigInt:
+        return value.is_bigint();
+    case IsTypeof::ValueType::Invalid:
+        return false;
+    }
+    VERIFY_NOT_REACHED();
+}
+
+void IsTypeof::execute_impl(Bytecode::Interpreter& interpreter) const
+{
+    interpreter.set(m_dst, Value { is_type_of(interpreter.get(m_src), m_type) });
+}
+
 void BlockDeclarationInstantiation::execute_impl(Bytecode::Interpreter& interpreter) const
 {
     auto& vm = interpreter.vm();
@@ -4025,6 +4059,41 @@ ByteString TypeofBinding::to_byte_string_impl(Bytecode::Executable const& execut
     return ByteString::formatted("TypeofBinding {}, {}",
         format_operand("dst"sv, m_dst, executable),
         executable.identifier_table->get(m_identifier));
+}
+
+static StringView type_to_string(IsTypeof::ValueType type)
+{
+    switch (type) {
+    case IsTypeof::ValueType::Undefined:
+        return "undefined"sv;
+    case IsTypeof::ValueType::Null:
+        return "null"sv;
+    case IsTypeof::ValueType::Boolean:
+        return "boolean"sv;
+    case IsTypeof::ValueType::Number:
+        return "number"sv;
+    case IsTypeof::ValueType::String:
+        return "string"sv;
+    case IsTypeof::ValueType::Object:
+        return "object"sv;
+    case IsTypeof::ValueType::Symbol:
+        return "symbol"sv;
+    case IsTypeof::ValueType::Function:
+        return "function"sv;
+    case IsTypeof::ValueType::BigInt:
+        return "bigint"sv;
+    case IsTypeof::ValueType::Invalid:
+        return "invalid"sv;
+    }
+    VERIFY_NOT_REACHED();
+}
+
+ByteString IsTypeof::to_byte_string_impl(Bytecode::Executable const& executable) const
+{
+    return ByteString::formatted("IsTypeof ({}) {}, {}",
+        type_to_string(m_type),
+        format_operand("dst"sv, m_dst, executable),
+        format_operand("src"sv, m_src, executable));
 }
 
 ByteString BlockDeclarationInstantiation::to_byte_string_impl(Bytecode::Executable const&) const

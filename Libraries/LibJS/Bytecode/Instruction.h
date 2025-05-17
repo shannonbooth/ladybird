@@ -146,6 +146,7 @@
     O(ThrowIfTDZ)                      \
     O(Typeof)                          \
     O(TypeofBinding)                   \
+    O(IsTypeof)                        \
     O(UnaryMinus)                      \
     O(UnaryPlus)                       \
     O(UnsignedRightShift)              \

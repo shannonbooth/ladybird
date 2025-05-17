@@ -160,6 +160,39 @@ Bytecode::CodeGenerationErrorOr<Optional<ScopedOperand>> BinaryExpression::gener
         return dst;
     }
 
+    if (auto const* maybe_unary = as_if<UnaryExpression>(*m_lhs); maybe_unary && maybe_unary->op() == UnaryOp::Typeof && m_op == BinaryOp::StrictlyEquals) {
+        auto& unary = *maybe_unary;
+        if (!is<Identifier>(unary.lhs()) || as<Identifier>(unary.lhs()).is_local()) {
+            if (auto* maybe_string = as_if<StringLiteral>(*m_rhs)) {
+                auto dst = choose_dst(generator, preferred_dst);
+                auto lhs = TRY(unary.lhs().generate_bytecode(generator)).value();
+
+                auto type_string = maybe_string->value();
+                auto value_type = Bytecode::Op::IsTypeof::ValueType::Invalid;
+                if (type_string == "undefined"sv)
+                    value_type = Bytecode::Op::IsTypeof::ValueType::Undefined;
+                else if (type_string == "object"sv)
+                    value_type = Bytecode::Op::IsTypeof::ValueType::Object;
+                else if (type_string == "function"sv)
+                    value_type = Bytecode::Op::IsTypeof::ValueType::Function;
+                else if (type_string == "string"sv)
+                    value_type = Bytecode::Op::IsTypeof::ValueType::String;
+                else if (type_string == "number"sv)
+                    value_type = Bytecode::Op::IsTypeof::ValueType::Number;
+                else if (type_string == "bigint"sv)
+                    value_type = Bytecode::Op::IsTypeof::ValueType::BigInt;
+                else if (type_string == "boolean"sv)
+                    value_type = Bytecode::Op::IsTypeof::ValueType::Boolean;
+                else if (type_string == "symbol"sv)
+                    value_type = Bytecode::Op::IsTypeof::ValueType::Symbol;
+                else if (type_string == "null"sv)
+                    value_type = Bytecode::Op::IsTypeof::ValueType::Null;
+                generator.emit<Bytecode::Op::IsTypeof>(dst, lhs, value_type);
+                return dst;
+            }
+        }
+    }
+
     // OPTIMIZATION: If LHS and/or RHS are numeric literals, we make sure they are converted to i32/u32
     //               as appropriate, to avoid having to perform these conversions at runtime.
 
