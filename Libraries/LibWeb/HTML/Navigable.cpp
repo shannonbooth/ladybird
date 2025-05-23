@@ -35,6 +35,7 @@
 #include <LibWeb/HTML/Parser/HTMLParser.h>
 #include <LibWeb/HTML/SandboxingFlagSet.h>
 #include <LibWeb/HTML/Scripting/ClassicScript.h>
+#include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/StructuredSerialize.h>
 #include <LibWeb/HTML/TraversableNavigable.h>
@@ -1568,7 +1569,10 @@ void Navigable::begin_navigation(NavigateParams params)
     if (url.scheme() == "javascript"sv) {
         // 1. Queue a global task on the navigation and traversal task source given navigable's active window to navigate to a javascript: URL given navigable, url, historyHandling, sourceSnapshotParams, initiatorOriginSnapshot, userInvolvement, cspNavigationType, and initialInsertion.
         VERIFY(active_window());
-        queue_global_task(Task::Source::NavigationAndTraversal, *active_window(), GC::create_function(heap(), [this, url, history_handling, source_snapshot_params, initiator_origin_snapshot, user_involvement, csp_navigation_type, initial_insertion, navigation_id] {
+        auto& realm = active_window()->realm();
+
+        queue_global_task(Task::Source::NavigationAndTraversal, *active_window(), GC::create_function(heap(), [this, &realm, url, history_handling, source_snapshot_params, initiator_origin_snapshot, user_involvement, csp_navigation_type, initial_insertion, navigation_id] {
+            TemporaryExecutionContext execution_context { realm };
             navigate_to_a_javascript_url(url, to_history_handling_behavior(history_handling), source_snapshot_params, initiator_origin_snapshot, user_involvement, csp_navigation_type, initial_insertion, navigation_id);
         }));
 
