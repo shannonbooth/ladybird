@@ -5718,11 +5718,11 @@ Vector<FlyString> Document::supported_property_names() const
     for (auto const& element : m_potentially_named_elements) {
         // - the value of the name content attribute for all exposed embed, form, iframe, img, and exposed object elements
         //   that have a non-empty name content attribute and are in a document tree with document as their root;
-        if ((is<HTML::HTMLEmbedElement>(*element) && is_exposed(element))
+        if ((is<HTML::HTMLEmbedElement>(*element) && as<HTML::HTMLEmbedElement>(*element).is_exposed())
             || is<HTML::HTMLFormElement>(*element)
             || is<HTML::HTMLIFrameElement>(*element)
             || is<HTML::HTMLImageElement>(*element)
-            || (is<HTML::HTMLObjectElement>(*element) && is_exposed(element))) {
+            || (is<HTML::HTMLObjectElement>(*element) && as<HTML::HTMLObjectElement>(*element).is_exposed())) {
             if (auto name = element->name(); name.has_value()) {
                 names.set(name.value());
             }

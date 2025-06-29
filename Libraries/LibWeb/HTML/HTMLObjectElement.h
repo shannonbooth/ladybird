@@ -49,6 +49,8 @@ public:
 
     static bool will_validate();
 
+    bool is_exposed() const;
+
 private:
     HTMLObjectElement(DOM::Document&, DOM::QualifiedName);
 

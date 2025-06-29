@@ -17,6 +17,8 @@ class HTMLEmbedElement final : public HTMLElement {
 public:
     virtual ~HTMLEmbedElement() override;
 
+    bool is_exposed() const;
+
 private:
     HTMLEmbedElement(DOM::Document&, DOM::QualifiedName);
 

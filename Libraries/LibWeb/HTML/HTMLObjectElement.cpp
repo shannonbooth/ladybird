@@ -20,6 +20,7 @@
 #include <LibWeb/Fetch/Infrastructure/FetchAlgorithms.h>
 #include <LibWeb/Fetch/Infrastructure/HTTP/Requests.h>
 #include <LibWeb/HTML/DecodedImageData.h>
+#include <LibWeb/HTML/HTMLEmbedElement.h>
 #include <LibWeb/HTML/HTMLMediaElement.h>
 #include <LibWeb/HTML/HTMLObjectElement.h>
 #include <LibWeb/HTML/ImageRequest.h>
@@ -89,6 +90,46 @@ bool HTMLObjectElement::will_validate()
     // https://html.spec.whatwg.org/multipage/forms.html#category-submit
     // Submittable elements: button, input, select, textarea, form-associated custom elements [but not object]
     return false;
+}
+
+// https://html.spec.whatwg.org/multipage/dom.html#exposed
+bool HTMLObjectElement::is_exposed() const
+{
+    // An embed or object element is said to be exposed if it has no exposed object ancestor, and,
+    // for object elements, is additionally either not showing its fallback content or has no object
+    // or embed descendants.
+
+    // No exposed object ancestor.
+    bool exposed = true;
+    for_each_ancestor([&exposed](Node const& node) {
+        if (auto* object = as_if<HTMLObjectElement>(node); object) {
+            if (object->is_exposed()) {
+                exposed = false;
+                return IterationDecision::Break;
+            }
+            return IterationDecision::Continue;
+        }
+        return IterationDecision::Continue;
+    });
+
+    if (!exposed)
+        return false;
+
+    // Not showing fallback content.
+    if (m_representation != Representation::Children)
+        return true;
+
+    // Check if there are any object or embed descendants.
+    bool has_object_or_embed_descendants = false;
+    for_each_in_subtree([&has_object_or_embed_descendants](Node const& node) {
+        if (is<HTMLObjectElement>(node) || is<HTMLEmbedElement>(node)) {
+            has_object_or_embed_descendants = true;
+            return TraversalDecision::Break;
+        }
+        return TraversalDecision::Continue;
+    });
+
+    return !has_object_or_embed_descendants;
 }
 
 void HTMLObjectElement::form_associated_element_attribute_changed(FlyString const& name, Optional<String> const&, Optional<FlyString> const&)

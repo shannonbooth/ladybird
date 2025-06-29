@@ -10,6 +10,7 @@
 #include <LibWeb/CSS/StyleValues/CSSKeywordValue.h>
 #include <LibWeb/CSS/StyleValues/DisplayStyleValue.h>
 #include <LibWeb/HTML/HTMLEmbedElement.h>
+#include <LibWeb/HTML/HTMLObjectElement.h>
 #include <LibWeb/HTML/Parser/HTMLParser.h>
 
 namespace Web::HTML {
@@ -27,6 +28,26 @@ void HTMLEmbedElement::initialize(JS::Realm& realm)
 {
     WEB_SET_PROTOTYPE_FOR_INTERFACE(HTMLEmbedElement);
     Base::initialize(realm);
+}
+
+// https://html.spec.whatwg.org/multipage/dom.html#exposed
+bool HTMLEmbedElement::is_exposed() const
+{
+    // An embed or object element is said to be exposed if it has no exposed object ancestor, and,
+    // for object elements, is additionally either not showing its fallback content or has no object
+    // or embed descendants.
+    bool exposed = true;
+    for_each_ancestor([&exposed](Node const& node) {
+        if (auto const* object = as_if<HTMLObjectElement>(node); object) {
+            if (object->is_exposed()) {
+                exposed = false;
+                return IterationDecision::Break;
+            }
+            return IterationDecision::Continue;
+        }
+        return IterationDecision::Continue;
+    });
+    return exposed;
 }
 
 bool HTMLEmbedElement::is_presentational_hint(FlyString const& name) const
