@@ -859,6 +859,7 @@ TEST_CASE(ECMA262_unicode_sets_match)
         { "[[0-9\\w]--x--6]"sv, "9"sv, true },
         { "[\\w&&\\d]"sv, "a"sv, false },
         { "[\\w&&\\d]"sv, "4"sv, true },
+        { "([^\\:]+?)"sv, "a"sv, true },
     };
 
     for (auto& test : tests) {
