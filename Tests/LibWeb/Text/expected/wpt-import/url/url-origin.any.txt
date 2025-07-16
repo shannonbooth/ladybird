@@ -1,8 +1,9 @@
 Harness status: OK
 
-Found 395 tests
+Found 425 tests
 
-395 Pass
+422 Pass
+3 Fail
 Pass	Loading data…
 Pass	Origin parsing: <http://example	.
 org> against <http://example.org/foo/bar>
@@ -406,4 +407,34 @@ Pass	Origin parsing: <non-special:\\opaque\path> without base
 Pass	Origin parsing: <non-special:\/opaque> without base
 Pass	Origin parsing: <non-special:/\path> without base
 Pass	Origin parsing: <non-special://host/a\b> without base
+Pass	Origin parsing: <C:\path\file.node> against <http://example.org/>
+Pass	Origin parsing: <C:\résumé\café.txt> without base
+Pass	Origin parsing: <C:\中文\文档.txt> without base
+Pass	Origin parsing: <C:\Здравствуй\мир.txt> without base
+Pass	Origin parsing: <D:\foo\bar.exe> without base
+Fail	Origin parsing: <\\server\share\file.txt> without base
+Pass	Origin parsing: <C:\path/mixed\separators/file.txt> without base
+Fail	Origin parsing: <..\parent\file.txt> against <file:///C:/current/dir/>
+Pass	Origin parsing: <C:\Documents\project.txt> without base
+Pass	Origin parsing: <C:\Music\songs\test.mp3> without base
+Pass	Origin parsing: <C:\���U+dcc1Folder\���U+dcc4Document.txt> without base
+Pass	Origin parsing: <C:\path\file.html?query=value> without base
+Pass	Origin parsing: <C:\path\file.html#section> without base
+Fail	Origin parsing: <\\server.domain.com\share\folder\file.txt> without base
+Pass	Origin parsing: <c:\Windows\System32\file.dll> without base
+Pass	Origin parsing: <C:\folder#fragment\file.txt> without base
+Pass	Origin parsing: <C:\folder%20encoded\file.txt> without base
+Pass	Origin parsing: <C:\folder\file?.txt> without base
+Pass	Origin parsing: <C:\folder{brace}\file.txt> without base
+Pass	Origin parsing: <C:\folder`backtick`\file.txt> without base
+Pass	Origin parsing: <C:\folder^caret\file.txt> without base
+Pass	Origin parsing: <C:\My Documents\file with spaces.txt> without base
+Pass	Origin parsing: <C:\folder\file	with	tabs.txt> without base
+Pass	Origin parsing: <Z:\root\file.txt> without base
+Pass	Origin parsing: <a:\lowercase\file.txt> without base
+Pass	Origin parsing: <C:\path\file.html?param=value&other=123> without base
+Pass	Origin parsing: <C:\path\file.html#section1#section2> without base
+Pass	Origin parsing: <C:\path\file.html?query=test#fragment> without base
+Pass	Origin parsing: <C:\very\long\path\with\many\nested\directories\and\subdirectories\file.txt> without base
+Pass	Origin parsing: <C:\> without base
 Pass	Origin parsing: <http://example.com//U+d800���U+dffeU+dfff﷐﷏﷯ﷰ￾￿??U+d800���U+dffeU+dfff﷐﷏﷯ﷰ￾￿> without base

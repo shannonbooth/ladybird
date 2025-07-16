@@ -1,0 +1,13 @@
+Harness status: OK
+
+Found 8 tests
+
+8 Pass
+Pass	URL.canParse(undefined, undefined)
+Pass	URL.canParse(aaa:b, undefined)
+Pass	URL.canParse(undefined, aaa:b)
+Pass	URL.canParse(undefined, https://test:test/)
+Pass	URL.canParse(aaa:/b, undefined)
+Pass	URL.canParse(undefined, aaa:/b)
+Pass	URL.canParse(https://test:test, undefined)
+Pass	URL.canParse(a, https://b/)

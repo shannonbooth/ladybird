@@ -1,8 +1,9 @@
 Harness status: OK
 
-Found 871 tests
+Found 909 tests
 
-871 Pass
+875 Pass
+34 Fail
 Pass	Loading data…
 Pass	Parsing: <http://example	.
 org> against <http://example.org/foo/bar>
@@ -885,4 +886,42 @@ Pass	Parsing: <non-special:\/opaque> without base
 Pass	Parsing: <non-special:/\path> without base
 Pass	Parsing: <non-special://host\a> without base
 Pass	Parsing: <non-special://host/a\b> without base
+Fail	Parsing: <C:\path\file.node> against <http://example.org/>
+Fail	Parsing: <C:\résumé\café.txt> without base
+Fail	Parsing: <C:\中文\文档.txt> without base
+Fail	Parsing: <C:\Здравствуй\мир.txt> without base
+Fail	Parsing: <D:\foo\bar.exe> without base
+Fail	Parsing: <\\server\share\file.txt> without base
+Fail	Parsing: <C:\path/mixed\separators/file.txt> without base
+Pass	Parsing: <..\parent\file.txt> against <file:///C:/current/dir/>
+Fail	Parsing: <C:\Documents\project.txt> without base
+Fail	Parsing: <C:\Music\songs\test.mp3> without base
+Fail	Parsing: <C:\���U+dcc1Folder\���U+dcc4Document.txt> without base
+Fail	Parsing: <C:\path\file.html?query=value> without base
+Fail	Parsing: <C:\path\file.html#section> without base
+Fail	Parsing: <C:\invalid\path\with\\double\backslash> without base
+Pass	Parsing: <:\invalid\drive> without base
+Fail	Parsing: <\\server.domain.com\share\folder\file.txt> without base
+Fail	Parsing: <c:\Windows\System32\file.dll> without base
+Fail	Parsing: <C:\folder#fragment\file.txt> without base
+Fail	Parsing: <C:\folder%20encoded\file.txt> without base
+Fail	Parsing: <C:\folder\file?.txt> without base
+Fail	Parsing: <C:\folder{brace}\file.txt> without base
+Fail	Parsing: <C:\folder`backtick`\file.txt> without base
+Fail	Parsing: <C:\folder^caret\file.txt> without base
+Fail	Parsing: <C:\My Documents\file with spaces.txt> without base
+Fail	Parsing: <C:\folder\file	with	tabs.txt> without base
+Fail	Parsing: <C:\\\path\file.txt> without base
+Fail	Parsing: <C:\path\\file.txt> without base
+Fail	Parsing: <CC:\path\file.txt> without base
+Pass	Parsing: <1:\path\file.txt> without base
+Pass	Parsing: <@:\path\file.txt> without base
+Fail	Parsing: <Z:\root\file.txt> without base
+Fail	Parsing: <a:\lowercase\file.txt> without base
+Fail	Parsing: <C:\path\file.html?param=value&other=123> without base
+Fail	Parsing: <C:\path\file.html#section1#section2> without base
+Fail	Parsing: <C:\path\file.html?query=test#fragment> without base
+Fail	Parsing: <C:\very\long\path\with\many\nested\directories\and\subdirectories\file.txt> without base
+Fail	Parsing: <C:\> without base
+Fail	Parsing: <C:\\> without base
 Pass	Parsing: <http://example.com//U+d800���U+dffeU+dfff﷐﷏﷯ﷰ￾￿??U+d800���U+dffeU+dfff﷐﷏﷯ﷰ￾￿> without base

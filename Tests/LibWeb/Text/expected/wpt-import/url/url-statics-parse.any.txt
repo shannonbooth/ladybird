@@ -1,13 +1,43 @@
 Harness status: OK
 
-Found 8 tests
+Found 37 tests
 
-8 Pass
-Pass	URL.parse(undefined, undefined)
-Pass	URL.parse(aaa:b, undefined)
-Pass	URL.parse(undefined, aaa:b)
-Pass	URL.parse(aaa:/b, undefined)
-Pass	URL.parse(undefined, aaa:/b)
-Pass	URL.parse(https://test:test, undefined)
-Pass	URL.parse(a, https://b/)
-Pass	URL.parse() should return a unique object
+30 Pass
+7 Fail
+Pass	URL.canParse(undefined, undefined)
+Pass	URL.canParse(aaa:b, undefined)
+Pass	URL.canParse(undefined, aaa:b)
+Pass	URL.canParse(undefined, https://test:test/)
+Pass	URL.canParse(aaa:/b, undefined)
+Pass	URL.canParse(undefined, aaa:/b)
+Pass	URL.canParse(https://test:test, undefined)
+Pass	URL.canParse(a, https://b/)
+Pass	URL.canParse(C:\path\file.node, undefined)
+Pass	URL.canParse(D:\foo\bar.exe, undefined)
+Pass	URL.canParse(C:\folder#fragment\file.txt, undefined)
+Pass	URL.canParse(C:\folder%20encoded\file.txt, undefined)
+Pass	URL.canParse(C:\folder\file?.txt, undefined)
+Pass	URL.canParse(C:\folder{brace}\file.txt, undefined)
+Pass	URL.canParse(C:\folder`backtick`\file.txt, undefined)
+Pass	URL.canParse(C:\folder^caret\file.txt, undefined)
+Pass	URL.canParse(C:\r√©sum√©\caf√©.txt, undefined)
+Pass	URL.canParse(C:\‰∏≠Êñá\ÊñáÊ°£.txt, undefined)
+Pass	URL.canParse(C:\Ì†ΩU+dcc1Folder\Ì†ΩU+dcc4Document.txt, undefined)
+Fail	URL.canParse(\\server\share\file.txt, undefined)
+Fail	URL.canParse(\\server.domain.com\share\folder\file.txt, undefined)
+Pass	URL.canParse(C:\path/mixed\separators/file.txt, undefined)
+Pass	URL.canParse(C:\path\file.html?query=value, undefined)
+Pass	URL.canParse(C:\path\file.html#section, undefined)
+Fail	URL.canParse(C:\invalid\path\with\\double\backslash, undefined)
+Pass	URL.canParse(:\invalid\drive, undefined)
+Fail	URL.canParse(CC:\path\file.txt, undefined)
+Pass	URL.canParse(1:\path\file.txt, undefined)
+Pass	URL.canParse(@:\path\file.txt, undefined)
+Fail	URL.canParse(C:\\\path\file.txt, undefined)
+Fail	URL.canParse(C:\path\\file.txt, undefined)
+Fail	URL.canParse(C:\\, undefined)
+Pass	URL.canParse(Z:\root\file.txt, undefined)
+Pass	URL.canParse(a:\lowercase\file.txt, undefined)
+Pass	URL.canParse(C:\, undefined)
+Pass	URL.canParse(C:\My Documents\file with spaces.txt, undefined)
+Pass	URL.canParse(C:\folder\file	with	tabs.txt, undefined)

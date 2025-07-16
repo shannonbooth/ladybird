@@ -1,8 +1,9 @@
 Harness status: OK
 
-Found 394 tests
+Found 424 tests
 
-394 Pass
+421 Pass
+3 Fail
 Pass	Loading data…
 Pass	Parsing origin: <http://example	.
 org> against <http://example.org/foo/bar>
@@ -405,4 +406,34 @@ Pass	Parsing origin: <non-special:\\opaque\path> against <about:blank>
 Pass	Parsing origin: <non-special:\/opaque> against <about:blank>
 Pass	Parsing origin: <non-special:/\path> against <about:blank>
 Pass	Parsing origin: <non-special://host/a\b> against <about:blank>
+Pass	Parsing origin: <C:\path\file.node> against <http://example.org/>
+Pass	Parsing origin: <C:\résumé\café.txt> against <about:blank>
+Pass	Parsing origin: <C:\中文\文档.txt> against <about:blank>
+Pass	Parsing origin: <C:\Здравствуй\мир.txt> against <about:blank>
+Pass	Parsing origin: <D:\foo\bar.exe> against <about:blank>
+Fail	Parsing origin: <\\server\share\file.txt> against <about:blank>
+Pass	Parsing origin: <C:\path/mixed\separators/file.txt> against <about:blank>
+Fail	Parsing origin: <..\parent\file.txt> against <file:///C:/current/dir/>
+Pass	Parsing origin: <C:\Documents\project.txt> against <about:blank>
+Pass	Parsing origin: <C:\Music\songs\test.mp3> against <about:blank>
+Pass	Parsing origin: <C:\���U+dcc1Folder\���U+dcc4Document.txt> against <about:blank>
+Pass	Parsing origin: <C:\path\file.html?query=value> against <about:blank>
+Pass	Parsing origin: <C:\path\file.html#section> against <about:blank>
+Fail	Parsing origin: <\\server.domain.com\share\folder\file.txt> against <about:blank>
+Pass	Parsing origin: <c:\Windows\System32\file.dll> against <about:blank>
+Pass	Parsing origin: <C:\folder#fragment\file.txt> against <about:blank>
+Pass	Parsing origin: <C:\folder%20encoded\file.txt> against <about:blank>
+Pass	Parsing origin: <C:\folder\file?.txt> against <about:blank>
+Pass	Parsing origin: <C:\folder{brace}\file.txt> against <about:blank>
+Pass	Parsing origin: <C:\folder`backtick`\file.txt> against <about:blank>
+Pass	Parsing origin: <C:\folder^caret\file.txt> against <about:blank>
+Pass	Parsing origin: <C:\My Documents\file with spaces.txt> against <about:blank>
+Pass	Parsing origin: <C:\folder\file	with	tabs.txt> against <about:blank>
+Pass	Parsing origin: <Z:\root\file.txt> against <about:blank>
+Pass	Parsing origin: <a:\lowercase\file.txt> against <about:blank>
+Pass	Parsing origin: <C:\path\file.html?param=value&other=123> against <about:blank>
+Pass	Parsing origin: <C:\path\file.html#section1#section2> against <about:blank>
+Pass	Parsing origin: <C:\path\file.html?query=test#fragment> against <about:blank>
+Pass	Parsing origin: <C:\very\long\path\with\many\nested\directories\and\subdirectories\file.txt> against <about:blank>
+Pass	Parsing origin: <C:\> against <about:blank>
 Pass	Parsing origin: <http://example.com//U+d800���U+dffeU+dfff﷐﷏﷯ﷰ￾￿??U+d800���U+dffeU+dfff﷐﷏﷯ﷰ￾￿> against <about:blank>
