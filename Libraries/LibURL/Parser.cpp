@@ -838,8 +838,25 @@ Optional<URL> Parser::basic_parse(StringView raw_input, Optional<URL const&> bas
             if (is_ascii_alphanumeric(code_point) || code_point == '+' || code_point == '-' || code_point == '.') {
                 buffer.append_as_lowercase(code_point);
             }
-            // 2. Otherwise, if c is U+003A (:), then:
-            else if (code_point == ':') {
+            // 2. Otherwise, if c is U+003A (:) and buffer’s length is 1 and buffer contains only an ASCII alpha and remaining starts with U+005C (\), then:
+            else if (code_point == ':' && buffer.length() == 1 && is_ascii_alpha(buffer.string_view()[0]) && get_remaining().starts_with("\\"sv)) {
+                // 1. Set url’s scheme to "file".
+                url->m_data->scheme = "file"_string;
+
+                // 2. Set buffer to the empty string.
+                buffer.clear();
+
+                // 3. Replace every U+005C (\) code point in remaining with U+002F (/).
+                processed_input = MUST(processed_input.replace("\\"sv, "/"sv, ReplaceMode::All));
+
+                // 4. Prepend "///" to remaining.
+                processed_input = MUST(String::formatted("///{}", processed_input));
+                input = Utf8View { processed_input };
+                iterator = input.begin();
+
+                // 5. Set state to file state.
+                state = State::File;
+            } else if (code_point == ':') {
                 // 1. If state override is given, then:
                 if (state_override.has_value()) {
                     // 1. If url’s scheme is a special scheme and buffer is not a special scheme, then return.
