@@ -158,6 +158,10 @@ void Storage::remove_item(String const& key)
 // https://html.spec.whatwg.org/multipage/webstorage.html#dom-storage-clear
 void Storage::clear()
 {
+    // Spec bug: We should return here if the map is already empty in order to not broadcast duplicate events.
+    if (m_storage_bottle->size() == 0)
+        return;
+
     // 1. Clear this's map.
     m_storage_bottle->clear();
 
