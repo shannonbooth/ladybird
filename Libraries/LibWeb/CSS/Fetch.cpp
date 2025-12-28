@@ -15,23 +15,23 @@
 namespace Web::CSS {
 
 // https://drafts.csswg.org/css-values-4/#style-resource-base-url
-static ::URL::URL style_resource_base_url(CSSRuleOrCSSDeclaration css_rule_or_declaration)
+static ::URL::URL style_resource_base_url(RuleOrDeclaration css_rule_or_declaration)
 {
     // 1. Let sheet be null.
     CSSStyleSheet* sheet = nullptr;
 
     // 2. If cssRuleOrDeclaration is a CSS declaration block whose parent CSS rule is not null, set cssRuleOrDeclaration to cssRuleOrDeclaration’s parent CSS rule.
-    if (css_rule_or_declaration.has<GC::Ref<CSS::CSSStyleDeclaration>>()) {
-        auto& declaration = css_rule_or_declaration.get<GC::Ref<CSS::CSSStyleDeclaration>>();
-        if (declaration->parent_rule())
-            css_rule_or_declaration = GC::Ref { *declaration->parent_rule() };
+    if (css_rule_or_declaration.value.has<RuleOrDeclaration::StyleDeclaration>()) {
+        auto& declaration = css_rule_or_declaration.value.get<RuleOrDeclaration::StyleDeclaration>();
+        if (declaration.parent_rule)
+            css_rule_or_declaration.value = RuleOrDeclaration::Rule { declaration.parent_rule->parent_style_sheet() };
     }
 
     // 3. If cssRuleOrDeclaration is a CSS rule, set sheet to cssRuleOrDeclaration’s parent style sheet.
-    if (css_rule_or_declaration.has<GC::Ref<CSS::CSSRule>>()) {
-        auto& rule = css_rule_or_declaration.get<GC::Ref<CSS::CSSRule>>();
-        if (rule->parent_style_sheet()) {
-            sheet = rule->parent_style_sheet();
+    if (css_rule_or_declaration.value.has<RuleOrDeclaration::Rule>()) {
+        auto& rule = css_rule_or_declaration.value.get<RuleOrDeclaration::Rule>();
+        if (rule.parent_style_sheet) {
+            sheet = rule.parent_style_sheet;
         }
     }
 
@@ -47,12 +47,11 @@ static ::URL::URL style_resource_base_url(CSSRuleOrCSSDeclaration css_rule_or_de
     }
 
     // 5. Return cssRuleOrDeclaration’s relevant settings object’s API base URL.
-    auto& environment_settings = HTML::relevant_settings_object(css_rule_or_declaration.visit([](auto& it) -> JS::Object& { return it; }));
-    return environment_settings.api_base_url();
+    return css_rule_or_declaration.environment_settings_object->api_base_url();
 }
 
 // https://drafts.csswg.org/css-values-4/#resolve-a-style-resource-url
-static Optional<::URL::URL> resolve_a_style_resource_url(StyleResourceURL const& url_value, CSSRuleOrCSSDeclaration css_rule_or_declaration)
+static Optional<::URL::URL> resolve_a_style_resource_url(StyleResourceURL const& url_value, RuleOrDeclaration css_rule_or_declaration)
 {
     // 1. Let baseURL be the style resource base URL given cssRuleOrDeclaration.
     auto base_url = style_resource_base_url(css_rule_or_declaration);
@@ -65,9 +64,9 @@ static Optional<::URL::URL> resolve_a_style_resource_url(StyleResourceURL const&
 }
 
 // https://drafts.csswg.org/css-values-4/#fetch-a-style-resource
-static GC::Ptr<Fetch::Infrastructure::Request> fetch_a_style_resource_impl(StyleResourceURL const& url_value, CSSRuleOrCSSDeclaration css_rule_or_declaration, Fetch::Infrastructure::Request::Destination destination, CorsMode cors_mode)
+static GC::Ptr<Fetch::Infrastructure::Request> fetch_a_style_resource_impl(StyleResourceURL const& url_value, RuleOrDeclaration css_rule_or_declaration, Fetch::Infrastructure::Request::Destination destination, CorsMode cors_mode)
 {
-    auto& vm = css_rule_or_declaration.visit([](auto& it) -> JS::VM& { return it->vm(); });
+    auto& vm = css_rule_or_declaration.environment_settings_object->vm();
 
     // 1. Let parsedUrl be the result of resolving urlValue given cssRuleOrDeclaration. If that failed, return.
     auto parsed_url = resolve_a_style_resource_url(url_value, css_rule_or_declaration);
@@ -75,7 +74,7 @@ static GC::Ptr<Fetch::Infrastructure::Request> fetch_a_style_resource_impl(Style
         return {};
 
     // 2. Let settingsObject be cssRuleOrDeclaration’s relevant settings object.
-    auto& environment_settings = HTML::relevant_settings_object(css_rule_or_declaration.visit([](auto& it) -> JS::Object& { return it; }));
+    auto& environment_settings = *css_rule_or_declaration.environment_settings_object;
 
     // 3. Let req be a new request whose url is parsedUrl, whose destination is destination, mode is corsMode,
     //    origin is environmentSettings’s origin, credentials mode is "same-origin", use-url-credentials flag is set,
@@ -121,13 +120,13 @@ static GC::Ptr<Fetch::Infrastructure::Request> fetch_a_style_resource_impl(Style
 }
 
 // https://drafts.csswg.org/css-values-4/#fetch-a-style-resource
-GC::Ptr<Fetch::Infrastructure::FetchController> fetch_a_style_resource(StyleResourceURL const& url_value, CSSRuleOrCSSDeclaration css_rule_or_declaration, Fetch::Infrastructure::Request::Destination destination, CorsMode cors_mode, Fetch::Infrastructure::FetchAlgorithms::ProcessResponseConsumeBodyFunction process_response)
+GC::Ptr<Fetch::Infrastructure::FetchController> fetch_a_style_resource(StyleResourceURL const& url_value, RuleOrDeclaration css_rule_or_declaration, Fetch::Infrastructure::Request::Destination destination, CorsMode cors_mode, Fetch::Infrastructure::FetchAlgorithms::ProcessResponseConsumeBodyFunction process_response)
 {
     auto request = fetch_a_style_resource_impl(url_value, css_rule_or_declaration, destination, cors_mode);
     if (!request)
         return {};
 
-    auto& environment_settings = HTML::relevant_settings_object(css_rule_or_declaration.visit([](auto& it) -> JS::Object& { return it; }));
+    auto& environment_settings = *css_rule_or_declaration.environment_settings_object;
     auto& vm = environment_settings.vm();
 
     Fetch::Infrastructure::FetchAlgorithms::Input fetch_algorithms_input {};
@@ -137,7 +136,7 @@ GC::Ptr<Fetch::Infrastructure::FetchController> fetch_a_style_resource(StyleReso
 }
 
 // https://drafts.csswg.org/css-images-4/#fetch-an-external-image-for-a-stylesheet
-GC::Ptr<HTML::SharedResourceRequest> fetch_an_external_image_for_a_stylesheet(StyleResourceURL const& url_value, GC::Ref<CSS::CSSStyleDeclaration> declartion)
+GC::Ptr<HTML::SharedResourceRequest> fetch_an_external_image_for_a_stylesheet(StyleResourceURL const& url_value, RuleOrDeclaration declartion)
 {
     // To fetch an external image for a stylesheet, given a <url> url and a CSS declaration block declaration, fetch a
     // style resource given url, with ruleOrDeclaration being declaration, destination "image", CORS mode "no-cors",

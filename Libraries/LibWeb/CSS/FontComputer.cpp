@@ -99,7 +99,7 @@ OwnFontFaceKey::operator FontFaceKey() const
         && slope == other.slope;
 }
 
-FontLoader::FontLoader(FontComputer& font_computer, CSSRuleOrCSSDeclaration rule_or_declaration, FlyString family_name, Vector<Gfx::UnicodeRange> unicode_ranges, Vector<URL> urls, GC::Ptr<GC::Function<void(RefPtr<Gfx::Typeface const>)>> on_load)
+FontLoader::FontLoader(FontComputer& font_computer, RuleOrDeclaration rule_or_declaration, FlyString family_name, Vector<Gfx::UnicodeRange> unicode_ranges, Vector<URL> urls, GC::Ptr<GC::Function<void(RefPtr<Gfx::Typeface const>)>> on_load)
     : m_font_computer(font_computer)
     , m_rule_or_declaration(rule_or_declaration)
     , m_family_name(move(family_name))
@@ -115,7 +115,10 @@ void FontLoader::visit_edges(Visitor& visitor)
 {
     Base::visit_edges(visitor);
     visitor.visit(m_font_computer);
-    visitor.visit(m_rule_or_declaration.visit([](auto& it) -> GC::Cell& { return it; }));
+    if (m_rule_or_declaration.value.has<RuleOrDeclaration::Rule>())
+        visitor.visit(m_rule_or_declaration.value.get<RuleOrDeclaration::Rule>().parent_style_sheet);
+    else if (m_rule_or_declaration.value.has<RuleOrDeclaration::StyleDeclaration>())
+        visitor.visit(m_rule_or_declaration.value.get<RuleOrDeclaration::StyleDeclaration>().parent_rule);
     visitor.visit(m_fetch_controller);
     visitor.visit(m_on_load);
 }
@@ -521,7 +524,14 @@ GC::Ptr<FontLoader> FontComputer::load_font_face(ParsedFontFace const& font_face
         return {};
     }
 
-    auto loader = heap().allocate<FontLoader>(*this, font_face.parent_rule(), font_face.font_family(), font_face.unicode_ranges(), move(urls), move(on_load));
+    RuleOrDeclaration rule_or_declaration {
+        .environment_settings_object = document().relevant_settings_object(),
+        .value = RuleOrDeclaration::Rule {
+            .parent_style_sheet = font_face.parent_rule()->parent_style_sheet(),
+        }
+    };
+
+    auto loader = heap().allocate<FontLoader>(*this, rule_or_declaration, font_face.font_family(), font_face.unicode_ranges(), move(urls), move(on_load));
     auto& loader_ref = *loader;
     auto maybe_font_loaders_list = m_loaded_fonts.get(key);
     if (maybe_font_loaders_list.has_value()) {

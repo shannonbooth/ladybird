@@ -148,7 +148,12 @@ void CSSImportRule::fetch()
     m_document->add_pending_css_import_rule({}, *this);
 
     // 4. Fetch a style resource from parsedUrl, with stylesheet parentStylesheet, destination "style", CORS mode "no-cors", and processResponse being the following steps given response response and byte stream, null or failure byteStream:
-    (void)fetch_a_style_resource(parsed_url.value(), { *this }, Fetch::Infrastructure::Request::Destination::Style, CorsMode::NoCors,
+    RuleOrDeclaration rule_or_declaration {
+        .environment_settings_object = HTML::relevant_settings_object(parent_style_sheet),
+        .value = RuleOrDeclaration::Rule {
+            .parent_style_sheet = &parent_style_sheet }
+    };
+    (void)fetch_a_style_resource(parsed_url.value(), rule_or_declaration, Fetch::Infrastructure::Request::Destination::Style, CorsMode::NoCors,
         [strong_this = GC::Ref { *this }, parent_style_sheet = GC::Ref { parent_style_sheet }, parsed_url = parsed_url.value(), document = m_document](auto response, auto maybe_byte_stream) {
             // AD-HOC: Stop delaying the load event.
             ScopeGuard guard = [strong_this, document] {
