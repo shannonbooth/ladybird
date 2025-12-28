@@ -29,6 +29,7 @@ void StyleSheet::visit_edges(Cell::Visitor& visitor)
 
 Optional<String> StyleSheet::href() const
 {
+    dbgln("location is serialized url: {}", location().has_value() ? location()->to_string() : "null"_string);
     if (m_location.has_value())
         return m_location->to_string();
     return {};

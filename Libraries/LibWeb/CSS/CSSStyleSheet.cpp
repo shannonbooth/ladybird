@@ -27,17 +27,20 @@ GC_DEFINE_ALLOCATOR(CSSStyleSheet);
 
 GC::Ref<CSSStyleSheet> CSSStyleSheet::create(JS::Realm& realm, CSSRuleList& rules, MediaList& media, Optional<::URL::URL> location)
 {
+    dbgln("raw create...");
     return realm.create<CSSStyleSheet>(realm, rules, media, move(location));
 }
 
 // https://drafts.csswg.org/cssom/#dom-cssstylesheet-cssstylesheet
 WebIDL::ExceptionOr<GC::Ref<CSSStyleSheet>> CSSStyleSheet::construct_impl(JS::Realm& realm, Optional<CSSStyleSheetInit> const& options)
 {
+    dbgln("Constructing new CSSStyleSheet via CSSStyleSheet constructor");
     // 1. Construct a new CSSStyleSheet object sheet.
     auto sheet = create(realm, CSSRuleList::create(realm), CSS::MediaList::create(realm, {}), {});
 
     // 2. Set sheet’s location to the base URL of the associated Document for the current principal global object.
     auto associated_document = as<HTML::Window>(HTML::current_principal_global_object()).document();
+    dbgln("Setting constructed stylesheet location to associated document base URL: {}", associated_document->base_url());
     sheet->set_location(associated_document->base_url());
 
     // 3. Set sheet’s stylesheet base URL to the baseURL attribute value from options.
@@ -100,6 +103,7 @@ CSSStyleSheet::CSSStyleSheet(JS::Realm& realm, CSSRuleList& rules, MediaList& me
     : StyleSheet(realm, media)
     , m_rules(&rules)
 {
+    dbgln("css stylesheet location set to: {}", location.has_value() ? location->to_string() : "null"_string);
     if (location.has_value())
         set_location(move(location));
 

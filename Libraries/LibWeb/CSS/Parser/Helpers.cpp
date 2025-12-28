@@ -50,7 +50,8 @@ GC::Ref<CSS::CSSStyleSheet> parse_css_stylesheet(CSS::Parser::ParsingParams cons
         auto rule_list = CSS::CSSRuleList::create(*context.realm);
         if (!media_list)
             media_list = CSS::MediaList::create(*context.realm, {});
-        auto style_sheet = CSS::CSSStyleSheet::create(*context.realm, rule_list, *media_list, location);
+        dbgln("parsing css stylehseet with location : {}", location.has_value() ? location->to_string() : "null"_string);
+        auto style_sheet = CSS::CSSStyleSheet::create(*context.realm, rule_list, *media_list, {});
         style_sheet->set_source_text({});
         return style_sheet;
     }

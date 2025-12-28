@@ -176,13 +176,14 @@ GC::RootVector<GC::Ref<CSSRule>> Parser::parse_as_stylesheet_contents()
 // https://drafts.csswg.org/css-syntax/#parse-a-css-stylesheet
 GC::Ref<CSS::CSSStyleSheet> Parser::parse_as_css_stylesheet(Optional<::URL::URL> location, GC::Ptr<MediaList> media_list)
 {
+    dbgln_if(CSS_PARSER_DEBUG, "Parsing CSS stylesheet with location: {}", location.has_value() ? location->to_string() : "null"_string);
     // To parse a CSS stylesheet, first parse a stylesheet.
     auto const& style_sheet = parse_a_stylesheet(m_token_stream, location);
 
     auto rule_list = CSSRuleList::create(realm(), convert_rules(style_sheet.rules));
     if (!media_list)
         media_list = MediaList::create(realm(), {});
-    return CSSStyleSheet::create(realm(), rule_list, *media_list, move(location));
+    return CSSStyleSheet::create(realm(), rule_list, *media_list, {});
 }
 
 RefPtr<Supports> Parser::parse_as_supports()

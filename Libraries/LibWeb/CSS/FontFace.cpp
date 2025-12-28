@@ -16,6 +16,7 @@
 #include <LibJS/Runtime/Realm.h>
 #include <LibWeb/Bindings/FontFacePrototype.h>
 #include <LibWeb/Bindings/Intrinsics.h>
+#include <LibWeb/CSS/CSSFontFaceRule.h>
 #include <LibWeb/CSS/FontComputer.h>
 #include <LibWeb/CSS/FontFace.h>
 #include <LibWeb/CSS/Parser/Parser.h>
@@ -485,9 +486,12 @@ GC::Ref<WebIDL::Promise> FontFace::load()
         if (auto* window = as_if<HTML::Window>(global)) {
             auto& font_computer = const_cast<FontComputer&>(window->document()->font_computer());
 
+            // HACK: create a dummy CSSFontFaceRule to satisfy ParsedFontFace's requirements in order to make a fetch.
+            auto font_face_rule = CSS::CSSFontFaceRule::create(realm(), CSS::CSSFontFaceDescriptors::create(realm(), {}));
+
             // FIXME: The ParsedFontFace is kind of expensive to create. We should be using a shared sub-object for the data
             ParsedFontFace parsed_font_face {
-                nullptr,
+                font_face_rule,
                 m_family,
                 m_weight.to_number<int>(),
                 0,                      // FIXME: slope
