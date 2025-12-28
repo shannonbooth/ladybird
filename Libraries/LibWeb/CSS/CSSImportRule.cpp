@@ -151,7 +151,8 @@ void CSSImportRule::fetch()
     RuleOrDeclaration rule_or_declaration {
         .environment_settings_object = HTML::relevant_settings_object(parent_style_sheet),
         .value = RuleOrDeclaration::Rule {
-            .parent_style_sheet = &parent_style_sheet }
+            .parent_style_sheet = &parent_style_sheet,
+        }
     };
     (void)fetch_a_style_resource(parsed_url.value(), rule_or_declaration, Fetch::Infrastructure::Request::Destination::Style, CorsMode::NoCors,
         [strong_this = GC::Ref { *this }, parent_style_sheet = GC::Ref { parent_style_sheet }, parsed_url = parsed_url.value(), document = m_document](auto response, auto maybe_byte_stream) {

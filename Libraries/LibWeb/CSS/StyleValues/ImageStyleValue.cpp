@@ -59,7 +59,8 @@ void ImageStyleValue::load_any_resources(DOM::Document& document)
     RuleOrDeclaration rule_or_declaration {
         .environment_settings_object = document.relevant_settings_object(),
         .value = RuleOrDeclaration::Rule {
-            .parent_style_sheet = m_style_sheet }
+            .parent_style_sheet = m_style_sheet,
+        }
     };
 
     m_resource_request = fetch_an_external_image_for_a_stylesheet(m_url, rule_or_declaration);
