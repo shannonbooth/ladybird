@@ -1207,18 +1207,16 @@ JS_DEFINE_NATIVE_FUNCTION(RegExpPrototype::compile)
         return vm.throw_completion<TypeError>(ErrorType::RegExpCompileError, "legacy features is not enabled");
 
     // 7. If Type(pattern) is Object and pattern has a [[RegExpMatcher]] internal slot, then
-    if (pattern.is_object() && is<RegExpObject>(pattern.as_object())) {
+    if (auto* regexp_pattern = pattern.as_if<RegExpObject>()) {
         // a. If flags is not undefined, throw a TypeError exception.
         if (!flags.is_undefined())
             return vm.throw_completion<TypeError>(ErrorType::NotUndefined, flags);
 
-        auto& regexp_pattern = static_cast<RegExpObject&>(pattern.as_object());
-
         // b. Let P be pattern.[[OriginalSource]].
-        pattern = PrimitiveString::create(vm, regexp_pattern.pattern());
+        pattern = PrimitiveString::create(vm, regexp_pattern->pattern());
 
         // c. Let F be pattern.[[OriginalFlags]].
-        flags = PrimitiveString::create(vm, regexp_pattern.flags());
+        flags = PrimitiveString::create(vm, regexp_pattern->flags());
     }
     // 8. Else,
     //     a. Let P be pattern.

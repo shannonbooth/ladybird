@@ -498,9 +498,9 @@ JS::ThrowCompletionOr<void> ensure_csp_does_not_block_string_compilation(JS::Rea
                 auto const& arg = parameter_args[i];
 
                 // 2. If arg implements TrustedScript, then:
-                if (arg.is_object() && is<TrustedTypes::TrustedScript>(arg.as_object())) {
+                if (auto const* trusted_script = arg.as_if<TrustedTypes::TrustedScript>()) {
                     // 1. if parameterStrings[index] is not equal to arg’s data, set isTrusted to false.
-                    if (parameter_strings[i] != as<TrustedTypes::TrustedScript>(arg.as_object()).to_string()) {
+                    if (parameter_strings[i] != trusted_script->to_string()) {
                         is_trusted = false;
                         break;
                     }

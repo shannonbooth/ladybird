@@ -299,9 +299,9 @@ ThrowCompletionOr<Vector<String>> canonicalize_locale_list(VM& vm, Value locales
             String tag;
 
             // iii. If Type(kValue) is Object and kValue has an [[InitializedLocale]] internal slot, then
-            if (key_value.is_object() && is<Locale>(key_value.as_object())) {
+            if (auto* locale = key_value.as_if<Locale>()) {
                 // 1. Let tag be kValue.[[Locale]].
-                tag = static_cast<Locale const&>(key_value.as_object()).locale();
+                tag = locale->locale();
             }
             // iv. Else,
             else {

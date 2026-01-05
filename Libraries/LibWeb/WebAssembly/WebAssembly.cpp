@@ -345,9 +345,9 @@ JS::ThrowCompletionOr<NonnullOwnPtr<Wasm::ModuleInstance>> instantiate_module(JS
                         address = cache.abstract_machine().store().allocate({ type.type(), false }, cast_value);
                     }
                     // 3.5.2. Otherwise, if v implements Global,
-                    else if (import_.is_object() && is<Global>(import_.as_object())) {
+                    else if (auto* global = import_.as_if<Global>()) {
                         // 3.5.2.1. Let globaladdr be v.[[Global]].
-                        address = as<Global>(import_.as_object()).address();
+                        address = global->address();
                     }
                     // 3.5.3. Otherwise,
                     else {
@@ -872,18 +872,17 @@ GC::Ref<WebIDL::Promise> instantiate_promise_of_module(JS::VM& vm, GC::Ref<WebID
 
     // 2. Upon fulfillment of promiseOfModule with value module:
     auto fulfillment_steps = GC::create_function(vm.heap(), [&vm, promise, import_object](JS::Value module_value) -> WebIDL::ExceptionOr<JS::Value> {
-        VERIFY(module_value.is_object() && is<Module>(module_value.as_object()));
-        auto module = GC::Ref { static_cast<Module&>(module_value.as_object()) };
+        auto* module = module_value.as_if<Module>();
+        VERIFY(module);
 
         // 1. Instantiate the WebAssembly module module importing importObject, and let innerPromise be the result.
-        auto inner_promise = asynchronously_instantiate_webassembly_module(vm, module, import_object);
+        auto inner_promise = asynchronously_instantiate_webassembly_module(vm, *module, import_object);
 
         // 2. Upon fulfillment of innerPromise with value instance.
         auto instantiate_fulfillment_steps = GC::create_function(vm.heap(), [promise, module](JS::Value instance_value) -> WebIDL::ExceptionOr<JS::Value> {
             auto& realm = HTML::relevant_realm(*promise->promise());
-
-            VERIFY(instance_value.is_object() && is<Instance>(instance_value.as_object()));
-            auto instance = GC::Ref { static_cast<Instance&>(instance_value.as_object()) };
+            auto* instance = instance_value.as_if<Instance>();
+            VERIFY(instance);
 
             // 1. Let result be the WebAssemblyInstantiatedSource value «[ "module" → module, "instance" → instance ]».
             auto result = JS::Object::create(realm, nullptr);

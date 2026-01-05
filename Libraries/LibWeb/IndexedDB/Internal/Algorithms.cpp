@@ -280,11 +280,9 @@ WebIDL::ExceptionOr<GC::Ref<Key>> convert_a_value_to_a_key(JS::Realm& realm, JS:
     }
 
     // - If input is a Date (has a [[DateValue]] internal slot)
-    if (input.is_object() && is<JS::Date>(input.as_object())) {
-
+    if (auto* date = input.as_if<JS::Date>()) {
         // 1. Let ms be the value of input’s [[DateValue]] internal slot.
-        auto& date = static_cast<JS::Date&>(input.as_object());
-        auto ms = date.date_value();
+        auto ms = date->date_value();
 
         // 2. If ms is NaN then return invalid.
         if (isnan(ms))
@@ -983,27 +981,27 @@ WebIDL::ExceptionOr<ErrorOr<JS::Value>> evaluate_key_path_on_a_value(JS::Realm& 
         }
 
         // If value is a Blob and identifier is "size"
-        else if (value.is_object() && is<FileAPI::Blob>(value.as_object()) && identifier == "size") {
+        else if (auto const* blob = value.as_if<FileAPI::Blob>(); blob && identifier == "size") {
             // Let value be value’s size.
-            value = JS::Value(static_cast<FileAPI::Blob&>(value.as_object()).size());
+            value = JS::Value(blob->size());
         }
 
         // If value is a Blob and identifier is "type"
-        else if (value.is_object() && is<FileAPI::Blob>(value.as_object()) && identifier == "type") {
+        else if (auto const* blob = value.as_if<FileAPI::Blob>(); blob && identifier == "type") {
             // Let value be a String equal to value’s type.
-            value = JS::PrimitiveString::create(realm.vm(), static_cast<FileAPI::Blob&>(value.as_object()).type());
+            value = JS::PrimitiveString::create(realm.vm(), blob->type());
         }
 
         // If value is a File and identifier is "name"
-        else if (value.is_object() && is<FileAPI::File>(value.as_object()) && identifier == "name") {
+        else if (auto const* file = value.as_if<FileAPI::File>(); file && identifier == "name") {
             // Let value be a String equal to value’s name.
-            value = JS::PrimitiveString::create(realm.vm(), static_cast<FileAPI::File&>(value.as_object()).name());
+            value = JS::PrimitiveString::create(realm.vm(), file->name());
         }
 
         // If value is a File and identifier is "lastModified"
-        else if (value.is_object() && is<FileAPI::File>(value.as_object()) && identifier == "lastModified") {
+        else if (auto const* file = value.as_if<FileAPI::File>(); file && identifier == "lastModified") {
             // Let value be a Number equal to value’s lastModified.
-            value = JS::Value(static_cast<double>(static_cast<FileAPI::File&>(value.as_object()).last_modified()));
+            value = JS::Value(static_cast<double>(file->last_modified()));
         }
 
         // Otherwise
