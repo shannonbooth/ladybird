@@ -191,7 +191,7 @@ JS::ThrowCompletionOr<ResolvedOverload> resolve_overload(JS::VM& vm, IDL::Effect
         //    - an annotated type whose inner type is one of the above types
         //    - a union type, nullable union type, or annotated union type that has one of the above types in its flattened member types
         //    then remove from S all other entries.
-        else if (value.is_object() && is<JS::ArrayBuffer>(value.as_object())
+        else if (value.is<JS::ArrayBuffer>()
             && has_overload_with_argument_type_or_subtype_matching(overloads, i, [](IDL::Type const& type) {
                    if (type.is_plain() && (type.name() == "ArrayBuffer" || type.name() == "BufferSource"))
                        return true;
@@ -209,7 +209,7 @@ JS::ThrowCompletionOr<ResolvedOverload> resolve_overload(JS::VM& vm, IDL::Effect
         //    - an annotated type whose inner type is one of the above types
         //    - a union type, nullable union type, or annotated union type that has one of the above types in its flattened member types
         //    then remove from S all other entries.
-        else if (value.is_object() && is<JS::DataView>(value.as_object())
+        else if (value.is<JS::DataView>()
             && has_overload_with_argument_type_or_subtype_matching(overloads, i, [](IDL::Type const& type) {
                    if (type.is_plain() && (type.name() == "DataView" || type.name() == "BufferSource" || type.name() == "ArrayBufferView"))
                        return true;

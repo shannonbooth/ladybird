@@ -314,8 +314,7 @@ WebIDL::ExceptionOr<GC::Ref<Key>> convert_a_value_to_a_key(JS::Realm& realm, JS:
     }
 
     // - If input is an Array exotic object
-    if (input.is_object() && is<JS::Array>(input.as_object())) {
-
+    if (input.is<JS::Array>()) {
         // 1. Let len be ? ToLength( ? Get(input, "length")).
         auto length = TRY(length_of_array_like(realm.vm(), input.as_object()));
 
@@ -871,8 +870,7 @@ WebIDL::ExceptionOr<JS::Value> clone_in_realm(JS::Realm& target_realm, JS::Value
 WebIDL::ExceptionOr<GC::Ref<Key>> convert_a_value_to_a_multi_entry_key(JS::Realm& realm, JS::Value value)
 {
     // 1. If input is an Array exotic object, then:
-    if (value.is_object() && is<JS::Array>(value.as_object())) {
-
+    if (value.is<JS::Array>()) {
         // 1. Let len be ? ToLength( ? Get(input, "length")).
         auto len = TRY(length_of_array_like(realm.vm(), value.as_object()));
 
@@ -975,7 +973,7 @@ WebIDL::ExceptionOr<ErrorOr<JS::Value>> evaluate_key_path_on_a_value(JS::Realm& 
         }
 
         // If value is an Array and identifier is "length"
-        else if (value.is_object() && is<JS::Array>(value.as_object()) && identifier == "length") {
+        else if (value.is<JS::Array>() && identifier == "length") {
             // Let value be ! ToLength(! Get(value, "length")).
             value = JS::Value(MUST(length_of_array_like(realm.vm(), value.as_object())));
         }
@@ -2192,7 +2190,7 @@ bool cleanup_indexed_database_transactions(GC::Ref<HTML::EventLoop> event_loop)
 bool is_a_potentially_valid_key_range(JS::Realm& realm, JS::Value value)
 {
     // 1. If value is a key range, return true.
-    if (value.is_object() && is<IDBKeyRange>(value.as_object()))
+    if (value.is<IDBKeyRange>())
         return true;
 
     // 2. Else if Type(value) is Number, return true.

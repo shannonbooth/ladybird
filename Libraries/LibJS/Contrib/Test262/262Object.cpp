@@ -77,7 +77,7 @@ JS_DEFINE_NATIVE_FUNCTION($262Object::create_realm)
 JS_DEFINE_NATIVE_FUNCTION($262Object::detach_array_buffer)
 {
     auto array_buffer = vm.argument(0);
-    if (!array_buffer.is_object() || !is<ArrayBuffer>(array_buffer.as_object()))
+    if (!array_buffer.is<ArrayBuffer>())
         return vm.throw_completion<TypeError>();
 
     auto& array_buffer_object = static_cast<ArrayBuffer&>(array_buffer.as_object());

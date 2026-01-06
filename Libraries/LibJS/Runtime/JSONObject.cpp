@@ -589,7 +589,7 @@ JS_DEFINE_NATIVE_FUNCTION(JSONObject::raw_json)
 JS_DEFINE_NATIVE_FUNCTION(JSONObject::is_raw_json)
 {
     // 1. If Type(O) is Object and O has an [[IsRawJSON]] internal slot, return true.
-    if (vm.argument(0).is_object() && is<RawJSONObject>(vm.argument(0).as_object()))
+    if (vm.argument(0).is<RawJSONObject>())
         return Value(true);
 
     // 2. Return false.

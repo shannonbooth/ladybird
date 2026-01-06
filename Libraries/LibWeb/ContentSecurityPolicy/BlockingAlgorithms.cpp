@@ -478,7 +478,7 @@ JS::ThrowCompletionOr<void> ensure_csp_does_not_block_string_compilation(JS::Rea
         auto const compilation_sink = compilation_type == JS::CompilationType::Function ? TrustedTypes::InjectionSink::Function : TrustedTypes::InjectionSink::Eval;
 
         // 2. Let isTrusted be true if bodyArg implements TrustedScript, and false otherwise.
-        auto is_trusted = body_arg.is_object() && is<TrustedTypes::TrustedScript>(body_arg.as_object());
+        auto is_trusted = body_arg.is<TrustedTypes::TrustedScript>();
 
         // 3. If isTrusted is true then:
         if (is_trusted) {
