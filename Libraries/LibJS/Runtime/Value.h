@@ -183,6 +183,12 @@ public:
         }
     }
 
+    template<typename T>
+    ALWAYS_INLINE bool is() const
+    {
+        return as_if<T>() != nullptr;
+    }
+
     constexpr Value()
         : Value(UNDEFINED_TAG << GC::TAG_SHIFT, (u64)0)
     {
