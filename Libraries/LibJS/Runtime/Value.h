@@ -157,19 +157,30 @@ public:
     template<typename T>
     ALWAYS_INLINE T* as_if()
     {
-        static_assert(IsBaseOf<Object, T>);
+        static_assert(IsBaseOf<Object, T> || IsSame<T, Object>);
         if (!is_object())
             return nullptr;
-        return ::as_if<T>(as_object());
+
+        if constexpr (IsSame<T, Object>) {
+            return &as_object();
+        } else {
+            return ::as_if<T>(as_object());
+        }
     }
 
     template<typename T>
     ALWAYS_INLINE T const* as_if() const
     {
-        static_assert(IsBaseOf<Object, T>);
+        static_assert(IsBaseOf<Object, T> || IsSame<T, Object>);
+
         if (!is_object())
             return nullptr;
-        return ::as_if<T>(as_object());
+
+        if constexpr (IsSame<T, Object>) {
+            return &as_object();
+        } else {
+            return ::as_if<T>(as_object());
+        }
     }
 
     constexpr Value()
