@@ -49,16 +49,16 @@ void NamedNodeMap::visit_edges(Cell::Visitor& visitor)
 }
 
 // https://dom.spec.whatwg.org/#ref-for-dfn-supported-property-names%E2%91%A0
-Vector<FlyString> NamedNodeMap::supported_property_names() const
+Vector<Utf16FlyString> NamedNodeMap::supported_property_names() const
 {
     // 1. Let names be the qualified names of the attributes in this NamedNodeMap object’s attribute list, with duplicates omitted, in order.
-    Vector<FlyString> names;
+    Vector<Utf16FlyString> names;
     names.ensure_capacity(m_attributes.size());
 
     for (auto const& attribute : m_attributes) {
-        auto const attribute_name = attribute->name();
+        auto const attribute_name = Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(attribute->name());
         if (!names.contains_slow(attribute_name))
-            names.append(attribute_name.to_string());
+            names.append(attribute_name);
     }
 
     // 2. If this NamedNodeMap object’s element is in the HTML namespace and its node document is an HTML document, then for each name of names:

@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <AK/Utf16FlyString.h>
 #include <LibWeb/Bindings/PlatformObject.h>
 #include <LibWeb/Forward.h>
 
@@ -37,10 +38,10 @@ private:
 
     // ^PlatformObject
     virtual JS::Value named_item_value(FlyString const&) const override;
-    virtual Vector<FlyString> supported_property_names() const override;
+    virtual Vector<Utf16FlyString> supported_property_names() const override;
 
     struct NameValuePair {
-        FlyString name;
+        Utf16FlyString name;
         String value;
     };
 

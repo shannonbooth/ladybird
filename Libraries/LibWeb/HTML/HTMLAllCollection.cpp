@@ -129,7 +129,7 @@ Variant<GC::Ref<DOM::HTMLCollection>, GC::Ref<DOM::Element>, Empty> HTMLAllColle
 }
 
 // https://dom.spec.whatwg.org/#ref-for-dfn-supported-property-names
-Vector<FlyString> HTMLAllCollection::supported_property_names() const
+Vector<Utf16FlyString> HTMLAllCollection::supported_property_names() const
 {
     // The supported property names consist of the non-empty values of all the id attributes of all the
     // elements represented by the collection, and the non-empty values of all the name attributes of
@@ -137,17 +137,18 @@ Vector<FlyString> HTMLAllCollection::supported_property_names() const
     // with the id of an element preceding its name if it contributes both, they differ from each other, and
     // neither is the duplicate of an earlier entry.
 
-    Vector<FlyString> result;
+    Vector<Utf16FlyString> result;
     auto elements = collect_matching_elements();
 
     for (auto const& element : elements) {
         if (auto const& id = element->id(); id.has_value() && !id->is_empty()) {
-            if (!result.contains_slow(id.value()))
-                result.append(id.value());
+            auto utf16_id = Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(id.value());
+            if (!result.contains_slow(utf16_id))
+                result.append(utf16_id);
         }
 
         if (is_all_named_element(*element) && element->name().has_value() && !element->name()->is_empty()) {
-            auto name = element->name().value();
+            auto name = Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(element->name().value());
             if (!name.is_empty() && !result.contains_slow(name))
                 result.append(move(name));
         }

@@ -69,7 +69,7 @@ Vector<DOMStringMap::NameValuePair> DOMStringMap::get_name_value_pairs() const
 
         // 3. For each name in list, for each U+002D HYPHEN-MINUS character (-) in the name that is followed by an ASCII lower alpha, remove the U+002D HYPHEN-MINUS character (-) and replace the character
         //    that followed it by the same character converted to ASCII uppercase.
-        StringBuilder builder;
+        StringBuilder builder { StringBuilder::Mode::UTF16 };
         for (size_t character_index = 0; character_index < name_after_starting_data.length(); ++character_index) {
             auto current_character = name_after_starting_data[character_index];
 
@@ -89,7 +89,7 @@ Vector<DOMStringMap::NameValuePair> DOMStringMap::get_name_value_pairs() const
             builder.append(current_character);
         }
 
-        list.append({ MUST(builder.to_string()), value });
+        list.append({ builder.to_utf16_string(), value });
     });
 
     // 4. Return list.
@@ -98,10 +98,10 @@ Vector<DOMStringMap::NameValuePair> DOMStringMap::get_name_value_pairs() const
 
 // https://html.spec.whatwg.org/multipage/dom.html#concept-domstringmap-pairs
 // NOTE: There isn't a direct link to this, so the link is to one of the algorithms above it.
-Vector<FlyString> DOMStringMap::supported_property_names() const
+Vector<Utf16FlyString> DOMStringMap::supported_property_names() const
 {
     // The supported property names on a DOMStringMap object at any instant are the names of each pair returned from getting the DOMStringMap's name-value pairs at that instant, in the order returned.
-    Vector<FlyString> names;
+    Vector<Utf16FlyString> names;
     auto name_value_pairs = get_name_value_pairs();
     for (auto& name_value_pair : name_value_pairs) {
         names.append(name_value_pair.name);

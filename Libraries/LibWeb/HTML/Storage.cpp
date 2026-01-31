@@ -237,14 +237,14 @@ void Storage::broadcast(Optional<String> const& key, Optional<String> const& old
     }
 }
 
-Vector<FlyString> Storage::supported_property_names() const
+Vector<Utf16FlyString> Storage::supported_property_names() const
 {
     // The supported property names on a Storage object storage are the result of running get the keys on storage's map.
-    Vector<FlyString> names;
+    Vector<Utf16FlyString> names;
     auto keys = m_storage_bottle->keys();
     names.ensure_capacity(keys.size());
     for (auto const& key : keys)
-        names.unchecked_append(key);
+        names.unchecked_append(Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(key));
     return names;
 }
 

@@ -1864,7 +1864,7 @@ OrderedHashMap<FlyString, GC::Ref<Navigable>> Window::document_tree_child_naviga
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#named-access-on-the-window-object
-Vector<FlyString> Window::supported_property_names() const
+Vector<Utf16FlyString> Window::supported_property_names() const
 {
     // FIXME: Make the const-correctness of the methods this method calls less cowboy.
     auto& mutable_this = const_cast<Window&>(*this);
@@ -1873,12 +1873,12 @@ Vector<FlyString> Window::supported_property_names() const
     // The supported property names of a Window object window at any moment consist of the following,
     // in tree order according to the element that contributed them, ignoring later duplicates:
 
-    HashTable<FlyString> property_names;
+    HashTable<Utf16FlyString> property_names;
 
     // - window's document-tree child navigable target name property set;
     auto child_navigable_property_set = mutable_this.document_tree_child_navigable_target_name_property_set();
     for (auto& entry : child_navigable_property_set)
-        property_names.set(entry.key, AK::HashSetExistingEntryBehavior::Keep);
+        property_names.set(Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(entry.key), AK::HashSetExistingEntryBehavior::Keep);
 
     // - the value of the name content attribute for all embed, form, img, and object elements
     //   that have a non-empty name content attribute and are in a document tree with window's associated Document as their root; and
@@ -1886,10 +1886,10 @@ Vector<FlyString> Window::supported_property_names() const
     //   and are in a document tree with window's associated Document as their root.
     for (auto element : associated_document().potentially_named_elements()) {
         if (auto name = element->name(); name.has_value())
-            property_names.set(*name, AK::HashSetExistingEntryBehavior::Keep);
+            property_names.set(Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(*name), AK::HashSetExistingEntryBehavior::Keep);
     }
     associated_document().element_by_id().for_each_id([&](auto id) {
-        property_names.set(id, AK::HashSetExistingEntryBehavior::Keep);
+        property_names.set(Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(id), AK::HashSetExistingEntryBehavior::Keep);
     });
 
     return property_names.values();

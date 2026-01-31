@@ -1042,14 +1042,14 @@ Optional<JS::Value> HTMLFormElement::item_value(size_t index) const
 }
 
 // https://html.spec.whatwg.org/multipage/forms.html#the-form-element:supported-property-names
-Vector<FlyString> HTMLFormElement::supported_property_names() const
+Vector<Utf16FlyString> HTMLFormElement::supported_property_names() const
 {
     // The supported property names consist of the names obtained from the following algorithm, in the order obtained from this algorithm:
 
     // 1. Let sourced names be an initially empty ordered list of tuples consisting of a string, an element, a source,
     //    where the source is either id, name, or past, and, if the source is past, an age.
     struct SourcedName {
-        FlyString name;
+        Utf16FlyString name;
         GC::Ptr<DOM::Element const> element;
         enum class Source {
             Id,
@@ -1069,12 +1069,12 @@ Vector<FlyString> HTMLFormElement::supported_property_names() const
         // 1. If candidate has an id attribute, add an entry to sourced names with that id attribute's value as the
         //    string, candidate as the element, and id as the source.
         if (candidate->id().has_value())
-            sourced_names.append(SourcedName { candidate->id().value(), candidate, SourcedName::Source::Id, {} });
+            sourced_names.append(SourcedName { Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(candidate->id().value()), candidate, SourcedName::Source::Id, {} });
 
         // 2. If candidate has a name attribute, add an entry to sourced names with that name attribute's value as the
         //    string, candidate as the element, and name as the source.
         if (candidate->name().has_value())
-            sourced_names.append(SourcedName { candidate->name().value(), candidate, SourcedName::Source::Name, {} });
+            sourced_names.append(SourcedName { Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(candidate->name().value()), candidate, SourcedName::Source::Name, {} });
     }
 
     // 3. For each img element candidate whose form owner is the form element:
@@ -1087,12 +1087,12 @@ Vector<FlyString> HTMLFormElement::supported_property_names() const
         // 1. If candidate has an id attribute, add an entry to sourced names with that id attribute's value as the
         //    string, candidate as the element, and id as the source.
         if (candidate->id().has_value())
-            sourced_names.append(SourcedName { candidate->id().value(), candidate, SourcedName::Source::Id, {} });
+            sourced_names.append(SourcedName { Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(candidate->id().value()), candidate, SourcedName::Source::Id, {} });
 
         // 2. If candidate has a name attribute, add an entry to sourced names with that name attribute's value as the
         //    string, candidate as the element, and name as the source.
         if (candidate->name().has_value())
-            sourced_names.append(SourcedName { candidate->name().value(), candidate, SourcedName::Source::Name, {} });
+            sourced_names.append(SourcedName { Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(candidate->name().value()), candidate, SourcedName::Source::Name, {} });
     }
 
     // 4. For each entry past entry in the past names map add an entry to sourced names with the past entry's name as
@@ -1100,7 +1100,7 @@ Vector<FlyString> HTMLFormElement::supported_property_names() const
     //    been in the past names map as the age.
     auto const now = MonotonicTime::now();
     for (auto const& entry : m_past_names_map)
-        sourced_names.append(SourcedName { entry.key, static_cast<DOM::Element const*>(entry.value.node.ptr()), SourcedName::Source::Past, now - entry.value.insertion_time });
+        sourced_names.append(SourcedName { Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(entry.key), static_cast<DOM::Element const*>(entry.value.node.ptr()), SourcedName::Source::Past, now - entry.value.insertion_time });
 
     // 5. Sort sourced names by tree order of the element entry of each tuple, sorting entries with the same element by
     //    putting entries whose source is id first, then entries whose source is name, and finally entries whose source
@@ -1118,7 +1118,7 @@ Vector<FlyString> HTMLFormElement::supported_property_names() const
     // 6. Remove any entries in sourced names that have the empty string as their name.
     // 7. Remove any entries in sourced names that have the same name as an earlier entry in the map.
     // 8. Return the list of names from sourced names, maintaining their relative order.
-    OrderedHashTable<FlyString> names;
+    OrderedHashTable<Utf16FlyString> names;
     names.ensure_capacity(sourced_names.size());
     for (auto const& entry : sourced_names) {
         if (entry.name.is_empty())
@@ -1126,7 +1126,7 @@ Vector<FlyString> HTMLFormElement::supported_property_names() const
         names.set(entry.name, AK::HashSetExistingEntryBehavior::Keep);
     }
 
-    Vector<FlyString> result;
+    Vector<Utf16FlyString> result;
     result.ensure_capacity(names.size());
     for (auto const& name : names)
         result.unchecked_append(name);

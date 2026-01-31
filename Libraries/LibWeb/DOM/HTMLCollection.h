@@ -42,8 +42,8 @@ public:
 
     virtual Optional<JS::Value> item_value(size_t index) const override;
     virtual JS::Value named_item_value(FlyString const& name) const override;
-    virtual Vector<FlyString> supported_property_names() const override;
-    virtual bool is_supported_property_name(FlyString const&) const override;
+    virtual Vector<Utf16FlyString> supported_property_names() const override;
+    virtual bool is_supported_property_name(Utf16FlyString const&) const override;
 
 protected:
     HTMLCollection(ParentNode& root, Scope, ESCAPING Function<bool(Element const&)> filter, ESCAPING Function<bool(Element const&, Element const&)> sort = nullptr);
@@ -61,7 +61,7 @@ private:
 
     mutable u64 m_cached_dom_tree_version { 0 };
     mutable Vector<GC::Weak<Element>> m_cached_elements;
-    mutable OwnPtr<OrderedHashMap<FlyString, GC::Weak<Element>>> m_cached_name_to_element_mappings;
+    mutable OwnPtr<OrderedHashMap<Utf16FlyString, GC::Weak<Element>>> m_cached_name_to_element_mappings;
 
     GC::Ref<ParentNode> m_root;
     Function<bool(Element const&)> m_filter;

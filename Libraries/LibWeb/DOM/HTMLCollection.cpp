@@ -56,17 +56,18 @@ void HTMLCollection::update_name_to_element_mappings_if_needed() const
     update_cache_if_needed();
     if (m_cached_name_to_element_mappings)
         return;
-    m_cached_name_to_element_mappings = make<OrderedHashMap<FlyString, GC::Weak<Element>>>();
+    m_cached_name_to_element_mappings = make<OrderedHashMap<Utf16FlyString, GC::Weak<Element>>>();
     for (auto const& element : m_cached_elements) {
         // 1. If element has an ID which is not in result, append element’s ID to result.
         if (auto const& id = element->id(); id.has_value()) {
-            if (!id.value().is_empty() && !m_cached_name_to_element_mappings->contains(id.value()))
-                m_cached_name_to_element_mappings->set(id.value(), element);
+            auto utf16_id = Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(id.value());
+            if (!id.value().is_empty() && !m_cached_name_to_element_mappings->contains(utf16_id))
+                m_cached_name_to_element_mappings->set(utf16_id, element);
         }
 
         // 2. If element is in the HTML namespace and has a name attribute whose value is neither the empty string nor is in result, append element’s name attribute value to result.
         if (element->namespace_uri() == Namespace::HTML && element->name().has_value()) {
-            auto element_name = element->name().value();
+            auto element_name = Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(element->name().value());
             if (!element_name.is_empty() && !m_cached_name_to_element_mappings->contains(element_name))
                 m_cached_name_to_element_mappings->set(move(element_name), element);
         }
@@ -139,23 +140,23 @@ Element* HTMLCollection::named_item(FlyString const& key) const
         return nullptr;
 
     update_name_to_element_mappings_if_needed();
-    if (auto it = m_cached_name_to_element_mappings->get(key); it.has_value())
+    if (auto it = m_cached_name_to_element_mappings->get(Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(key)); it.has_value())
         return it.value();
     return nullptr;
 }
 
 // https://dom.spec.whatwg.org/#ref-for-dfn-supported-property-names
-bool HTMLCollection::is_supported_property_name(FlyString const& name) const
+bool HTMLCollection::is_supported_property_name(Utf16FlyString const& name) const
 {
     update_name_to_element_mappings_if_needed();
     return m_cached_name_to_element_mappings->contains(name);
 }
 
 // https://dom.spec.whatwg.org/#ref-for-dfn-supported-property-names
-Vector<FlyString> HTMLCollection::supported_property_names() const
+Vector<Utf16FlyString> HTMLCollection::supported_property_names() const
 {
     // 1. Let result be an empty list.
-    Vector<FlyString> result;
+    Vector<Utf16FlyString> result;
 
     // 2. For each element represented by the collection, in tree order:
     update_name_to_element_mappings_if_needed();
