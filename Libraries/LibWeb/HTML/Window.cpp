@@ -730,8 +730,8 @@ Vector<GC::Ref<MimeType>> Window::pdf_viewer_mime_type_objects()
         return {};
 
     if (m_pdf_viewer_mime_type_objects.is_empty()) {
-        m_pdf_viewer_mime_type_objects.append(realm().create<MimeType>(realm(), "application/pdf"_string));
-        m_pdf_viewer_mime_type_objects.append(realm().create<MimeType>(realm(), "text/pdf"_string));
+        m_pdf_viewer_mime_type_objects.append(realm().create<MimeType>(realm(), "application/pdf"_utf16));
+        m_pdf_viewer_mime_type_objects.append(realm().create<MimeType>(realm(), "text/pdf"_utf16));
     }
 
     return m_pdf_viewer_mime_type_objects;
@@ -1896,7 +1896,7 @@ Vector<Utf16FlyString> Window::supported_property_names() const
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#named-access-on-the-window-object
-JS::Value Window::named_item_value(FlyString const& name) const
+JS::Value Window::named_item_value(Utf16FlyString const& name) const
 {
     // FIXME: Make the const-correctness of the methods this method calls less cowboy.
     auto& mutable_this = const_cast<Window&>(*this);
@@ -1905,7 +1905,7 @@ JS::Value Window::named_item_value(FlyString const& name) const
 
     // 1. Let objects be the list of named objects of window with the name name.
     // NOTE: There will be at least one such object, since the algorithm would otherwise not have been invoked by Web IDL.
-    auto objects = mutable_this.named_objects(name);
+    auto objects = mutable_this.named_objects(name.to_utf16_string().to_utf8_but_should_be_ported_to_utf16());
 
     // 2. If objects contains a navigable, then:
     if (!objects.navigables.is_empty()) {

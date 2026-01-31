@@ -21,7 +21,7 @@ public:
     void refresh() const;
     size_t length() const;
     GC::Ptr<Plugin> item(u32 index) const;
-    GC::Ptr<Plugin> named_item(FlyString const& name) const;
+    GC::Ptr<Plugin> named_item(Utf16FlyString const& name) const;
 
 private:
     PluginArray(JS::Realm&);
@@ -31,7 +31,7 @@ private:
     // ^Bindings::PlatformObject
     virtual Vector<Utf16FlyString> supported_property_names() const override;
     virtual Optional<JS::Value> item_value(size_t index) const override;
-    virtual JS::Value named_item_value(FlyString const& name) const override;
+    virtual JS::Value named_item_value(Utf16FlyString const& name) const override;
 };
 
 }

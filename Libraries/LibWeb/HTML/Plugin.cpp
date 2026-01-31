@@ -97,7 +97,7 @@ GC::Ptr<MimeType> Plugin::item(u32 index) const
     return nullptr;
 }
 
-GC::Ptr<MimeType> Plugin::named_item(FlyString const& name) const
+GC::Ptr<MimeType> Plugin::named_item(Utf16FlyString const& name) const
 {
     // 1. For each MimeType mimeType of this's relevant global object's PDF viewer mime type objects: if mimeType's type is name, then return mimeType.
     auto& window = as<HTML::Window>(HTML::relevant_global_object(*this));
@@ -120,7 +120,7 @@ Optional<JS::Value> Plugin::item_value(size_t index) const
     return return_value.ptr();
 }
 
-JS::Value Plugin::named_item_value(FlyString const& name) const
+JS::Value Plugin::named_item_value(Utf16FlyString const& name) const
 {
     auto return_value = named_item(name);
     if (!return_value)

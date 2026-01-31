@@ -810,7 +810,7 @@ public:
     void set_needs_accumulated_visual_contexts_update(bool value) { m_needs_accumulated_visual_contexts_update = value; }
     bool needs_accumulated_visual_contexts_update() const { return m_needs_accumulated_visual_contexts_update; }
 
-    virtual JS::Value named_item_value(FlyString const& name) const override;
+    virtual JS::Value named_item_value(Utf16FlyString const& name) const override;
     virtual Vector<Utf16FlyString> supported_property_names() const override;
     Vector<GC::Ref<DOM::Element>> const& potentially_named_elements() const { return m_potentially_named_elements; }
 

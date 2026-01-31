@@ -5905,8 +5905,9 @@ Vector<Utf16FlyString> Document::supported_property_names() const
     return names.values();
 }
 
-static bool is_named_element_with_name(Element const& element, FlyString const& name)
+static bool is_named_element_with_name(Element const& element, Utf16FlyString const& utf16_name)
 {
+    auto name = utf16_name.to_utf16_string().to_utf8_but_should_be_ported_to_utf16();
     // Named elements with the name name, for the purposes of the above algorithm, are those that are either:
 
     // - Exposed embed, form, iframe, img, or exposed object elements that have a name content attribute whose value
@@ -5936,7 +5937,7 @@ static bool is_named_element_with_name(Element const& element, FlyString const& 
     return false;
 }
 
-static Vector<GC::Ref<DOM::Element>> named_elements_with_name(Document const& document, FlyString const& name)
+static Vector<GC::Ref<DOM::Element>> named_elements_with_name(Document const& document, Utf16FlyString const& name)
 {
     Vector<GC::Ref<DOM::Element>> named_elements;
 
@@ -5949,7 +5950,7 @@ static Vector<GC::Ref<DOM::Element>> named_elements_with_name(Document const& do
 }
 
 // https://html.spec.whatwg.org/multipage/dom.html#dom-document-nameditem
-JS::Value Document::named_item_value(FlyString const& name) const
+JS::Value Document::named_item_value(Utf16FlyString const& name) const
 {
     // 1. Let elements be the list of named elements with the name name that are in a document tree with the Document as their root.
     // NOTE: There will be at least one such element, since the algorithm would otherwise not have been invoked by Web IDL.

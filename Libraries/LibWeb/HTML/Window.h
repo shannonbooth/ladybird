@@ -271,7 +271,7 @@ public:
     [[nodiscard]] OrderedHashMap<FlyString, GC::Ref<Navigable>> document_tree_child_navigable_target_name_property_set();
 
     [[nodiscard]] Vector<Utf16FlyString> supported_property_names() const override;
-    [[nodiscard]] JS::Value named_item_value(FlyString const&) const override;
+    [[nodiscard]] JS::Value named_item_value(Utf16FlyString const&) const override;
 
     bool find(String const& string);
 

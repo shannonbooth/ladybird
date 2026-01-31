@@ -133,14 +133,14 @@ Element* HTMLCollection::item(size_t index) const
 }
 
 // https://dom.spec.whatwg.org/#dom-htmlcollection-nameditem-key
-Element* HTMLCollection::named_item(FlyString const& key) const
+Element* HTMLCollection::named_item(Utf16FlyString const& key) const
 {
     // 1. If key is the empty string, return null.
     if (key.is_empty())
         return nullptr;
 
     update_name_to_element_mappings_if_needed();
-    if (auto it = m_cached_name_to_element_mappings->get(Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(key)); it.has_value())
+    if (auto it = m_cached_name_to_element_mappings->get(key); it.has_value())
         return it.value();
     return nullptr;
 }
@@ -176,7 +176,7 @@ Optional<JS::Value> HTMLCollection::item_value(size_t index) const
     return element;
 }
 
-JS::Value HTMLCollection::named_item_value(FlyString const& name) const
+JS::Value HTMLCollection::named_item_value(Utf16FlyString const& name) const
 {
     auto* element = named_item(name);
     if (!element)

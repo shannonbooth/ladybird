@@ -1100,7 +1100,7 @@ Vector<Utf16FlyString> HTMLFormElement::supported_property_names() const
     //    been in the past names map as the age.
     auto const now = MonotonicTime::now();
     for (auto const& entry : m_past_names_map)
-        sourced_names.append(SourcedName { Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(entry.key), static_cast<DOM::Element const*>(entry.value.node.ptr()), SourcedName::Source::Past, now - entry.value.insertion_time });
+        sourced_names.append(SourcedName { entry.key, static_cast<DOM::Element const*>(entry.value.node.ptr()), SourcedName::Source::Past, now - entry.value.insertion_time });
 
     // 5. Sort sourced names by tree order of the element entry of each tuple, sorting entries with the same element by
     //    putting entries whose source is id first, then entries whose source is name, and finally entries whose source
@@ -1135,7 +1135,7 @@ Vector<Utf16FlyString> HTMLFormElement::supported_property_names() const
 }
 
 // https://html.spec.whatwg.org/multipage/forms.html#dom-form-nameditem
-JS::Value HTMLFormElement::named_item_value(FlyString const& name) const
+JS::Value HTMLFormElement::named_item_value(Utf16FlyString const& name) const
 {
     auto& realm = this->realm();
     auto& root = as<ParentNode>(this->root());

@@ -8,5 +8,5 @@ interface Plugin {
     readonly attribute DOMString filename;
     readonly attribute unsigned long length;
     getter MimeType? item(unsigned long index);
-    getter MimeType? namedItem(DOMString name);
+    getter MimeType? namedItem(Utf16DOMString name);
 };

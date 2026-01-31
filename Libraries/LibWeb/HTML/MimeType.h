@@ -18,18 +18,18 @@ class MimeType : public Bindings::PlatformObject {
 public:
     virtual ~MimeType() override;
 
-    String const& type() const;
+    Utf16String const& type() const;
     String description() const;
     String const& suffixes() const;
     GC::Ref<Plugin> enabled_plugin() const;
 
 private:
-    MimeType(JS::Realm&, String type);
+    MimeType(JS::Realm&, Utf16String type);
 
     virtual void initialize(JS::Realm&) override;
 
     // https://html.spec.whatwg.org/multipage/system-state.html#concept-mimetype-type
-    String m_type;
+    Utf16String m_type;
 };
 
 }

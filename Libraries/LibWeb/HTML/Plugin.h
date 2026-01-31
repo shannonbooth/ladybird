@@ -23,7 +23,7 @@ public:
     String filename() const;
     size_t length() const;
     GC::Ptr<MimeType> item(u32 index) const;
-    GC::Ptr<MimeType> named_item(FlyString const& name) const;
+    GC::Ptr<MimeType> named_item(Utf16FlyString const& name) const;
 
 private:
     Plugin(JS::Realm&, String name);
@@ -36,7 +36,7 @@ private:
     // ^Bindings::PlatformObject
     virtual Vector<Utf16FlyString> supported_property_names() const override;
     virtual Optional<JS::Value> item_value(size_t index) const override;
-    virtual JS::Value named_item_value(FlyString const& name) const override;
+    virtual JS::Value named_item_value(Utf16FlyString const& name) const override;
 };
 
 }

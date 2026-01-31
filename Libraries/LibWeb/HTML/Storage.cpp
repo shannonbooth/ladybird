@@ -258,9 +258,9 @@ Optional<JS::Value> Storage::item_value(size_t index) const
     return JS::PrimitiveString::create(vm(), value.release_value());
 }
 
-JS::Value Storage::named_item_value(FlyString const& name) const
+JS::Value Storage::named_item_value(Utf16FlyString const& name) const
 {
-    auto value = get_item(String(name));
+    auto value = get_item(name.to_utf16_string().to_utf8_but_should_be_ported_to_utf16());
     if (!value.has_value())
         // AD-HOC: Spec leaves open to a description at: https://html.spec.whatwg.org/multipage/webstorage.html#the-storage-interface
         // However correct behavior expected here: https://github.com/whatwg/html/issues/8684

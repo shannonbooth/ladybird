@@ -115,7 +115,7 @@ private:
 
     // ^PlatformObject
     virtual Optional<JS::Value> item_value(size_t index) const override;
-    virtual JS::Value named_item_value(FlyString const& name) const override;
+    virtual JS::Value named_item_value(Utf16FlyString const& name) const override;
     virtual Vector<Utf16FlyString> supported_property_names() const override;
 
     virtual void attribute_changed(FlyString const& name, Optional<String> const& old_value, Optional<String> const& value, Optional<FlyString> const& namespace_) override;
@@ -148,7 +148,7 @@ private:
             visitor.visit(node);
         }
     };
-    HashMap<FlyString, PastNameEntry> mutable m_past_names_map;
+    HashMap<Utf16FlyString, PastNameEntry> mutable m_past_names_map;
 
     GC::Ptr<HTMLFormControlsCollection> mutable m_elements;
 

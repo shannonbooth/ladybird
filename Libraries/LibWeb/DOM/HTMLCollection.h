@@ -36,12 +36,12 @@ public:
 
     size_t length() const;
     Element* item(size_t index) const;
-    Element* named_item(FlyString const& key) const;
+    Element* named_item(Utf16FlyString const& key) const;
 
     GC::RootVector<GC::Ref<Element>> collect_matching_elements() const;
 
     virtual Optional<JS::Value> item_value(size_t index) const override;
-    virtual JS::Value named_item_value(FlyString const& name) const override;
+    virtual JS::Value named_item_value(Utf16FlyString const& name) const override;
     virtual Vector<Utf16FlyString> supported_property_names() const override;
     virtual bool is_supported_property_name(Utf16FlyString const&) const override;
 

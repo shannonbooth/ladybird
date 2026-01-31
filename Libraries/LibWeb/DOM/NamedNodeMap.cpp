@@ -334,9 +334,9 @@ Optional<JS::Value> NamedNodeMap::item_value(size_t index) const
     return node;
 }
 
-JS::Value NamedNodeMap::named_item_value(FlyString const& name) const
+JS::Value NamedNodeMap::named_item_value(Utf16FlyString const& name) const
 {
-    auto const* node = get_named_item(name);
+    auto const* node = get_named_item(name.to_utf16_string().to_utf8_but_should_be_ported_to_utf16());
     if (!node)
         return JS::js_undefined();
     return node;

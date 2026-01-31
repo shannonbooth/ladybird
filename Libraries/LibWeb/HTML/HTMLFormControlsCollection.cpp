@@ -35,12 +35,13 @@ void HTMLFormControlsCollection::initialize(JS::Realm& realm)
 }
 
 // https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#dom-htmlformcontrolscollection-nameditem
-Variant<Empty, DOM::Element*, GC::Root<RadioNodeList>> HTMLFormControlsCollection::named_item_or_radio_node_list(FlyString const& name) const
+Variant<Empty, DOM::Element*, GC::Root<RadioNodeList>> HTMLFormControlsCollection::named_item_or_radio_node_list(Utf16FlyString const& utf16_name) const
 {
     // 1. If name is the empty string, return null and stop the algorithm.
-    if (name.is_empty())
+    if (utf16_name.is_empty())
         return {};
 
+    auto name = utf16_name.to_utf16_string().to_utf8_but_should_be_ported_to_utf16();
     // 2. If, at the time the method is called, there is exactly one node in the collection that has either an id attribute or a name attribute equal to name, then return that node and stop the algorithm.
     // 3. Otherwise, if there are no nodes in the collection that have either an id attribute or a name attribute equal to name, then return null and stop the algorithm.
     DOM::Element* matching_element = nullptr;
@@ -77,7 +78,7 @@ Variant<Empty, DOM::Element*, GC::Root<RadioNodeList>> HTMLFormControlsCollectio
     }));
 }
 
-JS::Value HTMLFormControlsCollection::named_item_value(FlyString const& name) const
+JS::Value HTMLFormControlsCollection::named_item_value(Utf16FlyString const& name) const
 {
     return named_item_or_radio_node_list(name).visit(
         [](Empty) -> JS::Value { return JS::js_undefined(); },
