@@ -25,8 +25,8 @@ public:
 
     String determine_value_of_named_property(FlyString const&) const;
 
-    virtual WebIDL::ExceptionOr<void> set_value_of_new_named_property(String const&, JS::Value) override;
-    virtual WebIDL::ExceptionOr<void> set_value_of_existing_named_property(String const&, JS::Value) override;
+    virtual WebIDL::ExceptionOr<void> set_value_of_new_named_property(Utf16FlyString const&, JS::Value) override;
+    virtual WebIDL::ExceptionOr<void> set_value_of_existing_named_property(Utf16FlyString const&, JS::Value) override;
 
     virtual WebIDL::ExceptionOr<DidDeletionFail> delete_value(String const&) override;
 

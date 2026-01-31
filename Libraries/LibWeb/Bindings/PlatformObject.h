@@ -83,12 +83,12 @@ protected:
 
     // NOTE: These will crash if you make has_named_property_setter return true but do not override these methods.
     // NOTE: This is only used if named_property_setter_has_identifier returns false, otherwise set_value_of_named_property is used instead.
-    virtual WebIDL::ExceptionOr<void> set_value_of_new_named_property(String const&, JS::Value);
-    virtual WebIDL::ExceptionOr<void> set_value_of_existing_named_property(String const&, JS::Value);
+    virtual WebIDL::ExceptionOr<void> set_value_of_new_named_property(Utf16FlyString const&, JS::Value);
+    virtual WebIDL::ExceptionOr<void> set_value_of_existing_named_property(Utf16FlyString const&, JS::Value);
 
     // NOTE: These will crash if you make has_named_property_setter return true but do not override these methods.
     // NOTE: This is only used if you make named_property_setter_has_identifier return true, otherwise set_value_of_{new,existing}_named_property is used instead.
-    virtual WebIDL::ExceptionOr<void> set_value_of_named_property(String const&, JS::Value);
+    virtual WebIDL::ExceptionOr<void> set_value_of_named_property(Utf16FlyString const&, JS::Value);
 
     // NOTE: These will crash if you make has_indexed_property_setter return true but do not override these methods.
     // NOTE: This is only used if indexed_property_setter_has_identifier returns false, otherwise set_value_of_indexed_property is used instead.
@@ -114,7 +114,7 @@ protected:
 
 private:
     WebIDL::ExceptionOr<void> invoke_indexed_property_setter(JS::PropertyKey const&, JS::Value);
-    WebIDL::ExceptionOr<void> invoke_named_property_setter(FlyString const&, JS::Value);
+    WebIDL::ExceptionOr<void> invoke_named_property_setter(Utf16FlyString const&, JS::Value);
 };
 
 }

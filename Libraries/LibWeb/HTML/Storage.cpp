@@ -277,16 +277,16 @@ WebIDL::ExceptionOr<Bindings::PlatformObject::DidDeletionFail> Storage::delete_v
 WebIDL::ExceptionOr<void> Storage::set_value_of_indexed_property(u32 index, JS::Value unconverted_value)
 {
     // Handle index as a string since that's our key type
-    auto key = String::number(index);
+    auto key = Utf16String::number(index);
     return set_value_of_named_property(key, unconverted_value);
 }
 
-WebIDL::ExceptionOr<void> Storage::set_value_of_named_property(String const& key, JS::Value unconverted_value)
+WebIDL::ExceptionOr<void> Storage::set_value_of_named_property(Utf16FlyString const& key, JS::Value unconverted_value)
 {
     // NOTE: Since PlatformObject does not know the type of value, we must convert it ourselves.
     //       The type of `value` is `DOMString`.
     auto value = TRY(unconverted_value.to_string(vm()));
-    return set_item(key, value);
+    return set_item(key.to_utf16_string().to_utf8_but_should_be_ported_to_utf16(), value);
 }
 
 void Storage::dump() const

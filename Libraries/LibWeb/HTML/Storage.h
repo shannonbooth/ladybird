@@ -56,7 +56,7 @@ private:
     virtual WebIDL::ExceptionOr<DidDeletionFail> delete_value(String const&) override;
     virtual Vector<Utf16FlyString> supported_property_names() const override;
     virtual WebIDL::ExceptionOr<void> set_value_of_indexed_property(u32, JS::Value) override;
-    virtual WebIDL::ExceptionOr<void> set_value_of_named_property(String const& key, JS::Value value) override;
+    virtual WebIDL::ExceptionOr<void> set_value_of_named_property(Utf16FlyString const& key, JS::Value value) override;
 
     void reorder();
     void broadcast(Optional<String> const& key, Optional<String> const& old_value, Optional<String> const& new_value);

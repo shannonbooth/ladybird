@@ -126,7 +126,7 @@ String DOMStringMap::determine_value_of_named_property(FlyString const& name) co
 }
 
 // https://html.spec.whatwg.org/multipage/dom.html#dom-domstringmap-setitem
-WebIDL::ExceptionOr<void> DOMStringMap::set_value_of_new_named_property(String const& name, JS::Value unconverted_value)
+WebIDL::ExceptionOr<void> DOMStringMap::set_value_of_new_named_property(Utf16FlyString const& name, JS::Value unconverted_value)
 {
     // NOTE: Since PlatformObject does not know the type of value, we must convert it ourselves.
     //       The type of `value` is `DOMString`.
@@ -138,15 +138,15 @@ WebIDL::ExceptionOr<void> DOMStringMap::set_value_of_new_named_property(String c
     // NOTE: This is done out of order because StringBuilder doesn't have prepend.
     builder.append("data-"sv);
 
-    auto name_view = name.bytes_as_string_view();
+    auto name_view = name.view();
 
-    for (size_t character_index = 0; character_index < name_view.length(); ++character_index) {
+    for (auto it = name_view.begin(); it != name_view.end(); ++it) {
         // 1. If name contains a U+002D HYPHEN-MINUS character (-) followed by an ASCII lower alpha, then throw a "SyntaxError" DOMException.
-        auto current_character = name_view[character_index];
+        auto current_character = *it;
 
-        if (current_character == '-' && character_index + 1 < name_view.length()) {
-            auto next_character = name_view[character_index + 1];
-            if (is_ascii_lower_alpha(next_character))
+        if (current_character == '-') {
+            auto next_character = it.peek(1);
+            if (next_character.has_value() && is_ascii_lower_alpha(next_character.value()))
                 return WebIDL::SyntaxError::create(realm(), "Name cannot contain a '-' followed by a lowercase character."_utf16);
         }
 
@@ -157,7 +157,7 @@ WebIDL::ExceptionOr<void> DOMStringMap::set_value_of_new_named_property(String c
             continue;
         }
 
-        builder.append(current_character);
+        builder.append_code_point(current_character);
     }
 
     auto data_name = MUST(builder.to_string());
@@ -173,7 +173,7 @@ WebIDL::ExceptionOr<void> DOMStringMap::set_value_of_new_named_property(String c
 }
 
 // https://html.spec.whatwg.org/multipage/dom.html#dom-domstringmap-setitem
-WebIDL::ExceptionOr<void> DOMStringMap::set_value_of_existing_named_property(String const& name, JS::Value value)
+WebIDL::ExceptionOr<void> DOMStringMap::set_value_of_existing_named_property(Utf16FlyString const& name, JS::Value value)
 {
     return set_value_of_new_named_property(name, value);
 }

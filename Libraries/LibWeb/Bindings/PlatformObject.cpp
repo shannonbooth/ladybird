@@ -177,10 +177,10 @@ WebIDL::ExceptionOr<void> PlatformObject::invoke_indexed_property_setter(JS::Pro
 }
 
 // https://webidl.spec.whatwg.org/#invoke-named-setter
-WebIDL::ExceptionOr<void> PlatformObject::invoke_named_property_setter(FlyString const& property_name, JS::Value value)
+WebIDL::ExceptionOr<void> PlatformObject::invoke_named_property_setter(Utf16FlyString const& property_name, JS::Value value)
 {
     // 1. Let creating be true if P is not a supported property name, and false otherwise.
-    bool creating = !is_supported_property_name(Utf16FlyString::from_utf8_but_should_be_ported_to_utf16(property_name));
+    bool creating = !is_supported_property_name(property_name);
 
     // FIXME: We do not have this information at this point, so converting the value is left as an exercise to the inheritor of PlatformObject.
     // 2. Let operation be the operation used to declare the indexed property setter.
@@ -191,14 +191,14 @@ WebIDL::ExceptionOr<void> PlatformObject::invoke_named_property_setter(FlyString
     if (!m_legacy_platform_object_flags->named_property_setter_has_identifier) {
         // 1. If creating is true, then perform the steps listed in the interface description to set the value of a new named property with P as the name and value as the value.
         if (creating)
-            return set_value_of_new_named_property(property_name.to_string(), value);
+            return set_value_of_new_named_property(property_name, value);
 
         // 2. Otherwise, creating is false. Perform the steps listed in the interface description to set the value of an existing named property with P as the name and value as the value.
-        return set_value_of_existing_named_property(property_name.to_string(), value);
+        return set_value_of_existing_named_property(property_name, value);
     }
 
     // 6. Otherwise, operation was defined with an identifier. Perform the method steps of operation with O as this and « P, value » as the argument values.
-    return set_value_of_named_property(property_name.to_string(), value);
+    return set_value_of_named_property(property_name, value);
 }
 
 // https://webidl.spec.whatwg.org/#legacy-platform-object-getownproperty
@@ -234,7 +234,7 @@ JS::ThrowCompletionOr<bool> PlatformObject::internal_set(JS::PropertyKey const& 
         // 2. If O implements an interface with a named property setter and P is a String, then:
         if (m_legacy_platform_object_flags->has_named_property_setter && property_name.is_string()) {
             // 1. Invoke the named property setter on O with P and V.
-            TRY(throw_dom_exception_if_needed(vm, [&] { return invoke_named_property_setter(property_name.as_string().view().to_utf8_but_should_be_ported_to_utf16(), value); }));
+            TRY(throw_dom_exception_if_needed(vm, [&] { return invoke_named_property_setter(property_name.as_string(), value); }));
 
             // 2. Return true.
             return true;
@@ -306,7 +306,7 @@ JS::ThrowCompletionOr<bool> PlatformObject::internal_define_own_property(JS::Pro
                     return false;
 
                 // 2. Invoke the named property setter on O with P and Desc.[[Value]].
-                TRY(throw_dom_exception_if_needed(vm, [&] { return invoke_named_property_setter(property_name_as_string.view().to_utf8_but_should_be_ported_to_utf16(), property_descriptor.value.value()); }));
+                TRY(throw_dom_exception_if_needed(vm, [&] { return invoke_named_property_setter(property_name_as_string, property_descriptor.value.value()); }));
 
                 // 3. Return true.
                 return true;
@@ -444,17 +444,17 @@ JS::ThrowCompletionOr<GC::RootVector<JS::Value>> PlatformObject::internal_own_pr
     return { move(keys) };
 }
 
-WebIDL::ExceptionOr<void> PlatformObject::set_value_of_new_named_property(String const&, JS::Value)
+WebIDL::ExceptionOr<void> PlatformObject::set_value_of_new_named_property(Utf16FlyString const&, JS::Value)
 {
     VERIFY_NOT_REACHED();
 }
 
-WebIDL::ExceptionOr<void> PlatformObject::set_value_of_existing_named_property(String const&, JS::Value)
+WebIDL::ExceptionOr<void> PlatformObject::set_value_of_existing_named_property(Utf16FlyString const&, JS::Value)
 {
     VERIFY_NOT_REACHED();
 }
 
-WebIDL::ExceptionOr<void> PlatformObject::set_value_of_named_property(String const&, JS::Value)
+WebIDL::ExceptionOr<void> PlatformObject::set_value_of_named_property(Utf16FlyString const&, JS::Value)
 {
     VERIFY_NOT_REACHED();
 }
