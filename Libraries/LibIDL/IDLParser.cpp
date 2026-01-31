@@ -612,7 +612,7 @@ void Parser::parse_getter(HashMap<ByteString, ByteString>& extended_attributes, 
 
     // FIXME: Disallow variadic functions once they're supported.
 
-    if (identifier.type->name() == "DOMString") {
+    if (identifier.type->name() == "DOMString" || identifier.type->name() == "Utf16DOMString") {
         if (interface.named_property_getter.has_value())
             report_parsing_error("An interface can only have one named property getter."sv, filename, input, lexer.tell());
 
