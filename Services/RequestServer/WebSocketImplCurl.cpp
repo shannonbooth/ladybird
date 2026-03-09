@@ -176,6 +176,11 @@ void WebSocketImplCurl::read_from_socket()
 
         if (result != CURLE_OK) {
             dbgln("Failed to read from WebSocket: {}", curl_easy_strerror(result));
+            // Process any already-buffered data (e.g. server's close frame) before reporting
+            // the error. This handles the case where TLS close_notify arrives in the same read
+            // as the WebSocket close frame, causing curl to return an error after the data.
+            if (received_data)
+                on_ready_to_read();
             on_connection_error();
             return;
         }

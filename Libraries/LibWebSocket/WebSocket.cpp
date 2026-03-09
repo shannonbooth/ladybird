@@ -35,6 +35,21 @@ void WebSocket::start()
         m_impl = adopt_ref(*new WebSocketImplSerenity);
 
     m_impl->on_connection_error = [this] {
+        if (m_state == InternalState::Closing) {
+            // The connection dropped while we were in the closing state. This commonly happens
+            // with WSS when the server sends its close frame followed immediately by a TLS
+            // close_notify, which some TLS implementations report as a receive error rather
+            // than a clean EOF. If we've received the server's close frame (indicated by
+            // m_last_close_code != 1005 ("no status received"), the WebSocket
+            // closing handshake completed successfully and this is a clean close.
+            bool const was_clean = (m_last_close_code != to_underlying(CloseStatusCode::NoStatusReceived));
+            set_state(was_clean ? InternalState::Closed : InternalState::Errored);
+            if (!was_clean)
+                notify_error(Error::ServerClosedSocket);
+            notify_close(m_last_close_code, m_last_close_message, was_clean);
+            discard_connection();
+            return;
+        }
         dbgln("WebSocket: Connection error (underlying socket)");
         fatal_error(WebSocket::Error::CouldNotEstablishConnection);
     };
