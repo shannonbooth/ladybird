@@ -134,7 +134,11 @@ void WebSocket::close(u16 code, ByteString const& message)
         // Start the WebSocket closing handshake and set this’s ready state to CLOSING (2)."
         auto message_bytes = message.bytes();
         auto close_payload = ByteBuffer::create_uninitialized(message_bytes.size() + 2).release_value_but_fixme_should_propagate_errors(); // FIXME: Handle possible OOM situation.
-        close_payload.overwrite(0, (u8*)&code, 2);
+        // RFC 6455 section 5.5.1:
+        // > If there is a body, the first two bytes of the body MUST be a 2-byte unsigned integer (in network byte order)
+        // > representing a status code with value /code/ defined in Section 7.4.
+        close_payload[0] = (u8)(code >> 8);
+        close_payload[1] = (u8)(code & 0xFF);
         close_payload.overwrite(2, message_bytes.data(), message_bytes.size());
         send_frame(WebSocket::OpCode::ConnectionClose, close_payload, true);
         set_state(InternalState::Closing);
