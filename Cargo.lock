@@ -403,6 +403,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "liburl_rust"
+version = "0.1.0"
+dependencies = [
+ "cbindgen",
+ "libtextcodec_rust",
+ "libunicode_rust",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
