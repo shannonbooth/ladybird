@@ -32,7 +32,6 @@ enum class PercentEncodeSet {
     Userinfo,
     Component,
     ApplicationXWWWFormUrlencoded,
-    EncodeURI
 };
 
 enum class ExcludeFragment {
