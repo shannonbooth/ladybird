@@ -5,10 +5,12 @@ import base64
 import http.server
 import json
 import os
+import posixpath
 import socket
 import socketserver
 import sys
 import time
+import urllib.parse
 
 from typing import Dict
 from typing import Optional
@@ -57,9 +59,57 @@ echo_store: Dict[str, Echo] = {}
 
 class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     static_directory: str
+    wpt_directory: Optional[str]
 
     def __init__(self, *arguments, **kwargs):
         super().__init__(*arguments, directory=self.static_directory, **kwargs)
+
+    def _normalized_request_path(self):
+        parsed_url = urllib.parse.urlsplit(self.path)
+        return parsed_url, urllib.parse.unquote(parsed_url.path)
+
+    def _is_echo_path(self):
+        _, request_path = self._normalized_request_path()
+        return request_path == "/echo" or request_path.startswith("/echo/")
+
+    def _filesystem_path_for_url(self, root_directory, request_path):
+        normalized_path = posixpath.normpath(request_path)
+        parts = [part for part in normalized_path.split("/") if part and part not in (".", "..")]
+        return os.path.join(root_directory, *parts)
+
+    def _set_static_headers(self, headers_path):
+        if not os.path.isfile(headers_path):
+            return
+
+        self._extra_headers = []
+        with open(headers_path) as f:
+            for line in f:
+                line = line.strip()
+                if ":" in line:
+                    key, _, value = line.partition(":")
+                    self._extra_headers.append((key.strip(), value.strip()))
+
+    def _serve_static_request(self, request_handler):
+        parsed_url, request_path = self._normalized_request_path()
+
+        if request_path.startswith("/static/"):
+            request_path = request_path[7:]
+
+        for root_directory in (self.static_directory, self.wpt_directory):
+            if not root_directory:
+                continue
+
+            filesystem_path = self._filesystem_path_for_url(root_directory, request_path)
+            headers_path = filesystem_path + ".headers"
+            if os.path.exists(filesystem_path) or os.path.isfile(headers_path):
+                self._set_static_headers(headers_path)
+                query_suffix = f"?{parsed_url.query}" if parsed_url.query else ""
+                self.directory = root_directory
+                self.path = request_path + query_suffix
+                request_handler()
+                return
+
+        self.send_error(404, "Not Found")
 
     def end_headers(self):
         if hasattr(self, "_extra_headers"):
@@ -69,28 +119,14 @@ class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_GET(self):
-        if self.path.startswith("/static/"):
-            # Remove "/static/" prefix and use built-in method
-            self.path = self.path[7:]
-
-            # Check for a .headers file alongside the requested file
-            file_path = self.translate_path(self.path)
-            headers_path = file_path + ".headers"
-            if os.path.isfile(headers_path):
-                self._extra_headers = []
-                with open(headers_path) as f:
-                    for line in f:
-                        line = line.strip()
-                        if ":" in line:
-                            key, _, value = line.partition(":")
-                            self._extra_headers.append((key.strip(), value.strip()))
-
-            return super().do_GET()
-        else:
+        if self._is_echo_path():
             self.handle_echo()
+        else:
+            self._serve_static_request(super().do_GET)
 
     def do_POST(self):
-        if self.path == "/echo":
+        _, request_path = self._normalized_request_path()
+        if request_path == "/echo":
             content_length = int(self.headers["Content-Length"])
             post_data = self.rfile.read(content_length)
             data = json.loads(post_data.decode("utf-8"))
@@ -106,7 +142,7 @@ class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             echo.reason_phrase = data.get("reason_phrase", None)
             echo.reflect_headers_in_body = data.get("reflect_headers_in_body", False)
 
-            is_using_reserved_path = echo.path.startswith("/static") or echo.path.startswith("/echo")
+            is_invalid_echo_path = echo.path is None or not echo.path.startswith("/echo/")
 
             # Return 400: Bad Request if invalid params are given or a reserved path is given
             if (
@@ -115,7 +151,7 @@ class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 or echo.status is None
                 or echo.body_encoding not in ("raw", "base64")
                 or (echo.body is not None and "$HEADERS" not in echo.body and echo.reflect_headers_in_body)
-                or is_using_reserved_path
+                or is_invalid_echo_path
             ):
                 self.send_response(400)
                 self.send_header("Content-Type", "text/plain")
@@ -153,13 +189,13 @@ class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(fetch_config).encode("utf-8"))
-        elif self.path.startswith("/static/"):
-            self.send_error(405, "Method Not Allowed")
-        else:
+        elif self._is_echo_path():
             self.handle_echo()
+        else:
+            self.send_error(405, "Method Not Allowed")
 
     def do_OPTIONS(self):
-        if self.path.startswith("/echo"):
+        if self._is_echo_path():
             self.send_response(204)
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Access-Control-Allow-Methods", "*")
@@ -172,7 +208,10 @@ class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.do_other()
 
     def do_HEAD(self):
-        self.do_other()
+        if self._is_echo_path():
+            self.handle_echo()
+        else:
+            self._serve_static_request(super().do_HEAD)
 
     def do_DELETE(self):
         self.do_other()
@@ -259,14 +298,15 @@ class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error(404, f"Echo response not found for {key}")
 
     def do_other(self):
-        if self.path.startswith("/static/"):
-            self.send_error(405, "Method Not Allowed")
-        else:
+        if self._is_echo_path():
             self.handle_echo()
+        else:
+            self.send_error(405, "Method Not Allowed")
 
 
-def start_server(port, static_directory):
+def start_server(port, static_directory, wpt_directory):
     TestHTTPRequestHandler.static_directory = os.path.abspath(static_directory)
+    TestHTTPRequestHandler.wpt_directory = os.path.abspath(wpt_directory) if wpt_directory else None
     httpd = socketserver.TCPServer(("127.0.0.1", port), TestHTTPRequestHandler)
 
     print(httpd.socket.getsockname()[1])
@@ -296,6 +336,11 @@ if __name__ == "__main__":
         default=0,
         help="Port to run the server on",
     )
+
     args = parser.parse_args()
 
-    start_server(port=args.port, static_directory=args.directory)
+    start_server(
+        port=args.port,
+        static_directory=args.directory,
+        wpt_directory=os.path.join(args.directory, "Text", "input", "wpt-import"),
+    )
