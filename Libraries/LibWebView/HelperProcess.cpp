@@ -132,6 +132,10 @@ static ErrorOr<NonnullRefPtr<WebView::WebContentClient>> launch_web_content_proc
         arguments.append("--echo-server-port"sv);
         arguments.append(ByteString::number(maybe_echo_server_port.value()));
     }
+    if (auto const maybe_secondary_echo_server_port = web_content_options.secondary_echo_server_port; maybe_secondary_echo_server_port.has_value()) {
+        arguments.append("--secondary-echo-server-port"sv);
+        arguments.append(ByteString::number(maybe_secondary_echo_server_port.value()));
+    }
 
     if (web_content_options.default_time_zone.has_value()) {
         arguments.append("--default-time-zone");
