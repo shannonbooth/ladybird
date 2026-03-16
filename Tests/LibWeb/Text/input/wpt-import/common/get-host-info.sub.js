@@ -4,8 +4,11 @@
  */
 function get_host_info() {
 
-  var HTTP_PORT = '80';
-  var HTTP_PORT2 = '8000';
+  var ECHO_SERVER_PORT = String(internals.getEchoServerPort());
+  var SECONDARY_ECHO_SERVER_PORT = String(internals.getSecondaryEchoServerPort());
+
+  var HTTP_PORT = ECHO_SERVER_PORT;
+  var HTTP_PORT2 = SECONDARY_ECHO_SERVER_PORT;
   var HTTPS_PORT = '443';
   var HTTPS_PORT2 = '8443';
   var PROTOCOL = self.location.protocol;
@@ -16,7 +19,7 @@ function get_host_info() {
   var HTTP_PORT2_ELIDED = HTTP_PORT2 == "80" ? "" : (":" + HTTP_PORT2);
   var HTTPS_PORT_ELIDED = HTTPS_PORT == "443" ? "" : (":" + HTTPS_PORT);
   var PORT_ELIDED = IS_HTTPS ? HTTPS_PORT_ELIDED : HTTP_PORT_ELIDED;
-  var ORIGINAL_HOST = 'wpt.live';
+  var ORIGINAL_HOST = 'localhost';
   var REMOTE_HOST = (ORIGINAL_HOST === 'localhost') ? '127.0.0.1' : ('www1.' + ORIGINAL_HOST);
   var OTHER_HOST = 'www2.wpt.live';
   var NOTSAMESITE_HOST = (ORIGINAL_HOST === 'localhost') ? '127.0.0.1' : ('not-wpt.live');
