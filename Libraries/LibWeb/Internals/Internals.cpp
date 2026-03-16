@@ -37,6 +37,7 @@
 namespace Web::Internals {
 
 static u16 s_echo_server_port { 0 };
+static u16 s_secondary_echo_server_port { 0 };
 
 GC_DEFINE_ALLOCATOR(Internals);
 
@@ -429,6 +430,16 @@ u16 Internals::get_echo_server_port()
 void Internals::set_echo_server_port(u16 const port)
 {
     s_echo_server_port = port;
+}
+
+u16 Internals::get_secondary_echo_server_port()
+{
+    return s_secondary_echo_server_port;
+}
+
+void Internals::set_secondary_echo_server_port(u16 const port)
+{
+    s_secondary_echo_server_port = port;
 }
 
 void Internals::set_browser_zoom(double factor)
