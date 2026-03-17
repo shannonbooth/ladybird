@@ -20,10 +20,10 @@ class HTMLMarqueeElement final : public HTMLElement {
 public:
     virtual ~HTMLMarqueeElement() override;
 
-    WebIDL::UnsignedLong scroll_amount();
+    WebIDL::UnsignedLong scroll_amount() const;
     void set_scroll_amount(WebIDL::UnsignedLong);
 
-    WebIDL::UnsignedLong scroll_delay();
+    WebIDL::UnsignedLong scroll_delay() const;
     void set_scroll_delay(WebIDL::UnsignedLong);
 
 private:

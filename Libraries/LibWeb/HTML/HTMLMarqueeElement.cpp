@@ -77,7 +77,7 @@ void HTMLMarqueeElement::apply_presentational_hints(GC::Ref<CSS::CascadedPropert
 }
 
 // https://html.spec.whatwg.org/multipage/obsolete.html#dom-marquee-scrollamount
-WebIDL::UnsignedLong HTMLMarqueeElement::scroll_amount()
+WebIDL::UnsignedLong HTMLMarqueeElement::scroll_amount() const
 {
     // The scrollAmount IDL attribute must reflect the scrollamount content attribute. The default value is 6.
     if (auto scroll_amount_string = get_attribute(HTML::AttributeNames::scrollamount); scroll_amount_string.has_value()) {
@@ -96,7 +96,7 @@ void HTMLMarqueeElement::set_scroll_amount(WebIDL::UnsignedLong value)
 }
 
 // https://html.spec.whatwg.org/multipage/obsolete.html#dom-marquee-scrolldelay
-WebIDL::UnsignedLong HTMLMarqueeElement::scroll_delay()
+WebIDL::UnsignedLong HTMLMarqueeElement::scroll_delay() const
 {
     // The scrollDelay IDL attribute must reflect the scrolldelay content attribute. The default value is 85.
     if (auto scroll_delay_string = get_attribute(HTML::AttributeNames::scrolldelay); scroll_delay_string.has_value()) {
