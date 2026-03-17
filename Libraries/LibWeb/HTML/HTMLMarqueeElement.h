@@ -20,6 +20,9 @@ class HTMLMarqueeElement final : public HTMLElement {
 public:
     virtual ~HTMLMarqueeElement() override;
 
+    WebIDL::Long loop() const;
+    void set_loop(WebIDL::Long);
+
     WebIDL::UnsignedLong scroll_amount() const;
     void set_scroll_amount(WebIDL::UnsignedLong);
 
@@ -32,6 +35,8 @@ private:
     virtual void initialize(JS::Realm&) override;
     virtual bool is_presentational_hint(FlyString const&) const override;
     virtual void apply_presentational_hints(GC::Ref<CSS::CascadedProperties>) const override;
+
+    WebIDL::Long loop_count() const;
 };
 
 }

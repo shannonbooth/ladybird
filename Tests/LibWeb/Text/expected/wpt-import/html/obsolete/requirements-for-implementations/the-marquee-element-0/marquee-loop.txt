@@ -1,0 +1,8 @@
+Harness status: OK
+
+Found 3 tests
+
+3 Pass
+Pass	marquee_loop_string
+Pass	marquee_loop_less_than_1
+Pass	marquee_loop_normal

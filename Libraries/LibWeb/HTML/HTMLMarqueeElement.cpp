@@ -76,6 +76,22 @@ void HTMLMarqueeElement::apply_presentational_hints(GC::Ref<CSS::CascadedPropert
     });
 }
 
+// https://html.spec.whatwg.org/multipage/obsolete.html#dom-marquee-loop
+WebIDL::Long HTMLMarqueeElement::loop() const
+{
+    // The loop IDL attribute, on getting, must return the element's marquee loop count;
+    return loop_count();
+}
+
+void HTMLMarqueeElement::set_loop(WebIDL::Long count)
+{
+    // and on setting, if the new value is different than the element's marquee loop count and either greater than zero
+    // or equal to −1, must set the element's loop content attribute (adding it if necessary) to the valid integer that
+    // represents the new value. (Other values are ignored.)
+    if (count != loop_count() && (count > 0 || count == -1))
+        set_attribute_value(HTML::AttributeNames::loop, String::number(count));
+}
+
 // https://html.spec.whatwg.org/multipage/obsolete.html#dom-marquee-scrollamount
 WebIDL::UnsignedLong HTMLMarqueeElement::scroll_amount() const
 {
@@ -112,6 +128,19 @@ void HTMLMarqueeElement::set_scroll_delay(WebIDL::UnsignedLong value)
     if (value > 2147483647)
         value = 85;
     set_attribute_value(HTML::AttributeNames::scrolldelay, String::number(value));
+}
+
+// https://html.spec.whatwg.org/multipage/obsolete.html#marquee-loop-count
+WebIDL::Long HTMLMarqueeElement::loop_count() const
+{
+    // A marquee element has a marquee loop count, which, if the element has a loop attribute, and parsing its value using
+    // the rules for parsing integers does not return an error or a number less than 1, is the parsed value, and otherwise is −1.
+    if (auto loop = get_attribute(HTML::AttributeNames::loop); loop.has_value()) {
+        if (auto parsed_loop = parse_integer(*loop); parsed_loop.has_value() && *parsed_loop > 0)
+            return *parsed_loop;
+    }
+
+    return -1;
 }
 
 }
