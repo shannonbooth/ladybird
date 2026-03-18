@@ -158,6 +158,79 @@ intptr_t TransportMachPort::io_thread_loop()
     auto buffer = Vector<u8>();
     buffer.resize(RECV_BUFFER_SIZE);
 
+    auto receive_from_port_set = [&](mach_msg_timeout_t timeout) -> ErrorOr<bool> {
+        auto* header = reinterpret_cast<mach_msg_header_t*>(buffer.data());
+
+        mach_msg_option_t options = MACH_RCV_MSG | MACH_RCV_LARGE;
+        if (timeout != MACH_MSG_TIMEOUT_NONE)
+            options |= MACH_RCV_TIMEOUT;
+
+        // Wait on the whole port set so one loop can handle peer messages, internal wakeups, and kernel
+        // notifications like MACH_NOTIFY_NO_SENDERS.
+        auto const ret = mach_msg(header, options, 0, buffer.size(),
+            m_port_set.port(), timeout, MACH_PORT_NULL);
+
+        if (ret == MACH_RCV_TIMED_OUT)
+            return false;
+
+        if (ret == MACH_RCV_TOO_LARGE) {
+            auto needed_size = header->msgh_size + sizeof(mach_msg_trailer_t);
+            buffer.resize(needed_size);
+            header = reinterpret_cast<mach_msg_header_t*>(buffer.data());
+
+            mach_msg_option_t retry_options = MACH_RCV_MSG;
+            if (timeout != MACH_MSG_TIMEOUT_NONE)
+                retry_options |= MACH_RCV_TIMEOUT;
+
+            // MACH_RCV_LARGE tells us the needed size without removing the message. Resize the buffer and try
+            // again so large messages, including large attachment batches, still work.
+            auto const retry_ret = mach_msg(header, retry_options, 0, needed_size,
+                m_port_set.port(), timeout, MACH_PORT_NULL);
+            if (retry_ret == MACH_RCV_TIMED_OUT)
+                return false;
+            if (retry_ret != KERN_SUCCESS)
+                return Error::from_string_literal("mach_msg retry failed");
+        } else if (ret != KERN_SUCCESS) {
+            return Error::from_string_literal("mach_msg receive failed");
+        }
+
+        return true;
+    };
+
+    auto process_received_kernel_message = [&](auto&& self) -> ErrorOr<void> {
+        auto* header = reinterpret_cast<mach_msg_header_t*>(buffer.data());
+
+        if (header->msgh_local_port == m_wakeup_receive_port.port()) {
+            VERIFY(header->msgh_id == IPC_WAKEUP_MESSAGE_ID);
+            return {};
+        }
+
+        VERIFY(header->msgh_local_port == m_receive_port.port());
+
+        switch (header->msgh_id) {
+        case MACH_NOTIFY_NO_SENDERS: {
+            // A Mach no-senders notification can be received before the last data messages queued on the same
+            // port set have been drained into m_incoming_messages. Drain anything already waiting before
+            // surfacing EOF so MessagePort does not close ahead of a final reply.
+            for (;;) {
+                auto const receive_result = TRY(receive_from_port_set(0));
+                if (!receive_result)
+                    break;
+                TRY(self(self));
+            }
+            mark_peer_eof();
+            return {};
+        }
+        case MACH_NOTIFY_SEND_ONCE:
+            return {};
+        case IPC_DATA_MESSAGE_ID:
+            process_received_message(buffer.data());
+            return {};
+        default:
+            VERIFY_NOT_REACHED();
+        }
+    };
+
     for (;;) {
         if (m_io_thread_state.load() == IOThreadState::Stopped)
             break;
@@ -178,54 +251,26 @@ intptr_t TransportMachPort::io_thread_loop()
             break;
         }
 
-        auto* header = reinterpret_cast<mach_msg_header_t*>(buffer.data());
-        // Wait on the whole port set so one loop can handle peer messages, internal wakeups, and kernel
-        // notifications like MACH_NOTIFY_NO_SENDERS.
-        auto const ret = mach_msg(header, MACH_RCV_MSG | MACH_RCV_LARGE, 0, buffer.size(),
-            m_port_set.port(), MACH_MSG_TIMEOUT_NONE, MACH_PORT_NULL);
-
-        if (ret == MACH_RCV_TOO_LARGE) {
-            auto needed_size = header->msgh_size + sizeof(mach_msg_trailer_t);
-            buffer.resize(needed_size);
-            header = reinterpret_cast<mach_msg_header_t*>(buffer.data());
-            // MACH_RCV_LARGE tells us the needed size without removing the message. Resize the buffer and try
-            // again so large messages, including large attachment batches, still work.
-            auto const retry_ret = mach_msg(header, MACH_RCV_MSG, 0, needed_size,
-                m_port_set.port(), MACH_MSG_TIMEOUT_NONE, MACH_PORT_NULL);
-            if (retry_ret != KERN_SUCCESS) {
-                dbgln("TransportMachPort: mach_msg retry failed: {}", mach_error_string(retry_ret));
-                m_io_thread_state = IOThreadState::Stopped;
-                break;
-            }
-        } else if (ret != KERN_SUCCESS) {
-            dbgln("TransportMachPort: mach_msg receive failed: {}", mach_error_string(ret));
+        auto receive_result = receive_from_port_set(MACH_MSG_TIMEOUT_NONE);
+        if (receive_result.is_error()) {
+            dbgln("TransportMachPort: {}", receive_result.error());
             m_io_thread_state = IOThreadState::Stopped;
             break;
         }
 
-        if (header->msgh_local_port == m_wakeup_receive_port.port()) {
-            VERIFY(header->msgh_id == IPC_WAKEUP_MESSAGE_ID);
+        if (!receive_result.value())
             continue;
-        }
 
-        VERIFY(header->msgh_local_port == m_receive_port.port());
-
-        switch (header->msgh_id) {
-        case MACH_NOTIFY_NO_SENDERS:
-            mark_peer_eof();
-            continue;
-        case MACH_NOTIFY_SEND_ONCE:
-            continue;
-        case IPC_DATA_MESSAGE_ID:
-            process_received_message(buffer.data());
-            continue;
-        default:
-            VERIFY_NOT_REACHED();
+        if (auto result = process_received_kernel_message(process_received_kernel_message); result.is_error()) {
+            dbgln("TransportMachPort: {}", result.error());
+            m_io_thread_state = IOThreadState::Stopped;
+            break;
         }
     }
 
     VERIFY(m_io_thread_state == IOThreadState::Stopped);
-    mark_peer_eof();
+    if (!m_is_being_transferred.load(AK::MemoryOrder::memory_order_acquire))
+        mark_peer_eof();
     return 0;
 }
 
@@ -378,7 +423,8 @@ TransportMachPort::ShouldShutdown TransportMachPort::read_as_many_messages_as_po
 
 ErrorOr<TransportHandle> TransportMachPort::release_for_transfer()
 {
-    stop_io_thread(IOThreadState::Stopped);
+    m_is_being_transferred.store(true, AK::MemoryOrder::memory_order_release);
+    stop_io_thread(IOThreadState::SendPendingMessagesAndStop);
     m_is_open = false;
 
     mach_port_t prev = MACH_PORT_NULL;

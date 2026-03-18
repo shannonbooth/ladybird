@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    asyncTest(done => {
+        let finished = false;
+        let blob_url = null;
+
+        function finish(message) {
+            if (finished)
+                return;
+            finished = true;
+            if (blob_url !== null)
+                URL.revokeObjectURL(blob_url);
+            println(message);
+            done();
+        }
+
+        let blob = new Blob([`
+            onconnect = event => {
+                let port = event.ports[0];
+                port.onmessage = message => {
+                    port.postMessage(message.data);
+                    close();
+                };
+            };
+        `], { type: "text/javascript" });
+
+        blob_url = URL.createObjectURL(blob);
+
+        let worker = new SharedWorker(blob_url);
+        worker.port.onmessage = event => finish(event.data);
+        worker.port.start();
+        worker.port.postMessage("PASS");
+    });
+</script>

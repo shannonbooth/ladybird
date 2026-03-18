@@ -92,6 +92,7 @@ private:
     Core::MachPort m_wakeup_send_port;
 
     Atomic<bool> m_is_open { true };
+    Atomic<bool> m_is_being_transferred { false };
 
     RefPtr<Threading::Thread> m_io_thread;
     Atomic<IOThreadState> m_io_thread_state { IOThreadState::Running };
