@@ -10,6 +10,7 @@ import socketserver
 import sys
 import time
 
+from types import SimpleNamespace
 from typing import Dict
 from typing import Optional
 
@@ -55,6 +56,38 @@ class Echo:
 echo_store: Dict[str, Echo] = {}
 
 
+class WPTContext:
+    def __init__(self, wpt_directory):
+        vendored_tools_root = os.path.join(wpt_directory, "_wpttools")
+        for path in (
+            vendored_tools_root,
+            os.path.join(vendored_tools_root, "third_party", "hpack", "src"),
+            os.path.join(vendored_tools_root, "third_party", "hyperframe", "src"),
+            wpt_directory,
+        ):
+            sys.path.insert(0, path)
+
+        from wptserve.handlers import python_script_handler
+        from wptserve.request import Request
+        from wptserve.request import Server
+        from wptserve.response import Response
+        from wptserve.stash import Stash
+        from wptserve.stash import start_server as start_stash_server
+        from wptserve.utils import HTTPException
+
+        Server.config = SimpleNamespace(logging={"suppress_handler_traceback": False})
+
+        self.request_class = Request
+        self.response_class = Response
+        self.python_script_handler = python_script_handler
+        self.http_exception = HTTPException
+        self.stash_class = Stash
+        self.stash_manager, self.stash_address, self.stash_authkey = start_stash_server()
+
+    def close(self):
+        self.stash_manager.shutdown()
+
+
 class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     static_directory: str
     wpt_directory: str
@@ -69,16 +102,40 @@ class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             del self._extra_headers
         super().end_headers()
 
-    def _serve_static_request(self):
+    def _request_target(self):
         if self.path.startswith("/static/"):
             # Explicit /static/ URLs continue to serve files from the general test root.
-            self.directory = self.static_directory
-            self.path = self.path[7:]
-        else:
-            # All other non-echo URLs are served from the imported WPT tree.
-            # This lets absolute WPT paths like /html/... resolve through the test server.
-            self.directory = self.wpt_directory
+            return self.static_directory, self.path[7:]
 
+        # All other non-echo URLs are served from the imported WPT tree.
+        # This lets absolute WPT paths like /html/... resolve through the test server.
+        return self.wpt_directory, self.path
+
+    def _serve_wpt_python_script(self):
+        self.directory, self.path = self._request_target()
+        self.server.router.doc_root = self.directory
+
+        request = self.server.wpt.request_class(self)
+        request.server._stash = self.server.wpt.stash_class(
+            request.url_parts.path,
+            self.server.wpt.stash_address,
+            self.server.wpt.stash_authkey,
+        )
+        response = self.server.wpt.response_class(self, request)
+
+        try:
+            self.server.wpt.python_script_handler(request, response)
+        except self.server.wpt.http_exception as exception:
+            response.set_error(exception.code, exception)
+        except Exception as exception:
+            response.set_error(500, exception)
+
+        if not response.writer.content_written:
+            response.write()
+        request.close()
+
+    def _serve_static_request(self):
+        self.directory, self.path = self._request_target()
         file_path = self.translate_path(self.path)
         headers_path = file_path + ".headers"
 
@@ -94,21 +151,31 @@ class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_GET(self):
-        if self.path.startswith("/echo"):
+        request_path = self.path.partition("?")[0]
+
+        if request_path.startswith("/echo"):
             self.handle_echo()
+        elif request_path.endswith(".py"):
+            self._serve_wpt_python_script()
         else:
             self._serve_static_request()
 
     def do_POST(self):
-        if self.path == "/echo":
+        request_path = self.path.partition("?")[0]
+
+        if request_path == "/echo":
             self._register_echo()
-        elif self.path.startswith("/static/"):
-            self.send_error(405, "Method Not Allowed")
-        else:
+        elif request_path.startswith("/echo/"):
             self.handle_echo()
+        elif request_path.endswith(".py"):
+            self._serve_wpt_python_script()
+        else:
+            self.send_error(405, "Method Not Allowed")
 
     def do_OPTIONS(self):
-        if self.path.startswith("/echo"):
+        request_path = self.path.partition("?")[0]
+
+        if request_path.startswith("/echo"):
             self.send_response(204)
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Access-Control-Allow-Methods", "*")
@@ -274,8 +341,12 @@ class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(response_body.encode("utf-8"))
 
     def do_other(self):
-        if self.path.startswith("/echo"):
+        request_path = self.path.partition("?")[0]
+
+        if request_path.startswith("/echo"):
             self.handle_echo()
+        elif request_path.endswith(".py"):
+            self._serve_wpt_python_script()
         else:
             self.send_error(405, "Method Not Allowed")
 
@@ -286,6 +357,9 @@ def start_server(port, static_directory):
         TestHTTPRequestHandler.static_directory, "Text", "input", "wpt-import"
     )
     httpd = socketserver.TCPServer(("127.0.0.1", port), TestHTTPRequestHandler)
+    httpd.scheme = "http"
+    httpd.router = SimpleNamespace(doc_root=TestHTTPRequestHandler.wpt_directory)
+    httpd.wpt = WPTContext(TestHTTPRequestHandler.wpt_directory)
 
     print(httpd.socket.getsockname()[1])
     sys.stdout.flush()
@@ -295,6 +369,7 @@ def start_server(port, static_directory):
     except KeyboardInterrupt:
         pass
     finally:
+        httpd.wpt.close()
         httpd.server_close()
 
 
