@@ -11,6 +11,7 @@ import socketserver
 import sys
 import time
 import urllib.parse
+from types import SimpleNamespace
 
 from typing import Dict
 from typing import Optional
@@ -55,11 +56,18 @@ class Echo:
 
 # In-memory store for echo responses
 echo_store: Dict[str, Echo] = {}
+WPT_IMPORT_PREFIX = "/Text/input/wpt-import/"
 
 
 class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     static_directory: str
     wpt_directory: Optional[str]
+    wpt_source_directory: Optional[str]
+    wpt_file_handler_cls = None
+    wpt_python_handler_cls = None
+    wpt_request_cls = None
+    wpt_response_cls = None
+    wpt_http_exception_cls = None
 
     def __init__(self, *arguments, **kwargs):
         super().__init__(*arguments, directory=self.static_directory, **kwargs)
@@ -76,6 +84,100 @@ class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         normalized_path = posixpath.normpath(request_path)
         parts = [part for part in normalized_path.split("/") if part and part not in (".", "..")]
         return os.path.join(root_directory, *parts)
+
+    def _is_wpt_import_path(self, request_path):
+        return request_path == WPT_IMPORT_PREFIX[:-1] or request_path.startswith(WPT_IMPORT_PREFIX)
+
+    def _wpt_relative_path(self, request_path):
+        if not self._is_wpt_import_path(request_path):
+            return None
+
+        suffix = request_path[len(WPT_IMPORT_PREFIX.rstrip("/")) :]
+        return suffix or "/"
+
+    def _wpt_filesystem_path_for_url(self, root_directory, request_path):
+        relative_path = self._wpt_relative_path(request_path)
+        if relative_path is None:
+            return None
+        return self._filesystem_path_for_url(root_directory, relative_path)
+
+    def _path_has_default_python_handler(self, filesystem_path):
+        if not os.path.isdir(filesystem_path):
+            return False
+
+        try:
+            return any(
+                os.path.isfile(os.path.join(filesystem_path, filename))
+                for filename in sorted(os.listdir(filesystem_path))
+                if filename.startswith("default") and filename.endswith(".py")
+            )
+        except OSError:
+            return False
+
+    def _locate_wpt_resource(self, request_path):
+        for root_directory in (self.wpt_directory, self.wpt_source_directory):
+            if not root_directory:
+                continue
+
+            filesystem_path = self._wpt_filesystem_path_for_url(root_directory, request_path)
+            if filesystem_path is None:
+                continue
+
+            if (
+                os.path.exists(filesystem_path)
+                or os.path.isfile(filesystem_path + ".headers")
+                or os.path.isfile(filesystem_path + ".sub.headers")
+                or self._path_has_default_python_handler(filesystem_path)
+            ):
+                return root_directory, filesystem_path
+
+        return None, None
+
+    def _serve_wpt_request(self, request_path):
+        if self.wpt_request_cls is None or self.wpt_response_cls is None or self.wpt_http_exception_cls is None:
+            return False
+
+        root_directory, filesystem_path = self._locate_wpt_resource(request_path)
+        if root_directory is None or filesystem_path is None:
+            return False
+
+        relative_path = self._wpt_relative_path(request_path)
+        if relative_path is None:
+            return False
+
+        if filesystem_path.endswith(".py") or self._path_has_default_python_handler(filesystem_path):
+            handler = self.wpt_python_handler_cls(base_path=root_directory, url_base="/")
+        else:
+            handler = self.wpt_file_handler_cls(base_path=root_directory, url_base="/")
+
+        original_path = self.path
+        original_directory = self.directory
+        query_suffix = f"?{urllib.parse.urlsplit(original_path).query}" if urllib.parse.urlsplit(original_path).query else ""
+
+        try:
+            self.path = relative_path + query_suffix
+            self.directory = root_directory
+
+            request = self.wpt_request_cls(self)
+            request.doc_root = root_directory
+            request.url_base = "/"
+            response = self.wpt_response_cls(self, request)
+
+            try:
+                handler(request, response)
+            except self.wpt_http_exception_cls as exception:
+                response.set_error(exception.code, exception)
+            except Exception as exception:
+                response.set_error(500, exception)
+
+            if not response.writer.content_written:
+                response.write()
+
+            self.close_connection = self.close_connection or response.close_connection
+            return True
+        finally:
+            self.path = original_path
+            self.directory = original_directory
 
     def _set_static_headers(self, headers_path):
         if not os.path.isfile(headers_path):
@@ -95,7 +197,13 @@ class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         if request_path.startswith("/static/"):
             request_path = request_path[7:]
 
-        for root_directory in (self.static_directory, self.wpt_directory):
+        if self._is_wpt_import_path(request_path):
+            return self._serve_wpt_request(request_path)
+
+        if request_handler is None:
+            return False
+
+        for root_directory in (self.static_directory,):
             if not root_directory:
                 continue
 
@@ -107,9 +215,9 @@ class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.directory = root_directory
                 self.path = request_path + query_suffix
                 request_handler()
-                return
+                return True
 
-        self.send_error(404, "Not Found")
+        return False
 
     def end_headers(self):
         if hasattr(self, "_extra_headers"):
@@ -122,7 +230,8 @@ class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         if self._is_echo_path():
             self.handle_echo()
         else:
-            self._serve_static_request(super().do_GET)
+            if not self._serve_static_request(super().do_GET):
+                self.send_error(404, "Not Found")
 
     def do_POST(self):
         _, request_path = self._normalized_request_path()
@@ -192,7 +301,8 @@ class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         elif self._is_echo_path():
             self.handle_echo()
         else:
-            self.send_error(405, "Method Not Allowed")
+            if not self._serve_static_request(None):
+                self.send_error(405, "Method Not Allowed")
 
     def do_OPTIONS(self):
         if self._is_echo_path():
@@ -202,7 +312,8 @@ class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Headers", "*")
             self.end_headers()
         else:
-            self.do_other()
+            if not self._serve_static_request(None):
+                self.do_other()
 
     def do_PUT(self):
         self.do_other()
@@ -211,7 +322,8 @@ class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         if self._is_echo_path():
             self.handle_echo()
         else:
-            self._serve_static_request(super().do_HEAD)
+            if not self._serve_static_request(super().do_HEAD):
+                self.send_error(404, "Not Found")
 
     def do_DELETE(self):
         self.do_other()
@@ -301,13 +413,62 @@ class TestHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         if self._is_echo_path():
             self.handle_echo()
         else:
-            self.send_error(405, "Method Not Allowed")
+            if not self._serve_static_request(None):
+                self.send_error(405, "Method Not Allowed")
 
 
 def start_server(port, static_directory, wpt_directory):
     TestHTTPRequestHandler.static_directory = os.path.abspath(static_directory)
     TestHTTPRequestHandler.wpt_directory = os.path.abspath(wpt_directory) if wpt_directory else None
+    TestHTTPRequestHandler.wpt_source_directory = os.path.join(TestHTTPRequestHandler.static_directory, "WPT", "wpt")
     httpd = socketserver.TCPServer(("127.0.0.1", port), TestHTTPRequestHandler)
+    httpd.scheme = "http"
+    httpd.router = SimpleNamespace(doc_root=TestHTTPRequestHandler.static_directory)
+
+    wpt_stash_server = None
+    if TestHTTPRequestHandler.wpt_directory and os.path.isdir(TestHTTPRequestHandler.wpt_source_directory):
+        wpt_tools_directory = os.path.join(TestHTTPRequestHandler.wpt_source_directory, "tools")
+        if wpt_tools_directory not in sys.path:
+            sys.path.insert(0, wpt_tools_directory)
+
+        import localpaths  # noqa: F401
+        from wptserve import handlers as wpt_handlers
+        from wptserve.config import Config
+        from wptserve.request import Request, Server
+        from wptserve.response import Response
+        from wptserve.stash import StashServer
+        from wptserve.utils import HTTPException
+
+        config = Config(
+            {
+                "browser_host": "localhost",
+                "ports": {
+                    "http": [httpd.socket.getsockname()[1], 0],
+                    "https": [0],
+                    "ws": [0],
+                    "wss": [0],
+                },
+                "all_domains": {
+                    "": "localhost",
+                    "www1": "www1.localhost",
+                    "www2": "www2.localhost",
+                    "alt": "localhost",
+                },
+                "logging": {
+                    "suppress_handler_traceback": False,
+                },
+            }
+        )
+
+        Server.config = config
+        TestHTTPRequestHandler.wpt_file_handler_cls = wpt_handlers.FileHandler
+        TestHTTPRequestHandler.wpt_python_handler_cls = wpt_handlers.PythonScriptHandler
+        TestHTTPRequestHandler.wpt_request_cls = Request
+        TestHTTPRequestHandler.wpt_response_cls = Response
+        TestHTTPRequestHandler.wpt_http_exception_cls = HTTPException
+
+        wpt_stash_server = StashServer()
+        wpt_stash_server.__enter__()
 
     print(httpd.socket.getsockname()[1])
     sys.stdout.flush()
@@ -317,6 +478,8 @@ def start_server(port, static_directory, wpt_directory):
     except KeyboardInterrupt:
         pass
     finally:
+        if wpt_stash_server is not None:
+            wpt_stash_server.__exit__(None, None, None)
         httpd.server_close()
 
 
