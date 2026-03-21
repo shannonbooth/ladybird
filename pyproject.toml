@@ -1,5 +1,10 @@
 [tool.ruff]
 line-length = 120
+force-exclude = true
+extend-exclude = [
+    # Vendored WPT server runtime and bundled third-party modules.
+    "Tests/LibWeb/Text/input/wpt-import/_wpttools",
+]
 
 [tool.ruff.lint]
 # https://docs.astral.sh/ruff/rules/
