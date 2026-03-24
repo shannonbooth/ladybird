@@ -1590,11 +1590,6 @@ WebIDL::ExceptionOr<void> Navigable::navigate(NavigateParams params)
         return {};
     }
 
-    if (m_pending_navigations.is_empty() && params.url.equals(URL::about_blank())) {
-        begin_navigation(move(params));
-        return {};
-    }
-
     if (!m_has_session_history_entry_and_ready_for_navigation) {
         m_pending_navigations.append(move(params));
         return {};
@@ -2817,6 +2812,11 @@ void Navigable::set_has_session_history_entry_and_ready_for_navigation()
         auto navigation_params = m_pending_navigations.take_first();
         begin_navigation(navigation_params);
     }
+}
+
+void Navigable::clear_pending_navigations()
+{
+    m_pending_navigations.clear();
 }
 
 void Navigable::ready_to_paint()

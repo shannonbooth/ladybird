@@ -821,7 +821,17 @@ WebIDL::ExceptionOr<Document*> Document::open(Optional<String> const&, Optional<
     if (m_active_parser_was_aborted)
         return this;
 
-    // FIXME: 8. If document's browsing context is non-null and there is an existing attempt to navigate document's browsing context, then stop document loading given document.
+    // 8. If document's browsing context is non-null and there is an existing attempt to navigate document's browsing context, then stop document loading given document.
+    if (browsing_context()) {
+        if (auto navigable = this->navigable(); navigable && (navigable->ongoing_navigation().has<String>() || navigable->has_pending_navigations())) {
+            navigable->stop_loading();
+
+            // AD-HOC: In Ladybird, initial iframe navigations can sit in m_pending_navigations until the child
+            // navigable's session history bookkeeping has completed. Treat those queued navigations as the
+            // "existing attempt to navigate" that document.open() must stop.
+            navigable->clear_pending_navigations();
+        }
+    }
 
     // FIXME: 9. For each shadow-including inclusive descendant node of document, erase all event listeners and handlers given node.
 
@@ -853,6 +863,23 @@ WebIDL::ExceptionOr<Document*> Document::open(Optional<String> const&, Optional<
 
     // 13. Set document's is initial about:blank to false.
     set_is_initial_about_blank(false);
+
+    // AD-HOC: The Navigation API is disabled while the document is initial about:blank, so the step 12 history update
+    // above cannot seed window.navigation. Once step 13 flips that bit, initialize the single current entry directly.
+    if (is_fully_active()) {
+        auto navigation = as<HTML::Window>(HTML::relevant_global_object(*this)).navigation();
+        if (navigation->entries().is_empty()) {
+            auto navigable = this->navigable();
+            VERIFY(navigable);
+
+            auto initial_entry = navigable->active_session_history_entry();
+            VERIFY(initial_entry);
+
+            Vector<GC::Ref<HTML::SessionHistoryEntry>> entries_for_navigation_api;
+            entries_for_navigation_api.append(*initial_entry);
+            navigation->initialize_the_navigation_api_entries_for_a_new_document(entries_for_navigation_api, *initial_entry);
+        }
+    }
 
     // FIXME: 14. If document's iframe load in progress flag is set, then set document's mute iframe load flag.
 
@@ -3385,10 +3412,6 @@ bool Document::is_completely_loaded() const
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#completely-finish-loading
 void Document::completely_finish_loading()
 {
-    auto navigable = this->navigable();
-    if (!navigable)
-        return;
-
     ScopeGuard notify_observers = [this] {
         notify_each_document_observer([&](auto const& document_observer) {
             return document_observer.document_completely_loaded();
@@ -3406,21 +3429,36 @@ void Document::completely_finish_loading()
         m_active_refresh_timer->start();
 
     // 3. Let container be document's browsing context's container.
-    if (!navigable->container())
+    // Use the browsing context's current container instead of this document's node navigable.
+    // A newly created replacement document can finish loading before it becomes the active
+    // document of its navigable, in which case document.navigable() is still null here.
+    auto* container = [&]() -> DOM::Element* {
+        auto browsing_context = this->browsing_context();
+        if (!browsing_context)
+            return nullptr;
+        auto active_document = browsing_context->active_document();
+        if (!active_document)
+            return nullptr;
+        auto node_navigable = active_document->navigable();
+        if (!node_navigable)
+            return nullptr;
+        return node_navigable->container();
+    }();
+    if (!container)
         return;
 
-    auto container = GC::make_root(navigable->container());
+    auto rooted_container = GC::make_root(container);
 
     // 4. If container is an iframe element, then queue an element task on the DOM manipulation task source given container to run the iframe load event steps given container.
-    if (container && is<HTML::HTMLIFrameElement>(*container)) {
-        container->queue_an_element_task(HTML::Task::Source::DOMManipulation, [container] {
-            run_iframe_load_event_steps(static_cast<HTML::HTMLIFrameElement&>(*container));
+    if (rooted_container && is<HTML::HTMLIFrameElement>(*rooted_container)) {
+        rooted_container->queue_an_element_task(HTML::Task::Source::DOMManipulation, [rooted_container] {
+            run_iframe_load_event_steps(static_cast<HTML::HTMLIFrameElement&>(*rooted_container));
         });
     }
     // 5. Otherwise, if container is non-null, then queue an element task on the DOM manipulation task source given container to fire an event named load at container.
-    else if (container) {
-        container->queue_an_element_task(HTML::Task::Source::DOMManipulation, [container] {
-            container->dispatch_event(DOM::Event::create(container->realm(), HTML::EventNames::load));
+    else if (rooted_container) {
+        rooted_container->queue_an_element_task(HTML::Task::Source::DOMManipulation, [rooted_container] {
+            rooted_container->dispatch_event(DOM::Event::create(rooted_container->realm(), HTML::EventNames::load));
         });
     }
 }
