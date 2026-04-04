@@ -16,6 +16,7 @@ set(SOURCES
     NumberFormat.cpp
     PluralRules.cpp
     RelativeTimeFormat.cpp
+    RustIntegration.cpp
     Segmenter.cpp
     String.cpp
     TimeZone.cpp
