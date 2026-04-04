@@ -5,6 +5,7 @@
  */
 
 pub mod ffi;
+pub mod pattern;
 pub mod url;
 
 pub use url::{BasicParseOptions, Host, State, Url, basic_parse};

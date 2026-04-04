@@ -19,7 +19,7 @@ uint32_t unicode_get_string_property_data(unsigned char const*, size_t, uint32_t
 int unicode_resolve_property(unsigned char const*, size_t, unsigned char const*, size_t, int, unsigned char*, uint32_t*);
 }
 
-extern "C" bool unicode_property_matches(
+extern "C" REGEX_API bool unicode_property_matches(
     uint32_t code_point,
     unsigned char const* name_ptr, size_t name_len,
     unsigned char const* value_ptr, size_t value_len,
@@ -80,7 +80,7 @@ enum ResolvedPropertyKind : uint8_t {
 
 /// Resolve a Unicode property name/value pair to a (kind, id) pair.
 /// Returns 1 on success, 0 if the property is not recognized.
-extern "C" int unicode_resolve_property(
+extern "C" REGEX_API int unicode_resolve_property(
     unsigned char const* name_ptr, size_t name_len,
     unsigned char const* value_ptr, size_t value_len,
     int has_value,
@@ -137,7 +137,7 @@ extern "C" int unicode_resolve_property(
 
 // Check if a code point matches a Unicode property, considering case closure.
 // Returns 1 if the code point or any of its case equivalents has the property.
-extern "C" int unicode_property_matches_case_insensitive(
+extern "C" REGEX_API int unicode_property_matches_case_insensitive(
     uint32_t code_point,
     unsigned char const* name_ptr, size_t name_len,
     unsigned char const* value_ptr, size_t value_len,
@@ -194,7 +194,7 @@ extern "C" int unicode_property_matches_case_insensitive(
 // Check if ALL case-equivalents of a code point have the property.
 // Returns 1 only if every case-equivalent has the property.
 // Used for u-flag negated case-insensitive: \P{X}/iu matches if NOT all have X.
-extern "C" int unicode_property_all_case_equivalents_match(
+extern "C" REGEX_API int unicode_property_all_case_equivalents_match(
     uint32_t code_point,
     unsigned char const* name_ptr, size_t name_len,
     unsigned char const* value_ptr, size_t value_len,
@@ -246,7 +246,7 @@ extern "C" int unicode_property_all_case_equivalents_match(
     return all_match ? 1 : 0;
 }
 
-extern "C" unsigned int unicode_get_case_closure(
+extern "C" REGEX_API unsigned int unicode_get_case_closure(
     uint32_t code_point,
     uint32_t* out_buffer,
     unsigned int buffer_capacity)
@@ -262,7 +262,7 @@ extern "C" unsigned int unicode_get_case_closure(
     return count;
 }
 
-extern "C" int unicode_is_string_property(
+extern "C" REGEX_API int unicode_is_string_property(
     unsigned char const* name_ptr, size_t name_len)
 {
     auto name = StringView { reinterpret_cast<char const*>(name_ptr), name_len };
@@ -272,7 +272,7 @@ extern "C" int unicode_is_string_property(
     return Unicode::is_ecma262_string_property(*prop) ? 1 : 0;
 }
 
-extern "C" int unicode_is_valid_ecma262_property(
+extern "C" REGEX_API int unicode_is_valid_ecma262_property(
     unsigned char const* name_ptr, size_t name_len,
     unsigned char const* value_ptr, size_t value_len,
     int has_value)
@@ -306,7 +306,7 @@ extern "C" int unicode_is_valid_ecma262_property(
 /// Writes packed data: [string_count, len1, cp1_0, cp1_1, ..., len2, cp2_0, ...]
 /// Returns total number of u32 values written.
 /// If out is null, returns the total size needed.
-extern "C" uint32_t unicode_get_string_property_data(
+extern "C" REGEX_API uint32_t unicode_get_string_property_data(
     unsigned char const* name_ptr, size_t name_len,
     uint32_t* out, uint32_t capacity)
 {

@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+mod pattern;
 mod url;
 
+pub use pattern::*;
 pub use url::*;
