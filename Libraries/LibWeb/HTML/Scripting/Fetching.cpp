@@ -429,28 +429,20 @@ void fetch_classic_script(GC::Ref<HTMLScriptElement> element, URL::URL const& ur
         // FIXME: Pass options.
         auto response_url = response->url().value_or({});
 
-        // If the Rust pipeline is available, parse off the main thread.
-        if (JS::RustIntegration::rust_pipeline_available()) {
-            auto on_complete_root = GC::make_root(on_complete);
-            auto settings_root = GC::make_root(settings_object);
-            auto response_url_string = response_url.to_byte_string();
-            auto source_code = JS::SourceCode::create(
-                String::from_utf8(response_url_string.view()).release_value_but_fixme_should_propagate_errors(),
-                Utf16String::from_utf8(source_text));
+        auto on_complete_root = GC::make_root(on_complete);
+        auto settings_root = GC::make_root(settings_object);
+        auto response_url_string = response_url.to_byte_string();
+        auto source_code = JS::SourceCode::create(
+            String::from_utf8(response_url_string.view()).release_value_but_fixme_should_propagate_errors(),
+            Utf16String::from_utf8(source_text));
 
-            parse_off_thread(move(source_code), JS::RustIntegration::ProgramType::Script, 1,
-                [response_url = move(response_url), response_url_string = move(response_url_string),
-                    muted_errors, on_complete_root = move(on_complete_root),
-                    settings_root = move(settings_root)](auto* parsed, auto source_code) mutable {
-                    auto script = ClassicScript::create_from_pre_parsed(move(response_url_string), move(source_code), *settings_root, move(response_url), parsed, muted_errors);
-                    on_complete_root->function()(script);
-                });
-        } else {
-            auto script = ClassicScript::create(response_url.to_byte_string(), source_text, settings_object, response_url, 1, muted_errors);
-
-            // 8. Run onComplete given script.
-            on_complete->function()(script);
-        }
+        parse_off_thread(move(source_code), JS::RustIntegration::ProgramType::Script, 1,
+            [response_url = move(response_url), response_url_string = move(response_url_string),
+                muted_errors, on_complete_root = move(on_complete_root),
+                settings_root = move(settings_root)](auto* parsed, auto source_code) mutable {
+                auto script = ClassicScript::create_from_pre_parsed(move(response_url_string), move(source_code), *settings_root, move(response_url), parsed, muted_errors);
+                on_complete_root->function()(script);
+            });
     };
 
     Fetch::Fetching::fetch(element->realm(), request, Fetch::Infrastructure::FetchAlgorithms::create(vm, move(fetch_algorithms_input)));
@@ -787,29 +779,25 @@ void fetch_single_module_script(JS::Realm& realm,
             //    and options.
             // FIXME: Pass options.
             if (mime_type.has_value() && mime_type->is_javascript() && module_type == "javascript-or-wasm") {
-                // If the Rust pipeline is available, parse off the main thread.
-                if (JS::RustIntegration::rust_pipeline_available()) {
-                    auto on_complete_root = GC::make_root(on_complete);
-                    auto settings_root = GC::make_root(settings_object);
-                    auto url_string = url.to_byte_string();
-                    auto response_url = response->url().value_or({});
-                    auto module_type_string = module_type.to_byte_string();
-                    auto source_code = JS::SourceCode::create(
-                        String::from_utf8(url_string.view()).release_value_but_fixme_should_propagate_errors(),
-                        Utf16String::from_utf8(source_text));
+                auto on_complete_root = GC::make_root(on_complete);
+                auto settings_root = GC::make_root(settings_object);
+                auto url_string = url.to_byte_string();
+                auto response_url = response->url().value_or({});
+                auto module_type_string = module_type.to_byte_string();
+                auto source_code = JS::SourceCode::create(
+                    String::from_utf8(url_string.view()).release_value_but_fixme_should_propagate_errors(),
+                    Utf16String::from_utf8(source_text));
 
-                    parse_off_thread(move(source_code), JS::RustIntegration::ProgramType::Module, 0,
-                        [url = move(url), url_string = move(url_string), response_url = move(response_url),
-                            module_type_string = move(module_type_string),
-                            on_complete_root = move(on_complete_root),
-                            settings_root = move(settings_root)](auto* parsed, auto source_code) mutable {
-                            auto module_script = ModuleScript::create_from_pre_parsed(url_string, move(source_code), *settings_root, move(response_url), parsed).release_value_but_fixme_should_propagate_errors();
-                            settings_root->module_map().set(url, module_type_string, { ModuleMap::EntryType::ModuleScript, module_script });
-                            on_complete_root->function()(module_script);
-                        });
-                    return;
-                }
-                module_script = ModuleScript::create_a_javascript_module_script(url.to_byte_string(), source_text, settings_object, response->url().value_or({})).release_value_but_fixme_should_propagate_errors();
+                parse_off_thread(move(source_code), JS::RustIntegration::ProgramType::Module, 0,
+                    [url = move(url), url_string = move(url_string), response_url = move(response_url),
+                        module_type_string = move(module_type_string),
+                        on_complete_root = move(on_complete_root),
+                        settings_root = move(settings_root)](auto* parsed, auto source_code) mutable {
+                        auto module_script = ModuleScript::create_from_pre_parsed(url_string, move(source_code), *settings_root, move(response_url), parsed).release_value_but_fixme_should_propagate_errors();
+                        settings_root->module_map().set(url, module_type_string, { ModuleMap::EntryType::ModuleScript, module_script });
+                        on_complete_root->function()(module_script);
+                    });
+                return;
             }
 
             // FIXME: 3. If mimeType is a JavaScript MIME type and moduleType is "javascript-or-wasm", then set moduleScript to
