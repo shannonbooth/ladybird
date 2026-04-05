@@ -10,6 +10,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use crate::url::{
     BasicParseOptions, Host, State, Url, basic_parse, basic_parse_into, is_special_scheme,
+    parse_host,
 };
 
 #[repr(C)]
@@ -80,6 +81,7 @@ pub struct RustBasicParseOptions {
 }
 
 pub type FfiUrlResultFn = unsafe extern "C" fn(*mut c_void, *const RustFfiUrl);
+pub type FfiHostResultFn = unsafe extern "C" fn(*mut c_void, *const FfiUrlHost);
 
 fn abort_on_panic<F: FnOnce() -> R, R>(f: F) -> R {
     match catch_unwind(AssertUnwindSafe(f)) {
@@ -286,5 +288,35 @@ pub unsafe extern "C" fn rust_url_basic_parse(
         // SAFETY: ffi_result borrows from url and path_slices, both live here.
         unsafe { on_complete(ctx, &raw const ffi_result) };
         did_succeed
+    })
+}
+
+/// # Safety
+/// `input` must be valid for `input_length` bytes.
+/// `on_complete` is called exactly once with either a host result or null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_url_parse_host(
+    input: *const u8,
+    input_length: usize,
+    is_opaque: bool,
+    ctx: *mut c_void,
+    on_complete: FfiHostResultFn,
+) -> bool {
+    abort_on_panic(|| {
+        // SAFETY: caller guarantees input is valid.
+        let input_bytes = unsafe { std::slice::from_raw_parts(input, input_length) };
+        let input_str = String::from_utf8_lossy(input_bytes);
+
+        let Some(host) = parse_host(&input_str, is_opaque) else {
+            // SAFETY: on_complete is a valid function pointer; ctx is caller-provided.
+            unsafe { on_complete(ctx, std::ptr::null()) };
+            return false;
+        };
+
+        let ffi_result = host_to_ffi(Some(&host));
+
+        // SAFETY: ffi_result borrows from host, which lives until the callback returns.
+        unsafe { on_complete(ctx, &raw const ffi_result) };
+        true
     })
 }

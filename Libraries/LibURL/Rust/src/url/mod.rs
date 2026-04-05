@@ -11,6 +11,7 @@ mod scheme;
 mod serialize;
 mod types;
 
+pub(crate) use self::host::parse_host;
 pub(crate) use self::parser::basic_parse_into;
 pub(crate) use self::scheme::{default_port_for_scheme, is_special_scheme, special_schemes};
 pub(crate) use self::types::ExcludeFragment;
