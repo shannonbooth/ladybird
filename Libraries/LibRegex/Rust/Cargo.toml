@@ -6,5 +6,8 @@ edition = "2024"
 [lib]
 crate-type = ["staticlib"]
 
+[dependencies]
+libunicode_rust = { path = "../../LibUnicode/Rust" }
+
 [build-dependencies]
 cbindgen = "0.29"

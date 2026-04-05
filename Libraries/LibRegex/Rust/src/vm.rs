@@ -3575,8 +3575,8 @@ fn case_fold(cp: u32, unicode_mode: bool) -> u32 {
         }
         return cp;
     }
-    // Non-ASCII: call FFI which handles both modes correctly.
-    crate::unicode_ffi::simple_case_fold(cp, unicode_mode)
+    // Non-ASCII: call canonicalize which handles both modes correctly.
+    libunicode_rust::canonicalize(cp, unicode_mode)
 }
 
 /// Compare two code points for case-insensitive equality.
@@ -3684,7 +3684,7 @@ pub(crate) fn match_char_class(
         // Always use the ICU-based range matcher which correctly handles
         // cross-script case folding (e.g. U+017F ſ folds to ASCII s).
         ranges.iter().any(|r| {
-            crate::unicode_ffi::code_point_matches_range_ignoring_case(
+            libunicode_rust::code_point_matches_range_ignoring_case(
                 cp,
                 r.start,
                 r.end,
@@ -3751,7 +3751,18 @@ pub(crate) fn match_unicode_property_resolved(
     resolved: Option<&ResolvedProperty>,
 ) -> bool {
     if let Some(r) = resolved {
-        return crate::unicode_ffi::resolved_property_matches(cp, *r);
+        return match r.kind {
+            PropertyKind::Script => libunicode_rust::code_point_has_script(cp, r.id),
+            PropertyKind::ScriptExtension => {
+                libunicode_rust::code_point_has_script_extension(cp, r.id)
+            }
+            PropertyKind::GeneralCategory => {
+                libunicode_rust::code_point_has_general_category(cp, r.id, true)
+            }
+            PropertyKind::BinaryProperty => {
+                libunicode_rust::code_point_has_property(cp, r.id, true)
+            }
+        };
     }
     match_unicode_property(cp, name, value)
 }
