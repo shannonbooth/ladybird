@@ -10,8 +10,6 @@
 // Forward declarations for C++ functions called from Rust.
 extern "C" {
 bool unicode_property_matches(uint32_t, unsigned char const*, size_t, unsigned char const*, size_t, int);
-uint32_t unicode_simple_case_fold(uint32_t, int);
-int unicode_code_point_matches_range_ignoring_case(uint32_t, uint32_t, uint32_t, int);
 int unicode_property_matches_case_insensitive(uint32_t, unsigned char const*, size_t, unsigned char const*, size_t, int);
 int unicode_property_all_case_equivalents_match(uint32_t, unsigned char const*, size_t, unsigned char const*, size_t, int);
 unsigned int unicode_get_case_closure(uint32_t, uint32_t*, unsigned int);
@@ -19,7 +17,6 @@ int unicode_is_string_property(unsigned char const*, size_t);
 int unicode_is_valid_ecma262_property(unsigned char const*, size_t, unsigned char const*, size_t, int);
 uint32_t unicode_get_string_property_data(unsigned char const*, size_t, uint32_t*, uint32_t);
 int unicode_resolve_property(unsigned char const*, size_t, unsigned char const*, size_t, int, unsigned char*, uint32_t*);
-int unicode_resolved_property_matches(uint32_t, unsigned char, uint32_t);
 }
 
 extern "C" bool unicode_property_matches(
@@ -136,33 +133,6 @@ extern "C" int unicode_resolve_property(
         return 1;
     }
     return 0;
-}
-
-/// Check if a code point matches a resolved property. Direct ICU trie lookup, no string parsing.
-extern "C" int unicode_resolved_property_matches(uint32_t code_point, unsigned char kind, uint32_t id)
-{
-    switch (kind) {
-    case ResolvedPropertyKind::Script:
-        return Unicode::code_point_has_script(code_point, Unicode::Script { id }) ? 1 : 0;
-    case ResolvedPropertyKind::ScriptExtension:
-        return Unicode::code_point_has_script_extension(code_point, Unicode::Script { id }) ? 1 : 0;
-    case ResolvedPropertyKind::GeneralCategory:
-        return Unicode::code_point_has_general_category(code_point, Unicode::GeneralCategory { id }) ? 1 : 0;
-    case ResolvedPropertyKind::BinaryProperty:
-        return Unicode::code_point_has_property(code_point, Unicode::Property { id }) ? 1 : 0;
-    default:
-        return 0;
-    }
-}
-
-extern "C" uint32_t unicode_simple_case_fold(uint32_t code_point, int unicode_mode)
-{
-    return Unicode::canonicalize(code_point, unicode_mode != 0);
-}
-
-extern "C" int unicode_code_point_matches_range_ignoring_case(uint32_t code_point, uint32_t from, uint32_t to, int unicode_mode)
-{
-    return Unicode::code_point_matches_range_ignoring_case(code_point, from, to, unicode_mode != 0) ? 1 : 0;
 }
 
 // Check if a code point matches a Unicode property, considering case closure.
