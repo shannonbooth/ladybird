@@ -23,174 +23,49 @@
 namespace IDL {
 
 Vector<StringView> g_header_search_paths;
+static GeneratorContext const* g_generator_context;
 
 template<typename ParameterType>
 static void generate_to_cpp(SourceGenerator& generator, ParameterType& parameter, ByteString const& js_name, ByteString const& js_suffix, ByteString const& cpp_name, IDL::Interface const& interface, bool legacy_null_to_empty_string = false, bool optional = false, Optional<ByteString> optional_default_value = {}, bool variadic = false, size_t recursion_depth = 0);
 
-// FIXME: Generate this automatically somehow.
-static bool is_platform_object(Type const& type)
+void GeneratorContext::register_interface(Interface const& interface)
 {
-    // NOTE: This is a hand-curated subset of platform object types that are actually relevant
-    // in places where this function is used. If you add IDL code and get compile errors, you
-    // might simply need to add another type here.
-    static constexpr Array types = {
-        "AbortSignal"sv,
-        "Animation"sv,
-        "AnimationEffect"sv,
-        "AnimationTimeline"sv,
-        "Attr"sv,
-        "AudioBuffer"sv,
-        "AudioContext"sv,
-        "AudioListener"sv,
-        "AudioNode"sv,
-        "AudioParam"sv,
-        "AudioScheduledSourceNode"sv,
-        "AudioTrack"sv,
-        "BaseAudioContext"sv,
-        "Blob"sv,
-        "CacheStorage"sv,
-        "CanvasGradient"sv,
-        "CanvasPattern"sv,
-        "CanvasRenderingContext2D"sv,
-        "ClipboardItem"sv,
-        "CloseWatcher"sv,
-        "Credential"sv,
-        "CredentialsContainer"sv,
-        "CryptoKey"sv,
-        "CSSKeywordValue"sv,
-        "CSSNumericArray"sv,
-        "CSSNumericValue"sv,
-        "CSSStyleValue"sv,
-        "CSSTransformComponent"sv,
-        "CSSUnitValue"sv,
-        "CSSUnparsedValue"sv,
-        "CSSVariableReferenceValue"sv,
-        "CustomElementRegistry"sv,
-        "CustomStateSet"sv,
-        "DataTransfer"sv,
-        "Document"sv,
-        "DocumentType"sv,
-        "DOMMatrix"sv,
-        "DOMMatrixReadOnly"sv,
-        "DOMRectReadOnly"sv,
-        "DynamicsCompressorNode"sv,
-        "ElementInternals"sv,
-        "EventTarget"sv,
-        "External"sv,
-        "FederatedCredential"sv,
-        "File"sv,
-        "FileList"sv,
-        "FontFace"sv,
-        "FormData"sv,
-        "Gamepad"sv,
-        "GamepadButton"sv,
-        "GamepadHapticActuator"sv,
-        "HTMLCollection"sv,
-        "IDBCursor"sv,
-        "IDBCursorWithValue"sv,
-        "IDBIndex"sv,
-        "IDBKeyRange"sv,
-        "IDBObjectStore"sv,
-        "IDBRecord"sv,
-        "IDBTransaction"sv,
-        "ImageBitmap"sv,
-        "ImageData"sv,
-        "Instance"sv,
-        "IntersectionObserverEntry"sv,
-        "KeyframeEffect"sv,
-        "MediaKeySystemAccess"sv,
-        "MediaList"sv,
-        "MediaSource"sv,
-        "Memory"sv,
-        "MessagePort"sv,
-        "Module"sv,
-        "MutationRecord"sv,
-        "NamedNodeMap"sv,
-        "NavigationDestination"sv,
-        "NavigationHistoryEntry"sv,
-        "Node"sv,
-        "OffscreenCanvas"sv,
-        "OffscreenCanvasRenderingContext2D"sv,
-        "Origin"sv,
-        "PasswordCredential"sv,
-        "Path2D"sv,
-        "PerformanceEntry"sv,
-        "PerformanceMark"sv,
-        "PerformanceNavigation"sv,
-        "PeriodicWave"sv,
-        "ReadableStreamBYOBReader"sv,
-        "ReadableStreamDefaultReader"sv,
-        "RadioNodeList"sv,
-        "Range"sv,
-        "ReadableStream"sv,
-        "Request"sv,
-        "Response"sv,
-        "Selection"sv,
-        "ServiceWorkerContainer"sv,
-        "ServiceWorkerRegistration"sv,
-        "SVGLength"sv,
-        "SVGNumber"sv,
-        "SVGTransform"sv,
-        "ShadowRoot"sv,
-        "SourceBuffer"sv,
-        "SpeechGrammar"sv,
-        "SpeechGrammarList"sv,
-        "SpeechRecognition"sv,
-        "SpeechRecognitionAlternative"sv,
-        "SpeechRecognitionPhrase"sv,
-        "SpeechRecognitionResult"sv,
-        "SpeechRecognitionResultList"sv,
-        "SpeechSynthesis"sv,
-        "SpeechSynthesisUtterance"sv,
-        "SpeechSynthesisVoice"sv,
-        "Storage"sv,
-        "Table"sv,
-        "Text"sv,
-        "TextMetrics"sv,
-        "TextTrack"sv,
-        "TimeRanges"sv,
-        "TrustedHTML"sv,
-        "TrustedScript"sv,
-        "TrustedScriptURL"sv,
-        "TrustedTypePolicy"sv,
-        "TrustedTypePolicyFactory"sv,
-        "URLSearchParams"sv,
-        "VTTRegion"sv,
-        "VideoTrack"sv,
-        "VideoTrackList"sv,
-        "ViewTransition"sv,
-        "WebGL2RenderingContext"sv,
-        "WebGLActiveInfo"sv,
-        "WebGLBuffer"sv,
-        "WebGLFramebuffer"sv,
-        "WebGLObject"sv,
-        "WebGLProgram"sv,
-        "WebGLQuery"sv,
-        "WebGLRenderbuffer"sv,
-        "WebGLRenderingContext"sv,
-        "WebGLSampler"sv,
-        "WebGLShader"sv,
-        "WebGLShaderPrecisionFormat"sv,
-        "WebGLSync"sv,
-        "WebGLTexture"sv,
-        "WebGLTransformFeedback"sv,
-        "WebGLUniformLocation"sv,
-        "WebGLVertexArrayObject"sv,
-        "WebGLVertexArrayObjectOES"sv,
-        "Window"sv,
-        "WindowProxy"sv,
-        "WritableStream"sv,
-        "XPathResult"sv,
-        "XRSession"sv,
-        "XRWebGLLayer"sv,
-    };
-    if (type.name().ends_with("Element"sv))
+    if (interface.name.is_empty())
+        return;
+
+    m_interfaces.set(interface.name, &interface);
+}
+
+Interface const* GeneratorContext::interface_by_name(StringView name) const
+{
+    auto it = m_interfaces.find(name);
+    if (it == m_interfaces.end())
+        return nullptr;
+    return it->value;
+}
+
+bool GeneratorContext::is_platform_object(Type const& type) const
+{
+    // Special case: WindowProxy does not have it's own IDL file.
+    if (type.name() == "WindowProxy"sv)
         return true;
-    if (type.name().ends_with("Event"sv))
-        return true;
-    if (types.span().contains_slow(type.name()))
-        return true;
-    return false;
+
+    auto const* interface = interface_by_name(type.name());
+    if (!interface)
+        return false;
+
+    return !interface->is_namespace && !interface->is_mixin && !interface->is_callback_interface;
+}
+
+void set_generator_context(GeneratorContext const* generator_context)
+{
+    g_generator_context = generator_context;
+}
+
+bool is_platform_object(Type const& type)
+{
+    VERIFY(g_generator_context);
+    return g_generator_context->is_platform_object(type);
 }
 
 // FIXME: Generate this automatically somehow.

@@ -12,10 +12,22 @@
 
 #pragma once
 
+#include <AK/HashMap.h>
 #include <AK/StringBuilder.h>
 #include <LibIDL/Types.h>
 
 namespace IDL {
+
+struct GeneratorContext {
+    void register_interface(Interface const&);
+    Interface const* interface_by_name(StringView) const;
+    bool is_platform_object(Type const&) const;
+
+private:
+    HashMap<ByteString, Interface const*> m_interfaces;
+};
+
+void set_generator_context(GeneratorContext const*);
 
 void generate_namespace_header(IDL::Interface const&, StringBuilder&);
 void generate_namespace_implementation(IDL::Interface const&, StringBuilder&);
@@ -30,6 +42,7 @@ void generate_async_iterator_prototype_implementation(IDL::Interface const&, Str
 void generate_global_mixin_header(IDL::Interface const&, StringBuilder&);
 void generate_global_mixin_implementation(IDL::Interface const&, StringBuilder&);
 
+bool is_platform_object(Type const&);
 CppType idl_type_name_to_cpp_type(Type const& type, Interface const& interface);
 
 extern Vector<StringView> g_header_search_paths;

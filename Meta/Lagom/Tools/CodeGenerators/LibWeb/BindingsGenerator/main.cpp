@@ -212,6 +212,7 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
     Vector<LexicalPath> lexical_paths;
     Vector<IDL::Parser> parsers;
     Vector<IDL::Interface*> interfaces;
+    IDL::GeneratorContext generator_context;
 
     auto append_dependency_path = [&](ByteString const& dependency_path) {
         if (seen_dependency_paths.set(dependency_path) != AK::HashSetResult::InsertedNewEntry)
@@ -239,6 +240,10 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
         for (auto const& imported_file : parser.imported_files())
             append_dependency_path(imported_file);
     }
+
+    for (auto* interface : interfaces)
+        generator_context.register_interface(*interface);
+    IDL::set_generator_context(&generator_context);
 
     for (size_t i = 0; i < paths.size(); ++i) {
         auto const& lexical_path = lexical_paths[i];
