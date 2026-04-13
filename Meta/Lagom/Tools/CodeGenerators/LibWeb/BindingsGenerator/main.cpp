@@ -201,43 +201,7 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
     }
 
     if constexpr (BINDINGS_GENERATOR_DEBUG) {
-        dbgln("Attributes:");
-        for (auto& attribute : interface.attributes) {
-            dbgln("  {}{}{}{} {}",
-                attribute.inherit ? "inherit " : "",
-                attribute.readonly ? "readonly " : "",
-                attribute.type->name(),
-                attribute.type->is_nullable() ? "?" : "",
-                attribute.name);
-        }
-
-        dbgln("Functions:");
-        for (auto& function : interface.functions) {
-            dbgln("  {}{} {}",
-                function.return_type->name(),
-                function.return_type->is_nullable() ? "?" : "",
-                function.name);
-            for (auto& parameter : function.parameters) {
-                dbgln("    {}{} {}",
-                    parameter.type->name(),
-                    parameter.type->is_nullable() ? "?" : "",
-                    parameter.name);
-            }
-        }
-
-        dbgln("Static Functions:");
-        for (auto& function : interface.static_functions) {
-            dbgln("  static {}{} {}",
-                function.return_type->name(),
-                function.return_type->is_nullable() ? "?" : "",
-                function.name);
-            for (auto& parameter : function.parameters) {
-                dbgln("    {}{} {}",
-                    parameter.type->name(),
-                    parameter.type->is_nullable() ? "?" : "",
-                    parameter.name);
-            }
-        }
+        interface.dump();
     }
 
     auto generated_file_paths = TRY(generate_binding_for_interface(interface, lexical_path, output_path));
