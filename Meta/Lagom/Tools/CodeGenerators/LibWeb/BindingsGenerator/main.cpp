@@ -64,6 +64,90 @@ static ErrorOr<void> write_if_changed(GeneratorFunction generator_function, IDL:
     return {};
 }
 
+struct GeneratedFilePaths {
+    ByteString namespace_header;
+    ByteString namespace_implementation;
+    ByteString constructor_header;
+    ByteString constructor_implementation;
+    ByteString prototype_header;
+    ByteString prototype_implementation;
+    ByteString iterator_prototype_header;
+    ByteString iterator_prototype_implementation;
+    ByteString async_iterator_prototype_header;
+    ByteString async_iterator_prototype_implementation;
+    ByteString global_mixin_header;
+    ByteString global_mixin_implementation;
+
+    auto files_view() const
+    {
+        return to_array<StringView>({
+            constructor_header,
+            constructor_implementation,
+            prototype_header,
+            prototype_implementation,
+            namespace_header,
+            namespace_implementation,
+            iterator_prototype_header,
+            iterator_prototype_implementation,
+            async_iterator_prototype_header,
+            async_iterator_prototype_implementation,
+            global_mixin_header,
+            global_mixin_implementation,
+        });
+    }
+};
+
+static ErrorOr<GeneratedFilePaths> generate_binding_for_interface(IDL::Interface const& interface, LexicalPath const& lexical_path, StringView output_path)
+{
+    GeneratedFilePaths generated_file_paths;
+
+    auto path_prefix = LexicalPath::join(output_path, lexical_path.basename(LexicalPath::StripExtension::Yes));
+
+    if (interface.is_namespace) {
+        generated_file_paths.namespace_header = ByteString::formatted("{}Namespace.h", path_prefix);
+        generated_file_paths.namespace_implementation = ByteString::formatted("{}Namespace.cpp", path_prefix);
+
+        TRY(write_if_changed(&IDL::generate_namespace_header, interface, generated_file_paths.namespace_header));
+        TRY(write_if_changed(&IDL::generate_namespace_implementation, interface, generated_file_paths.namespace_implementation));
+    } else {
+        generated_file_paths.constructor_header = ByteString::formatted("{}Constructor.h", path_prefix);
+        generated_file_paths.constructor_implementation = ByteString::formatted("{}Constructor.cpp", path_prefix);
+        generated_file_paths.prototype_header = ByteString::formatted("{}Prototype.h", path_prefix);
+        generated_file_paths.prototype_implementation = ByteString::formatted("{}Prototype.cpp", path_prefix);
+
+        TRY(write_if_changed(&IDL::generate_constructor_header, interface, generated_file_paths.constructor_header));
+        TRY(write_if_changed(&IDL::generate_constructor_implementation, interface, generated_file_paths.constructor_implementation));
+        TRY(write_if_changed(&IDL::generate_prototype_header, interface, generated_file_paths.prototype_header));
+        TRY(write_if_changed(&IDL::generate_prototype_implementation, interface, generated_file_paths.prototype_implementation));
+    }
+
+    if (interface.pair_iterator_types.has_value()) {
+        generated_file_paths.iterator_prototype_header = ByteString::formatted("{}IteratorPrototype.h", path_prefix);
+        generated_file_paths.iterator_prototype_implementation = ByteString::formatted("{}IteratorPrototype.cpp", path_prefix);
+
+        TRY(write_if_changed(&IDL::generate_iterator_prototype_header, interface, generated_file_paths.iterator_prototype_header));
+        TRY(write_if_changed(&IDL::generate_iterator_prototype_implementation, interface, generated_file_paths.iterator_prototype_implementation));
+    }
+
+    if (interface.async_value_iterator_type.has_value()) {
+        generated_file_paths.async_iterator_prototype_header = ByteString::formatted("{}AsyncIteratorPrototype.h", path_prefix);
+        generated_file_paths.async_iterator_prototype_implementation = ByteString::formatted("{}AsyncIteratorPrototype.cpp", path_prefix);
+
+        TRY(write_if_changed(&IDL::generate_async_iterator_prototype_header, interface, generated_file_paths.async_iterator_prototype_header));
+        TRY(write_if_changed(&IDL::generate_async_iterator_prototype_implementation, interface, generated_file_paths.async_iterator_prototype_implementation));
+    }
+
+    if (interface.extended_attributes.contains("Global")) {
+        generated_file_paths.global_mixin_header = ByteString::formatted("{}GlobalMixin.h", path_prefix);
+        generated_file_paths.global_mixin_implementation = ByteString::formatted("{}GlobalMixin.cpp", path_prefix);
+
+        TRY(write_if_changed(&IDL::generate_global_mixin_header, interface, generated_file_paths.global_mixin_header));
+        TRY(write_if_changed(&IDL::generate_global_mixin_implementation, interface, generated_file_paths.global_mixin_implementation));
+    }
+
+    return generated_file_paths;
+}
+
 ErrorOr<int> ladybird_main(Main::Arguments arguments)
 {
     Core::ArgsParser args_parser;
@@ -156,66 +240,10 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
         }
     }
 
-    ByteString namespace_header;
-    ByteString namespace_implementation;
-    ByteString constructor_header;
-    ByteString constructor_implementation;
-    ByteString prototype_header;
-    ByteString prototype_implementation;
-    ByteString iterator_prototype_header;
-    ByteString iterator_prototype_implementation;
-    ByteString async_iterator_prototype_header;
-    ByteString async_iterator_prototype_implementation;
-    ByteString global_mixin_header;
-    ByteString global_mixin_implementation;
-
-    auto path_prefix = LexicalPath::join(output_path, lexical_path.basename(LexicalPath::StripExtension::Yes));
-
-    if (interface.is_namespace) {
-        namespace_header = ByteString::formatted("{}Namespace.h", path_prefix);
-        namespace_implementation = ByteString::formatted("{}Namespace.cpp", path_prefix);
-
-        TRY(write_if_changed(&IDL::generate_namespace_header, interface, namespace_header));
-        TRY(write_if_changed(&IDL::generate_namespace_implementation, interface, namespace_implementation));
-    } else {
-        constructor_header = ByteString::formatted("{}Constructor.h", path_prefix);
-        constructor_implementation = ByteString::formatted("{}Constructor.cpp", path_prefix);
-        prototype_header = ByteString::formatted("{}Prototype.h", path_prefix);
-        prototype_implementation = ByteString::formatted("{}Prototype.cpp", path_prefix);
-
-        TRY(write_if_changed(&IDL::generate_constructor_header, interface, constructor_header));
-        TRY(write_if_changed(&IDL::generate_constructor_implementation, interface, constructor_implementation));
-        TRY(write_if_changed(&IDL::generate_prototype_header, interface, prototype_header));
-        TRY(write_if_changed(&IDL::generate_prototype_implementation, interface, prototype_implementation));
-    }
-
-    if (interface.pair_iterator_types.has_value()) {
-        iterator_prototype_header = ByteString::formatted("{}IteratorPrototype.h", path_prefix);
-        iterator_prototype_implementation = ByteString::formatted("{}IteratorPrototype.cpp", path_prefix);
-
-        TRY(write_if_changed(&IDL::generate_iterator_prototype_header, interface, iterator_prototype_header));
-        TRY(write_if_changed(&IDL::generate_iterator_prototype_implementation, interface, iterator_prototype_implementation));
-    }
-
-    if (interface.async_value_iterator_type.has_value()) {
-        async_iterator_prototype_header = ByteString::formatted("{}AsyncIteratorPrototype.h", path_prefix);
-        async_iterator_prototype_implementation = ByteString::formatted("{}AsyncIteratorPrototype.cpp", path_prefix);
-
-        TRY(write_if_changed(&IDL::generate_async_iterator_prototype_header, interface, async_iterator_prototype_header));
-        TRY(write_if_changed(&IDL::generate_async_iterator_prototype_implementation, interface, async_iterator_prototype_implementation));
-    }
-
-    if (interface.extended_attributes.contains("Global")) {
-        global_mixin_header = ByteString::formatted("{}GlobalMixin.h", path_prefix);
-        global_mixin_implementation = ByteString::formatted("{}GlobalMixin.cpp", path_prefix);
-
-        TRY(write_if_changed(&IDL::generate_global_mixin_header, interface, global_mixin_header));
-        TRY(write_if_changed(&IDL::generate_global_mixin_implementation, interface, global_mixin_implementation));
-    }
+    auto generated_file_paths = TRY(generate_binding_for_interface(interface, lexical_path, output_path));
 
     if (!depfile_path.is_empty()) {
-        auto files = to_array<StringView>({ constructor_header, constructor_implementation, prototype_header, prototype_implementation, namespace_header, namespace_implementation, iterator_prototype_header, iterator_prototype_implementation, async_iterator_prototype_header, async_iterator_prototype_implementation, global_mixin_header, global_mixin_implementation });
-        TRY(generate_depfile(depfile_path, depfile_prefix, parser, files));
+        TRY(generate_depfile(depfile_path, depfile_prefix, parser, generated_file_paths.files_view()));
     }
     return 0;
 }
