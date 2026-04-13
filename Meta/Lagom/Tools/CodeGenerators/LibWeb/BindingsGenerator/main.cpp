@@ -156,32 +156,32 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
         }
     }
 
-    String namespace_header;
-    String namespace_implementation;
-    String constructor_header;
-    String constructor_implementation;
-    String prototype_header;
-    String prototype_implementation;
-    String iterator_prototype_header;
-    String iterator_prototype_implementation;
-    String async_iterator_prototype_header;
-    String async_iterator_prototype_implementation;
-    String global_mixin_header;
-    String global_mixin_implementation;
+    ByteString namespace_header;
+    ByteString namespace_implementation;
+    ByteString constructor_header;
+    ByteString constructor_implementation;
+    ByteString prototype_header;
+    ByteString prototype_implementation;
+    ByteString iterator_prototype_header;
+    ByteString iterator_prototype_implementation;
+    ByteString async_iterator_prototype_header;
+    ByteString async_iterator_prototype_implementation;
+    ByteString global_mixin_header;
+    ByteString global_mixin_implementation;
 
     auto path_prefix = LexicalPath::join(output_path, lexical_path.basename(LexicalPath::StripExtension::Yes));
 
     if (interface.is_namespace) {
-        namespace_header = TRY(String::formatted("{}Namespace.h", path_prefix));
-        namespace_implementation = TRY(String::formatted("{}Namespace.cpp", path_prefix));
+        namespace_header = ByteString::formatted("{}Namespace.h", path_prefix);
+        namespace_implementation = ByteString::formatted("{}Namespace.cpp", path_prefix);
 
         TRY(write_if_changed(&IDL::generate_namespace_header, interface, namespace_header));
         TRY(write_if_changed(&IDL::generate_namespace_implementation, interface, namespace_implementation));
     } else {
-        constructor_header = TRY(String::formatted("{}Constructor.h", path_prefix));
-        constructor_implementation = TRY(String::formatted("{}Constructor.cpp", path_prefix));
-        prototype_header = TRY(String::formatted("{}Prototype.h", path_prefix));
-        prototype_implementation = TRY(String::formatted("{}Prototype.cpp", path_prefix));
+        constructor_header = ByteString::formatted("{}Constructor.h", path_prefix);
+        constructor_implementation = ByteString::formatted("{}Constructor.cpp", path_prefix);
+        prototype_header = ByteString::formatted("{}Prototype.h", path_prefix);
+        prototype_implementation = ByteString::formatted("{}Prototype.cpp", path_prefix);
 
         TRY(write_if_changed(&IDL::generate_constructor_header, interface, constructor_header));
         TRY(write_if_changed(&IDL::generate_constructor_implementation, interface, constructor_implementation));
@@ -190,24 +190,24 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
     }
 
     if (interface.pair_iterator_types.has_value()) {
-        iterator_prototype_header = TRY(String::formatted("{}IteratorPrototype.h", path_prefix));
-        iterator_prototype_implementation = TRY(String::formatted("{}IteratorPrototype.cpp", path_prefix));
+        iterator_prototype_header = ByteString::formatted("{}IteratorPrototype.h", path_prefix);
+        iterator_prototype_implementation = ByteString::formatted("{}IteratorPrototype.cpp", path_prefix);
 
         TRY(write_if_changed(&IDL::generate_iterator_prototype_header, interface, iterator_prototype_header));
         TRY(write_if_changed(&IDL::generate_iterator_prototype_implementation, interface, iterator_prototype_implementation));
     }
 
     if (interface.async_value_iterator_type.has_value()) {
-        async_iterator_prototype_header = TRY(String::formatted("{}AsyncIteratorPrototype.h", path_prefix));
-        async_iterator_prototype_implementation = TRY(String::formatted("{}AsyncIteratorPrototype.cpp", path_prefix));
+        async_iterator_prototype_header = ByteString::formatted("{}AsyncIteratorPrototype.h", path_prefix);
+        async_iterator_prototype_implementation = ByteString::formatted("{}AsyncIteratorPrototype.cpp", path_prefix);
 
         TRY(write_if_changed(&IDL::generate_async_iterator_prototype_header, interface, async_iterator_prototype_header));
         TRY(write_if_changed(&IDL::generate_async_iterator_prototype_implementation, interface, async_iterator_prototype_implementation));
     }
 
     if (interface.extended_attributes.contains("Global")) {
-        global_mixin_header = TRY(String::formatted("{}GlobalMixin.h", path_prefix));
-        global_mixin_implementation = TRY(String::formatted("{}GlobalMixin.cpp", path_prefix));
+        global_mixin_header = ByteString::formatted("{}GlobalMixin.h", path_prefix);
+        global_mixin_implementation = ByteString::formatted("{}GlobalMixin.cpp", path_prefix);
 
         TRY(write_if_changed(&IDL::generate_global_mixin_header, interface, global_mixin_header));
         TRY(write_if_changed(&IDL::generate_global_mixin_implementation, interface, global_mixin_implementation));
