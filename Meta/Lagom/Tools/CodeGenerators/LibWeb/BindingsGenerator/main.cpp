@@ -42,6 +42,28 @@ static ErrorOr<void> generate_depfile(StringView depfile_path, StringView depfil
     return depfile->write_until_depleted(depfile_builder.string_view().bytes());
 }
 
+template<typename GeneratorFunction>
+static ErrorOr<void> write_if_changed(GeneratorFunction generator_function, IDL::Interface const& interface, StringView file_path)
+{
+    StringBuilder output_builder;
+    generator_function(interface, output_builder);
+
+    auto current_file_or_error = Core::File::open(file_path, Core::File::OpenMode::Read);
+    if (current_file_or_error.is_error() && current_file_or_error.error().code() != ENOENT)
+        return current_file_or_error.release_error();
+
+    ByteBuffer current_contents;
+    if (!current_file_or_error.is_error())
+        current_contents = TRY(current_file_or_error.value()->read_until_eof());
+    // Only write to disk if contents have changed
+    if (current_contents != output_builder.string_view().bytes()) {
+        auto output_file = TRY(Core::File::open(file_path, Core::File::OpenMode::Write | Core::File::OpenMode::Truncate));
+        TRY(output_file->write_until_depleted(output_builder.string_view().bytes()));
+    }
+
+    return {};
+}
+
 ErrorOr<int> ladybird_main(Main::Arguments arguments)
 {
     Core::ArgsParser args_parser;
@@ -134,28 +156,6 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
         }
     }
 
-    StringBuilder output_builder;
-
-    auto write_if_changed = [&](auto generator_function, StringView file_path) -> ErrorOr<void> {
-        (*generator_function)(interface, output_builder);
-
-        auto current_file_or_error = Core::File::open(file_path, Core::File::OpenMode::Read);
-        if (current_file_or_error.is_error() && current_file_or_error.error().code() != ENOENT)
-            return current_file_or_error.release_error();
-
-        ByteBuffer current_contents;
-        if (!current_file_or_error.is_error())
-            current_contents = TRY(current_file_or_error.value()->read_until_eof());
-        // Only write to disk if contents have changed
-        if (current_contents != output_builder.string_view().bytes()) {
-            auto output_file = TRY(Core::File::open(file_path, Core::File::OpenMode::Write | Core::File::OpenMode::Truncate));
-            TRY(output_file->write_until_depleted(output_builder.string_view().bytes()));
-        }
-        // FIXME: Can we add clear_with_capacity to StringBuilder instead of throwing away the allocated buffer?
-        output_builder.clear();
-        return {};
-    };
-
     String namespace_header;
     String namespace_implementation;
     String constructor_header;
@@ -175,42 +175,42 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
         namespace_header = TRY(String::formatted("{}Namespace.h", path_prefix));
         namespace_implementation = TRY(String::formatted("{}Namespace.cpp", path_prefix));
 
-        TRY(write_if_changed(&IDL::generate_namespace_header, namespace_header));
-        TRY(write_if_changed(&IDL::generate_namespace_implementation, namespace_implementation));
+        TRY(write_if_changed(&IDL::generate_namespace_header, interface, namespace_header));
+        TRY(write_if_changed(&IDL::generate_namespace_implementation, interface, namespace_implementation));
     } else {
         constructor_header = TRY(String::formatted("{}Constructor.h", path_prefix));
         constructor_implementation = TRY(String::formatted("{}Constructor.cpp", path_prefix));
         prototype_header = TRY(String::formatted("{}Prototype.h", path_prefix));
         prototype_implementation = TRY(String::formatted("{}Prototype.cpp", path_prefix));
 
-        TRY(write_if_changed(&IDL::generate_constructor_header, constructor_header));
-        TRY(write_if_changed(&IDL::generate_constructor_implementation, constructor_implementation));
-        TRY(write_if_changed(&IDL::generate_prototype_header, prototype_header));
-        TRY(write_if_changed(&IDL::generate_prototype_implementation, prototype_implementation));
+        TRY(write_if_changed(&IDL::generate_constructor_header, interface, constructor_header));
+        TRY(write_if_changed(&IDL::generate_constructor_implementation, interface, constructor_implementation));
+        TRY(write_if_changed(&IDL::generate_prototype_header, interface, prototype_header));
+        TRY(write_if_changed(&IDL::generate_prototype_implementation, interface, prototype_implementation));
     }
 
     if (interface.pair_iterator_types.has_value()) {
         iterator_prototype_header = TRY(String::formatted("{}IteratorPrototype.h", path_prefix));
         iterator_prototype_implementation = TRY(String::formatted("{}IteratorPrototype.cpp", path_prefix));
 
-        TRY(write_if_changed(&IDL::generate_iterator_prototype_header, iterator_prototype_header));
-        TRY(write_if_changed(&IDL::generate_iterator_prototype_implementation, iterator_prototype_implementation));
+        TRY(write_if_changed(&IDL::generate_iterator_prototype_header, interface, iterator_prototype_header));
+        TRY(write_if_changed(&IDL::generate_iterator_prototype_implementation, interface, iterator_prototype_implementation));
     }
 
     if (interface.async_value_iterator_type.has_value()) {
         async_iterator_prototype_header = TRY(String::formatted("{}AsyncIteratorPrototype.h", path_prefix));
         async_iterator_prototype_implementation = TRY(String::formatted("{}AsyncIteratorPrototype.cpp", path_prefix));
 
-        TRY(write_if_changed(&IDL::generate_async_iterator_prototype_header, async_iterator_prototype_header));
-        TRY(write_if_changed(&IDL::generate_async_iterator_prototype_implementation, async_iterator_prototype_implementation));
+        TRY(write_if_changed(&IDL::generate_async_iterator_prototype_header, interface, async_iterator_prototype_header));
+        TRY(write_if_changed(&IDL::generate_async_iterator_prototype_implementation, interface, async_iterator_prototype_implementation));
     }
 
     if (interface.extended_attributes.contains("Global")) {
         global_mixin_header = TRY(String::formatted("{}GlobalMixin.h", path_prefix));
         global_mixin_implementation = TRY(String::formatted("{}GlobalMixin.cpp", path_prefix));
 
-        TRY(write_if_changed(&IDL::generate_global_mixin_header, global_mixin_header));
-        TRY(write_if_changed(&IDL::generate_global_mixin_implementation, global_mixin_implementation));
+        TRY(write_if_changed(&IDL::generate_global_mixin_header, interface, global_mixin_header));
+        TRY(write_if_changed(&IDL::generate_global_mixin_implementation, interface, global_mixin_implementation));
     }
 
     if (!depfile_path.is_empty()) {
