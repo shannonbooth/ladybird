@@ -299,6 +299,14 @@ void Context::register_interface(Interface const& interface)
     interfaces.set(interface.name, &interface);
 }
 
+// https://webidl.spec.whatwg.org/#dfn-platform-object
+bool Context::is_platform_object(ByteString const& name) const
+{
+    // Platform objects are objects that implement an interface.
+    // NB: WindowProxy is a special case as it is not defined over IDL, but implements the Window interface.
+    return interfaces.contains(name) || name == "WindowProxy"sv;
+}
+
 void EffectiveOverloadSet::remove_all_other_entries()
 {
     Vector<Item> new_items;

@@ -452,6 +452,7 @@ public:
     static NonnullRefPtr<Context> create() { return adopt_ref(*new Context); }
 
     void register_interface(Interface const&);
+    bool is_platform_object(ByteString const& name) const;
 
 private:
     HashMap<ByteString, Interface const*> interfaces;
