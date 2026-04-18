@@ -314,6 +314,13 @@ Optional<Interface const&> Context::get_callback_interface(ByteString const& nam
     return {};
 }
 
+Optional<Interface const&> Context::get_interface(ByteString const& name) const
+{
+    if (auto interface = interfaces.get(name); interface.has_value())
+        return *interface.value();
+    return {};
+}
+
 void EffectiveOverloadSet::remove_all_other_entries()
 {
     Vector<Item> new_items;

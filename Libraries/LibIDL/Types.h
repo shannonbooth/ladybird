@@ -444,6 +444,7 @@ public:
     void register_interface(Interface const&);
     bool is_platform_object(ByteString const& name) const;
     Optional<Interface const&> get_callback_interface(ByteString const& name) const;
+    Optional<Interface const&> get_interface(ByteString const& name) const;
 
 private:
     HashMap<ByteString, Interface const*> interfaces;
