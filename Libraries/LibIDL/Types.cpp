@@ -307,6 +307,13 @@ bool Context::is_platform_object(ByteString const& name) const
     return interfaces.contains(name) || name == "WindowProxy"sv;
 }
 
+Optional<Interface const&> Context::get_callback_interface(ByteString const& name) const
+{
+    if (auto interface = interfaces.get(name); interface.has_value() && interface.value()->is_callback_interface)
+        return *interface.value();
+    return {};
+}
+
 void EffectiveOverloadSet::remove_all_other_entries()
 {
     Vector<Item> new_items;

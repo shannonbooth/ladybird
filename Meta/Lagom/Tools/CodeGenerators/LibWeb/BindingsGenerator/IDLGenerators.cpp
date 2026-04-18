@@ -62,14 +62,6 @@ static ByteString cpp_type_name(Type const& type)
     return type.name();
 }
 
-static Interface const* callback_interface_for_type(Interface const& interface, Type const& type)
-{
-    auto const* referenced_interface = interface.referenced_interface(type.name());
-    if (referenced_interface && referenced_interface->is_callback_interface)
-        return referenced_interface;
-    return nullptr;
-}
-
 static StringView sequence_storage_type_to_cpp_storage_type_name(SequenceStorageType sequence_storage_type)
 {
     switch (sequence_storage_type) {
@@ -125,7 +117,7 @@ CppType idl_type_name_to_cpp_type(Type const& type, Interface const& interface)
     if (is_javascript_builtin_buffer_source_type(type))
         return { .name = ByteString::formatted("GC::Root<JS::{}>", type.name()), .sequence_storage_type = SequenceStorageType::RootVector };
 
-    if (auto const* callback_interface = callback_interface_for_type(interface, type))
+    if (auto callback_interface = interface.context->get_callback_interface(type.name()); callback_interface.has_value())
         return { .name = ByteString::formatted("GC::Root<{}>", callback_interface->implemented_name), .sequence_storage_type = SequenceStorageType::RootVector };
 
     if (interface.callback_functions.contains(type.name()))
@@ -1392,7 +1384,7 @@ static void generate_union_to_cpp(SourceGenerator& scoped_generator, ParameterTy
 
     // 5. If types includes a callback interface type, then return the result of converting V to that callback interface type.
     for (auto& type : types) {
-        if (!callback_interface_for_type(interface, type))
+        if (!interface.context->get_callback_interface(type->name()).has_value())
             continue;
 
         IDL::Parameter callback_interface_parameter { .type = *type, .name = cpp_name, .optional_default_value = {}, .extended_attributes = {} };
@@ -1681,7 +1673,7 @@ static void generate_to_cpp(SourceGenerator& generator, ParameterType& parameter
         generate_to_string(scoped_generator, parameter, variadic, optional, optional_default_value);
     } else if (parameter.type->is_boolean() || parameter.type->is_integer()) {
         generate_to_integral(scoped_generator, parameter, optional, optional_default_value);
-    } else if (auto const* callback_interface = callback_interface_for_type(interface, parameter.type)) {
+    } else if (auto callback_interface = interface.context->get_callback_interface(parameter.type->name()); callback_interface.has_value()) {
         generate_callback_interface_to_cpp(scoped_generator, *parameter.type, *callback_interface);
     } else if (interface.context->is_platform_object(parameter.type->name())) {
         generate_platform_object_to_cpp(scoped_generator, *parameter.type, optional);
@@ -2095,7 +2087,7 @@ static void generate_wrap_statement(SourceGenerator& generator, ByteString const
   @result_expression@ @value_non_optional@->callback;
 )~~~");
         }
-    } else if (callback_interface_for_type(interface, type)) {
+    } else if (auto callback_interface = interface.context->get_callback_interface(type.name()); callback_interface.has_value()) {
         scoped_generator.append(R"~~~(
   @result_expression@ @value@->callback().callback;
 )~~~");

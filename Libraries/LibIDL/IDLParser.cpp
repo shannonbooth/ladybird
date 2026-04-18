@@ -1294,12 +1294,7 @@ Interface& Parser::parse()
     if (!interface.name.is_empty())
         context->register_interface(interface);
 
-    interface.referenced_interfaces.set(interface.name, &interface);
-
     for (auto& import : imports) {
-        interface.referenced_interfaces.set(import.name, &import);
-        interface.referenced_interfaces.update(import.referenced_interfaces);
-
         // FIXME: Instead of copying every imported entity into the current interface, query imports directly
         for (auto& partial_interface : import.partial_interfaces) {
             if (partial_interface->name == interface.name)
