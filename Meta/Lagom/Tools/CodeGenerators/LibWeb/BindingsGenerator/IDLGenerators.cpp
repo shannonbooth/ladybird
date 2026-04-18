@@ -15,7 +15,7 @@
 #include <AK/Array.h>
 #include <AK/LexicalPath.h>
 #include <AK/NumericLimits.h>
-#include <AK/Queue.h>
+#include <AK/QuickSort.h>
 #include <AK/RefPtr.h>
 #include <LibIDL/ExposedTo.h>
 #include <LibIDL/Types.h>
@@ -49,6 +49,21 @@ static bool is_javascript_builtin_buffer_source_type(Type const& type)
     };
 
     return types.span().contains_slow(type.name());
+}
+
+static Optional<IDL::Dictionary const&> lookup_dictionary(IDL::Interface const& interface, ByteString const& name)
+{
+    return interface.context->get_dictionary(name);
+}
+
+static bool has_dictionary(IDL::Interface const& interface, ByteString const& name)
+{
+    return lookup_dictionary(interface, name).has_value();
+}
+
+static Optional<Vector<IDL::Dictionary> const&> lookup_partial_dictionaries(IDL::Interface const& interface, ByteString const& name)
+{
+    return interface.context->get_partial_dictionaries(name);
 }
 
 static ByteString cpp_type_name(Type const& type)
@@ -120,7 +135,10 @@ CppType idl_type_name_to_cpp_type(Type const& type, Interface const& interface)
     if (auto callback_interface = interface.context->get_callback_interface(type.name()); callback_interface.has_value())
         return { .name = ByteString::formatted("GC::Root<{}>", callback_interface->implemented_name), .sequence_storage_type = SequenceStorageType::RootVector };
 
-    if (interface.callback_functions.contains(type.name()))
+    if (type.name() == "Function")
+        return { .name = "GC::Ref<WebIDL::CallbackType>", .sequence_storage_type = SequenceStorageType::RootVector };
+
+    if (interface.context->get_callback_function(type.name()).has_value())
         return { .name = "GC::Root<WebIDL::CallbackType>", .sequence_storage_type = SequenceStorageType::RootVector };
 
     if (type.is_string()) {
@@ -180,9 +198,6 @@ CppType idl_type_name_to_cpp_type(Type const& type, Interface const& interface)
     if (type.name() == "ArrayBufferView")
         return { .name = "GC::Root<WebIDL::ArrayBufferView>", .sequence_storage_type = SequenceStorageType::RootVector };
 
-    if (type.name() == "Function")
-        return { .name = "GC::Ref<WebIDL::CallbackType>", .sequence_storage_type = SequenceStorageType::RootVector };
-
     if (type.name() == "Promise")
         return { .name = "GC::Root<WebIDL::Promise>", .sequence_storage_type = SequenceStorageType::RootVector };
 
@@ -213,14 +228,10 @@ CppType idl_type_name_to_cpp_type(Type const& type, Interface const& interface)
         return { .name = union_type_to_variant(union_type, interface), .sequence_storage_type = SequenceStorageType::Vector };
     }
 
-    if (!type.is_nullable()) {
-        for (auto& dictionary : interface.dictionaries) {
-            if (type.name() == dictionary.key)
-                return { .name = type.name(), .sequence_storage_type = SequenceStorageType::Vector };
-        }
-    }
+    if (!type.is_nullable() && has_dictionary(interface, type.name()))
+        return { .name = type.name(), .sequence_storage_type = SequenceStorageType::Vector };
 
-    if (interface.enumerations.contains(type.name()))
+    if (auto enumeration = interface.context->get_enumeration(type.name()); enumeration.has_value())
         return { .name = type.name(), .sequence_storage_type = SequenceStorageType::Vector };
 
     dbgln("Unimplemented type for idl_type_name_to_cpp_type: {}{}", type.name(), type.is_nullable() ? "?" : "");
@@ -263,49 +274,199 @@ static void generate_include_for_iterator(auto& generator, auto& iterator_path)
 )~~~");
 }
 
-static void generate_include_for_interface(auto& generator, Interface const& interface)
+static void generate_include_for_module(auto& generator, Module const& module)
 {
     auto forked_generator = generator.fork();
-    auto path_string = interface.module_own_path;
+    auto path_string = module.own_path;
     for (auto& search_path : g_header_search_paths) {
-        if (!interface.module_own_path.starts_with(search_path))
+        if (!module.own_path.starts_with(search_path))
             continue;
-        auto relative_path = *LexicalPath::relative_path(interface.module_own_path, search_path);
+        auto relative_path = *LexicalPath::relative_path(module.own_path, search_path);
         if (relative_path.length() < path_string.length())
             path_string = relative_path;
     }
 
     LexicalPath include_path { path_string };
-    ByteString include_title = interface.implemented_name.is_empty() ? include_path.title().to_byte_string() : interface.implemented_name;
+    ByteString include_title = include_path.title().to_byte_string();
+    if (module.primary_interface && !module.primary_interface->implemented_name.is_empty())
+        include_title = module.primary_interface->implemented_name;
     forked_generator.set("include.path", ByteString::formatted("{}/{}.h", include_path.dirname(), include_title));
     forked_generator.append(R"~~~(
 #include <@include.path@>
 )~~~");
 }
 
+static void add_module_include_dependency(Vector<Module const*>& modules_to_include, HashTable<ByteString>& paths_imported, Module const& module)
+{
+    VERIFY(module.context);
+    if (!module.context->module_will_generate_code(module))
+        return;
+    if (paths_imported.set(module.own_path) != AK::HashSetResult::InsertedNewEntry)
+        return;
+    modules_to_include.append(&module);
+}
+
+static void add_interface_include_dependency(Vector<Module const*>& modules_to_include, HashTable<ByteString>& paths_imported, Interface const& interface)
+{
+    add_module_include_dependency(modules_to_include, paths_imported, interface.context->module_for(interface));
+}
+
+static void collect_interface_include_dependencies(IDL::Interface const& interface, IDL::Type const& type, Vector<Module const*>& modules_to_include, HashTable<ByteString>& paths_imported);
+
+static void collect_interface_include_dependencies(IDL::Interface const& interface, Vector<IDL::Parameter> const& parameters, Vector<Module const*>& modules_to_include, HashTable<ByteString>& paths_imported)
+{
+    for (auto const& parameter : parameters)
+        collect_interface_include_dependencies(interface, *parameter.type, modules_to_include, paths_imported);
+}
+
+static void collect_interface_include_dependencies(IDL::Interface const& interface, IDL::Function const& function, Vector<Module const*>& modules_to_include, HashTable<ByteString>& paths_imported)
+{
+    collect_interface_include_dependencies(interface, *function.return_type, modules_to_include, paths_imported);
+    collect_interface_include_dependencies(interface, function.parameters, modules_to_include, paths_imported);
+}
+
+static void collect_interface_include_dependencies(IDL::Interface const& interface, IDL::Dictionary const& dictionary, Vector<Module const*>& modules_to_include, HashTable<ByteString>& paths_imported)
+{
+    if (!dictionary.parent_name.is_empty()) {
+        if (auto parent_dictionary = lookup_dictionary(interface, dictionary.parent_name); parent_dictionary.has_value())
+            collect_interface_include_dependencies(interface, *parent_dictionary, modules_to_include, paths_imported);
+    }
+
+    for (auto const& member : dictionary.members)
+        collect_interface_include_dependencies(interface, *member.type, modules_to_include, paths_imported);
+}
+
+static void collect_interface_include_dependencies(IDL::Interface const& interface, IDL::Type const& type, Vector<Module const*>& modules_to_include, HashTable<ByteString>& paths_imported)
+{
+    if (auto referenced_interface = interface.context->get_interface(type.name()); referenced_interface.has_value()) {
+        add_interface_include_dependency(modules_to_include, paths_imported, *referenced_interface);
+    } else {
+        auto const& owner_module = interface.context->module_for(interface);
+        if (!interface.context->module_owns_declaration(owner_module, type.name(), IDL::DeclarationKind::Dictionary)) {
+            if (auto declaration_owner = interface.context->first_original_declaration_owner(type.name(), IDL::DeclarationKind::Dictionary); declaration_owner.has_value())
+                add_module_include_dependency(modules_to_include, paths_imported, *declaration_owner);
+        }
+        if (!interface.context->module_owns_declaration(owner_module, type.name(), IDL::DeclarationKind::Enumeration)) {
+            if (auto declaration_owner = interface.context->first_original_declaration_owner(type.name(), IDL::DeclarationKind::Enumeration); declaration_owner.has_value())
+                add_module_include_dependency(modules_to_include, paths_imported, *declaration_owner);
+        }
+    }
+
+    if (auto dictionary = lookup_dictionary(interface, type.name()); dictionary.has_value())
+        collect_interface_include_dependencies(interface, *dictionary, modules_to_include, paths_imported);
+
+    if (auto partial_dictionaries = lookup_partial_dictionaries(interface, type.name()); partial_dictionaries.has_value()) {
+        for (auto const& partial_dictionary : *partial_dictionaries)
+            collect_interface_include_dependencies(interface, partial_dictionary, modules_to_include, paths_imported);
+    }
+
+    if (auto callback_function = interface.context->get_callback_function(type.name()); callback_function.has_value()) {
+        collect_interface_include_dependencies(interface, *callback_function->return_type, modules_to_include, paths_imported);
+        collect_interface_include_dependencies(interface, callback_function->parameters, modules_to_include, paths_imported);
+    }
+
+    if (type.is_parameterized()) {
+        for (auto const& parameter : type.as_parameterized().parameters())
+            collect_interface_include_dependencies(interface, *parameter, modules_to_include, paths_imported);
+        return;
+    }
+
+    if (type.is_union()) {
+        for (auto const& member_type : type.as_union().member_types())
+            collect_interface_include_dependencies(interface, *member_type, modules_to_include, paths_imported);
+    }
+}
+
 static void emit_includes_for_all_imports(auto& interface, auto& generator, bool is_iterator = false, bool is_async_iterator = false)
 {
-    Queue<RemoveCVReference<decltype(interface)> const*> interfaces;
+    Vector<Module const*> modules_to_include;
     HashTable<ByteString> paths_imported;
+    auto add_document_dependency = [&] {
+        auto document_interface = interface.context->get_interface("Document"sv);
+        VERIFY(document_interface.has_value());
+        add_interface_include_dependency(modules_to_include, paths_imported, *document_interface);
+    };
 
-    interfaces.enqueue(&interface);
+    add_interface_include_dependency(modules_to_include, paths_imported, interface);
 
-    while (!interfaces.is_empty()) {
-        auto interface = interfaces.dequeue();
-        if (paths_imported.contains(interface->module_own_path))
-            continue;
-
-        paths_imported.set(interface->module_own_path);
-        for (auto& imported_interface : interface->imported_modules) {
-            if (!paths_imported.contains(imported_interface.module_own_path))
-                interfaces.enqueue(&imported_interface);
-        }
-
-        if (!interface->will_generate_code())
-            continue;
-
-        generate_include_for_interface(generator, *interface);
+    if (!interface.parent_name.is_empty()) {
+        auto parent_interface = interface.context->get_interface(interface.parent_name);
+        VERIFY(parent_interface.has_value());
+        add_interface_include_dependency(modules_to_include, paths_imported, *parent_interface);
     }
+
+    for (auto const& constructor : interface.constructors) {
+        if (!constructor.extended_attributes.contains("HTMLConstructor"sv))
+            continue;
+
+        add_document_dependency();
+        break;
+    }
+
+    for (auto const& attribute : interface.attributes) {
+        if (!attribute.extended_attributes.contains("URL"sv))
+            continue;
+        add_document_dependency();
+        break;
+    }
+
+    for (auto const& attribute : interface.static_attributes) {
+        if (!attribute.extended_attributes.contains("URL"sv))
+            continue;
+        add_document_dependency();
+        break;
+    }
+
+    for (auto const& attribute : interface.attributes)
+        collect_interface_include_dependencies(interface, *attribute.type, modules_to_include, paths_imported);
+    for (auto const& attribute : interface.static_attributes)
+        collect_interface_include_dependencies(interface, *attribute.type, modules_to_include, paths_imported);
+    for (auto const& constant : interface.constants)
+        collect_interface_include_dependencies(interface, *constant.type, modules_to_include, paths_imported);
+    for (auto const& constructor : interface.constructors)
+        collect_interface_include_dependencies(interface, constructor.parameters, modules_to_include, paths_imported);
+    for (auto const& function : interface.functions)
+        collect_interface_include_dependencies(interface, function, modules_to_include, paths_imported);
+    for (auto const& function : interface.static_functions)
+        collect_interface_include_dependencies(interface, function, modules_to_include, paths_imported);
+    if (interface.value_iterator_type.has_value())
+        collect_interface_include_dependencies(interface, **interface.value_iterator_type, modules_to_include, paths_imported);
+    if (interface.pair_iterator_types.has_value()) {
+        collect_interface_include_dependencies(interface, *interface.pair_iterator_types->template get<0>(), modules_to_include, paths_imported);
+        collect_interface_include_dependencies(interface, *interface.pair_iterator_types->template get<1>(), modules_to_include, paths_imported);
+    }
+    if (interface.async_value_iterator_type.has_value())
+        collect_interface_include_dependencies(interface, **interface.async_value_iterator_type, modules_to_include, paths_imported);
+    collect_interface_include_dependencies(interface, interface.async_value_iterator_parameters, modules_to_include, paths_imported);
+    if (interface.set_entry_type.has_value())
+        collect_interface_include_dependencies(interface, **interface.set_entry_type, modules_to_include, paths_imported);
+    if (interface.map_key_type.has_value())
+        collect_interface_include_dependencies(interface, **interface.map_key_type, modules_to_include, paths_imported);
+    if (interface.map_value_type.has_value())
+        collect_interface_include_dependencies(interface, **interface.map_value_type, modules_to_include, paths_imported);
+    if (interface.named_property_getter.has_value())
+        collect_interface_include_dependencies(interface, *interface.named_property_getter, modules_to_include, paths_imported);
+    if (interface.named_property_setter.has_value())
+        collect_interface_include_dependencies(interface, *interface.named_property_setter, modules_to_include, paths_imported);
+    if (interface.indexed_property_getter.has_value())
+        collect_interface_include_dependencies(interface, *interface.indexed_property_getter, modules_to_include, paths_imported);
+    if (interface.indexed_property_setter.has_value())
+        collect_interface_include_dependencies(interface, *interface.indexed_property_setter, modules_to_include, paths_imported);
+    if (interface.named_property_deleter.has_value())
+        collect_interface_include_dependencies(interface, *interface.named_property_deleter, modules_to_include, paths_imported);
+    auto const& owner_module = interface.context->module_for(interface);
+    for (auto const* declaration : interface.context->declarations_for(owner_module, IDL::DeclarationKind::Dictionary, IDL::DeclarationFilter::OriginalOnly)) {
+        auto dictionary = lookup_dictionary(interface, declaration->name);
+        VERIFY(dictionary.has_value());
+        collect_interface_include_dependencies(interface, *dictionary, modules_to_include, paths_imported);
+    }
+
+    quick_sort(modules_to_include, [](auto const* a, auto const* b) {
+        return a->own_path < b->own_path;
+    });
+
+    for (auto const* included_module : modules_to_include)
+        generate_include_for_module(generator, *included_module);
 
     if (is_iterator) {
         auto iterator_path = ByteString::formatted("{}Iterator", interface.fully_qualified_name.replace("::"sv, "/"sv, ReplaceMode::All));
@@ -524,10 +685,9 @@ static void generate_dictionary_to_cpp(SourceGenerator& generator, IDL::Interfac
         for (auto& member : current_dictionary->members)
             members.append(member);
 
-        if (interface.partial_dictionaries.contains(current_dictionary_name)) {
-            auto& partial_dictionaries = interface.partial_dictionaries.find(current_dictionary_name)->value;
-            for (auto& partial_dictionary : partial_dictionaries)
-                for (auto& member : partial_dictionary.members)
+        if (auto partial_dictionaries = lookup_partial_dictionaries(interface, current_dictionary_name); partial_dictionaries.has_value()) {
+            for (auto const& partial_dictionary : *partial_dictionaries)
+                for (auto const& member : partial_dictionary.members)
                     members.append(member);
         }
 
@@ -573,9 +733,9 @@ static void generate_dictionary_to_cpp(SourceGenerator& generator, IDL::Interfac
         }
         if (current_dictionary->parent_name.is_empty())
             break;
-        VERIFY(interface.dictionaries.contains(current_dictionary->parent_name));
+        VERIFY(lookup_dictionary(interface, current_dictionary->parent_name).has_value());
         current_dictionary_name = current_dictionary->parent_name;
-        current_dictionary = &interface.dictionaries.find(current_dictionary_name)->value;
+        current_dictionary = &*lookup_dictionary(interface, current_dictionary_name);
     }
 }
 
@@ -1128,16 +1288,11 @@ static void generate_union_to_cpp(SourceGenerator& scoped_generator, ParameterTy
     auto types = union_type.flattened_member_types();
 
     RefPtr<Type const> dictionary_type;
-    for (auto& dictionary : interface.dictionaries) {
-        for (auto& type : types) {
-            if (type->name() == dictionary.key) {
-                dictionary_type = type;
-                break;
-            }
-        }
-
-        if (dictionary_type)
+    for (auto& type : types) {
+        if (has_dictionary(interface, type->name())) {
+            dictionary_type = type;
             break;
+        }
     }
 
     if (dictionary_type) {
@@ -1457,7 +1612,7 @@ static void generate_union_to_cpp(SourceGenerator& scoped_generator, ParameterTy
 
     bool includes_enumeration = false;
     for (auto& type : types) {
-        if (interface.enumerations.contains(type->name())) {
+        if (auto enumeration = interface.context->get_enumeration(type->name()); enumeration.has_value()) {
             includes_enumeration = true;
             break;
         }
@@ -1469,19 +1624,19 @@ static void generate_union_to_cpp(SourceGenerator& scoped_generator, ParameterTy
         union_generator.append(R"~~~(
         if (@js_name@@js_suffix@.is_string()) {
             auto @js_name@@js_suffix@_enum_string = TRY(@js_name@@js_suffix@.to_string(vm));
-)~~~");
+        )~~~");
 
         for (auto& type : types) {
-            if (!interface.enumerations.contains(type->name()))
+            auto enumeration = interface.context->get_enumeration(type->name());
+            if (!enumeration.has_value())
                 continue;
 
-            auto& enumeration = interface.enumerations.find(type->name())->value;
             auto enum_type = IDL::idl_type_name_to_cpp_type(*type, interface);
 
             auto enum_generator = union_generator.fork();
             enum_generator.set("enum.type", enum_type.name);
 
-            for (auto& it : enumeration.translated_cpp_names) {
+            for (auto& it : enumeration->translated_cpp_names) {
                 enum_generator.set("enum.alt.name", it.key);
                 enum_generator.set("enum.alt.value", it.value);
                 enum_generator.append(R"~~~(
@@ -1689,22 +1844,20 @@ static void generate_to_cpp(SourceGenerator& generator, ParameterType& parameter
         generate_array_buffer_view_to_cpp(scoped_generator, *parameter.type, optional);
     } else if (parameter.type->name() == "any") {
         generate_any_to_cpp(scoped_generator, optional, optional_default_value, variadic);
-    } else if (interface.enumerations.contains(parameter.type->name())) {
+    } else if (auto enumeration = interface.context->get_enumeration(parameter.type->name()); enumeration.has_value()) {
         // NOTE: Attribute setters return undefined instead of throwing when the string doesn't match an enum value.
         ThrowOnInvalidEnumValue throw_on_invalid = ThrowOnInvalidEnumValue::No;
         if constexpr (!IsSame<Attribute, RemoveConst<ParameterType>>)
             throw_on_invalid = ThrowOnInvalidEnumValue::Yes;
-        generate_enum_to_cpp(scoped_generator, interface.enumerations.find(parameter.type->name())->value, throw_on_invalid, optional, optional_default_value);
-    } else if (interface.dictionaries.contains(parameter.type->name())) {
+        generate_enum_to_cpp(scoped_generator, *enumeration, throw_on_invalid, optional, optional_default_value);
+    } else if (auto dictionary = lookup_dictionary(interface, parameter.type->name()); dictionary.has_value()) {
         if (optional_default_value.has_value() && optional_default_value != "{}")
             TODO();
         auto dictionary_generator = scoped_generator.fork();
         auto dictionary_name = parameter.type->name();
-        auto& dictionary = interface.dictionaries.find(dictionary_name)->value;
-        generate_dictionary_to_cpp(dictionary_generator, interface, dictionary, dictionary_name);
-    } else if (interface.callback_functions.contains(parameter.type->name())) {
-        auto& callback_function = interface.callback_functions.find(parameter.type->name())->value;
-        generate_callback_function_to_cpp(scoped_generator, *parameter.type, callback_function, optional);
+        generate_dictionary_to_cpp(dictionary_generator, interface, *dictionary, dictionary_name);
+    } else if (auto callback_function = interface.context->get_callback_function(parameter.type->name()); callback_function.has_value()) {
+        generate_callback_function_to_cpp(scoped_generator, *parameter.type, *callback_function, optional);
     } else if (parameter.type->name().is_one_of("sequence"sv, "FrozenArray"sv)) {
         generate_sequence_to_cpp(scoped_generator, as<IDL::ParameterizedType>(*parameter.type), js_name, js_suffix, acceptable_cpp_name, interface, optional, optional_default_value, recursion_depth);
     } else if (parameter.type->name() == "record") {
@@ -1841,8 +1994,8 @@ static void generate_wrap_statement(SourceGenerator& generator, ByteString const
             || type.is_string()
             || type.name().is_one_of("sequence"sv, "FrozenArray"sv)
             || type.is_primitive()
-            || interface.enumerations.contains(type.name())
-            || interface.dictionaries.contains(type.name());
+            || interface.context->get_enumeration(type.name()).has_value()
+            || has_dictionary(interface, type.name());
     }
 
     if (optional_uses_value_access)
@@ -1872,7 +2025,7 @@ static void generate_wrap_statement(SourceGenerator& generator, ByteString const
             scoped_generator.append(R"~~~(
     if (@value@.has_value()) {
 )~~~");
-        } else if (type.is_primitive() || interface.enumerations.contains(type.name()) || interface.dictionaries.contains(type.name())) {
+        } else if (type.is_primitive() || interface.context->get_enumeration(type.name()).has_value() || has_dictionary(interface, type.name())) {
             generate_optional_integral_type = true;
             scoped_generator.append(R"~~~(
     if (@value@.has_value()) {
@@ -2060,21 +2213,19 @@ static void generate_wrap_statement(SourceGenerator& generator, ByteString const
         union_generator.append(R"~~~(
     );
 )~~~");
-    } else if (interface.enumerations.contains(type.name())) {
+    } else if (interface.context->get_enumeration(type.name()).has_value()) {
         // Handle Enum? values, which were null-checked above
         if (type.is_nullable() || is_optional)
             scoped_generator.set("value", ByteString::formatted("{}.value()", value));
         scoped_generator.append(R"~~~(
     @result_expression@ JS::PrimitiveString::create(vm, Bindings::idl_enum_to_string(@value@));
 )~~~");
-    } else if (interface.callback_functions.contains(type.name())) {
+    } else if (auto callback_function = interface.context->get_callback_function(type.name()); callback_function.has_value()) {
         // https://webidl.spec.whatwg.org/#es-callback-function
-
-        auto& callback_function = interface.callback_functions.find(type.name())->value;
 
         // The result of converting an IDL callback function type value to an ECMAScript value is a reference to the same object that the IDL callback function type value represents.
 
-        if (callback_function.is_legacy_treat_non_object_as_null && !type.is_nullable()) {
+        if (callback_function->is_legacy_treat_non_object_as_null && !type.is_nullable()) {
             scoped_generator.append(R"~~~(
   if (!@value_non_optional@) {
       @result_expression@ JS::js_null();
@@ -2091,7 +2242,7 @@ static void generate_wrap_statement(SourceGenerator& generator, ByteString const
         scoped_generator.append(R"~~~(
   @result_expression@ @value@->callback().callback;
 )~~~");
-    } else if (interface.dictionaries.contains(type.name())) {
+    } else if (auto dictionary = lookup_dictionary(interface, type.name()); dictionary.has_value()) {
         // https://webidl.spec.whatwg.org/#es-dictionary
         auto dictionary_generator = scoped_generator.fork();
 
@@ -2101,7 +2252,7 @@ static void generate_wrap_statement(SourceGenerator& generator, ByteString const
 )~~~");
 
         auto next_iteration_index = iteration_index + 1;
-        auto* current_dictionary = &interface.dictionaries.find(type.name())->value;
+        auto* current_dictionary = &*dictionary;
         while (true) {
             for (auto& member : current_dictionary->members) {
                 dictionary_generator.set("member_key", member.name);
@@ -2147,8 +2298,8 @@ static void generate_wrap_statement(SourceGenerator& generator, ByteString const
 
             if (current_dictionary->parent_name.is_empty())
                 break;
-            VERIFY(interface.dictionaries.contains(current_dictionary->parent_name));
-            current_dictionary = &interface.dictionaries.find(current_dictionary->parent_name)->value;
+            VERIFY(lookup_dictionary(interface, current_dictionary->parent_name).has_value());
+            current_dictionary = &*lookup_dictionary(interface, current_dictionary->parent_name);
         }
 
         dictionary_generator.append(R"~~~(
@@ -2589,7 +2740,7 @@ JS_DEFINE_NATIVE_FUNCTION(@class_name@::@function.name:snakecase@)
         // and calling resolve_overload() entirely, avoiding multiple heap allocations.
         if (effective_overload_set.size() == 1) {
             for (auto const& type : effective_overload_set[0].types) {
-                if (interface.dictionaries.contains(type->name()))
+                if (has_dictionary(interface, type->name()))
                     dictionary_types.set(type->name());
             }
 
@@ -2620,7 +2771,7 @@ JS_DEFINE_NATIVE_FUNCTION(@class_name@::@function.name:snakecase@)
                     }
 
                     auto const& type = overload.types[i];
-                    if (interface.dictionaries.contains(type->name()))
+                    if (has_dictionary(interface, type->name()))
                         dictionary_types.set(type->name());
 
                     types_builder.append(generate_constructor_for_idl_type(overload.types[i]));
@@ -2994,14 +3145,16 @@ static ByteString get_best_value_for_underlying_enum_type(size_t size)
 
 static void generate_dictionaries(SourceGenerator& generator, IDL::Interface const& interface)
 {
-    for (auto const& it : interface.dictionaries) {
-        if (!it.value.is_original_definition)
-            continue;
-        if (!it.value.extended_attributes.contains("GenerateToValue"sv))
+    auto const& owner_module = interface.context->module_for(interface);
+    for (auto const* declaration : interface.context->declarations_for(owner_module, IDL::DeclarationKind::Dictionary, IDL::DeclarationFilter::OriginalOnly)) {
+        auto maybe_dictionary = interface.context->get_dictionary(declaration->name);
+        VERIFY(maybe_dictionary.has_value());
+        auto const& dictionary = *maybe_dictionary;
+        if (!dictionary.extended_attributes.contains("GenerateToValue"sv))
             continue;
         auto dictionary_generator = generator.fork();
-        dictionary_generator.set("dictionary.name", make_input_acceptable_cpp(it.key));
-        dictionary_generator.set("dictionary.name:snakecase", make_input_acceptable_cpp(it.key.to_snakecase()));
+        dictionary_generator.set("dictionary.name", make_input_acceptable_cpp(declaration->name));
+        dictionary_generator.set("dictionary.name:snakecase", make_input_acceptable_cpp(declaration->name.to_snakecase()));
         dictionary_generator.append(R"~~~(
 JS::Value @dictionary.name:snakecase@_to_value(JS::Realm&, @dictionary.name@ const&);
 JS::Value @dictionary.name:snakecase@_to_value(JS::Realm& realm, @dictionary.name@ const& dictionary)
@@ -3010,7 +3163,7 @@ JS::Value @dictionary.name:snakecase@_to_value(JS::Realm& realm, @dictionary.nam
     @dictionary.name@ copy = dictionary;
 )~~~");
         // FIXME: Support generating wrap statements for lvalues and get rid of the copy above
-        auto dictionary_type = adopt_ref(*new Type(it.key, false));
+        auto dictionary_type = adopt_ref(*new Type(declaration->name, false));
         generate_wrap_statement(dictionary_generator, "copy", dictionary_type, interface, "return"sv);
 
         dictionary_generator.append(R"~~~(
@@ -3019,20 +3172,25 @@ JS::Value @dictionary.name:snakecase@_to_value(JS::Realm& realm, @dictionary.nam
     }
 }
 
-static void generate_enumerations(HashMap<ByteString, Enumeration> const& enumerations, StringBuilder& builder)
+static void generate_enumerations(IDL::Module const& module, StringBuilder& builder)
 {
     SourceGenerator generator { builder };
+    VERIFY(module.context);
 
-    for (auto const& it : enumerations) {
-        if (!it.value.is_original_definition)
-            continue;
+    for (auto const* declaration : module.context->declarations_for(module, IDL::DeclarationKind::Enumeration, IDL::DeclarationFilter::OriginalOnly)) {
+        auto maybe_enumeration = module.context->get_enumeration(declaration->name);
+        VERIFY(maybe_enumeration.has_value());
+        auto const& enumeration = *maybe_enumeration;
         auto enum_generator = generator.fork();
-        enum_generator.set("enum.type.name", it.key);
-        enum_generator.set("enum.underlying_type", get_best_value_for_underlying_enum_type(it.value.translated_cpp_names.size()));
+        enum_generator.set("enum.type.name", declaration->name);
+        enum_generator.set("enum.underlying_type", get_best_value_for_underlying_enum_type(enumeration.translated_cpp_names.size()));
+        enum_generator.set("enum.macro_guard", ByteString::formatted("WEB_BINDINGS_ENUM_{}", declaration->name));
         enum_generator.append(R"~~~(
+#ifndef @enum.macro_guard@
+#define @enum.macro_guard@
 enum class @enum.type.name@ : @enum.underlying_type@ {
 )~~~");
-        for (auto const& entry : it.value.translated_cpp_names) {
+        for (auto const& entry : enumeration.translated_cpp_names) {
             enum_generator.set("enum.entry", entry.value);
             enum_generator.append(R"~~~(
     @enum.entry@,
@@ -3048,7 +3206,7 @@ inline String idl_enum_to_string(@enum.type.name@ value)
 {
     switch (value) {
 )~~~");
-        for (auto const& entry : it.value.translated_cpp_names) {
+        for (auto const& entry : enumeration.translated_cpp_names) {
             enum_generator.set("enum.entry", entry.value);
             enum_generator.set("enum.string", entry.key);
             enum_generator.append(R"~~~(
@@ -3060,6 +3218,7 @@ inline String idl_enum_to_string(@enum.type.name@ value)
     }
     VERIFY_NOT_REACHED();
 }
+#endif
 )~~~");
     }
 }
@@ -3181,7 +3340,7 @@ static void generate_prototype_or_global_mixin_declarations(IDL::Interface const
 
 )~~~");
 
-    generate_enumerations(interface.enumerations, builder);
+    generate_enumerations(interface.context->module_for(interface), builder);
 }
 
 // https://webidl.spec.whatwg.org/#create-an-inheritance-stack
@@ -4364,14 +4523,15 @@ JS_DEFINE_NATIVE_FUNCTION(@class_name@::@attribute.getter_callback@)
                     // 4. If attributeDefinition indicates it is an enumerated attribute and the reflected IDL attribute is defined to be limited to only known values:
                     if (attribute.extended_attributes.contains("Enumerated")) {
                         auto valid_enumerations_type = attribute.extended_attributes.get("Enumerated").value();
-                        auto valid_enumerations = interface.enumerations.get(valid_enumerations_type).value();
+                        auto valid_enumerations = interface.context->get_enumeration(valid_enumerations_type);
+                        VERIFY(valid_enumerations.has_value());
 
-                        auto missing_value_default = valid_enumerations.extended_attributes.get("MissingValueDefault");
-                        auto invalid_value_default = valid_enumerations.extended_attributes.get("InvalidValueDefault");
+                        auto missing_value_default = valid_enumerations->extended_attributes.get("MissingValueDefault");
+                        auto invalid_value_default = valid_enumerations->extended_attributes.get("InvalidValueDefault");
 
                         attribute_generator.set("missing_enum_default_value", missing_value_default.has_value() ? missing_value_default.value().view() : ""sv);
                         attribute_generator.set("invalid_enum_default_value", invalid_value_default.has_value() ? invalid_value_default.value().view() : ""sv);
-                        attribute_generator.set("valid_enum_values", MUST(String::join(", "sv, valid_enumerations.values.values(), "\"{}\"_string"sv)));
+                        attribute_generator.set("valid_enum_values", MUST(String::join(", "sv, valid_enumerations->values.values(), "\"{}\"_string"sv)));
 
                         // 1. If contentAttributeValue does not correspond to any state of attributeDefinition (e.g., it is null and there is no missing value default),
                         //    or that it is in a state of attributeDefinition with no associated keyword value, then return the empty string.
@@ -4433,14 +4593,15 @@ JS_DEFINE_NATIVE_FUNCTION(@class_name@::@attribute.getter_callback@)
 
                         // 2. Assert: contentAttributeValue corresponds to a state of attributeDefinition.
                         auto valid_enumerations_type = attribute.extended_attributes.get("Enumerated").value();
-                        auto valid_enumerations = interface.enumerations.get(valid_enumerations_type).value();
+                        auto valid_enumerations = interface.context->get_enumeration(valid_enumerations_type);
+                        VERIFY(valid_enumerations.has_value());
 
-                        auto missing_value_default = valid_enumerations.extended_attributes.get("MissingValueDefault");
-                        auto invalid_value_default = valid_enumerations.extended_attributes.get("InvalidValueDefault");
+                        auto missing_value_default = valid_enumerations->extended_attributes.get("MissingValueDefault");
+                        auto invalid_value_default = valid_enumerations->extended_attributes.get("InvalidValueDefault");
 
                         attribute_generator.set("missing_enum_default_value", missing_value_default.has_value() ? missing_value_default.value().view() : ""sv);
                         attribute_generator.set("invalid_enum_default_value", invalid_value_default.has_value() ? invalid_value_default.value().view() : ""sv);
-                        attribute_generator.set("valid_enum_values", MUST(String::join(", "sv, valid_enumerations.values.values(), "\"{}\"_string"sv)));
+                        attribute_generator.set("valid_enum_values", MUST(String::join(", "sv, valid_enumerations->values.values(), "\"{}\"_string"sv)));
 
                         attribute_generator.append(R"~~~(
     Array valid_values { @valid_enum_values@ };
@@ -6042,6 +6203,29 @@ namespace Web::Bindings {
 )~~~"sv);
 }
 
+void generate_header(IDL::Module const& module, StringBuilder& builder)
+{
+    if (module.primary_interface) {
+        generate_header(*module.primary_interface, builder);
+        return;
+    }
+
+    builder.append(R"~~~(#pragma once
+
+#include <LibJS/Runtime/NativeFunction.h>
+#include <LibJS/Runtime/Object.h>
+
+namespace Web::Bindings {
+
+)~~~"sv);
+
+    generate_enumerations(module, builder);
+
+    builder.append(R"~~~(
+} // namespace Web::Bindings
+)~~~"sv);
+}
+
 void generate_implementation(IDL::Interface const& interface, StringBuilder& builder)
 {
     generate_implementation_prologue(interface, builder);
@@ -6065,6 +6249,14 @@ void generate_implementation(IDL::Interface const& interface, StringBuilder& bui
     builder.append(R"~~~(
 } // namespace Web::Bindings
 )~~~"sv);
+}
+
+void generate_implementation(IDL::Module const& module, StringBuilder& builder)
+{
+    if (!module.primary_interface)
+        return;
+
+    generate_implementation(*module.primary_interface, builder);
 }
 
 }

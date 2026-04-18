@@ -14,6 +14,7 @@
 #include <AK/HashMap.h>
 #include <AK/HashTable.h>
 #include <AK/NonnullRefPtr.h>
+#include <AK/OwnPtr.h>
 #include <AK/RefCounted.h>
 #include <AK/SourceGenerator.h>
 #include <AK/Tuple.h>
@@ -45,6 +46,7 @@ class Context;
 class ParameterizedType;
 class UnionType;
 class Interface;
+struct Module;
 
 class Type : public RefCounted<Type> {
 public:
@@ -232,6 +234,37 @@ struct CallbackFunction {
     bool is_legacy_treat_non_object_as_null { false };
 };
 
+struct Module {
+    Context* context { nullptr };
+    ByteString own_path;
+    Interface* primary_interface { nullptr };
+};
+
+enum class DeclarationKind {
+    Interface,
+    Dictionary,
+    PartialDictionary,
+    Enumeration,
+    Typedef,
+    CallbackFunction,
+    Mixin,
+    PartialInterface,
+    PartialNamespace,
+    PartialMixin,
+};
+
+struct Declaration {
+    ByteString name;
+    DeclarationKind kind;
+    Module const* owner { nullptr };
+    bool is_original_definition { true };
+};
+
+enum class DeclarationFilter {
+    All,
+    OriginalOnly,
+};
+
 class ParameterizedType : public Type {
 public:
     ParameterizedType(ByteString name, bool nullable, Vector<NonnullRefPtr<Type const>> parameters)
@@ -279,6 +312,7 @@ public:
     bool is_namespace { false };
     bool is_mixin { false };
     bool is_callback_interface { false };
+    bool is_partial { false };
 
     HashMap<ByteString, ByteString> extended_attributes;
 
@@ -316,12 +350,6 @@ public:
 
     Optional<Function> named_property_deleter;
 
-    HashMap<ByteString, Dictionary> dictionaries;
-    HashMap<ByteString, Vector<Dictionary>> partial_dictionaries;
-    HashMap<ByteString, Enumeration> enumerations;
-    HashMap<ByteString, Typedef> typedefs;
-    HashMap<ByteString, Interface*> mixins;
-    HashMap<ByteString, CallbackFunction> callback_functions;
     NonnullRefPtr<Context> context;
 
     // Added for convenience after parsing
@@ -331,13 +359,6 @@ public:
     ByteString prototype_base_class;
     ByteString namespace_class;
     ByteString global_mixin_class;
-    HashMap<ByteString, HashTable<ByteString>> included_mixins;
-
-    ByteString module_own_path;
-    Vector<NonnullOwnPtr<Interface>> partial_interfaces;
-    Vector<NonnullOwnPtr<Interface>> partial_mixins;
-    Vector<NonnullOwnPtr<Interface>> partial_namespaces;
-    Vector<Interface&> imported_modules;
 
     OrderedHashMap<ByteString, Vector<Function&>> overload_sets;
     OrderedHashMap<ByteString, Vector<Function&>> static_overload_sets;
@@ -352,12 +373,13 @@ public:
     // https://webidl.spec.whatwg.org/#dfn-legacy-platform-object
     bool is_legacy_platform_object() const { return !extended_attributes.contains("Global") && (supports_indexed_properties() || supports_named_properties()); }
 
-    bool will_generate_code() const
-    {
-        return !name.is_empty() || any_of(dictionaries, [](auto& entry) { return entry.value.is_original_definition; }) || any_of(enumerations, [](auto& entry) { return entry.value.is_original_definition; });
-    }
+    bool will_generate_code() const;
 
     void extend_with_partial_interface(Interface const&);
+    bool is_resolving_types { false };
+    bool are_types_resolved { false };
+    bool is_finalizing { false };
+    bool is_finalized { false };
 };
 
 class UnionType : public Type {
@@ -441,13 +463,66 @@ class Context : public RefCounted<Context> {
 public:
     static NonnullRefPtr<Context> create() { return adopt_ref(*new Context); }
 
-    void register_interface(Interface const&);
+    Module& create_module(ByteString own_path);
+    Interface& create_interface(Module&);
+    Module& module_for(Interface&) const;
+    Module const& module_for(Interface const&) const;
+    void register_interface(Interface const&, Module const&);
+    void register_dictionary(ByteString const& name, Dictionary dictionary, Module const&);
+    void register_partial_dictionary(ByteString const& name, Dictionary dictionary, Module const&);
+    void register_enumeration(ByteString const& name, Enumeration enumeration, Module const&);
+    void register_mixin(ByteString const& name, Interface& mixin, Module const&);
+    void register_partial_interface(Interface const&, Module const&);
+    void register_partial_namespace(Interface const&, Module const&);
+    void register_partial_mixin(Interface const&, Module const&);
+    void register_included_mixin(ByteString const& interface_name, ByteString const& mixin_name);
+    void register_typedef(ByteString const& name, Typedef typedef_, Module const&);
+    void register_callback_function(ByteString const& name, CallbackFunction callback_function, Module const&);
+    bool module_owns_declaration(Module const&, ByteString const& name, DeclarationKind) const;
+    bool module_has_original_declaration(Module const&, DeclarationKind) const;
+    bool module_will_generate_code(Module const&) const;
+    Vector<Declaration const*> declarations_for(Module const&, DeclarationKind, DeclarationFilter = DeclarationFilter::All) const;
+    Optional<Module const&> first_original_declaration_owner(ByteString const& name, DeclarationKind) const;
+    Optional<Dictionary&> get_dictionary(ByteString const& name);
+    Optional<Dictionary const&> get_dictionary(ByteString const& name) const;
+    Optional<Vector<Dictionary>&> get_partial_dictionaries(ByteString const& name);
+    Optional<Vector<Dictionary> const&> get_partial_dictionaries(ByteString const& name) const;
+    Optional<Enumeration const&> get_enumeration(ByteString const& name) const;
+    Optional<Typedef const&> get_typedef(ByteString const& name) const;
+    Optional<CallbackFunction const&> get_callback_function(ByteString const& name) const;
+    Optional<Interface&> get_mixin(ByteString const& name) const;
+    Optional<Vector<Interface const*> const&> get_partial_interfaces(ByteString const& name) const;
+    Optional<Vector<Interface const*> const&> get_partial_namespaces(ByteString const& name) const;
+    Optional<Vector<Interface const*> const&> get_partial_mixins(ByteString const& name) const;
+    Optional<HashTable<ByteString> const&> get_included_mixins(ByteString const& name) const;
+    void resolve_all_types();
+    void finalize_all_interfaces();
     bool is_platform_object(ByteString const& name) const;
     Optional<Interface const&> get_callback_interface(ByteString const& name) const;
     Optional<Interface const&> get_interface(ByteString const& name) const;
+    bool interface_has_original_dictionaries(Interface const&) const;
+    bool interface_has_original_enumerations(Interface const&) const;
 
 private:
+    void register_declaration(ByteString const& name, DeclarationKind, Module const&, bool is_original_definition = true);
+    void resolve_types(Interface&, bool resolve_owned_definitions);
+    void finalize_interface(Interface&);
+
+    Vector<NonnullOwnPtr<Module>> owned_modules;
+    Vector<NonnullOwnPtr<Interface>> owned_interfaces;
+    HashMap<Interface const*, Module const*> interface_modules;
     HashMap<ByteString, Interface const*> interfaces;
+    HashMap<ByteString, Vector<Declaration>> declarations;
+    HashMap<ByteString, Dictionary> dictionaries;
+    HashMap<ByteString, Vector<Dictionary>> partial_dictionaries;
+    HashMap<ByteString, Enumeration> enumerations;
+    HashMap<ByteString, Typedef> typedefs;
+    HashMap<ByteString, CallbackFunction> callback_functions;
+    HashMap<ByteString, Interface*> mixins;
+    HashMap<ByteString, Vector<Interface const*>> partial_interfaces;
+    HashMap<ByteString, Vector<Interface const*>> partial_namespaces;
+    HashMap<ByteString, Vector<Interface const*>> partial_mixins;
+    HashMap<ByteString, HashTable<ByteString>> included_mixins;
 };
 
 // https://webidl.spec.whatwg.org/#dfn-optionality-value

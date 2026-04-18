@@ -510,26 +510,15 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
     Core::ArgsParser args_parser;
 
     StringView output_path;
-    Vector<ByteString> base_paths;
+    StringView support_file_list_path;
     Vector<ByteString> paths;
 
     args_parser.add_option(output_path, "Path to output generated files into", "output-path", 'o', "output-path");
-    args_parser.add_option(Core::ArgsParser::Option {
-        .argument_mode = Core::ArgsParser::OptionArgumentMode::Required,
-        .help_string = "Path to root of IDL file tree(s)",
-        .long_name = "base-path",
-        .short_name = 'b',
-        .value_name = "base-path",
-        .accept_value = [&](StringView s) {
-            base_paths.append(s);
-            return true;
-        },
-    });
+    args_parser.add_option(support_file_list_path, "Path to file containing support IDL files to parse", "support-file-list", 0, "support-file-list");
     args_parser.add_positional_argument(paths, "Paths of every IDL file that could be Exposed", "paths");
     args_parser.parse(arguments);
 
     VERIFY(!paths.is_empty());
-    VERIFY(!base_paths.is_empty());
 
     if (paths.first().starts_with("@"sv)) {
         // Response file
@@ -550,10 +539,15 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
         }
     }
 
-    Vector<ByteString> lexical_bases;
-    for (auto const& base_path : base_paths) {
-        VERIFY(!base_path.is_empty());
-        lexical_bases.append(base_path);
+    auto primary_path_count = paths.size();
+    if (!support_file_list_path.is_empty()) {
+        auto file = TRY(Core::File::open(support_file_list_path, Core::File::OpenMode::Read));
+        auto string = TRY(file->read_until_eof());
+        for (auto const& path : StringView(string).split_view('\n')) {
+            if (path.is_empty())
+                continue;
+            paths.append(path);
+        }
     }
 
     // Read in all IDL files, we must own the storage for all of these for the lifetime of the program
@@ -570,22 +564,26 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
     VERIFY(paths.size() == files.size());
 
     auto context = IDL::Context::create();
-    Vector<IDL::Parser> parsers;
+    Vector<IDL::Interface*> interfaces;
     InterfaceSets interface_sets;
 
     for (size_t i = 0; i < paths.size(); ++i) {
         auto const& path = paths[i];
         StringView file_contents = files[i]->bytes();
-        IDL::Parser parser(path, file_contents, lexical_bases, context);
-        auto& interface = parser.parse();
-        if (interface.name.is_empty()) {
+        auto& module = IDL::Parser::parse(path, file_contents, context);
+        if (i < primary_path_count && !module.primary_interface) {
             s_error_string = ByteString::formatted("Interface for file {} missing", path);
             return Error::from_string_view(s_error_string.view());
         }
 
-        TRY(add_to_interface_sets(interface, interface_sets));
-        parsers.append(move(parser));
+        interfaces.append(module.primary_interface);
     }
+
+    context->resolve_all_types();
+    context->finalize_all_interfaces();
+
+    for (size_t i = 0; i < primary_path_count; ++i)
+        TRY(add_to_interface_sets(*interfaces[i], interface_sets));
 
     TRY(generate_intrinsic_definitions_header(output_path, interface_sets));
     TRY(generate_intrinsic_definitions_implementation(output_path, interface_sets));

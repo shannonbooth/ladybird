@@ -184,6 +184,7 @@ function (generate_css_implementation)
     )
     list(APPEND LIBWEB_ALL_GENERATED_IDL ${CSS_GENERATED_IDL})
     set(LIBWEB_ALL_GENERATED_IDL ${LIBWEB_ALL_GENERATED_IDL} PARENT_SCOPE)
+
 endfunction()
 
 function (generate_html_implementation)
@@ -236,6 +237,7 @@ function (generate_js_bindings target)
     list(TRANSFORM generated_idl_targets PREPEND "generate_")
     set(LIBWEB_ALL_BINDINGS_SOURCES)
     set(LIBWEB_ALL_IDL_FILES)
+    set(LIBWEB_ALL_SUPPORT_IDL_FILES)
     function(libweb_js_bindings class)
         get_filename_component(basename "${class}" NAME)
 
@@ -264,6 +266,16 @@ function (generate_js_bindings target)
         set(LIBWEB_ALL_IDL_FILES ${LIBWEB_ALL_IDL_FILES} PARENT_SCOPE)
     endfunction()
 
+    function(libweb_support_idl class)
+        list(APPEND LIBWEB_ALL_SUPPORT_IDL_FILES "${LIBWEB_INPUT_FOLDER}/${class}.idl")
+        set(LIBWEB_ALL_SUPPORT_IDL_FILES ${LIBWEB_ALL_SUPPORT_IDL_FILES} PARENT_SCOPE)
+    endfunction()
+
+    function(libweb_generated_support_idl class)
+        list(APPEND LIBWEB_ALL_SUPPORT_IDL_FILES "${CMAKE_CURRENT_BINARY_DIR}/${class}.idl")
+        set(LIBWEB_ALL_SUPPORT_IDL_FILES ${LIBWEB_ALL_SUPPORT_IDL_FILES} PARENT_SCOPE)
+    endfunction()
+
     function(generate_exposed_interface_files)
         set(exposed_interface_sources
             IntrinsicDefinitions.cpp IntrinsicDefinitions.h
@@ -275,13 +287,14 @@ function (generate_js_bindings target)
         if (WIN32)
             list(JOIN LIBWEB_ALL_IDL_FILES "\n" idl_file_list)
             file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/all_idl_files.txt" CONTENT "${idl_file_list}" NEWLINE_STYLE UNIX)
-            set(LIBWEB_ALL_IDL_FILES "${CMAKE_CURRENT_BINARY_DIR}/all_idl_files.txt")
-            set(LIBWEB_ALL_IDL_FILES_ARGUMENT "@${LIBWEB_ALL_IDL_FILES}")
+            set(LIBWEB_ALL_IDL_FILES_ARGUMENT "@${CMAKE_CURRENT_BINARY_DIR}/all_idl_files.txt")
         endif()
         add_custom_command(
             OUTPUT  ${exposed_interface_sources}
             COMMAND "${CMAKE_COMMAND}" -E make_directory "tmp"
-            COMMAND $<TARGET_FILE:Lagom::GenerateWindowOrWorkerInterfaces> -o "${CMAKE_CURRENT_BINARY_DIR}/tmp" -b "${LIBWEB_INPUT_FOLDER}" -b "${CMAKE_CURRENT_BINARY_DIR}" ${LIBWEB_ALL_IDL_FILES_ARGUMENT}
+            COMMAND $<TARGET_FILE:Lagom::GenerateWindowOrWorkerInterfaces> -o "${CMAKE_CURRENT_BINARY_DIR}/tmp"
+                    --support-file-list "${CMAKE_CURRENT_BINARY_DIR}/all_support_idl_files.txt"
+                    ${LIBWEB_ALL_IDL_FILES_ARGUMENT}
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different tmp/IntrinsicDefinitions.h "Bindings/IntrinsicDefinitions.h"
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different tmp/IntrinsicDefinitions.cpp "Bindings/IntrinsicDefinitions.cpp"
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different tmp/DedicatedWorkerExposedInterfaces.h "Bindings/DedicatedWorkerExposedInterfaces.h"
@@ -292,7 +305,7 @@ function (generate_js_bindings target)
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different tmp/WindowExposedInterfaces.cpp "Bindings/WindowExposedInterfaces.cpp"
             COMMAND "${CMAKE_COMMAND}" -E remove_directory "${CMAKE_CURRENT_BINARY_DIR}/tmp"
             VERBATIM
-            DEPENDS Lagom::GenerateWindowOrWorkerInterfaces ${LIBWEB_ALL_IDL_FILES}
+            DEPENDS Lagom::GenerateWindowOrWorkerInterfaces ${LIBWEB_ALL_IDL_FILES} ${LIBWEB_ALL_SUPPORT_IDL_FILES}
         )
         target_sources(${target} PRIVATE ${exposed_interface_sources})
         add_custom_target(generate_exposed_interfaces DEPENDS ${exposed_interface_sources})
@@ -314,6 +327,9 @@ function (generate_js_bindings target)
 
     include("idl_files.cmake")
 
+    list(JOIN LIBWEB_ALL_SUPPORT_IDL_FILES "\n" support_idl_file_list)
+    file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/all_support_idl_files.txt" CONTENT "${support_idl_file_list}" NEWLINE_STYLE UNIX)
+
     set(LIBWEB_ALL_IDL_FILES_ARGUMENT ${LIBWEB_ALL_IDL_FILES})
     if (WIN32)
         list(JOIN LIBWEB_ALL_IDL_FILES "\n" idl_file_list)
@@ -325,10 +341,11 @@ function (generate_js_bindings target)
         OUTPUT ${LIBWEB_ALL_BINDINGS_SOURCES}
         COMMAND "${CMAKE_COMMAND}" -E make_directory "Bindings"
         COMMAND "$<TARGET_FILE:Lagom::BindingsGenerator>" -o "Bindings" --depfile "Bindings/all_bindings.d"
-                -b "${LIBWEB_INPUT_FOLDER}" -b "${CMAKE_CURRENT_BINARY_DIR}" ${LIBWEB_ALL_IDL_FILES_ARGUMENT}
+                --support-file-list "${CMAKE_CURRENT_BINARY_DIR}/all_support_idl_files.txt"
+                ${LIBWEB_ALL_IDL_FILES_ARGUMENT}
         VERBATIM
         COMMENT "Generating LibWeb bindings"
-        DEPENDS Lagom::BindingsGenerator ${LIBWEB_ALL_IDL_FILES}
+        DEPENDS Lagom::BindingsGenerator ${LIBWEB_ALL_IDL_FILES} ${LIBWEB_ALL_SUPPORT_IDL_FILES}
         DEPFILE ${CMAKE_CURRENT_BINARY_DIR}/Bindings/all_bindings.d
     )
 
