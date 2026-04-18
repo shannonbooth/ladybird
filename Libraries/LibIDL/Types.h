@@ -12,7 +12,9 @@
 
 #include <AK/ByteString.h>
 #include <AK/HashMap.h>
+#include <AK/HashTable.h>
 #include <AK/NonnullRefPtr.h>
+#include <AK/RefCounted.h>
 #include <AK/SourceGenerator.h>
 #include <AK/Tuple.h>
 
@@ -39,6 +41,7 @@ struct CppType {
     SequenceStorageType sequence_storage_type;
 };
 
+class Context;
 class ParameterizedType;
 class UnionType;
 class Interface;
@@ -261,7 +264,10 @@ class Interface {
     AK_MAKE_NONMOVABLE(Interface);
 
 public:
-    explicit Interface() = default;
+    explicit Interface(NonnullRefPtr<Context> context)
+        : context(move(context))
+    {
+    }
 
     void dump();
 
@@ -317,6 +323,7 @@ public:
     HashMap<ByteString, Interface*> mixins;
     HashMap<ByteString, CallbackFunction> callback_functions;
     HashMap<ByteString, Interface*> referenced_interfaces;
+    NonnullRefPtr<Context> context;
 
     // Added for convenience after parsing
     ByteString fully_qualified_name;
@@ -438,6 +445,16 @@ public:
 
 private:
     Vector<NonnullRefPtr<Type const>> m_member_types;
+};
+
+class Context : public RefCounted<Context> {
+public:
+    static NonnullRefPtr<Context> create() { return adopt_ref(*new Context); }
+
+    void register_interface(Interface const&);
+
+private:
+    HashMap<ByteString, Interface const*> interfaces;
 };
 
 // https://webidl.spec.whatwg.org/#dfn-optionality-value

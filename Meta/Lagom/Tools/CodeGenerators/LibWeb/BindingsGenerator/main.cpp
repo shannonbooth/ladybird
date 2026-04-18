@@ -121,6 +121,7 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
     Vector<ByteString> output_files;
     Vector<NonnullOwnPtr<Core::MappedFile>> files;
     Vector<LexicalPath> lexical_paths;
+    auto context = IDL::Context::create();
     Vector<IDL::Parser> parsers;
     Vector<IDL::Interface*> interfaces;
 
@@ -141,7 +142,7 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
         if (import_base_paths.is_empty())
             import_base_paths.append(lexical_paths[i].dirname());
 
-        IDL::Parser parser(paths[i], files[i]->bytes(), move(import_base_paths));
+        IDL::Parser parser(paths[i], files[i]->bytes(), move(import_base_paths), context);
         auto& interface = parser.parse();
         interfaces.append(&interface);
         parsers.append(move(parser));

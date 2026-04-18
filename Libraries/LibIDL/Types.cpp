@@ -294,6 +294,11 @@ bool Type::is_json(Interface const& interface) const
     return false;
 }
 
+void Context::register_interface(Interface const& interface)
+{
+    interfaces.set(interface.name, &interface);
+}
+
 void EffectiveOverloadSet::remove_all_other_entries()
 {
     Vector<Item> new_items;

@@ -16,7 +16,7 @@ namespace IDL {
 
 class Parser {
 public:
-    Parser(ByteString filename, StringView contents, Vector<ByteString> import_base_paths);
+    Parser(ByteString filename, StringView contents, Vector<ByteString> import_base_paths, NonnullRefPtr<Context> context);
     Interface& parse();
 
     Vector<ByteString> imported_files() const;
@@ -82,6 +82,7 @@ private:
     HashTable<NonnullOwnPtr<Interface>> interfaces;
     HashMap<ByteString, Interface*>& top_level_resolved_imports();
     HashMap<ByteString, Interface*> resolved_imports;
+    NonnullRefPtr<Context> context;
     Parser* top_level_parser();
     Parser* parent = nullptr;
 };

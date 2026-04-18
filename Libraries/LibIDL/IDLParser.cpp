@@ -863,7 +863,7 @@ void Parser::parse_partial_interface(HashMap<ByteString, ByteString> extended_at
     consume_whitespace();
     assert_string("interface"sv);
 
-    auto partial_interface = make<Interface>();
+    auto partial_interface = make<Interface>(context);
     partial_interface->extended_attributes = move(extended_attributes);
     parse_interface(*partial_interface);
     parent.partial_interfaces.append(move(partial_interface));
@@ -910,7 +910,7 @@ void Parser::parse_partial_namespace(Interface& parent)
     consume_whitespace();
     assert_string("namespace"sv);
 
-    auto partial_namespace = make<Interface>();
+    auto partial_namespace = make<Interface>(context);
     parse_namespace(*partial_namespace);
     parent.partial_namespaces.append(move(partial_namespace));
 }
@@ -1084,7 +1084,7 @@ void Parser::parse_dictionary(HashMap<ByteString, ByteString> extended_attribute
 
 void Parser::parse_interface_mixin(Interface& interface)
 {
-    auto mixin_interface_ptr = make<Interface>();
+    auto mixin_interface_ptr = make<Interface>(context);
     auto& mixin_interface = *mixin_interface_ptr;
     VERIFY(top_level_interfaces().set(move(mixin_interface_ptr)) == AK::HashSetResult::InsertedNewEntry);
     mixin_interface.module_own_path = interface.module_own_path;
@@ -1111,7 +1111,7 @@ void Parser::parse_partial_interface_mixin(Interface& interface)
     consume_whitespace();
     assert_string("mixin"sv);
 
-    auto partial_mixin = make<Interface>();
+    auto partial_mixin = make<Interface>(context);
     parse_interface(*partial_mixin);
     interface.partial_mixins.append(move(partial_mixin));
 }
@@ -1261,7 +1261,7 @@ Interface& Parser::parse()
     }
     auto this_module = this_module_or_error.release_value();
 
-    auto interface_ptr = make<Interface>();
+    auto interface_ptr = make<Interface>(context);
     auto& interface = *interface_ptr;
     VERIFY(top_level_interfaces().set(move(interface_ptr)) == AK::HashSetResult::InsertedNewEntry);
     interface.module_own_path = this_module;
@@ -1284,12 +1284,15 @@ Interface& Parser::parse()
 
     parse_non_interface_entities(true, interface);
 
-    if (lexer.consume_specific("interface"sv))
+    if (lexer.consume_specific("interface"sv)) {
         parse_interface(interface);
-    else if (lexer.consume_specific("namespace"sv))
+    } else if (lexer.consume_specific("namespace"sv)) {
         parse_namespace(interface);
+    }
 
     parse_non_interface_entities(false, interface);
+    if (!interface.name.is_empty())
+        context->register_interface(interface);
 
     interface.referenced_interfaces.set(interface.name, &interface);
 
@@ -1490,11 +1493,12 @@ Interface& Parser::parse()
     return interface;
 }
 
-Parser::Parser(ByteString filename, StringView contents, Vector<ByteString> import_base_paths)
+Parser::Parser(ByteString filename, StringView contents, Vector<ByteString> import_base_paths, NonnullRefPtr<Context> context)
     : import_base_paths(move(import_base_paths))
     , filename(move(filename))
     , input(contents)
     , lexer(input)
+    , context(move(context))
 {
 }
 
@@ -1503,6 +1507,7 @@ Parser::Parser(Parser* parent, ByteString filename, StringView contents, Vector<
     , filename(move(filename))
     , input(contents)
     , lexer(input)
+    , context(parent->context)
     , parent(parent)
 {
 }
