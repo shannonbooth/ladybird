@@ -260,14 +260,7 @@ bool Type::is_json(Interface const& interface) const
     if (m_name == interface.name) {
         current_interface_for_to_json = interface;
     } else {
-        // NOTE: Interface types must have the IDL file of their interface imported.
-        //       Though the type name may not refer to an interface, so we don't assert this here.
-        auto imported_interface_iterator = interface.imported_modules.find_if([this](IDL::Interface const& imported_interface) {
-            return imported_interface.name == m_name;
-        });
-
-        if (imported_interface_iterator != interface.imported_modules.end())
-            current_interface_for_to_json = *imported_interface_iterator;
+        current_interface_for_to_json = interface.context->get_interface(m_name);
     }
 
     while (current_interface_for_to_json.has_value()) {
@@ -281,14 +274,7 @@ bool Type::is_json(Interface const& interface) const
         if (current_interface_for_to_json->parent_name.is_empty())
             break;
 
-        auto imported_interface_iterator = current_interface_for_to_json->imported_modules.find_if([&current_interface_for_to_json](IDL::Interface const& imported_interface) {
-            return imported_interface.name == current_interface_for_to_json->parent_name;
-        });
-
-        // Inherited interfaces must have their IDL files imported.
-        VERIFY(imported_interface_iterator != interface.imported_modules.end());
-
-        current_interface_for_to_json = *imported_interface_iterator;
+        current_interface_for_to_json = current_interface_for_to_json->context->get_interface(current_interface_for_to_json->parent_name);
     }
 
     return false;
