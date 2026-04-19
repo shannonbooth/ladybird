@@ -275,7 +275,7 @@ public:
 
     virtual ~ParameterizedType() override = default;
 
-    void generate_sequence_from_iterable(SourceGenerator& generator, ByteString const& cpp_name, ByteString const& iterable_cpp_name, ByteString const& iterator_method_cpp_name, IDL::Interface const&, size_t recursion_depth) const;
+    void generate_sequence_from_iterable(SourceGenerator& generator, ByteString const& cpp_name, ByteString const& iterable_cpp_name, ByteString const& iterator_method_cpp_name, Context const&, size_t recursion_depth) const;
 
     Vector<NonnullRefPtr<Type const>> const& parameters() const { return m_parameters; }
     Vector<NonnullRefPtr<Type const>>& parameters() { return m_parameters; }

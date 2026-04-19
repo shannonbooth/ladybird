@@ -22,7 +22,7 @@ void generate_implementation(Interface const&, StringBuilder&);
 void generate_header(Module const&, StringBuilder&);
 void generate_implementation(Module const&, StringBuilder&);
 
-CppType idl_type_name_to_cpp_type(Type const& type, Interface const& interface);
+CppType idl_type_name_to_cpp_type(Type const& type, Context const&);
 
 extern Vector<StringView> g_header_search_paths;
 
