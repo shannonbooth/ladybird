@@ -9,7 +9,6 @@
  */
 
 #include "IDLGenerators.h"
-#include "Namespaces.h"
 #include <AK/Assertions.h>
 #include <AK/Debug.h>
 #include <AK/HashTable.h>
@@ -140,28 +139,19 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
     context->resolve_all_types();
     context->finalize_all_interfaces();
 
-    for (size_t i = 0; i < primary_path_count; ++i) {
-        auto const& lexical_path = lexical_paths[i];
-        auto& namespace_ = lexical_path.parts_view().at(lexical_path.parts_view().size() - 2);
-        auto& module = *modules[i];
-        VERIFY(context->module_will_generate_code(module));
-
-        if (auto* interface = module.primary_interface) {
-            // If the interface name is the same as its namespace, qualify the name in the generated code.
-            // e.g. Selection::Selection
-            if (IDL::libweb_interface_namespaces.span().contains_slow(namespace_)) {
-                StringBuilder builder;
-                builder.append(namespace_);
-                builder.append("::"sv);
-                builder.append(interface->implemented_name);
-                interface->fully_qualified_name = builder.to_byte_string();
-            } else {
-                interface->fully_qualified_name = interface->implemented_name;
-            }
+    for (auto* module : modules) {
+        if (auto* interface = module->primary_interface) {
+            interface->fully_qualified_name = IDL::fully_qualified_name_for_cpp(*interface);
 
             if constexpr (BINDINGS_GENERATOR_DEBUG)
                 interface->dump();
         }
+    }
+
+    for (size_t i = 0; i < primary_path_count; ++i) {
+        auto const& lexical_path = lexical_paths[i];
+        auto& module = *modules[i];
+        VERIFY(context->module_will_generate_code(module));
 
         auto path_prefix = LexicalPath::join(output_path, lexical_path.basename(LexicalPath::StripExtension::Yes));
         auto header_path = ByteString::formatted("{}.h", path_prefix);

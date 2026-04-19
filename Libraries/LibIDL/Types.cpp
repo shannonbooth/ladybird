@@ -933,7 +933,7 @@ bool Context::is_platform_object(ByteString const& name) const
 {
     // Platform objects are objects that implement an interface.
     // NB: WindowProxy is a special case as it is not defined over IDL, but implements the Window interface.
-    return interfaces.contains(name) || name == "WindowProxy"sv;
+    return interfaces.contains(name) || get_interface_with_implemented_name(name).has_value() || name == "WindowProxy"sv;
 }
 
 Optional<Interface const&> Context::get_callback_interface(ByteString const& name) const
@@ -947,6 +947,15 @@ Optional<Interface const&> Context::get_interface(ByteString const& name) const
 {
     if (auto interface = interfaces.get(name); interface.has_value())
         return *interface.value();
+    return {};
+}
+
+Optional<Interface const&> Context::get_interface_with_implemented_name(ByteString const& name) const
+{
+    for (auto const& interface : interfaces) {
+        if (interface.value->implemented_name == name)
+            return *interface.value;
+    }
     return {};
 }
 

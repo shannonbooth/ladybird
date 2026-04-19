@@ -500,6 +500,7 @@ public:
     bool is_platform_object(ByteString const& name) const;
     Optional<Interface const&> get_callback_interface(ByteString const& name) const;
     Optional<Interface const&> get_interface(ByteString const& name) const;
+    Optional<Interface const&> get_interface_with_implemented_name(ByteString const& name) const;
     bool interface_has_original_dictionaries(Interface const&) const;
     bool interface_has_original_enumerations(Interface const&) const;
 
