@@ -91,6 +91,14 @@ set(ABOUT_SETTINGS_RESOURCES
 )
 list(TRANSFORM ABOUT_SETTINGS_RESOURCES PREPEND "${LADYBIRD_SOURCE_DIR}/Base/res/ladybird/about-pages/settings/")
 
+set(PDF_VIEWER_RESOURCES
+    pdf.js
+    pdf.worker.js
+    viewer.html
+    viewer.js
+)
+list(TRANSFORM PDF_VIEWER_RESOURCES PREPEND "${LADYBIRD_SOURCE_DIR}/Base/res/ladybird/pdf-viewer/")
+
 set(WEB_TEMPLATES
     directory.html
     error.html
@@ -184,6 +192,10 @@ function(copy_resources_to_build base_directory bundle_target)
         DESTINATION ${base_directory} TARGET ${bundle_target}
     )
 
+    copy_resource_set(ladybird/pdf-viewer RESOURCES ${PDF_VIEWER_RESOURCES}
+        DESTINATION ${base_directory} TARGET ${bundle_target}
+    )
+
     copy_resource_set(ladybird/templates RESOURCES ${WEB_TEMPLATES}
         DESTINATION ${base_directory} TARGET ${bundle_target}
     )
@@ -206,6 +218,7 @@ function(install_ladybird_resources destination component)
     install(FILES ${INTERNAL_RESOURCES} DESTINATION "${destination}/ladybird" COMPONENT ${component})
     install(FILES ${ABOUT_PAGES} DESTINATION "${destination}/ladybird/about-pages" COMPONENT ${component})
     install(FILES ${ABOUT_SETTINGS_RESOURCES} DESTINATION "${destination}/ladybird/about-pages/settings" COMPONENT ${component})
+    install(FILES ${PDF_VIEWER_RESOURCES} DESTINATION "${destination}/ladybird/pdf-viewer" COMPONENT ${component})
     install(FILES ${WEB_TEMPLATES} DESTINATION "${destination}/ladybird/templates" COMPONENT ${component})
     install(FILES ${CONFIG_RESOURCES} DESTINATION "${destination}/ladybird/default-config" COMPONENT ${component})
 endfunction()

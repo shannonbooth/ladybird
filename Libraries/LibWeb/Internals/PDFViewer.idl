@@ -1,0 +1,5 @@
+[Exposed=Nobody]
+interface PDFViewer {
+    ArrayBuffer getData();
+    DOMString getURL();
+};

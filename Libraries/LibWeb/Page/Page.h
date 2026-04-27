@@ -329,8 +329,8 @@ private:
     // https://html.spec.whatwg.org/multipage/system-state.html#pdf-viewer-supported
     // Each user agent has a PDF viewer supported boolean, whose value is implementation-defined (and might vary according to user preferences).
     // Spec Note: This value also impacts the navigation processing model.
-    // FIXME: Actually support pdf viewing
-    bool m_pdf_viewer_supported { false };
+    // Ladybird exposes a built-in PDF viewer document for supported PDF navigations.
+    bool m_pdf_viewer_supported { true };
 
     size_t m_find_in_page_match_index { 0 };
     Optional<FindInPageQuery> m_last_find_in_page_query;

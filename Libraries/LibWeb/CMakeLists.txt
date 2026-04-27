@@ -727,6 +727,7 @@ set(SOURCES
     Internals/InternalGamepad.cpp
     Internals/Internals.cpp
     Internals/InternalsBase.cpp
+    Internals/PDFViewer.cpp
     Internals/WebUI.cpp
     Internals/XRTest.cpp
     IntersectionObserver/IntersectionObserver.cpp

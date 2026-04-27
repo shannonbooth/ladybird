@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="color-scheme" content="light dark" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>PDF</title>
+        <style>
+            :root {
+                color-scheme: light dark;
+                --chrome: light-dark(#f6f6f6, #1e1e1e);
+                --chrome-border: light-dark(#d4d4d4, #3a3a3a);
+                --page-shadow: rgba(0, 0, 0, 0.18);
+                --page-bg: white;
+                --surface: light-dark(#dcdcdc, #2b2b2b);
+                --text: light-dark(#111, #f3f3f3);
+                --muted: light-dark(#555, #c5c5c5);
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            html,
+            body {
+                margin: 0;
+                min-height: 100%;
+                background: var(--surface);
+                color: var(--text);
+                font: 14px/1.4 sans-serif;
+            }
+
+            body {
+                display: flex;
+                flex-direction: column;
+            }
+
+            .toolbar {
+                position: sticky;
+                top: 0;
+                z-index: 1;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                padding: 10px 14px;
+                background: var(--chrome);
+                border-bottom: 1px solid var(--chrome-border);
+            }
+
+            .status {
+                color: var(--muted);
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .status.is-error {
+                color: #b00020;
+            }
+
+            .controls {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-shrink: 0;
+            }
+
+            button {
+                min-width: 32px;
+                height: 32px;
+                padding: 0 10px;
+                border: 1px solid var(--chrome-border);
+                background: light-dark(white, #2a2a2a);
+                color: inherit;
+                border-radius: 6px;
+                font: inherit;
+            }
+
+            button:disabled {
+                opacity: 0.55;
+            }
+
+            .zoom-label {
+                min-width: 56px;
+                text-align: center;
+                color: var(--muted);
+            }
+
+            .viewer {
+                flex: 1;
+                padding: 24px 12px 40px;
+            }
+
+            .pages {
+                max-width: max-content;
+                margin: 0 auto;
+            }
+
+            .page {
+                margin: 0 auto 24px;
+                width: max-content;
+            }
+
+            .page-label {
+                margin: 0 0 8px;
+                color: var(--muted);
+                text-align: center;
+            }
+
+            canvas {
+                display: block;
+                background: var(--page-bg);
+                box-shadow: 0 2px 18px var(--page-shadow);
+            }
+        </style>
+    </head>
+    <body>
+        <header class="toolbar">
+            <div class="status" id="status">Loading PDF...</div>
+            <div class="controls">
+                <button id="zoom-out" type="button" aria-label="Zoom out">-</button>
+                <div class="zoom-label" id="zoom-label">110%</div>
+                <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+            </div>
+        </header>
+        <main class="viewer">
+            <div class="pages" id="pages"></div>
+        </main>
+    </body>
+</html>

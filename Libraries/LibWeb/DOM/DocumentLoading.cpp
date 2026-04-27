@@ -9,7 +9,9 @@
 #include <AK/Debug.h>
 #include <AK/LexicalPath.h>
 #include <LibCore/Promise.h>
+#include <LibCore/Resource.h>
 #include <LibGfx/ImageFormats/ImageDecoder.h>
+#include <LibJS/Runtime/ArrayBuffer.h>
 #include <LibTextCodec/Decoder.h>
 #include <LibWeb/DOM/Document.h>
 #include <LibWeb/DOM/DocumentLoading.h>
@@ -19,6 +21,8 @@
 #include <LibWeb/HTML/NavigationParams.h>
 #include <LibWeb/HTML/Parser/HTMLEncodingDetection.h>
 #include <LibWeb/HTML/Parser/HTMLParser.h>
+#include <LibWeb/HTML/Window.h>
+#include <LibWeb/Internals/PDFViewer.h>
 #include <LibWeb/Loader/GeneratedPagesLoader.h>
 #include <LibWeb/MimeSniff/Resource.h>
 #include <LibWeb/Namespace.h>
@@ -415,6 +419,71 @@ static WebIDL::ExceptionOr<GC::Ref<DOM::Document>> load_media_document(HTML::Nav
     // be true for the Document.
 }
 
+static String load_resource_as_string(StringView resource_uri)
+{
+    auto maybe_resource = Core::Resource::load_from_uri(resource_uri);
+    return MUST(String::from_utf8(maybe_resource.release_value()->data()));
+}
+
+static void append_inline_script(DOM::Document& document, StringView script_source)
+{
+    auto* body = document.body();
+    VERIFY(body);
+    auto script_element = MUST(DOM::create_element(document, HTML::TagNames::script, Namespace::HTML));
+    auto script_text = document.create_text_node(Utf16String::from_utf8(script_source));
+    MUST(script_element->append_child(script_text));
+    MUST(body->append_child(script_element));
+}
+
+static GC::Ref<DOM::Document> load_pdf_document(HTML::NavigationParams const& navigation_params, MimeSniff::MimeType type)
+{
+    auto document = MUST(DOM::Document::create_and_initialize(DOM::Document::Type::HTML, type.essence(), navigation_params));
+
+    document->set_quirks_mode(DOM::QuirksMode::No);
+
+    auto process_body = GC::create_function(document->heap(), [document](ByteBuffer data) mutable {
+        auto viewer_html = load_resource_as_string("resource://ladybird/pdf-viewer/viewer.html"sv);
+        auto pdf_js = load_resource_as_string("resource://ladybird/pdf-viewer/pdf.js"sv);
+        auto pdf_worker_js = load_resource_as_string("resource://ladybird/pdf-viewer/pdf.worker.js"sv);
+        auto viewer_js = load_resource_as_string("resource://ladybird/pdf-viewer/viewer.js"sv);
+
+        auto run_pdf_viewer = [document, data = move(data), viewer_html = move(viewer_html), pdf_js = move(pdf_js), pdf_worker_js = move(pdf_worker_js), viewer_js = move(viewer_js)]() mutable {
+            auto& realm = document->realm();
+            auto pdf_data = JS::ArrayBuffer::create(realm, move(data));
+            auto pdf_viewer = realm.create<Internals::PDFViewer>(realm, pdf_data, document->url_string());
+            document->window()->define_direct_property("__ladybirdPDFViewer"_utf16_fly_string, pdf_viewer, JS::default_attributes);
+
+            auto parser = HTML::HTMLParser::create(document, viewer_html, HTML::ParserScriptingMode::Normal, "utf-8"sv);
+            parser->run(document->url());
+
+            append_inline_script(*document, *pdf_js);
+            append_inline_script(*document, *pdf_worker_js);
+            append_inline_script(*document, *viewer_js);
+        };
+
+        if (document->ready_to_run_scripts()) {
+            run_pdf_viewer();
+        } else {
+            document->set_deferred_parser_start(GC::create_function(document->heap(), move(run_pdf_viewer)));
+        }
+    });
+
+    auto process_body_error = GC::create_function(document->heap(), [document](JS::Value value) {
+        auto message = MUST(String::formatted("Failed to read PDF response body: {}", value));
+        auto error_html = MUST(String::formatted(
+            "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>PDF Error</title></head><body><p>{}</p></body></html>",
+            escape_html_entities(message)));
+
+        auto parser = HTML::HTMLParser::create(document, error_html, HTML::ParserScriptingMode::Normal, "utf-8"sv);
+        parser->run(document->url());
+    });
+
+    auto& realm = document->realm();
+    navigation_params.response->body()->fully_read(realm, process_body, process_body_error, GC::Ref { realm.global_object() });
+
+    return document;
+}
+
 bool can_load_document_with_type(MimeSniff::MimeType const& type)
 {
     if (type.is_html())
@@ -505,9 +574,8 @@ GC::Ptr<DOM::Document> load_document(HTML::NavigationParams const& navigation_pa
     // -> "text/pdf"
     if (type.essence() == "application/pdf"_string
         || type.essence() == "text/pdf"_string) {
-        // FIXME: If the user agent's PDF viewer supported is true, return the result of creating a document for inline
-        //        content that doesn't have a DOM given navigationParams's navigable, navigationParams's id,
-        //        navigationParams's navigation timing type, and navigationParams's user involvement.
+        if (navigation_params.navigable->active_document()->page().pdf_viewer_supported())
+            return load_pdf_document(navigation_params, type);
     }
 
     // Otherwise, proceed onward.
