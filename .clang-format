@@ -20,6 +20,7 @@ RequiresClausePosition: WithFollowing
 RequiresExpressionIndentation: OuterScope
 SpaceAfterTemplateKeyword: false
 WrapNamespaceBodyWithEmptyLines: Always
+SpaceInEmptyBraces: Never
 
 ---
 Language: ObjC
