@@ -749,6 +749,15 @@ static ByteString optional_parameter_cpp_type(Context const& context, ParameterT
     VERIFY_NOT_REACHED();
 }
 
+template<typename ParameterType>
+static CppType variadic_parameter_cpp_type(Context const& context, ParameterType const& parameter)
+{
+    if (parameter.type->is_string())
+        return { .name = string_parameter_cpp_type(parameter), .sequence_storage_type = SequenceStorageType::Vector };
+
+    return idl_type_name_to_cpp_type(*parameter.type, context);
+}
+
 static ByteString optional_string_default_value_expression(ByteString const& cpp_type, ByteString const& default_value)
 {
     if (cpp_type == "String"sv)
@@ -1004,7 +1013,48 @@ static void generate_optional_to_cpp(SourceGenerator& generator, ParameterType& 
 }
 
 template<typename ParameterType>
-static void generate_to_string(SourceGenerator& scoped_generator, ParameterType const& parameter, bool variadic)
+static void generate_variadic_to_cpp(SourceGenerator& generator, ParameterType& parameter, ByteString const& cpp_name, Context const& context, size_t recursion_depth)
+{
+    auto variadic_generator = generator.fork();
+    auto variadic_cpp_type = variadic_parameter_cpp_type(context, parameter);
+    auto variadic_storage_type = sequence_storage_type_to_cpp_storage_type_name(variadic_cpp_type.sequence_storage_type);
+    auto inner_cpp_name = ByteString::formatted("{}_item", cpp_name);
+    auto value_name = ByteString::formatted("variadic_argument_{}", recursion_depth);
+
+    variadic_generator.set("variadic.storage_type", variadic_storage_type);
+    variadic_generator.set("variadic.item_type", variadic_cpp_type.name);
+    variadic_generator.set("variadic.inner_cpp_name", inner_cpp_name);
+    variadic_generator.set("variadic.value_name", value_name);
+
+    if (variadic_cpp_type.sequence_storage_type == SequenceStorageType::RootVector) {
+        variadic_generator.append(R"~~~(
+    @variadic.storage_type@<@variadic.item_type@> @cpp_name@ { vm.heap() };
+)~~~");
+    } else {
+        variadic_generator.append(R"~~~(
+    @variadic.storage_type@<@variadic.item_type@> @cpp_name@;
+)~~~");
+    }
+
+    variadic_generator.append(R"~~~(
+    if (vm.argument_count() > @js_suffix@) {
+        @cpp_name@.ensure_capacity(vm.argument_count() - @js_suffix@);
+
+        for (size_t i = @js_suffix@; i < vm.argument_count(); ++i) {
+            auto @variadic.value_name@ = vm.argument(i);
+)~~~");
+
+    generate_to_cpp(variadic_generator, parameter, value_name, "", inner_cpp_name, context, false, {}, false, recursion_depth + 1);
+
+    variadic_generator.append(R"~~~(
+            @cpp_name@.unchecked_append(move(@variadic.inner_cpp_name@));
+        }
+    }
+)~~~");
+}
+
+template<typename ParameterType>
+static void generate_to_string(SourceGenerator& scoped_generator, ParameterType const& parameter)
 {
     auto is_utf16_string = parameter.type->name().contains("Utf16"sv);
     auto is_fly_string = parameter.extended_attributes.contains("FlyString"sv);
@@ -1024,34 +1074,19 @@ static void generate_to_string(SourceGenerator& scoped_generator, ParameterType 
     else
         scoped_generator.set("to_string", is_utf16_string ? "to_utf16_string"sv : "to_string"sv);
 
-    if (variadic) {
+    if (parameter.type->is_nullable()) {
         scoped_generator.append(R"~~~(
-    Vector<@string_type@> @cpp_name@;
-
-    if (vm.argument_count() > @js_suffix@) {
-        @cpp_name@.ensure_capacity(vm.argument_count() - @js_suffix@);
-
-        for (size_t i = @js_suffix@; i < vm.argument_count(); ++i) {
-            auto to_string_result = TRY(WebIDL::@to_string@(vm, vm.argument(i)));
-            @cpp_name@.unchecked_append(move(to_string_result));
-        }
-    }
-)~~~");
-    } else {
-        if (parameter.type->is_nullable()) {
-            scoped_generator.append(R"~~~(
     Optional<@string_type@> @cpp_name@;
     if (!@js_name@@js_suffix@.is_nullish())
         @cpp_name@ = TRY(WebIDL::@to_string@(vm, @js_name@@js_suffix@));
 )~~~");
-        } else {
-            scoped_generator.append(R"~~~(
+    } else {
+        scoped_generator.append(R"~~~(
     @string_type@ @cpp_name@;
     if (!@legacy_null_to_empty_string@ || !@js_name@@js_suffix@.is_null()) {
         @cpp_name@ = TRY(WebIDL::@to_string@(vm, @js_name@@js_suffix@));
     }
 )~~~");
-        }
     }
 }
 
@@ -1412,24 +1447,11 @@ static void generate_array_buffer_view_to_cpp(SourceGenerator& scoped_generator,
     }
 }
 
-static void generate_any_to_cpp(SourceGenerator& scoped_generator, bool variadic)
+static void generate_any_to_cpp(SourceGenerator& scoped_generator)
 {
-    if (variadic) {
-        scoped_generator.append(R"~~~(
-    GC::RootVector<JS::Value> @cpp_name@ { vm.heap() };
-
-    if (vm.argument_count() > @js_suffix@) {
-        @cpp_name@.ensure_capacity(vm.argument_count() - @js_suffix@);
-
-        for (size_t i = @js_suffix@; i < vm.argument_count(); ++i)
-            @cpp_name@.unchecked_append(vm.argument(i));
-    }
-)~~~");
-    } else {
-        scoped_generator.append(R"~~~(
+    scoped_generator.append(R"~~~(
     auto @cpp_name@ = @js_name@@js_suffix@;
 )~~~");
-    }
 }
 
 enum class ThrowOnInvalidEnumValue {
@@ -1631,7 +1653,7 @@ static void generate_sequence_to_cpp(SourceGenerator& scoped_generator, IDL::Par
 }
 
 template<typename ParameterType>
-static void generate_union_to_cpp(SourceGenerator& scoped_generator, ParameterType& parameter, ByteString const& js_name, ByteString const& js_suffix, ByteString const& cpp_name, Context const& context, bool variadic, size_t recursion_depth)
+static void generate_union_to_cpp(SourceGenerator& scoped_generator, ParameterType& parameter, ByteString const& js_name, ByteString const& js_suffix, ByteString const& cpp_name, Context const& context, size_t recursion_depth)
 {
     // https://webidl.spec.whatwg.org/#es-union
 
@@ -1669,8 +1691,6 @@ static void generate_union_to_cpp(SourceGenerator& scoped_generator, ParameterTy
     // Additionally, it handles the case of unconditionally throwing a TypeError at the end if none of the types match.
     // This is because we cannot unconditionally throw in generate_to_cpp as generate_to_cpp is supposed to assign to a variable and then continue.
     // Note that all the other types only throw on a condition.
-
-    // The lambda must take the JS::Value to convert as a parameter instead of capturing it in order to support union types being variadic.
 
     union_generator.append(R"~~~(
     auto @js_name@@js_suffix@_to_variant = [&vm, &realm](JS::Value @js_name@@js_suffix@) -> JS::ThrowCompletionOr<@union_type@> {
@@ -2072,24 +2092,9 @@ static void generate_union_to_cpp(SourceGenerator& scoped_generator, ParameterTy
     };
 )~~~");
 
-    if (!variadic) {
-        union_generator.append(R"~~~(
+    union_generator.append(R"~~~(
     @union_type@ @cpp_name@ = TRY(@js_name@@js_suffix@_to_variant(@js_name@@js_suffix@));
 )~~~");
-    } else {
-        union_generator.append(R"~~~(
-        Vector<@union_type@> @cpp_name@;
-
-        if (vm.argument_count() > @js_suffix@) {
-            @cpp_name@.ensure_capacity(vm.argument_count() - @js_suffix@);
-
-            for (size_t i = @js_suffix@; i < vm.argument_count(); ++i) {
-                auto result = TRY(@js_name@@js_suffix@_to_variant(vm.argument(i)));
-                @cpp_name@.unchecked_append(move(result));
-            }
-        }
-    )~~~");
-    }
 }
 
 template<typename ParameterType>
@@ -2111,14 +2116,19 @@ static void generate_to_cpp(SourceGenerator& generator, ParameterType& parameter
 
     scoped_generator.set("parameter.name", parameter.name);
 
-    if (optional && !variadic) {
+    if (variadic) {
+        generate_variadic_to_cpp(scoped_generator, parameter, acceptable_cpp_name, context, recursion_depth);
+        return;
+    }
+
+    if (optional) {
         generate_optional_to_cpp(scoped_generator, parameter, js_name, js_suffix, acceptable_cpp_name, context, optional_default_value, recursion_depth);
         return;
     }
 
     // FIXME: Add support for optional, variadic, nullable and default values to all types
     if (parameter.type->is_string()) {
-        generate_to_string(scoped_generator, parameter, variadic);
+        generate_to_string(scoped_generator, parameter);
     } else if (parameter.type->is_boolean() || parameter.type->is_integer()) {
         generate_to_integral(scoped_generator, parameter);
     } else if (auto const* callback_interface = callback_interface_for_type(context, parameter.type)) {
@@ -2136,7 +2146,7 @@ static void generate_to_cpp(SourceGenerator& generator, ParameterType& parameter
     } else if (parameter.type->name() == "ArrayBufferView") {
         generate_array_buffer_view_to_cpp(scoped_generator, *parameter.type);
     } else if (parameter.type->name() == "any") {
-        generate_any_to_cpp(scoped_generator, variadic);
+        generate_any_to_cpp(scoped_generator);
     } else if (context.enumerations.contains(parameter.type->name())) {
         // NOTE: Attribute setters return undefined instead of throwing when the string doesn't match an enum value.
         ThrowOnInvalidEnumValue throw_on_invalid = ThrowOnInvalidEnumValue::No;
@@ -2157,7 +2167,7 @@ static void generate_to_cpp(SourceGenerator& generator, ParameterType& parameter
     } else if (parameter.type->name() == "record") {
         generate_record_to_cpp(scoped_generator, as<IDL::ParameterizedType>(*parameter.type), acceptable_cpp_name, context, recursion_depth);
     } else if (is<IDL::UnionType>(*parameter.type)) {
-        generate_union_to_cpp(scoped_generator, parameter, js_name, js_suffix, acceptable_cpp_name, context, variadic, recursion_depth);
+        generate_union_to_cpp(scoped_generator, parameter, js_name, js_suffix, acceptable_cpp_name, context, recursion_depth);
     } else {
         dbgln("Unimplemented JS-to-C++ conversion: {}", parameter.type->name());
         VERIFY_NOT_REACHED();
