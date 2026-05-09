@@ -118,6 +118,8 @@ static bool is_nullable_frozen_array_of_single_type(Type const& type, StringView
     return parameters.first()->name() == type_name;
 }
 
+static CppType idl_value_type_to_cpp_type(Type const&, Context const&);
+
 static ByteString union_type_to_variant(UnionType const& union_type, Context const& context)
 {
     StringBuilder builder;
@@ -130,7 +132,7 @@ static ByteString union_type_to_variant(UnionType const& union_type, Context con
         if (type_index > 0)
             builder.append(", "sv);
 
-        auto cpp_type = idl_type_name_to_cpp_type(type, context);
+        auto cpp_type = idl_value_type_to_cpp_type(type, context);
         builder.append(cpp_type.name);
     }
 
@@ -670,10 +672,16 @@ static void emit_includes_for_module_idl_value_conversion_dependencies(Module co
 }
 
 template<typename ParameterType>
+static ByteString nullable_parameter_cpp_type(Context const& context, ParameterType const& parameter);
+
+template<typename ParameterType>
 static ByteString optional_parameter_cpp_type(Context const& context, ParameterType const& parameter, Optional<ByteString> const& optional_default_value)
 {
     auto const& type = *parameter.type;
     auto has_non_null_default_value = optional_default_value.has_value() && *optional_default_value != "null"sv;
+
+    if (type.is_nullable() && !is<UnionType>(type))
+        return nullable_parameter_cpp_type(context, parameter);
 
     if (type.is_string()) {
         auto cpp_type = string_parameter_cpp_type(parameter);
@@ -729,14 +737,14 @@ static ByteString optional_parameter_cpp_type(Context const& context, ParameterT
         return "GC::Ptr<WebIDL::CallbackType>"sv;
 
     if (type.name().is_one_of("sequence"sv, "FrozenArray"sv, "record"sv)) {
-        auto cpp_type = idl_type_name_to_cpp_type(type, context).name;
+        auto cpp_type = idl_value_type_to_cpp_type(type, context).name;
         if (type.is_nullable() || !has_non_null_default_value)
             return ByteString::formatted("Optional<{}>", cpp_type);
         return cpp_type;
     }
 
     if (is<UnionType>(type)) {
-        auto cpp_type = idl_type_name_to_cpp_type(type, context).name;
+        auto cpp_type = idl_value_type_to_cpp_type(type, context).name;
         auto const& union_type = as<UnionType>(type);
         if (optional_default_value == "null"sv && union_type.includes_nullable_type())
             return cpp_type;
@@ -755,8 +763,166 @@ static CppType variadic_parameter_cpp_type(Context const& context, ParameterType
     if (parameter.type->is_string())
         return { .name = string_parameter_cpp_type(parameter), .sequence_storage_type = SequenceStorageType::Vector };
 
-    return idl_type_name_to_cpp_type(*parameter.type, context);
+    return idl_value_type_to_cpp_type(*parameter.type, context);
 }
+
+static NonnullRefPtr<Type const> non_nullable_type(Type const& type)
+{
+    if (!type.is_nullable())
+        return type;
+
+    if (is<ParameterizedType>(type))
+        return adopt_ref(*new ParameterizedType(type.name(), false, as<ParameterizedType>(type).parameters()));
+
+    if (is<UnionType>(type))
+        return adopt_ref(*new UnionType(type.name(), false, as<UnionType>(type).member_types()));
+
+    return adopt_ref(*new Type(type.name(), false));
+}
+
+template<typename ParameterType>
+static ParameterType parameter_with_type(ParameterType const& parameter, NonnullRefPtr<Type const> type)
+{
+    auto parameter_copy = parameter;
+    parameter_copy.type = move(type);
+    return parameter_copy;
+}
+
+static CppType nullable_type_to_cpp_type(Context const& context, Type const& type)
+{
+    VERIFY(type.is_nullable());
+
+    if (type.name() == "any"sv)
+        return { .name = "JS::Value"sv, .sequence_storage_type = SequenceStorageType::RootVector };
+
+    if (auto const* callback_interface = callback_interface_for_type(context, type))
+        return { .name = ByteString::formatted("GC::Ptr<{}>", interface_cpp_type_name(*callback_interface)), .sequence_storage_type = SequenceStorageType::Vector };
+
+    if (IDL::is_platform_object(context, type))
+        return { .name = ByteString::formatted("GC::Ptr<{}>", cpp_type_name(type, context)), .sequence_storage_type = SequenceStorageType::Vector };
+
+    if (context.callback_functions.contains(type.name()))
+        return { .name = "GC::Ptr<WebIDL::CallbackType>"sv, .sequence_storage_type = SequenceStorageType::Vector };
+
+    auto inner_type = non_nullable_type(type);
+    auto inner_cpp_type = idl_value_type_to_cpp_type(*inner_type, context);
+    return { .name = ByteString::formatted("Optional<{}>", inner_cpp_type.name), .sequence_storage_type = SequenceStorageType::Vector };
+}
+
+static CppType idl_value_type_to_cpp_type(Type const& type, Context const& context)
+{
+    if (type.is_nullable() && !is<UnionType>(type))
+        return nullable_type_to_cpp_type(context, type);
+
+    if (type.name().is_one_of("sequence"sv, "FrozenArray"sv)) {
+        auto& parameterized_type = as<ParameterizedType>(type);
+        auto& sequence_type = parameterized_type.parameters().first();
+        auto sequence_cpp_type = idl_value_type_to_cpp_type(sequence_type, context);
+        auto storage_type_name = sequence_storage_type_to_cpp_storage_type_name(sequence_cpp_type.sequence_storage_type);
+        return { .name = ByteString::formatted("{}<{}>", storage_type_name, sequence_cpp_type.name), .sequence_storage_type = SequenceStorageType::Vector };
+    }
+
+    if (type.name() == "record"sv) {
+        auto& parameterized_type = as<ParameterizedType>(type);
+        auto& record_key_type = parameterized_type.parameters()[0];
+        auto& record_value_type = parameterized_type.parameters()[1];
+        auto record_key_cpp_type = idl_value_type_to_cpp_type(record_key_type, context);
+        auto record_value_cpp_type = idl_value_type_to_cpp_type(record_value_type, context);
+        return { .name = ByteString::formatted("OrderedHashMap<{}, {}>", record_key_cpp_type.name, record_value_cpp_type.name), .sequence_storage_type = SequenceStorageType::Vector };
+    }
+
+    if (is<UnionType>(type))
+        return { .name = union_type_to_variant(as<UnionType>(type), context), .sequence_storage_type = SequenceStorageType::Vector };
+
+    return idl_type_name_to_cpp_type(type, context);
+}
+
+template<typename ParameterType>
+static ByteString nullable_parameter_cpp_type(Context const& context, ParameterType const& parameter)
+{
+    auto const& type = *parameter.type;
+
+    if (type.is_string())
+        return ByteString::formatted("Optional<{}>", string_parameter_cpp_type(parameter));
+
+    if (type.is_boolean() || type.is_integer())
+        return ByteString::formatted("Optional<{}>", integral_parameter_cpp_type_name(type.name()));
+
+    if (auto const* callback_interface = callback_interface_for_type(context, type))
+        return ByteString::formatted("GC::Ptr<{}>", interface_cpp_type_name(*callback_interface));
+
+    if (IDL::is_platform_object(context, type))
+        return ByteString::formatted("GC::Ptr<{}>", cpp_type_name(type, context));
+
+    if (type.is_floating_point())
+        return ByteString::formatted("Optional<{}>", floating_point_parameter_cpp_type_name(type));
+
+    if (type.name() == "Promise"sv)
+        return "Optional<GC::Root<WebIDL::Promise>>"sv;
+
+    if (type.name() == "object"sv)
+        return "Optional<GC::Root<JS::Object>>"sv;
+
+    if (is_javascript_builtin_buffer_source_type(type) || type.name() == "BufferSource"sv) {
+        auto buffer_cpp_type = is_javascript_builtin_buffer_source_type(type) ? ByteString::formatted("JS::{}", type.name()) : ByteString { "WebIDL::BufferSource"sv };
+        return ByteString::formatted("Optional<GC::Root<{}>>", buffer_cpp_type);
+    }
+
+    if (type.name() == "ArrayBufferView"sv)
+        return "Optional<GC::Root<WebIDL::ArrayBufferView>>"sv;
+
+    if (type.name() == "any"sv)
+        return "JS::Value"sv;
+
+    if (context.enumerations.contains(type.name()))
+        return ByteString::formatted("Optional<{}>", cpp_type_name(type, context));
+
+    if (context.dictionaries.contains(type.name()))
+        return ByteString::formatted("Optional<{}>", cpp_type_name(type, context));
+
+    if (context.callback_functions.contains(type.name()))
+        return "GC::Ptr<WebIDL::CallbackType>"sv;
+
+    if (type.name().is_one_of("sequence"sv, "FrozenArray"sv, "record"sv))
+        return idl_value_type_to_cpp_type(type, context).name;
+
+    dbgln("Unimplemented nullable JS-to-C++ conversion type: {}", type.name());
+    VERIFY_NOT_REACHED();
+}
+
+template<typename ParameterType>
+static ByteString nullable_parameter_null_value_expression(ParameterType const& parameter)
+{
+    if (parameter.type->name() == "any"sv)
+        return "JS::js_null()"sv;
+    return "{}"sv;
+}
+
+template<typename ParameterType>
+static ByteString nullable_parameter_assignment_expression(Context const& context, ParameterType const& parameter, ByteString const& inner_cpp_name)
+{
+    if (callback_interface_for_type(context, *parameter.type))
+        return inner_cpp_name;
+
+    if (IDL::is_platform_object(context, *parameter.type))
+        return ByteString::formatted("&{}", inner_cpp_name);
+    return inner_cpp_name;
+}
+
+template<typename ParameterType>
+static bool nullable_callback_function_treats_non_object_as_null(Context const& context, ParameterType const& parameter)
+{
+    if constexpr (!IsSame<Attribute, RemoveConst<ParameterType>>)
+        return false;
+
+    auto callback_function = context.callback_functions.find(parameter.type->name());
+    if (callback_function == context.callback_functions.end())
+        return false;
+
+    return callback_function->value.is_legacy_treat_non_object_as_null;
+}
+
+static void generate_callback_function_to_cpp(SourceGenerator& scoped_generator, IDL::CallbackFunction const& callback_function, bool check_if_callable = true);
 
 static ByteString optional_string_default_value_expression(ByteString const& cpp_type, ByteString const& default_value)
 {
@@ -789,7 +955,7 @@ static ByteString optional_union_default_value_expression(Context const& context
     if (default_value == "[]"sv) {
         auto sequence_type = types.find_if([](auto const& type) { return type->name().is_one_of("sequence"sv, "FrozenArray"sv); });
         VERIFY(sequence_type != types.end());
-        return ByteString::formatted("{} {{}}", idl_type_name_to_cpp_type(**sequence_type, context).name);
+        return ByteString::formatted("{} {{}}", idl_value_type_to_cpp_type(**sequence_type, context).name);
     }
 
     if (default_value == "{}"sv) {
@@ -797,7 +963,7 @@ static ByteString optional_union_default_value_expression(Context const& context
             return type->name() == "record"sv || context.dictionaries.contains(type->name());
         });
         VERIFY(object_type != types.end());
-        return ByteString::formatted("{} {{}}", idl_type_name_to_cpp_type(**object_type, context).name);
+        return ByteString::formatted("{} {{}}", idl_value_type_to_cpp_type(**object_type, context).name);
     }
 
     if (default_value.starts_with("\""sv) && default_value.ends_with("\""sv)) {
@@ -818,7 +984,7 @@ static ByteString optional_union_default_value_expression(Context const& context
 
         auto string_type = types.find_if([](auto const& type) { return type->is_string(); });
         VERIFY(string_type != types.end());
-        return optional_string_default_value_expression(idl_type_name_to_cpp_type(**string_type, context).name, default_value);
+        return optional_string_default_value_expression(idl_value_type_to_cpp_type(**string_type, context).name, default_value);
     }
 
     if (default_value == "true"sv || default_value == "false"sv) {
@@ -838,7 +1004,7 @@ static ByteString optional_union_default_value_expression(Context const& context
 
 static ByteString optional_type_default_value_expression(Context const& context, Type const& type, ByteString const& default_value)
 {
-    auto cpp_type = idl_type_name_to_cpp_type(type, context).name;
+    auto cpp_type = idl_value_type_to_cpp_type(type, context).name;
 
     if (is<UnionType>(type))
         return optional_union_default_value_expression(context, as<UnionType>(type), default_value);
@@ -905,7 +1071,7 @@ static ByteString optional_parameter_default_value_expression(Context const& con
 
 static ByteString optional_type_default_constructed_value_expression(Context const& context, Type const& type)
 {
-    auto cpp_type = idl_type_name_to_cpp_type(type, context).name;
+    auto cpp_type = idl_value_type_to_cpp_type(type, context).name;
 
     if (is<UnionType>(type)) {
         auto const& union_type = as<UnionType>(type);
@@ -1013,6 +1179,72 @@ static void generate_optional_to_cpp(SourceGenerator& generator, ParameterType& 
 }
 
 template<typename ParameterType>
+static void generate_nullable_to_cpp(SourceGenerator& generator, ParameterType const& parameter, ByteString const& js_name, ByteString const& js_suffix, ByteString const& cpp_name, Context const& context, size_t recursion_depth)
+{
+    auto nullable_generator = generator.fork();
+    auto nullable_cpp_type = nullable_parameter_cpp_type(context, parameter);
+    auto inner_cpp_name = ByteString::formatted("{}_non_nullable", cpp_name);
+    auto inner_type = non_nullable_type(*parameter.type);
+    auto inner_parameter = parameter_with_type(parameter, inner_type);
+    auto treats_non_object_as_null = nullable_callback_function_treats_non_object_as_null(context, parameter);
+
+    nullable_generator.set("nullable.cpp_type", nullable_cpp_type);
+    nullable_generator.set("nullable.inner_cpp_name", inner_cpp_name);
+    auto nullable_null_value = nullable_parameter_null_value_expression(parameter);
+    nullable_generator.set("nullable.null_value", nullable_null_value);
+    nullable_generator.set("nullable.assignment_expression", nullable_parameter_assignment_expression(context, parameter, inner_cpp_name));
+
+    if (nullable_null_value == "{}"sv) {
+        nullable_generator.append(R"~~~(
+    @nullable.cpp_type@ @cpp_name@ {};
+
+    // 1. If V is not an Object, and the conversion to an IDL value is being performed due to V being assigned to an attribute whose type is a nullable callback function that is annotated with [LegacyTreatNonObjectAsNull], then return the IDL nullable type T? value null.
+)~~~");
+    } else {
+        nullable_generator.append(R"~~~(
+    @nullable.cpp_type@ @cpp_name@ { @nullable.null_value@ };
+
+    // 1. If V is not an Object, and the conversion to an IDL value is being performed due to V being assigned to an attribute whose type is a nullable callback function that is annotated with [LegacyTreatNonObjectAsNull], then return the IDL nullable type T? value null.
+)~~~");
+    }
+
+    if (treats_non_object_as_null) {
+        nullable_generator.append(R"~~~(
+    if (@js_name@@js_suffix@.is_object()) {
+)~~~");
+    }
+
+    nullable_generator.append(R"~~~(
+    // 2. Otherwise, if V is undefined, and T includes undefined, return the unique undefined value.
+    // 3. Otherwise, if V is null or undefined, then return the IDL nullable type T? value null.
+    if (!@js_name@@js_suffix@.is_nullish()) {
+        // 4. Otherwise, return the result of converting V using the rules for the inner IDL type T.
+)~~~");
+
+    if (treats_non_object_as_null) {
+        auto callback_function = context.callback_functions.find(parameter.type->name());
+        VERIFY(callback_function != context.callback_functions.end());
+
+        auto inner_generator = nullable_generator.fork();
+        inner_generator.set("cpp_name", inner_cpp_name);
+        generate_callback_function_to_cpp(inner_generator, callback_function->value, false);
+    } else {
+        generate_to_cpp(nullable_generator, inner_parameter, js_name, js_suffix, inner_cpp_name, context, false, {}, false, recursion_depth);
+    }
+
+    nullable_generator.append(R"~~~(
+        @cpp_name@ = @nullable.assignment_expression@;
+    }
+)~~~");
+
+    if (treats_non_object_as_null) {
+        nullable_generator.append(R"~~~(
+    }
+)~~~");
+    }
+}
+
+template<typename ParameterType>
 static void generate_variadic_to_cpp(SourceGenerator& generator, ParameterType& parameter, ByteString const& cpp_name, Context const& context, size_t recursion_depth)
 {
     auto variadic_generator = generator.fork();
@@ -1074,20 +1306,12 @@ static void generate_to_string(SourceGenerator& scoped_generator, ParameterType 
     else
         scoped_generator.set("to_string", is_utf16_string ? "to_utf16_string"sv : "to_string"sv);
 
-    if (parameter.type->is_nullable()) {
-        scoped_generator.append(R"~~~(
-    Optional<@string_type@> @cpp_name@;
-    if (!@js_name@@js_suffix@.is_nullish())
-        @cpp_name@ = TRY(WebIDL::@to_string@(vm, @js_name@@js_suffix@));
-)~~~");
-    } else {
-        scoped_generator.append(R"~~~(
+    scoped_generator.append(R"~~~(
     @string_type@ @cpp_name@;
     if (!@legacy_null_to_empty_string@ || !@js_name@@js_suffix@.is_null()) {
         @cpp_name@ = TRY(WebIDL::@to_string@(vm, @js_name@@js_suffix@));
     }
 )~~~");
-    }
 }
 
 static void generate_from_integral(SourceGenerator& scoped_generator, IDL::Type const& type, bool const optional_integral_type)
@@ -1153,18 +1377,9 @@ static void generate_to_integral(SourceGenerator& scoped_generator, ParameterTyp
     scoped_generator.set("enforce_range", parameter.extended_attributes.contains("EnforceRange") ? "Yes" : "No");
     scoped_generator.set("clamp", parameter.extended_attributes.contains("Clamp") ? "Yes" : "No");
 
-    if (parameter.type->is_nullable()) {
-        scoped_generator.append(R"~~~(
-    Optional<@cpp_type@> @cpp_name@;
-)~~~");
-        scoped_generator.append(R"~~~(
-    if (!@js_name@@js_suffix@.is_null() && !@js_name@@js_suffix@.is_undefined())
-)~~~");
-    } else {
-        scoped_generator.append(R"~~~(
+    scoped_generator.append(R"~~~(
     @cpp_type@ @cpp_name@;
 )~~~");
-    }
 
     if (it->cpp_type == "bool"sv) {
         scoped_generator.append(R"~~~(
@@ -1242,55 +1457,27 @@ static void generate_dictionary_to_cpp(SourceGenerator& generator, Context const
     }
 }
 
-static void generate_callback_interface_to_cpp(SourceGenerator& scoped_generator, IDL::Type const& type, IDL::Interface const& callback_interface)
+static void generate_callback_interface_to_cpp(SourceGenerator& scoped_generator, IDL::Interface const& callback_interface)
 {
     scoped_generator.set("cpp_type", interface_cpp_type_name(callback_interface));
 
-    if (type.is_nullable()) {
-        scoped_generator.append(R"~~~(
-    @cpp_type@* @cpp_name@ = nullptr;
-    if (!@js_name@@js_suffix@.is_nullish()) {
-        if (!@js_name@@js_suffix@.is_object())
-            return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObject, @js_name@@js_suffix@);
-
-        auto callback_type = vm.heap().allocate<WebIDL::CallbackType>(@js_name@@js_suffix@.as_object(), HTML::incumbent_realm());
-        @cpp_name@ = TRY(throw_dom_exception_if_needed(vm, [&] { return @cpp_type@::create(realm, callback_type); }));
-    }
-)~~~");
-    } else {
-        scoped_generator.append(R"~~~(
+    scoped_generator.append(R"~~~(
     if (!@js_name@@js_suffix@.is_object())
         return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObject, @js_name@@js_suffix@);
 
     auto callback_type = vm.heap().allocate<WebIDL::CallbackType>(@js_name@@js_suffix@.as_object(), HTML::incumbent_realm());
     auto @cpp_name@ = TRY(throw_dom_exception_if_needed(vm, [&] { return @cpp_type@::create(realm, callback_type); }));
 )~~~");
-    }
 }
 
-static void generate_platform_object_to_cpp(SourceGenerator& scoped_generator, IDL::Type const& type)
+static void generate_platform_object_to_cpp(SourceGenerator& scoped_generator)
 {
-    if (!type.is_nullable()) {
-        scoped_generator.append(R"~~~(
+    scoped_generator.append(R"~~~(
     if (!@js_name@@js_suffix@.is_object() || !is<@parameter.type.name.normalized@>(@js_name@@js_suffix@.as_object()))
         return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "@parameter.type.name@");
 
     auto& @cpp_name@ = static_cast<@parameter.type.name.normalized@&>(@js_name@@js_suffix@.as_object());
 )~~~");
-    } else {
-        scoped_generator.append(R"~~~(
-    GC::Ptr<@parameter.type.name.normalized@> @cpp_name@;
-)~~~");
-
-        scoped_generator.append(R"~~~(
-    if (!@js_name@@js_suffix@.is_nullish()) {
-        if (!@js_name@@js_suffix@.is_object() || !is<@parameter.type.name.normalized@>(@js_name@@js_suffix@.as_object()))
-            return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "@parameter.type.name@");
-
-        @cpp_name@ = &static_cast<@parameter.type.name.normalized@&>(@js_name@@js_suffix@.as_object());
-    }
-)~~~");
-    }
 }
 
 static void generate_floating_point_to_cpp(SourceGenerator& scoped_generator, IDL::Type const& type)
@@ -1327,27 +1514,16 @@ static void generate_promise_to_cpp(SourceGenerator& scoped_generator)
 )~~~");
 }
 
-static void generate_object_to_cpp(SourceGenerator& scoped_generator, IDL::Type const& type)
+static void generate_object_to_cpp(SourceGenerator& scoped_generator)
 {
     // https://webidl.spec.whatwg.org/#js-object
     // 1. If V is not an Object, then throw a TypeError.
     // 2. Return the IDL object value that is a reference to the same object as V.
-    if (type.is_nullable()) {
-        scoped_generator.append(R"~~~(
-    Optional<GC::Root<JS::Object>> @cpp_name@;
-    if (!@js_name@@js_suffix@.is_null() && !@js_name@@js_suffix@.is_undefined()) {
-        if (!@js_name@@js_suffix@.is_object())
-            return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObject, @js_name@@js_suffix@);
-        @cpp_name@ = GC::make_root(@js_name@@js_suffix@.as_object());
-    }
-)~~~");
-    } else {
-        scoped_generator.append(R"~~~(
+    scoped_generator.append(R"~~~(
     if (!@js_name@@js_suffix@.is_object())
         return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObject, @js_name@@js_suffix@);
     auto @cpp_name@ = GC::make_root(@js_name@@js_suffix@.as_object());
 )~~~");
-    }
 }
 
 static void generate_buffer_source_to_cpp(SourceGenerator& scoped_generator, IDL::Type const& type)
@@ -1358,49 +1534,9 @@ static void generate_buffer_source_to_cpp(SourceGenerator& scoped_generator, IDL
     else
         scoped_generator.set("parameter.type.buffer_cpp", "WebIDL::BufferSource");
 
-    if (type.is_nullable()) {
-        scoped_generator.append(R"~~~(
-    Optional<GC::Root<@parameter.type.buffer_cpp@>> @cpp_name@;
-)~~~");
-    } else {
-        scoped_generator.append(R"~~~(
+    scoped_generator.append(R"~~~(
     GC::Root<@parameter.type.buffer_cpp@> @cpp_name@;
 )~~~");
-    }
-
-    if (type.is_nullable()) {
-        if (is_exact_javascript_buffer_source_type) {
-            scoped_generator.append(R"~~~(
-    if (@js_name@@js_suffix@.is_undefined()) {
-        return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "@parameter.type.name@");
-    }
-
-    if (!@js_name@@js_suffix@.is_null()) {
-        auto @cpp_name@_builtin_buffer = @js_name@@js_suffix@.as_if<@parameter.type.buffer_cpp@>();
-        if (!@cpp_name@_builtin_buffer) {
-            return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "@parameter.type.name@");
-        }
-
-        @cpp_name@ = GC::make_root(*@cpp_name@_builtin_buffer);
-    }
-)~~~");
-        } else {
-            scoped_generator.append(R"~~~(
-    if (@js_name@@js_suffix@.is_undefined()) {
-        return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "@parameter.type.name@");
-    }
-
-    if (!@js_name@@js_suffix@.is_null()) {
-        if (!@js_name@@js_suffix@.is_object() || !(is<JS::TypedArrayBase>(@js_name@@js_suffix@.as_object()) || is<JS::ArrayBuffer>(@js_name@@js_suffix@.as_object()) || is<JS::DataView>(@js_name@@js_suffix@.as_object()))) {
-            return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "@parameter.type.name@");
-        }
-
-        @cpp_name@ = GC::make_root(realm.create<WebIDL::BufferSource>(@js_name@@js_suffix@.as_object()));
-    }
-)~~~");
-        }
-        return;
-    }
 
     if (is_exact_javascript_buffer_source_type) {
         scoped_generator.append(R"~~~(
@@ -1422,16 +1558,11 @@ static void generate_buffer_source_to_cpp(SourceGenerator& scoped_generator, IDL
     }
 }
 
-static void generate_array_buffer_view_to_cpp(SourceGenerator& scoped_generator, IDL::Type const& type)
+static void generate_array_buffer_view_to_cpp(SourceGenerator& scoped_generator)
 {
     scoped_generator.append(R"~~~(
     GC::Root<WebIDL::ArrayBufferView> @cpp_name@;
 )~~~");
-    if (type.is_nullable()) {
-        scoped_generator.append(R"~~~(
-    if (!@js_name@@js_suffix@.is_null() && !@js_name@@js_suffix@.is_undefined()) {
-)~~~");
-    }
 
     scoped_generator.append(R"~~~(
         if (!@js_name@@js_suffix@.is_object() || !(is<JS::TypedArrayBase>(@js_name@@js_suffix@.as_object()) || is<JS::DataView>(@js_name@@js_suffix@.as_object())))
@@ -1439,12 +1570,6 @@ static void generate_array_buffer_view_to_cpp(SourceGenerator& scoped_generator,
 
         @cpp_name@ = GC::make_root(realm.create<WebIDL::ArrayBufferView>(@js_name@@js_suffix@.as_object()));
 )~~~");
-
-    if (type.is_nullable()) {
-        scoped_generator.append(R"~~~(
-    }
-)~~~");
-    }
 }
 
 static void generate_any_to_cpp(SourceGenerator& scoped_generator)
@@ -1523,7 +1648,7 @@ static void generate_record_to_cpp(SourceGenerator& scoped_generator, IDL::Param
     //       4. Set result[typedKey] to typedValue.
     // 5. Return result.
 
-    auto record_cpp_type = IDL::idl_type_name_to_cpp_type(type, context);
+    auto record_cpp_type = IDL::idl_value_type_to_cpp_type(type, context);
     record_generator.set("record.type", record_cpp_type.name);
 
     // If this is a recursive call to generate_to_cpp, assume that the caller has already handled converting the JS value to an object for us.
@@ -1568,7 +1693,7 @@ static void generate_record_to_cpp(SourceGenerator& scoped_generator, IDL::Param
 )~~~");
 }
 
-static void generate_callback_function_to_cpp(SourceGenerator& scoped_generator, IDL::Type const& type, IDL::CallbackFunction const& callback_function)
+static void generate_callback_function_to_cpp(SourceGenerator& scoped_generator, IDL::CallbackFunction const& callback_function, bool check_if_callable)
 {
     // https://webidl.spec.whatwg.org/#es-callback-function
 
@@ -1580,8 +1705,9 @@ static void generate_callback_function_to_cpp(SourceGenerator& scoped_generator,
         callback_function_generator.set("operation_returns_promise", "WebIDL::OperationReturnsPromise::No");
 
     // An ECMAScript value V is converted to an IDL callback function type value by running the following algorithm:
-    // 1. If the result of calling IsCallable(V) is false and the conversion to an IDL value is not being performed due to V being assigned to an attribute whose type is a nullable callback function that is annotated with [LegacyTreatNonObjectAsNull], then throw a TypeError.
-    if (!type.is_nullable() && !callback_function.is_legacy_treat_non_object_as_null) {
+    // 1. If the result of calling IsCallable(V) is false, then throw a TypeError.
+    // 2. Return the IDL callback function type value that represents a reference to the same object that V represents, with the incumbent realm as the callback context.
+    if (check_if_callable) {
         callback_function_generator.append(R"~~~(
     if (!@js_name@@js_suffix@.is_function()
 )~~~");
@@ -1589,19 +1715,9 @@ static void generate_callback_function_to_cpp(SourceGenerator& scoped_generator,
         return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAFunction, @js_name@@js_suffix@);
 )~~~");
     }
-    // 2. Return the IDL callback function type value that represents a reference to the same object that V represents, with the incumbent realm as the callback context.
-    if (type.is_nullable() || callback_function.is_legacy_treat_non_object_as_null) {
-        callback_function_generator.append(R"~~~(
-    GC::Ptr<WebIDL::CallbackType> @cpp_name@;
-    if (@js_name@@js_suffix@.is_object())
-        @cpp_name@ = vm.heap().allocate<WebIDL::CallbackType>(@js_name@@js_suffix@.as_object(), HTML::incumbent_realm(), @operation_returns_promise@);
-)~~~");
-        // FIXME: Handle default value for optional parameter here.
-    } else {
-        callback_function_generator.append(R"~~~(
+    callback_function_generator.append(R"~~~(
     auto @cpp_name@ = vm.heap().allocate<WebIDL::CallbackType>(@js_name@@js_suffix@.as_object(), HTML::incumbent_realm(), @operation_returns_promise@);
 )~~~");
-    }
 }
 
 static void generate_sequence_to_cpp(SourceGenerator& scoped_generator, IDL::ParameterizedType const& type, ByteString const& js_name, ByteString const& js_suffix, ByteString const& cpp_name, IDL::Context const& context, size_t recursion_depth)
@@ -1622,17 +1738,6 @@ static void generate_sequence_to_cpp(SourceGenerator& scoped_generator, IDL::Par
     // 1. Let values be the result of converting V to IDL type sequence<T>.
     // 2. Return the result of creating a frozen array from values.
 
-    if (type.is_nullable()) {
-        auto sequence_cpp_type = idl_type_name_to_cpp_type(type.parameters().first(), context);
-        sequence_generator.set("sequence.type", sequence_cpp_type.name);
-        sequence_generator.set("sequence.storage_type", sequence_storage_type_to_cpp_storage_type_name(sequence_cpp_type.sequence_storage_type));
-
-        sequence_generator.append(R"~~~(
-    Optional<@sequence.storage_type@<@sequence.type@>> @cpp_name@;
-    if (!@js_name@@js_suffix@.is_nullish()) {
-)~~~");
-    }
-
     sequence_generator.append(R"~~~(
     if (!@js_name@@js_suffix@.is_object())
         return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObject, @js_name@@js_suffix@);
@@ -1642,14 +1747,7 @@ static void generate_sequence_to_cpp(SourceGenerator& scoped_generator, IDL::Par
         return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotIterable, @js_name@@js_suffix@);
 )~~~");
 
-    type.generate_sequence_from_iterable(sequence_generator, ByteString::formatted("{}{}", cpp_name, type.is_nullable() ? "_non_optional" : ""), ByteString::formatted("{}{}", js_name, js_suffix), ByteString::formatted("{}{}_iterator_method{}", js_name, js_suffix, recursion_depth), context, recursion_depth + 1);
-
-    if (type.is_nullable()) {
-        sequence_generator.append(R"~~~(
-        @cpp_name@ = move(@cpp_name@_non_optional);
-    }
-)~~~");
-    }
+    type.generate_sequence_from_iterable(sequence_generator, cpp_name, ByteString::formatted("{}{}", js_name, js_suffix), ByteString::formatted("{}{}_iterator_method{}", js_name, js_suffix, recursion_depth), context, recursion_depth + 1);
 }
 
 template<typename ParameterType>
@@ -2126,25 +2224,30 @@ static void generate_to_cpp(SourceGenerator& generator, ParameterType& parameter
         return;
     }
 
+    if (parameter.type->is_nullable() && !is<IDL::UnionType>(*parameter.type)) {
+        generate_nullable_to_cpp(scoped_generator, parameter, js_name, js_suffix, acceptable_cpp_name, context, recursion_depth);
+        return;
+    }
+
     // FIXME: Add support for optional, variadic, nullable and default values to all types
     if (parameter.type->is_string()) {
         generate_to_string(scoped_generator, parameter);
     } else if (parameter.type->is_boolean() || parameter.type->is_integer()) {
         generate_to_integral(scoped_generator, parameter);
     } else if (auto const* callback_interface = callback_interface_for_type(context, parameter.type)) {
-        generate_callback_interface_to_cpp(scoped_generator, *parameter.type, *callback_interface);
+        generate_callback_interface_to_cpp(scoped_generator, *callback_interface);
     } else if (IDL::is_platform_object(context, *parameter.type)) {
-        generate_platform_object_to_cpp(scoped_generator, *parameter.type);
+        generate_platform_object_to_cpp(scoped_generator);
     } else if (parameter.type->is_floating_point()) {
         generate_floating_point_to_cpp(scoped_generator, *parameter.type);
     } else if (parameter.type->name() == "Promise") {
         generate_promise_to_cpp(scoped_generator);
     } else if (parameter.type->name() == "object") {
-        generate_object_to_cpp(scoped_generator, *parameter.type);
+        generate_object_to_cpp(scoped_generator);
     } else if (is_javascript_builtin_buffer_source_type(parameter.type) || parameter.type->name() == "BufferSource"sv) {
         generate_buffer_source_to_cpp(scoped_generator, *parameter.type);
     } else if (parameter.type->name() == "ArrayBufferView") {
-        generate_array_buffer_view_to_cpp(scoped_generator, *parameter.type);
+        generate_array_buffer_view_to_cpp(scoped_generator);
     } else if (parameter.type->name() == "any") {
         generate_any_to_cpp(scoped_generator);
     } else if (context.enumerations.contains(parameter.type->name())) {
@@ -2161,7 +2264,7 @@ static void generate_to_cpp(SourceGenerator& generator, ParameterType& parameter
     )~~~");
     } else if (context.callback_functions.contains(parameter.type->name())) {
         auto& callback_function = context.callback_functions.find(parameter.type->name())->value;
-        generate_callback_function_to_cpp(scoped_generator, *parameter.type, callback_function);
+        generate_callback_function_to_cpp(scoped_generator, callback_function);
     } else if (parameter.type->name().is_one_of("sequence"sv, "FrozenArray"sv)) {
         generate_sequence_to_cpp(scoped_generator, as<IDL::ParameterizedType>(*parameter.type), js_name, js_suffix, acceptable_cpp_name, context, recursion_depth);
     } else if (parameter.type->name() == "record") {
@@ -2235,7 +2338,7 @@ void IDL::ParameterizedType::generate_sequence_from_iterable(SourceGenerator& ge
     sequence_generator.set("iterable_cpp_name", iterable_cpp_name);
     sequence_generator.set("iterator_method_cpp_name", iterator_method_cpp_name);
     sequence_generator.set("recursion_depth", ByteString::number(recursion_depth));
-    auto sequence_cpp_type = idl_type_name_to_cpp_type(parameters().first(), context);
+    auto sequence_cpp_type = idl_value_type_to_cpp_type(parameters().first(), context);
     sequence_generator.set("sequence.type", sequence_cpp_type.name);
     sequence_generator.set("sequence.storage_type", sequence_storage_type_to_cpp_storage_type_name(sequence_cpp_type.sequence_storage_type));
 
@@ -3711,7 +3814,7 @@ static ByteString dictionary_union_default_value_expression(Context const& conte
     if (default_value == "[]"sv) {
         auto sequence_type = types.find_if([](auto const& type) { return type->name().is_one_of("sequence"sv, "FrozenArray"sv); });
         VERIFY(sequence_type != types.end());
-        return ByteString::formatted("{} {{}}", idl_type_name_to_cpp_type(**sequence_type, context).name);
+        return ByteString::formatted("{} {{}}", idl_value_type_to_cpp_type(**sequence_type, context).name);
     }
 
     if (default_value == "{}"sv) {
@@ -3719,7 +3822,7 @@ static ByteString dictionary_union_default_value_expression(Context const& conte
             return type->name() == "record"sv || context.dictionaries.contains(type->name());
         });
         VERIFY(object_type != types.end());
-        return ByteString::formatted("{} {{}}", idl_type_name_to_cpp_type(**object_type, context).name);
+        return ByteString::formatted("{} {{}}", idl_value_type_to_cpp_type(**object_type, context).name);
     }
 
     if (default_value.starts_with("\""sv) && default_value.ends_with("\""sv)) {
@@ -5217,9 +5320,9 @@ JS_DEFINE_NATIVE_FUNCTION(@class_name@::@attribute.setter_callback@)
             // 5. Set this's explicitly set attr-elements to elements.
             attribute_generator.append(R"~~~(
     Vector<GC::Weak<DOM::Element>> elements;
-    elements.ensure_capacity(cpp_value->size());
+    elements.ensure_capacity(cpp_value.value().size());
 
-    for (auto const& element : *cpp_value) {
+    for (auto const& element : cpp_value.value()) {
         elements.unchecked_append(*element);
     }
 

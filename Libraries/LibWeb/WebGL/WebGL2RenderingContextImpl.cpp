@@ -190,37 +190,37 @@ void WebGL2RenderingContextImpl::tex_storage3d(WebIDL::UnsignedLong target, WebI
     glTexStorage3D(target, levels, internalformat, width, height, depth);
 }
 
-void WebGL2RenderingContextImpl::tex_image3d(WebIDL::UnsignedLong target, WebIDL::Long level, WebIDL::Long internalformat, WebIDL::Long width, WebIDL::Long height, WebIDL::Long depth, WebIDL::Long border, WebIDL::UnsignedLong format, WebIDL::UnsignedLong type, GC::Root<WebIDL::ArrayBufferView> src_data)
+void WebGL2RenderingContextImpl::tex_image3d(WebIDL::UnsignedLong target, WebIDL::Long level, WebIDL::Long internalformat, WebIDL::Long width, WebIDL::Long height, WebIDL::Long depth, WebIDL::Long border, WebIDL::UnsignedLong format, WebIDL::UnsignedLong type, Optional<GC::Root<WebIDL::ArrayBufferView>> src_data)
 {
     m_context->make_current();
 
     ReadonlyBytes src_data_span;
-    if (src_data) {
-        src_data_span = SET_ERROR_VALUE_IF_ERROR(get_offset_span<u8 const>(*src_data, /* src_offset= */ 0), GL_INVALID_OPERATION);
+    if (src_data.has_value() && src_data.value()) {
+        src_data_span = SET_ERROR_VALUE_IF_ERROR(get_offset_span<u8 const>(*src_data.value(), /* src_offset= */ 0), GL_INVALID_OPERATION);
     }
 
     glTexImage3DRobustANGLE(target, level, internalformat, width, height, depth, border, format, type, src_data_span.size(), src_data_span.data());
 }
 
-void WebGL2RenderingContextImpl::tex_image3d(WebIDL::UnsignedLong target, WebIDL::Long level, WebIDL::Long internalformat, WebIDL::Long width, WebIDL::Long height, WebIDL::Long depth, WebIDL::Long border, WebIDL::UnsignedLong format, WebIDL::UnsignedLong type, GC::Root<WebIDL::ArrayBufferView> src_data, WebIDL::UnsignedLongLong src_offset)
+void WebGL2RenderingContextImpl::tex_image3d(WebIDL::UnsignedLong target, WebIDL::Long level, WebIDL::Long internalformat, WebIDL::Long width, WebIDL::Long height, WebIDL::Long depth, WebIDL::Long border, WebIDL::UnsignedLong format, WebIDL::UnsignedLong type, Optional<GC::Root<WebIDL::ArrayBufferView>> src_data, WebIDL::UnsignedLongLong src_offset)
 {
     m_context->make_current();
 
     ReadonlyBytes src_data_span;
-    if (src_data) {
-        src_data_span = SET_ERROR_VALUE_IF_ERROR(get_offset_span<u8 const>(*src_data, src_offset), GL_INVALID_OPERATION);
+    if (src_data.has_value() && src_data.value()) {
+        src_data_span = SET_ERROR_VALUE_IF_ERROR(get_offset_span<u8 const>(*src_data.value(), src_offset), GL_INVALID_OPERATION);
     }
 
     glTexImage3DRobustANGLE(target, level, internalformat, width, height, depth, border, format, type, src_data_span.size(), src_data_span.data());
 }
 
-void WebGL2RenderingContextImpl::tex_sub_image3d(WebIDL::UnsignedLong target, WebIDL::Long level, WebIDL::Long xoffset, WebIDL::Long yoffset, WebIDL::Long zoffset, WebIDL::Long width, WebIDL::Long height, WebIDL::Long depth, WebIDL::UnsignedLong format, WebIDL::UnsignedLong type, GC::Root<WebIDL::ArrayBufferView> src_data, WebIDL::UnsignedLongLong src_offset)
+void WebGL2RenderingContextImpl::tex_sub_image3d(WebIDL::UnsignedLong target, WebIDL::Long level, WebIDL::Long xoffset, WebIDL::Long yoffset, WebIDL::Long zoffset, WebIDL::Long width, WebIDL::Long height, WebIDL::Long depth, WebIDL::UnsignedLong format, WebIDL::UnsignedLong type, Optional<GC::Root<WebIDL::ArrayBufferView>> src_data, WebIDL::UnsignedLongLong src_offset)
 {
     m_context->make_current();
 
     ReadonlyBytes src_data_span;
-    if (src_data) {
-        src_data_span = SET_ERROR_VALUE_IF_ERROR(get_offset_span<u8 const>(*src_data, src_offset), GL_INVALID_OPERATION);
+    if (src_data.has_value() && src_data.value()) {
+        src_data_span = SET_ERROR_VALUE_IF_ERROR(get_offset_span<u8 const>(*src_data.value(), src_offset), GL_INVALID_OPERATION);
     }
 
     glTexSubImage3DRobustANGLE(target, level, xoffset, yoffset, zoffset, width, height, depth, format, type, src_data_span.size(), src_data_span.data());
