@@ -76,13 +76,13 @@ void WebGL2RenderingContextOverloads::buffer_sub_data(WebIDL::UnsignedLong targe
     glBufferSubData(target, dst_byte_offset, span.size(), span.data());
 }
 
-void WebGL2RenderingContextOverloads::tex_image2d(WebIDL::UnsignedLong target, WebIDL::Long level, WebIDL::Long internalformat, WebIDL::Long width, WebIDL::Long height, WebIDL::Long border, WebIDL::UnsignedLong format, WebIDL::UnsignedLong type, GC::Root<WebIDL::ArrayBufferView> pixels)
+void WebGL2RenderingContextOverloads::tex_image2d(WebIDL::UnsignedLong target, WebIDL::Long level, WebIDL::Long internalformat, WebIDL::Long width, WebIDL::Long height, WebIDL::Long border, WebIDL::UnsignedLong format, WebIDL::UnsignedLong type, Optional<GC::Root<WebIDL::ArrayBufferView>> pixels)
 {
     m_context->make_current();
 
     ReadonlyBytes pixels_span;
-    if (pixels) {
-        pixels_span = SET_ERROR_VALUE_IF_ERROR(get_offset_span<u8 const>(*pixels, /* src_offset= */ 0), GL_INVALID_OPERATION);
+    if (pixels.has_value() && pixels.value()) {
+        pixels_span = SET_ERROR_VALUE_IF_ERROR(get_offset_span<u8 const>(*pixels.value(), /* src_offset= */ 0), GL_INVALID_OPERATION);
     }
 
     glTexImage2DRobustANGLE(target, level, internalformat, width, height, border, format, type, pixels_span.size(), pixels_span.data());
@@ -99,13 +99,13 @@ void WebGL2RenderingContextOverloads::tex_image2d(WebIDL::UnsignedLong target, W
     glTexImage2DRobustANGLE(target, level, internalformat, converted_texture.width, converted_texture.height, 0, format, type, converted_texture.buffer.size(), converted_texture.buffer.data());
 }
 
-void WebGL2RenderingContextOverloads::tex_sub_image2d(WebIDL::UnsignedLong target, WebIDL::Long level, WebIDL::Long xoffset, WebIDL::Long yoffset, WebIDL::Long width, WebIDL::Long height, WebIDL::UnsignedLong format, WebIDL::UnsignedLong type, GC::Root<WebIDL::ArrayBufferView> pixels)
+void WebGL2RenderingContextOverloads::tex_sub_image2d(WebIDL::UnsignedLong target, WebIDL::Long level, WebIDL::Long xoffset, WebIDL::Long yoffset, WebIDL::Long width, WebIDL::Long height, WebIDL::UnsignedLong format, WebIDL::UnsignedLong type, Optional<GC::Root<WebIDL::ArrayBufferView>> pixels)
 {
     m_context->make_current();
 
     ReadonlyBytes pixels_span;
-    if (pixels) {
-        pixels_span = SET_ERROR_VALUE_IF_ERROR(get_offset_span<u8 const>(*pixels, /* src_offset= */ 0), GL_INVALID_OPERATION);
+    if (pixels.has_value() && pixels.value()) {
+        pixels_span = SET_ERROR_VALUE_IF_ERROR(get_offset_span<u8 const>(*pixels.value(), /* src_offset= */ 0), GL_INVALID_OPERATION);
     }
 
     glTexSubImage2DRobustANGLE(target, level, xoffset, yoffset, width, height, format, type, pixels_span.size(), pixels_span.data());
@@ -378,16 +378,16 @@ void WebGL2RenderingContextOverloads::uniform_matrix4fv(GC::Root<WebGLUniformLoc
     glUniformMatrix4fv(location_handle, span.size() / matrix_size, transpose, span.data());
 }
 
-void WebGL2RenderingContextOverloads::read_pixels(WebIDL::Long x, WebIDL::Long y, WebIDL::Long width, WebIDL::Long height, WebIDL::UnsignedLong format, WebIDL::UnsignedLong type, GC::Root<WebIDL::ArrayBufferView> pixels)
+void WebGL2RenderingContextOverloads::read_pixels(WebIDL::Long x, WebIDL::Long y, WebIDL::Long width, WebIDL::Long height, WebIDL::UnsignedLong format, WebIDL::UnsignedLong type, Optional<GC::Root<WebIDL::ArrayBufferView>> pixels)
 {
     m_context->make_current();
 
-    if (!pixels) {
+    if (!pixels.has_value() || !pixels.value()) {
         set_error(GL_INVALID_VALUE);
         return;
     }
 
-    auto span = MUST(get_offset_span<u8>(*pixels, /* src_offset= */ 0));
+    auto span = MUST(get_offset_span<u8>(*pixels.value(), /* src_offset= */ 0));
     glReadPixelsRobustANGLE(x, y, width, height, format, type, span.size(), nullptr, nullptr, nullptr, span.data());
 }
 
