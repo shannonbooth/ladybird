@@ -29,6 +29,53 @@
 
 namespace Web::Layout {
 
+static CSSPixelSize concrete_replaced_object_size_from_natural_size(CSS::SizeWithAspectRatio const& natural_size)
+{
+    return CSS::run_default_sizing_algorithm({}, {}, natural_size, { 300, 150 });
+}
+
+static Optional<CSSPixels> max_content_width_for_replaced_element_without_natural_width(Box const& box, CSS::SizeWithAspectRatio const& natural_size)
+{
+    if (!box.is_replaced_box() || natural_size.has_width())
+        return {};
+
+    if (natural_size.has_height())
+        return concrete_replaced_object_size_from_natural_size(natural_size).width();
+
+    if (natural_size.has_aspect_ratio()) {
+        // https://drafts.csswg.org/css-sizing-3/#intrinsic-sizes
+        // The max-content inline size of a replaced box with only a preferred aspect ratio falls back to:
+        // 1. a length-valued min-width,
+        // 2. a length-valued min-height transferred through the aspect ratio,
+        // 3. the initial containing block's inline size.
+        auto aspect_ratio = natural_size.aspect_ratio.value();
+
+        auto const& min_width = box.computed_values().min_width();
+        if (min_width.is_length())
+            return min_width.to_px(box, 0);
+
+        auto const& min_height = box.computed_values().min_height();
+        if (min_height.is_length())
+            return min_height.to_px(box, 0) * aspect_ratio;
+
+        return box.document().viewport_rect().width();
+    }
+
+    // https://drafts.csswg.org/css-images-3/#default-sizing
+    // Replaced elements with no natural width, height, or aspect ratio use the default object size.
+    return CSSPixels(300);
+}
+
+static Optional<CSSPixels> max_content_height_for_replaced_element_without_natural_height(Box const& box, CSS::SizeWithAspectRatio const& natural_size)
+{
+    if (!box.is_replaced_box() || natural_size.has_height() || natural_size.has_aspect_ratio())
+        return {};
+
+    // https://drafts.csswg.org/css-images-3/#default-sizing
+    // Preserve the natural-size signal for alignment, but use the concrete object size for max-content sizing.
+    return concrete_replaced_object_size_from_natural_size(natural_size).height();
+}
+
 FormattingContext::FormattingContext(Type type, LayoutMode layout_mode, LayoutState& state, Box const& context_box, FormattingContext* parent)
     : m_type(type)
     , m_layout_mode(layout_mode)
@@ -1922,6 +1969,7 @@ CSSPixels FormattingContext::calculate_min_content_width(Layout::Box const& box)
             return width.to_px(box, 0);
         if (auto const& max_width = box.computed_values().max_width(); max_width.is_percentage())
             return max_width.to_px(box, 0);
+
     }
     if (auto auto_size = box.auto_content_box_size(); auto_size.has_width())
         return auto_size.width.value();
@@ -1957,9 +2005,10 @@ CSSPixels FormattingContext::calculate_min_content_width(Layout::Box const& box)
 
 CSSPixels FormattingContext::calculate_max_content_width(Layout::Box const& box) const
 {
-
     if (auto auto_size = box.auto_content_box_size(); auto_size.has_width())
         return auto_size.width.value();
+    if (auto max_content_width = max_content_width_for_replaced_element_without_natural_width(box, box.auto_content_box_size()); max_content_width.has_value())
+        return max_content_width.value();
 
     // Boxes with no children have zero intrinsic width.
     if (!box.has_children())
@@ -2005,6 +2054,12 @@ CSSPixels FormattingContext::calculate_min_content_height(Layout::Box const& box
     if (box.is_block_container() || box.display().is_table_inside())
         return calculate_max_content_height(box, width);
 
+    // https://svgwg.org/specs/integration/#svg-css-sizing
+    if (auto* svg_box = as_if<SVGSVGBox>(box)) {
+        if (svg_box->auto_content_box_size().has_aspect_ratio())
+            return 0;
+    }
+
     if (auto auto_size = box.auto_content_box_size(); auto_size.has_height()) {
         if (auto_size.has_aspect_ratio())
             return width / auto_size.aspect_ratio.value();
@@ -2043,6 +2098,8 @@ CSSPixels FormattingContext::calculate_max_content_height(Layout::Box const& box
 
     if (auto auto_size = box.auto_content_box_size(); auto_size.has_height())
         return auto_size.height.value();
+    if (auto max_content_height = max_content_height_for_replaced_element_without_natural_height(box, box.auto_content_box_size()); max_content_height.has_value())
+        return max_content_height.value();
 
     // Boxes with no children have zero intrinsic height.
     if (!box.has_children())
