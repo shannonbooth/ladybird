@@ -77,13 +77,13 @@ WebIDL::ExceptionOr<GC::Ref<PerformanceMark>> PerformanceMark::construct_impl(JS
 
     // 7. If markOptions's detail is null, set entry's detail to null.
     JS::Value detail;
-    if (!mark_options.detail.has_value() || mark_options.detail->is_null()) {
+    if (mark_options.detail.is_undefined() || mark_options.detail.is_null()) {
         detail = JS::js_null();
     }
     // 8. Otherwise:
     else {
         // 1. Let record be the result of calling the StructuredSerialize algorithm on markOptions's detail.
-        auto record = TRY(HTML::structured_serialize(vm, *mark_options.detail));
+        auto record = TRY(HTML::structured_serialize(vm, mark_options.detail));
 
         // 2. Set entry's detail to the result of calling the StructuredDeserialize algorithm on record and the current realm.
         detail = TRY(HTML::structured_deserialize(vm, record, realm));

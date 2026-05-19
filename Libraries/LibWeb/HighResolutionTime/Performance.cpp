@@ -199,7 +199,7 @@ WebIDL::ExceptionOr<GC::Ref<UserTiming::PerformanceMeasure>> Performance::measur
         && (start_or_measure_options_dictionary_object->start.has_value()
             || start_or_measure_options_dictionary_object->end.has_value()
             || start_or_measure_options_dictionary_object->duration.has_value()
-            || start_or_measure_options_dictionary_object->detail.has_value())) {
+            || !start_or_measure_options_dictionary_object->detail.is_undefined())) {
         // 1. If endMark is given, throw a TypeError.
         if (end_mark.has_value())
             return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "Cannot provide PerformanceMeasureOptions and endMark at the same time"sv };
@@ -292,9 +292,9 @@ WebIDL::ExceptionOr<GC::Ref<UserTiming::PerformanceMeasure>> Performance::measur
     JS::Value detail { JS::js_null() };
 
     // 1. If startOrMeasureOptions is a PerformanceMeasureOptions object and startOrMeasureOptions's detail member is present:
-    if (start_or_measure_options_dictionary_object && start_or_measure_options_dictionary_object->detail.has_value()) {
+    if (start_or_measure_options_dictionary_object && !start_or_measure_options_dictionary_object->detail.is_undefined()) {
         // 1. Let record be the result of calling the StructuredSerialize algorithm on startOrMeasureOptions's detail.
-        auto record = TRY(HTML::structured_serialize(vm, *start_or_measure_options_dictionary_object->detail));
+        auto record = TRY(HTML::structured_serialize(vm, start_or_measure_options_dictionary_object->detail));
 
         // 2. Set entry's detail to the result of calling the StructuredDeserialize algorithm on record and the current realm.
         detail = TRY(HTML::structured_deserialize(vm, record, realm));

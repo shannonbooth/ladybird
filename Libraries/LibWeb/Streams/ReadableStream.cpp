@@ -156,7 +156,7 @@ WebIDL::ExceptionOr<GC::Ref<ReadableStream>> ReadableStream::pipe_through(Bindin
         return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "Failed to execute 'pipeThrough' on 'ReadableStream': parameter 1's 'writable' is locked"sv };
 
     // 3. Let signal be options["signal"] if it exists, or undefined otherwise.
-    GC::Ptr<DOM::AbortSignal> signal = options.signal.has_value() ? options.signal->ptr() : nullptr;
+    GC::Ptr<DOM::AbortSignal> signal = options.signal;
 
     // 4. Let promise be ! ReadableStreamPipeTo(this, transform["writable"], options["preventClose"], options["preventAbort"], options["preventCancel"], signal).
     auto promise = readable_stream_pipe_to(*this, *transform.writable, options.prevent_close, options.prevent_abort, options.prevent_cancel, signal);
@@ -185,7 +185,7 @@ GC::Ref<WebIDL::Promise> ReadableStream::pipe_to(WritableStream& destination, Bi
     }
 
     // 3. Let signal be options["signal"] if it exists, or undefined otherwise.
-    GC::Ptr<DOM::AbortSignal> signal = options.signal.has_value() ? options.signal->ptr() : nullptr;
+    GC::Ptr<DOM::AbortSignal> signal = options.signal;
 
     // 4. Return ! ReadableStreamPipeTo(this, destination, options["preventClose"], options["preventAbort"], options["preventCancel"], signal).
     return readable_stream_pipe_to(*this, destination, options.prevent_close, options.prevent_abort, options.prevent_cancel, signal);
@@ -489,7 +489,7 @@ WebIDL::ExceptionOr<void> ReadableStream::transfer_steps(HTML::TransferDataEncod
     WebIDL::mark_promise_as_handled(promise);
 
     // 9. Set dataHolder.[[port]] to ! StructuredSerializeWithTransfer(port2, « port2 »).
-    auto result = MUST(HTML::structured_serialize_with_transfer(vm, port2, { { GC::Root { port2 } } }));
+    auto result = MUST(HTML::structured_serialize_with_transfer(vm, port2, { { port2 } }));
     data_holder.extend(move(result.transfer_data_holders));
 
     return {};

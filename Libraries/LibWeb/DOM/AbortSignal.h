@@ -48,9 +48,9 @@ public:
 
     static WebIDL::ExceptionOr<GC::Ref<AbortSignal>> abort(JS::VM&, JS::Value reason);
     static WebIDL::ExceptionOr<GC::Ref<AbortSignal>> timeout(JS::VM&, Web::WebIDL::UnsignedLongLong milliseconds);
-    static WebIDL::ExceptionOr<GC::Ref<AbortSignal>> any(JS::VM&, Vector<GC::Root<AbortSignal>> const&);
+    static WebIDL::ExceptionOr<GC::Ref<AbortSignal>> any(JS::VM&, ReadonlySpan<GC::Ref<AbortSignal>>);
 
-    static WebIDL::ExceptionOr<GC::Ref<AbortSignal>> create_dependent_abort_signal(JS::Realm&, Vector<GC::Root<AbortSignal>> const&);
+    static WebIDL::ExceptionOr<GC::Ref<AbortSignal>> create_dependent_abort_signal(JS::Realm&, ReadonlySpan<GC::Ref<AbortSignal>>);
 
 private:
     explicit AbortSignal(JS::Realm&);

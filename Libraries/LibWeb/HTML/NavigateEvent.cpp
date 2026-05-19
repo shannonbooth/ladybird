@@ -47,7 +47,7 @@ NavigateEvent::NavigateEvent(JS::Realm& realm, FlyString const& event_name, Bind
     , m_signal(*event_init.signal)
     , m_form_data(event_init.form_data)
     , m_download_request(event_init.download_request)
-    , m_info(event_init.info.value_or(JS::js_undefined()))
+    , m_info(event_init.info)
     , m_has_ua_visual_transition(event_init.has_ua_visual_transition)
     , m_source_element(event_init.source_element)
 {
@@ -98,7 +98,7 @@ WebIDL::ExceptionOr<void> NavigateEvent::intercept(Bindings::NavigationIntercept
     m_interception_state = InterceptionState::Intercepted;
 
     // 6. If options["handler"] exists, then append it to this's navigation handler list.
-    if (options.handler != nullptr)
+    if (options.handler)
         TRY_OR_THROW_OOM(vm, m_navigation_handler_list.try_append(*options.handler));
 
     // 7. If options["focusReset"] exists, then:

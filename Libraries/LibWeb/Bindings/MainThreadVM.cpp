@@ -15,6 +15,7 @@
 #include <LibJS/Runtime/FinalizationRegistry.h>
 #include <LibJS/Runtime/GlobalEnvironment.h>
 #include <LibJS/Runtime/ModuleRequest.h>
+#include <LibWeb/Bindings/PromiseRejectionEvent.h>
 #include <LibJS/Runtime/NativeFunction.h>
 #include <LibJS/Runtime/VM.h>
 #include <LibJS/SourceTextModule.h>

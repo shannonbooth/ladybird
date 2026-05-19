@@ -39,7 +39,9 @@ WebIDL::ExceptionOr<XHR::FormDataEntry> create_entry(JS::Realm& realm, String co
                 Bindings::FilePropertyBag options {};
                 options.type = blob->type();
 
-                blob = TRY(FileAPI::File::create(realm, { GC::make_root(*blob) }, "blob"_string, move(options)));
+                FileAPI::BlobParts file_bits { realm.heap() };
+                file_bits.append(blob);
+                blob = TRY(FileAPI::File::create(realm, file_bits, "blob"_string, move(options)));
             }
 
             // 2. If filename is given, then set value to a new File object, representing the same bytes, whose name
@@ -49,7 +51,9 @@ WebIDL::ExceptionOr<XHR::FormDataEntry> create_entry(JS::Realm& realm, String co
                 options.type = blob->type();
                 options.last_modified = as<FileAPI::File>(*blob).last_modified();
 
-                blob = TRY(FileAPI::File::create(realm, { GC::make_root(*blob) }, *filename, move(options)));
+                FileAPI::BlobParts file_bits { realm.heap() };
+                file_bits.append(blob);
+                blob = TRY(FileAPI::File::create(realm, file_bits, *filename, move(options)));
             }
 
             return GC::Ref { as<FileAPI::File>(*blob) };
@@ -209,7 +213,8 @@ WebIDL::ExceptionOr<Optional<GC::ConservativeVector<XHR::FormDataEntry>>> constr
             if (file_element->files()->length() == 0) {
                 Bindings::FilePropertyBag options {};
                 options.type = "application/octet-stream"_string;
-                auto file = TRY(FileAPI::File::create(realm, {}, String {}, options));
+                FileAPI::BlobParts file_bits { realm.heap() };
+                auto file = TRY(FileAPI::File::create(realm, file_bits, String {}, options));
                 entry_list.append(TRY(create_entry(realm, name.to_string(), GC::Ref<FileAPI::Blob> { file })));
             }
             // 2. Otherwise, for each file in selected files, create an entry with name and a File object representing the file, and append it to entry list.
@@ -249,8 +254,7 @@ WebIDL::ExceptionOr<Optional<GC::ConservativeVector<XHR::FormDataEntry>>> constr
     auto form_data = TRY(XHR::FormData::construct_impl(realm, move(entry_list)));
 
     // 7. Fire an event named formdata at form using FormDataEvent, with the formData attribute initialized to form data and the bubbles attribute initialized to true.
-    Bindings::FormDataEventInit init {};
-    init.form_data = form_data;
+    Bindings::FormDataEventInit init { .form_data = form_data };
     auto form_data_event = TRY(FormDataEvent::construct_impl(realm, HTML::EventNames::formdata, init));
     form_data_event->set_bubbles(true);
     form.dispatch_event(form_data_event);

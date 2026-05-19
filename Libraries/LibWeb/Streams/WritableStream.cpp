@@ -38,7 +38,7 @@ WebIDL::ExceptionOr<GC::Ref<WritableStream>> WritableStream::construct_impl(JS::
     auto underlying_sink_dict = TRY(Bindings::convert_to_idl_value_for_underlying_sink(vm, underlying_sink));
 
     // 3. If underlyingSinkDict["type"] exists, throw a RangeError exception.
-    if (underlying_sink_dict.type.has_value())
+    if (!underlying_sink_dict.type.is_undefined())
         return WebIDL::SimpleException { WebIDL::SimpleExceptionType::RangeError, "Invalid use of reserved key 'type'"sv };
 
     // 4. Perform ! InitializeWritableStream(this).
@@ -168,7 +168,7 @@ WebIDL::ExceptionOr<void> WritableStream::transfer_steps(HTML::TransferDataEncod
     WebIDL::mark_promise_as_handled(promise);
 
     // 9. Set dataHolder.[[port]] to ! StructuredSerializeWithTransfer(port2, « port2 »).
-    auto result = MUST(HTML::structured_serialize_with_transfer(vm, port2, { { GC::Root { port2 } } }));
+    auto result = MUST(HTML::structured_serialize_with_transfer(vm, port2, { { port2 } }));
     data_holder.extend(move(result.transfer_data_holders));
 
     return {};

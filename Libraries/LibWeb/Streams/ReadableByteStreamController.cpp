@@ -80,7 +80,7 @@ void ReadableByteStreamController::initialize(JS::Realm& realm)
 }
 
 // https://streams.spec.whatwg.org/#rbs-controller-enqueue
-WebIDL::ExceptionOr<void> ReadableByteStreamController::enqueue(GC::Root<WebIDL::ArrayBufferView>& chunk)
+WebIDL::ExceptionOr<void> ReadableByteStreamController::enqueue(GC::Ref<WebIDL::ArrayBufferView> chunk)
 {
     // 1. If chunk.[[ByteLength]] is 0, throw a TypeError exception.
     // 2. If chunk.[[ViewedArrayBuffer]].[[ByteLength]] is 0, throw a TypeError exception.

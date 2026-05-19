@@ -31,8 +31,9 @@ static size_t get_function_shortest_length(FunctionType& function)
 }
 
 enum class SequenceStorageType {
-    Vector,     // Used to safely store non-JS values
-    RootVector, // Used to safely store JS::Value and anything that inherits JS::Cell, e.g. JS::Object
+    Vector,             // Used to store values that do not need GC-aware storage.
+    ConservativeVector, // Used to conservatively root aggregate values that may contain GC pointers.
+    RootVector,         // Used to root GC values directly.
 };
 
 struct CppType {

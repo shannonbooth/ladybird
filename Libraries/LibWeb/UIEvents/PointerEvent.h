@@ -6,7 +6,6 @@
 
 #pragma once
 
-#include <LibWeb/Bindings/PointerEvent.h>
 #include <LibWeb/UIEvents/MouseEvent.h>
 #include <LibWeb/WebIDL/Types.h>
 
@@ -18,7 +17,7 @@ class PointerEvent : public MouseEvent {
     GC_DECLARE_ALLOCATOR(PointerEvent);
 
 public:
-    [[nodiscard]] static GC::Ref<PointerEvent> create(JS::Realm&, FlyString const& type, Bindings::PointerEventInit const& = {}, double page_x = 0, double page_y = 0, double offset_x = 0, double offset_y = 0);
+    [[nodiscard]] static GC::Ref<PointerEvent> create(JS::Realm&, FlyString const& type, Bindings::PointerEventInit const&, double page_x = 0, double page_y = 0, double offset_x = 0, double offset_y = 0);
     [[nodiscard]] static WebIDL::ExceptionOr<GC::Ref<PointerEvent>> create_from_platform_event(JS::Realm&, GC::Ptr<HTML::WindowProxy>, FlyString const& event_name, CSSPixelPoint screen, CSSPixelPoint page, CSSPixelPoint client, CSSPixelPoint offset, Optional<CSSPixelPoint> movement, unsigned button, unsigned buttons, unsigned modifiers);
     static WebIDL::ExceptionOr<GC::Ref<PointerEvent>> construct_impl(JS::Realm&, FlyString const& type, Bindings::PointerEventInit const&);
 

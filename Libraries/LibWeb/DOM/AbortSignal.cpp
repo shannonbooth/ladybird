@@ -185,14 +185,14 @@ WebIDL::ExceptionOr<GC::Ref<AbortSignal>> AbortSignal::timeout(JS::VM& vm, WebID
 }
 
 // https://dom.spec.whatwg.org/#dom-abortsignal-any
-WebIDL::ExceptionOr<GC::Ref<AbortSignal>> AbortSignal::any(JS::VM& vm, Vector<GC::Root<AbortSignal>> const& signals)
+WebIDL::ExceptionOr<GC::Ref<AbortSignal>> AbortSignal::any(JS::VM& vm, ReadonlySpan<GC::Ref<AbortSignal>> signals)
 {
     // The static any(signals) method steps are to return the result of creating a dependent abort signal from signals using AbortSignal and the current realm.
     return create_dependent_abort_signal(*vm.current_realm(), signals);
 }
 
 // https://dom.spec.whatwg.org/#create-a-dependent-abort-signal
-WebIDL::ExceptionOr<GC::Ref<AbortSignal>> AbortSignal::create_dependent_abort_signal(JS::Realm& realm, Vector<GC::Root<AbortSignal>> const& signals)
+WebIDL::ExceptionOr<GC::Ref<AbortSignal>> AbortSignal::create_dependent_abort_signal(JS::Realm& realm, ReadonlySpan<GC::Ref<AbortSignal>> signals)
 {
     // 1. Let resultSignal be a new object implementing signalInterface using realm.
     auto result_signal = TRY(construct_impl(realm));

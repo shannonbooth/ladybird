@@ -45,8 +45,8 @@ WebIDL::ExceptionOr<GC::Ref<Animation>> Animatable::animate(Optional<GC::Root<JS
     //    timeline member of options is missing, be the default document timeline of the node document of the element
     //    on which this method was called.
     Optional<GC::Ptr<AnimationTimeline>> timeline;
-    if (options.has<Bindings::KeyframeAnimationOptions>() && options.get<Bindings::KeyframeAnimationOptions>().timeline.has_value())
-        timeline = options.get<Bindings::KeyframeAnimationOptions>().timeline->ptr();
+    if (options.has<Bindings::KeyframeAnimationOptions>() && options.get<Bindings::KeyframeAnimationOptions>().timeline)
+        timeline = options.get<Bindings::KeyframeAnimationOptions>().timeline;
     if (!timeline.has_value())
         timeline = target->document().timeline();
 

@@ -38,11 +38,11 @@ WebIDL::ExceptionOr<GC::Ref<TransformStream>> TransformStream::construct_impl(JS
     auto transformer_dict = TRY(Bindings::convert_to_idl_value_for_transformer(vm, transformer));
 
     // 3. If transformerDict["readableType"] exists, throw a RangeError exception.
-    if (transformer_dict.readable_type.has_value())
+    if (!transformer_dict.readable_type.is_undefined())
         return WebIDL::SimpleException { WebIDL::SimpleExceptionType::RangeError, "Invalid use of reserved key 'readableType'"sv };
 
     // 4. If transformerDict["writableType"] exists, throw a RangeError exception.
-    if (transformer_dict.writable_type.has_value())
+    if (!transformer_dict.writable_type.is_undefined())
         return WebIDL::SimpleException { WebIDL::SimpleExceptionType::RangeError, "Invalid use of reserved key 'writableType'"sv };
 
     // 5. Let readableHighWaterMark be ? ExtractHighWaterMark(readableStrategy, 0).
@@ -208,11 +208,11 @@ WebIDL::ExceptionOr<void> TransformStream::transfer_steps(HTML::TransferDataEnco
         return WebIDL::DataCloneError::create(realm, "Cannot transfer locked WritableStream"_utf16);
 
     // 5. Set dataHolder.[[readable]] to ! StructuredSerializeWithTransfer(readable, « readable »).
-    auto readable_result = MUST(HTML::structured_serialize_with_transfer(vm, readable, { { GC::Root { readable } } }));
+    auto readable_result = MUST(HTML::structured_serialize_with_transfer(vm, readable, { { readable } }));
     data_holder.extend(move(readable_result.transfer_data_holders));
 
     // 6. Set dataHolder.[[writable]] to ! StructuredSerializeWithTransfer(writable, « writable »).
-    auto writable_result = MUST(HTML::structured_serialize_with_transfer(vm, writable, { { GC::Root { writable } } }));
+    auto writable_result = MUST(HTML::structured_serialize_with_transfer(vm, writable, { { writable } }));
     data_holder.extend(move(writable_result.transfer_data_holders));
 
     return {};

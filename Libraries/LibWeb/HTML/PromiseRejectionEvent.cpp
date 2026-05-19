@@ -27,7 +27,7 @@ WebIDL::ExceptionOr<GC::Ref<PromiseRejectionEvent>> PromiseRejectionEvent::const
 PromiseRejectionEvent::PromiseRejectionEvent(JS::Realm& realm, FlyString const& event_name, Bindings::PromiseRejectionEventInit const& event_init)
     : DOM::Event(realm, event_name, event_init)
     , m_promise(*event_init.promise)
-    , m_reason(event_init.reason.value_or(JS::js_undefined()))
+    , m_reason(event_init.reason)
 {
 }
 

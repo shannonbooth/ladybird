@@ -17,7 +17,7 @@ namespace Web::FileAPI {
 
 // https://w3c.github.io/FileAPI/#blob-url-entry
 struct BlobURLEntry {
-    using Object = Variant<GC::Root<Blob>, GC::Root<MediaSourceExtensions::MediaSource>>;
+    using Object = Variant<GC::Ref<Blob>, GC::Ref<MediaSourceExtensions::MediaSource>>;
 
     Object object;
     GC::Root<HTML::EnvironmentSettingsObject> environment;

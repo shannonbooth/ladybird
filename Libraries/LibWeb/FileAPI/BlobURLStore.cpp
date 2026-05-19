@@ -20,6 +20,7 @@ namespace Web::FileAPI {
 
 BlobURLStore& blob_url_store()
 {
+    // FIXME: This is no longer GC safe any more.
     static HashMap<String, BlobURLEntry> store;
     return store;
 }

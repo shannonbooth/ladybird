@@ -17,6 +17,14 @@ namespace Web::UIEvents {
 
 GC_DEFINE_ALLOCATOR(PointerEvent);
 
+static Bindings::PointerEventInit default_pointer_event_init(JS::Realm& realm)
+{
+    return {
+        .coalesced_events = GC::RootVector<GC::Ref<PointerEvent>> { realm.heap() },
+        .predicted_events = GC::RootVector<GC::Ref<PointerEvent>> { realm.heap() },
+    };
+}
+
 // https://w3c.github.io/pointerevents/#dom-pointerevent-screenx
 // For untrusted PointerEvents, coordinates are floored for click, auxclick, and
 // contextmenu events (via the MouseEvent base class). For all other pointer
@@ -41,7 +49,7 @@ double PointerEvent::offset_y() const { return should_have_fractional_coordinate
 
 WebIDL::ExceptionOr<GC::Ref<PointerEvent>> PointerEvent::create_from_platform_event(JS::Realm& realm, GC::Ptr<HTML::WindowProxy> window_proxy, FlyString const& event_name, CSSPixelPoint screen, CSSPixelPoint page, CSSPixelPoint client, CSSPixelPoint offset, Optional<CSSPixelPoint> movement, unsigned button, unsigned buttons, unsigned modifiers)
 {
-    Bindings::PointerEventInit event_init {};
+    auto event_init = default_pointer_event_init(realm);
     event_init.ctrl_key = modifiers & Mod_Ctrl;
     event_init.shift_key = modifiers & Mod_Shift;
     event_init.alt_key = modifiers & Mod_Alt;
@@ -109,7 +117,7 @@ void PointerEvent::visit_edges(Cell::Visitor& visitor)
 
 GC::Ref<MouseEvent> PointerEvent::clone() const
 {
-    Bindings::PointerEventInit init {};
+    auto init = default_pointer_event_init(realm());
     init.screen_x = screen_x();
     init.screen_y = screen_y();
     init.client_x = client_x();

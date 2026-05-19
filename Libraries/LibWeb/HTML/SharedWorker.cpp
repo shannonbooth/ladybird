@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+#include <LibWeb/Bindings/MessageEvent.h>
 #include <LibWeb/Bindings/SharedWorker.h>
 #include <LibWeb/DOM/Document.h>
 #include <LibWeb/DOM/Event.h>
@@ -148,10 +149,10 @@ WebIDL::ExceptionOr<GC::Ref<SharedWorker>> SharedWorker::construct_impl(JS::Real
             queue_global_task(Task::Source::DOMManipulation, *worker_global_scope, GC::create_function(worker->heap(), [worker_global_scope, inside_port]() {
                 auto& realm = worker_global_scope->realm();
 
-                Bindings::MessageEventInit init;
+                Bindings::MessageEventInit init { .ports = GC::RootVector<GC::Ref<HTML::MessagePort>> { realm.heap() } };
                 init.data = JS::PrimitiveString::create(realm.vm(), String {});
                 init.ports.append(inside_port);
-                init.source = GC::Root { inside_port };
+                init.source = inside_port;
 
                 worker_global_scope->dispatch_event(MessageEvent::create(realm, EventNames::connect, init));
             }));

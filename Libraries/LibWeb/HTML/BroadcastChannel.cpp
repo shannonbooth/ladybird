@@ -17,7 +17,9 @@
 #include <LibWeb/HTML/BroadcastChannelMessage.h>
 #include <LibWeb/HTML/EventNames.h>
 #include <LibWeb/HTML/MessageEvent.h>
+#include <LibWeb/HTML/MessagePort.h>
 #include <LibWeb/HTML/StructuredSerialize.h>
+#include <LibWeb/Bindings/MessageEvent.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HTML/WorkerGlobalScope.h>
 #include <LibWeb/Page/Page.h>
@@ -208,7 +210,7 @@ void BroadcastChannel::deliver_message_locally(BroadcastChannelMessage const& me
             //    origin initialized to sourceOrigin, and then abort these steps.
             auto data_or_error = structured_deserialize(vm, message.serialized_message, target_realm);
             if (data_or_error.is_exception()) {
-                Bindings::MessageEventInit event_init {};
+                Bindings::MessageEventInit event_init { .ports = GC::RootVector<GC::Ref<HTML::MessagePort>> { target_realm.heap() } };
                 auto event = MessageEvent::create(target_realm, HTML::EventNames::messageerror, event_init, message.source_origin);
                 event->set_is_trusted(true);
                 destination->dispatch_event(event);
@@ -217,7 +219,7 @@ void BroadcastChannel::deliver_message_locally(BroadcastChannelMessage const& me
 
             // 4. Fire an event named message at destination, using MessageEvent, with the data attribute initialized to data and
             //    its origin initialized to sourceOrigin.
-            Bindings::MessageEventInit event_init {};
+            Bindings::MessageEventInit event_init { .ports = GC::RootVector<GC::Ref<HTML::MessagePort>> { target_realm.heap() } };
             event_init.data = data_or_error.release_value();
             auto event = MessageEvent::create(target_realm, HTML::EventNames::message, event_init, message.source_origin);
             event->set_is_trusted(true);

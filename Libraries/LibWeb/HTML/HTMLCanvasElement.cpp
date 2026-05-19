@@ -288,7 +288,7 @@ JS::ThrowCompletionOr<HTMLCanvasElement::RenderingContext> HTMLCanvasElement::ge
     // NOTE: See the spec for the full table.
     if (type == "2d"sv) {
         if (TRY(create_2d_context(options)) == HasOrCreatedContext::Yes)
-            return GC::make_root(*m_context.get<GC::Ref<HTML::CanvasRenderingContext2D>>());
+            return m_context.get<GC::Ref<HTML::CanvasRenderingContext2D>>();
 
         return Empty {};
     }
@@ -296,14 +296,14 @@ JS::ThrowCompletionOr<HTMLCanvasElement::RenderingContext> HTMLCanvasElement::ge
     // NOTE: The WebGL spec says "experimental-webgl" is also acceptable and must be equivalent to "webgl". Other engines accept this, so we do too.
     if (type.is_one_of("webgl"sv, "experimental-webgl"sv)) {
         if (TRY(create_webgl_context<WebGL::WebGLRenderingContext>(options)) == HasOrCreatedContext::Yes)
-            return GC::make_root(*m_context.get<GC::Ref<WebGL::WebGLRenderingContext>>());
+            return m_context.get<GC::Ref<WebGL::WebGLRenderingContext>>();
 
         return Empty {};
     }
 
     if (type == "webgl2"sv) {
         if (TRY(create_webgl_context<WebGL::WebGL2RenderingContext>(options)) == HasOrCreatedContext::Yes)
-            return GC::make_root(*m_context.get<GC::Ref<WebGL::WebGL2RenderingContext>>());
+            return m_context.get<GC::Ref<WebGL::WebGL2RenderingContext>>();
 
         return Empty {};
     }

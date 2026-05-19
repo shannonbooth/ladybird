@@ -30,7 +30,7 @@ ErrorEvent::ErrorEvent(JS::Realm& realm, FlyString const& event_name, Bindings::
     , m_filename(event_init.filename)
     , m_lineno(event_init.lineno)
     , m_colno(event_init.colno)
-    , m_error(event_init.error.value_or(JS::js_undefined()))
+    , m_error(event_init.error)
 {
 }
 

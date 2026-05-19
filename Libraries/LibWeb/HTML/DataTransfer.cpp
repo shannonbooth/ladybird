@@ -255,7 +255,9 @@ GC::Ref<FileAPI::FileList> DataTransfer::files() const
         Bindings::FilePropertyBag options {};
         options.type = item.type_string;
 
-        auto file = MUST(FileAPI::File::create(realm, { GC::make_root(blob) }, file_name, move(options)));
+        FileAPI::BlobParts file_bits { realm.heap() };
+        file_bits.append(blob);
+        auto file = MUST(FileAPI::File::create(realm, file_bits, file_name, move(options)));
         files->add_file(file);
     }
 
