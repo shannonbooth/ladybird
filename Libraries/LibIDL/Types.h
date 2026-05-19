@@ -62,10 +62,12 @@ struct LoweredCppType {
     bool is_gc_type { false };
     bool is_nullable { false };
     bool is_optional_presence { false };
+    bool needs_heap_for_default_construction { false };
 
     SequenceStorageType sequence_storage_type { SequenceStorageType::Vector };
     ValueAccess value_access { ValueAccess::Direct };
 
+    ByteString gc_referent_type;
     ByteString null_expression;
     ByteString default_constructed_expression;
 };
