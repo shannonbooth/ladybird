@@ -122,6 +122,7 @@ static bool is_nullable_frozen_array_of_single_type(Type const& type, StringView
     return parameters.first()->name() == type_name;
 }
 
+static CppType lower_idl_type_to_cpp(Context const& context, Type const& type, TypePosition, Presence, Optional<HashMap<ByteString, ByteString> const&> extended_attributes = {});
 static CppType nullable_parameter_cpp_type(Context const& context, Type const& type, Optional<HashMap<ByteString, ByteString> const&> extended_attributes = {});
 
 static ByteString union_type_to_variant(UnionType const& union_type, Context const& context)
@@ -136,7 +137,7 @@ static ByteString union_type_to_variant(UnionType const& union_type, Context con
         if (type_index > 0)
             builder.append(", "sv);
 
-        auto cpp_type = idl_type_name_to_cpp_type(type, context);
+        auto cpp_type = lower_idl_type_to_cpp(context, type, TypePosition::UnionMember, Presence::Required);
         builder.append(cpp_type.name);
     }
 
@@ -224,119 +225,303 @@ static SequenceStorageType union_type_sequence_storage_type(UnionType const& uni
     return SequenceStorageType::Vector;
 }
 
-CppType idl_type_name_to_cpp_type(Type const& type, Context const& context, Optional<HashMap<ByteString, ByteString> const&> extended_attributes)
+static CppType lower_required_non_nullable_idl_type_to_cpp(Context const& context, Type const& type, [[maybe_unused]] TypePosition position, Optional<HashMap<ByteString, ByteString> const&> extended_attributes)
 {
-    if (type.is_nullable() && !is<UnionType>(type))
-        return nullable_parameter_cpp_type(context, type, extended_attributes);
+    VERIFY(!type.is_nullable() || is<UnionType>(type));
 
-    if (is_platform_object(context, type))
-        return { .name = ByteString::formatted("GC::Ref<{}>", interface_cpp_type_name(context, type)), .sequence_storage_type = SequenceStorageType::RootVector };
+    if (is_platform_object(context, type)) {
+        return {
+            .name = ByteString::formatted("GC::Ref<{}>", interface_cpp_type_name(context, type)),
+            .is_gc_type = true,
+            .sequence_storage_type = SequenceStorageType::RootVector,
+        };
+    }
 
-    if (is_javascript_builtin_buffer_source_type(type))
-        return { .name = ByteString::formatted("GC::Ref<JS::{}>", type.name()), .sequence_storage_type = SequenceStorageType::RootVector };
+    if (is_javascript_builtin_buffer_source_type(type)) {
+        return {
+            .name = ByteString::formatted("GC::Ref<JS::{}>", type.name()),
+            .is_gc_type = true,
+            .sequence_storage_type = SequenceStorageType::RootVector,
+        };
+    }
 
-    if (auto const* callback_interface = callback_interface_for_type(context, type))
-        return { .name = ByteString::formatted("GC::Ref<{}>", interface_cpp_type_name(*callback_interface)), .sequence_storage_type = SequenceStorageType::RootVector };
+    if (auto const* callback_interface = callback_interface_for_type(context, type)) {
+        return {
+            .name = ByteString::formatted("GC::Ref<{}>", interface_cpp_type_name(*callback_interface)),
+            .is_gc_type = true,
+            .sequence_storage_type = SequenceStorageType::RootVector,
+        };
+    }
 
-    if (context.callback_functions.contains(type.name()))
-        return { .name = "GC::Ref<WebIDL::CallbackType>", .sequence_storage_type = SequenceStorageType::RootVector };
+    if (context.callback_functions.contains(type.name())) {
+        return {
+            .name = "GC::Ref<WebIDL::CallbackType>",
+            .is_gc_type = true,
+            .sequence_storage_type = SequenceStorageType::RootVector,
+        };
+    }
 
     if (type.is_string()) {
         auto is_fly_string = extended_attributes.has_value() && extended_attributes->contains("FlyString"sv);
         if (type.name().contains("Utf16"sv))
-            return { .name = is_fly_string ? "Utf16FlyString" : "Utf16String", .sequence_storage_type = SequenceStorageType::Vector };
-        return { .name = is_fly_string ? "FlyString" : "String", .sequence_storage_type = SequenceStorageType::Vector };
+            return { .name = is_fly_string ? "Utf16FlyString" : "Utf16String" };
+        return { .name = is_fly_string ? "FlyString" : "String" };
     }
 
     if (type.name() == "double" || type.name() == "unrestricted double")
-        return { .name = "double", .sequence_storage_type = SequenceStorageType::Vector };
+        return { .name = "double" };
 
     if (type.name() == "float" || type.name() == "unrestricted float")
-        return { .name = "float", .sequence_storage_type = SequenceStorageType::Vector };
+        return { .name = "float" };
 
     if (type.name() == "boolean")
-        return { .name = "bool", .sequence_storage_type = SequenceStorageType::Vector };
+        return { .name = "bool" };
 
     if (type.name() == "byte")
-        return { .name = "WebIDL::Byte", .sequence_storage_type = SequenceStorageType::Vector };
+        return { .name = "WebIDL::Byte" };
 
     if (type.name() == "octet")
-        return { .name = "WebIDL::Octet", .sequence_storage_type = SequenceStorageType::Vector };
+        return { .name = "WebIDL::Octet" };
 
     if (type.name() == "short")
-        return { .name = "WebIDL::Short", .sequence_storage_type = SequenceStorageType::Vector };
+        return { .name = "WebIDL::Short" };
 
     if (type.name() == "unsigned short")
-        return { .name = "WebIDL::UnsignedShort", .sequence_storage_type = SequenceStorageType::Vector };
+        return { .name = "WebIDL::UnsignedShort" };
 
     if (type.name() == "long")
-        return { .name = "WebIDL::Long", .sequence_storage_type = SequenceStorageType::Vector };
+        return { .name = "WebIDL::Long" };
 
     if (type.name() == "unsigned long")
-        return { .name = "WebIDL::UnsignedLong", .sequence_storage_type = SequenceStorageType::Vector };
+        return { .name = "WebIDL::UnsignedLong" };
 
     if (type.name() == "long long")
-        return { .name = "WebIDL::LongLong", .sequence_storage_type = SequenceStorageType::Vector };
+        return { .name = "WebIDL::LongLong" };
 
     if (type.name() == "unsigned long long")
-        return { .name = "WebIDL::UnsignedLongLong", .sequence_storage_type = SequenceStorageType::Vector };
+        return { .name = "WebIDL::UnsignedLongLong" };
 
-    if (type.name() == "any")
-        return { .name = "JS::Value", .sequence_storage_type = SequenceStorageType::RootVector };
+    if (type.name() == "any") {
+        return {
+            .name = "JS::Value",
+            .is_gc_type = true,
+            .sequence_storage_type = SequenceStorageType::RootVector,
+            .value_access = CppType::ValueAccess::JSValue,
+        };
+    }
 
     // NOTE: undefined is a somewhat special case that may be used in a union to represent the javascript 'undefined' (and
     //       only ever js_undefined). Therefore, we say that the type is Empty here, so that a union of (T, undefined) is
     //       generated as Variant<T, Empty>, which is then returned in the Variant's visit as undefined if it is Empty.
     if (type.name() == "undefined")
-        return { .name = "Empty", .sequence_storage_type = SequenceStorageType::Vector };
+        return { .name = "Empty" };
 
-    if (type.name() == "object")
-        return { .name = "GC::Ref<JS::Object>", .sequence_storage_type = SequenceStorageType::RootVector };
+    if (type.name() == "object") {
+        return {
+            .name = "GC::Ref<JS::Object>",
+            .is_gc_type = true,
+            .sequence_storage_type = SequenceStorageType::RootVector,
+        };
+    }
 
-    if (type.name() == "BufferSource")
-        return { .name = "GC::Ref<WebIDL::BufferSource>", .sequence_storage_type = SequenceStorageType::RootVector };
+    if (type.name() == "BufferSource") {
+        return {
+            .name = "GC::Ref<WebIDL::BufferSource>",
+            .is_gc_type = true,
+            .sequence_storage_type = SequenceStorageType::RootVector,
+        };
+    }
 
-    if (type.name() == "ArrayBufferView")
-        return { .name = "GC::Ref<WebIDL::ArrayBufferView>", .sequence_storage_type = SequenceStorageType::RootVector };
+    if (type.name() == "ArrayBufferView") {
+        return {
+            .name = "GC::Ref<WebIDL::ArrayBufferView>",
+            .is_gc_type = true,
+            .sequence_storage_type = SequenceStorageType::RootVector,
+        };
+    }
 
-    if (type.name() == "Promise")
-        return { .name = "GC::Ref<WebIDL::Promise>", .sequence_storage_type = SequenceStorageType::RootVector };
+    if (type.name() == "Promise") {
+        return {
+            .name = "GC::Ref<WebIDL::Promise>",
+            .is_gc_type = true,
+            .sequence_storage_type = SequenceStorageType::RootVector,
+        };
+    }
 
     if (type.name().is_one_of("sequence"sv, "FrozenArray"sv)) {
         auto& parameterized_type = as<ParameterizedType>(type);
         auto& sequence_type = parameterized_type.parameters().first();
-        auto sequence_cpp_type = idl_type_name_to_cpp_type(sequence_type, context);
+        auto sequence_cpp_type = lower_idl_type_to_cpp(context, sequence_type, TypePosition::SequenceElement, Presence::Required);
         auto storage_type_name = sequence_storage_type_to_cpp_storage_type_name(sequence_cpp_type.sequence_storage_type);
 
-        return { .name = ByteString::formatted("{}<{}>", storage_type_name, sequence_cpp_type.name), .sequence_storage_type = SequenceStorageType::Vector };
+        return {
+            .name = ByteString::formatted("{}<{}>", storage_type_name, sequence_cpp_type.name),
+            .is_gc_type = sequence_cpp_type.sequence_storage_type != SequenceStorageType::Vector,
+        };
     }
 
     if (type.name() == "record") {
         auto& parameterized_type = as<ParameterizedType>(type);
         auto& record_key_type = parameterized_type.parameters()[0];
         auto& record_value_type = parameterized_type.parameters()[1];
-        auto record_key_cpp_type = idl_type_name_to_cpp_type(record_key_type, context);
-        auto record_value_cpp_type = idl_type_name_to_cpp_type(record_value_type, context);
+        auto record_key_cpp_type = lower_idl_type_to_cpp(context, record_key_type, TypePosition::AggregateMember, Presence::Required);
+        auto record_value_cpp_type = lower_idl_type_to_cpp(context, record_value_type, TypePosition::AggregateMember, Presence::Required);
+
+        if (record_key_cpp_type.sequence_storage_type == SequenceStorageType::ConservativeVector || record_value_cpp_type.sequence_storage_type == SequenceStorageType::ConservativeVector) {
+            dbgln("record<{}, {}> needs a conservative hash map storage type that does not exist yet", record_key_cpp_type.name, record_value_cpp_type.name);
+            VERIFY_NOT_REACHED();
+        }
 
         if (record_key_cpp_type.sequence_storage_type == SequenceStorageType::RootVector || record_value_cpp_type.sequence_storage_type == SequenceStorageType::RootVector)
-            return { .name = ByteString::formatted("GC::OrderedRootHashMap<{}, {}>", record_key_cpp_type.name, record_value_cpp_type.name), .sequence_storage_type = SequenceStorageType::Vector };
+            return {
+                .name = ByteString::formatted("GC::OrderedRootHashMap<{}, {}>", record_key_cpp_type.name, record_value_cpp_type.name),
+                .is_gc_type = true,
+            };
 
-        return { .name = ByteString::formatted("OrderedHashMap<{}, {}>", record_key_cpp_type.name, record_value_cpp_type.name), .sequence_storage_type = SequenceStorageType::Vector };
+        return { .name = ByteString::formatted("OrderedHashMap<{}, {}>", record_key_cpp_type.name, record_value_cpp_type.name) };
     }
 
     if (is<UnionType>(type)) {
         auto& union_type = as<UnionType>(type);
-        return { .name = union_type_to_variant(union_type, context), .sequence_storage_type = union_type_sequence_storage_type(union_type, context) };
+        auto sequence_storage_type = union_type_sequence_storage_type(union_type, context);
+        return {
+            .name = union_type_to_variant(union_type, context),
+            .is_gc_type = sequence_storage_type != SequenceStorageType::Vector,
+            .is_nullable = union_type.includes_undefined() || union_type.includes_nullable_type(),
+            .sequence_storage_type = sequence_storage_type,
+        };
     }
 
-    if (context.dictionaries.contains(type.name()))
-        return { .name = type.name(), .sequence_storage_type = type_contains_gc_like_value(context, type) ? SequenceStorageType::ConservativeVector : SequenceStorageType::Vector };
+    if (context.dictionaries.contains(type.name())) {
+        auto sequence_storage_type = type_contains_gc_like_value(context, type) ? SequenceStorageType::ConservativeVector : SequenceStorageType::Vector;
+        return {
+            .name = type.name(),
+            .is_gc_type = sequence_storage_type != SequenceStorageType::Vector,
+            .sequence_storage_type = sequence_storage_type,
+        };
+    }
 
     if (context.enumerations.contains(type.name()))
-        return { .name = type.name(), .sequence_storage_type = SequenceStorageType::Vector };
+        return { .name = type.name() };
 
     dbgln("Unimplemented type for idl_type_name_to_cpp_type: {}", type.name());
     TODO();
+}
+
+static CppType lower_nullable_idl_type_to_cpp(Context const& context, Type const& type, TypePosition position, Optional<HashMap<ByteString, ByteString> const&> extended_attributes)
+{
+    VERIFY(type.is_nullable());
+    VERIFY(!is<UnionType>(type));
+
+    if (type.name() == "any"sv) {
+        return {
+            .name = "JS::Value",
+            .is_gc_type = true,
+            .is_nullable = true,
+            .sequence_storage_type = SequenceStorageType::RootVector,
+            .value_access = CppType::ValueAccess::JSValue,
+            .null_expression = "JS::js_null()",
+            .default_constructed_expression = "JS::js_undefined()",
+        };
+    }
+
+    CppType lowered;
+    if (auto const* callback_interface = callback_interface_for_type(context, type)) {
+        lowered.name = ByteString::formatted("GC::Ptr<{}>", interface_cpp_type_name(*callback_interface));
+        lowered.sequence_storage_type = SequenceStorageType::RootVector;
+    } else if (IDL::is_platform_object(context, type)) {
+        lowered.name = ByteString::formatted("GC::Ptr<{}>", cpp_type_name(type, context));
+        lowered.sequence_storage_type = SequenceStorageType::RootVector;
+    } else if (is_javascript_builtin_buffer_source_type(type)) {
+        lowered.name = ByteString::formatted("GC::Ptr<JS::{}>", type.name());
+        lowered.sequence_storage_type = SequenceStorageType::RootVector;
+    } else if (context.callback_functions.contains(type.name())) {
+        lowered.name = "GC::Ptr<WebIDL::CallbackType>";
+        lowered.sequence_storage_type = SequenceStorageType::RootVector;
+    } else if (type.name() == "object"sv) {
+        lowered.name = "GC::Ptr<JS::Object>";
+        lowered.sequence_storage_type = SequenceStorageType::RootVector;
+    } else if (type.name() == "BufferSource"sv) {
+        lowered.name = "GC::Ptr<WebIDL::BufferSource>";
+        lowered.sequence_storage_type = SequenceStorageType::RootVector;
+    } else if (type.name() == "ArrayBufferView"sv) {
+        lowered.name = "GC::Ptr<WebIDL::ArrayBufferView>";
+        lowered.sequence_storage_type = SequenceStorageType::RootVector;
+    } else if (type.name() == "Promise"sv) {
+        lowered.name = "GC::Ptr<WebIDL::Promise>";
+        lowered.sequence_storage_type = SequenceStorageType::RootVector;
+    }
+
+    if (!lowered.name.is_empty()) {
+        lowered.is_gc_type = true;
+        lowered.is_nullable = true;
+        lowered.value_access = CppType::ValueAccess::Pointer;
+        lowered.null_expression = "{}";
+        lowered.default_constructed_expression = "{}";
+        return lowered;
+    }
+
+    auto inner_type = clone_type(type, false);
+    auto inner_cpp_type = lower_required_non_nullable_idl_type_to_cpp(context, *inner_type, position, extended_attributes);
+    return {
+        .name = ByteString::formatted("Optional<{}>", inner_cpp_type.name),
+        .is_nullable = true,
+        .value_access = CppType::ValueAccess::OptionalValue,
+        .null_expression = "{}",
+        .default_constructed_expression = "{}",
+    };
+}
+
+static CppType with_optional_presence(CppType lowered)
+{
+    if (lowered.value_access == CppType::ValueAccess::JSValue)
+        return lowered;
+
+    if (lowered.value_access == CppType::ValueAccess::Pointer || lowered.is_nullable) {
+        lowered.name = ByteString::formatted("Optional<{}>", lowered.name);
+        lowered.is_optional_presence = true;
+        lowered.value_access = CppType::ValueAccess::OptionalValue;
+        lowered.sequence_storage_type = SequenceStorageType::Vector;
+        lowered.default_constructed_expression = "{}";
+        return lowered;
+    }
+
+    if (lowered.is_gc_type && lowered.name.starts_with("GC::Ref<"sv)) {
+        lowered.name = ByteString::formatted("GC::Ptr<{}>", lowered.name.substring_view(8, lowered.name.length() - 9));
+        lowered.is_nullable = true;
+        lowered.is_optional_presence = true;
+        lowered.value_access = CppType::ValueAccess::Pointer;
+        lowered.sequence_storage_type = SequenceStorageType::RootVector;
+        lowered.default_constructed_expression = "{}";
+        return lowered;
+    }
+
+    lowered.name = ByteString::formatted("Optional<{}>", lowered.name);
+    lowered.is_optional_presence = true;
+    lowered.value_access = CppType::ValueAccess::OptionalValue;
+    lowered.sequence_storage_type = SequenceStorageType::Vector;
+    lowered.default_constructed_expression = "{}";
+    return lowered;
+}
+
+static CppType lower_idl_type_to_cpp(Context const& context, Type const& type, TypePosition position, Presence presence, Optional<HashMap<ByteString, ByteString> const&> extended_attributes)
+{
+    auto lowered = type.is_nullable() && !is<UnionType>(type)
+        ? lower_nullable_idl_type_to_cpp(context, type, position, extended_attributes)
+        : lower_required_non_nullable_idl_type_to_cpp(context, type, position, extended_attributes);
+
+    if (presence == Presence::Required)
+        return lowered;
+
+    if (presence == Presence::OptionalDictionaryMember && lowered.is_nullable)
+        return lowered;
+
+    return with_optional_presence(move(lowered));
+}
+
+CppType idl_type_name_to_cpp_type(Type const& type, Context const& context, Optional<HashMap<ByteString, ByteString> const&> extended_attributes)
+{
+    return lower_idl_type_to_cpp(context, type, TypePosition::StackValue, Presence::Required, extended_attributes);
 }
 
 static ByteString make_input_acceptable_cpp(ByteString const& input)
@@ -713,131 +898,13 @@ static void emit_includes_for_module_idl_value_conversion_dependencies(Module co
 template<typename ParameterType>
 static ByteString optional_parameter_cpp_type(Context const& context, ParameterType const& parameter, Optional<ByteString> const& optional_default_value)
 {
-    auto const& type = *parameter.type;
-    auto has_non_null_default_value = optional_default_value.has_value() && *optional_default_value != "null"sv;
-
-    if (type.is_nullable() && !is<UnionType>(type))
-        return nullable_parameter_cpp_type(context, type, parameter.extended_attributes).name;
-
-    if (type.is_string()) {
-        auto cpp_type = idl_type_name_to_cpp_type(type, context, parameter.extended_attributes).name;
-        if (type.is_nullable() || !has_non_null_default_value)
-            return ByteString::formatted("Optional<{}>", cpp_type);
-        return cpp_type;
-    }
-
-    if (type.is_boolean() || type.is_integer()) {
-        auto cpp_type = idl_type_name_to_cpp_type(type, context).name;
-        if (type.is_nullable() || !has_non_null_default_value)
-            return ByteString::formatted("Optional<{}>", cpp_type);
-        return cpp_type;
-    }
-
-    if (auto const* callback_interface = callback_interface_for_type(context, type))
-        return ByteString::formatted("GC::Ptr<{}>", interface_cpp_type_name(*callback_interface));
-
-    if (IDL::is_platform_object(context, type))
-        return ByteString::formatted("GC::Ptr<{}>", cpp_type_name(type, context));
-
-    if (type.is_floating_point()) {
-        auto cpp_type = idl_type_name_to_cpp_type(type, context).name;
-        if (type.is_nullable() || !has_non_null_default_value)
-            return ByteString::formatted("Optional<{}>", cpp_type);
-        return cpp_type;
-    }
-
-    if (type.name() == "Promise"sv)
-        return "GC::Ptr<WebIDL::Promise>"sv;
-
-    if (type.name() == "object"sv)
-        return "GC::Ptr<JS::Object>"sv;
-
-    if (is_javascript_builtin_buffer_source_type(type) || type.name() == "BufferSource"sv) {
-        auto buffer_cpp_type = is_javascript_builtin_buffer_source_type(type) ? ByteString::formatted("JS::{}", type.name()) : ByteString { "WebIDL::BufferSource"sv };
-        return ByteString::formatted("GC::Ptr<{}>", buffer_cpp_type);
-    }
-
-    if (type.name() == "ArrayBufferView"sv)
-        return "GC::Ptr<WebIDL::ArrayBufferView>"sv;
-
-    if (type.name() == "any"sv)
-        return "JS::Value"sv;
-
-    if (context.enumerations.contains(type.name())) {
-        auto cpp_type = cpp_type_name(type, context);
-        if (type.is_nullable() || !has_non_null_default_value)
-            return ByteString::formatted("Optional<{}>", cpp_type);
-        return cpp_type;
-    }
-
-    if (context.dictionaries.contains(type.name())) {
-        auto cpp_type = cpp_type_name(type, context);
-        if (type.is_nullable() || !has_non_null_default_value)
-            return ByteString::formatted("Optional<{}>", cpp_type);
-        return cpp_type;
-    }
-
-    if (context.callback_functions.contains(type.name()))
-        return "GC::Ptr<WebIDL::CallbackType>"sv;
-
-    if (type.name().is_one_of("sequence"sv, "FrozenArray"sv, "record"sv)) {
-        auto cpp_type = idl_type_name_to_cpp_type(type, context).name;
-        if (type.is_nullable() || !has_non_null_default_value)
-            return ByteString::formatted("Optional<{}>", cpp_type);
-        return cpp_type;
-    }
-
-    if (is<UnionType>(type)) {
-        auto cpp_type = idl_type_name_to_cpp_type(type, context).name;
-        auto const& union_type = as<UnionType>(type);
-        if (optional_default_value == "null"sv && union_type.includes_nullable_type())
-            return cpp_type;
-        if (!has_non_null_default_value)
-            return ByteString::formatted("Optional<{}>", cpp_type);
-        return cpp_type;
-    }
-
-    dbgln("Unimplemented optional JS-to-C++ conversion type: {}", type.name());
-    VERIFY_NOT_REACHED();
+    auto presence = optional_default_value.has_value() ? Presence::Required : Presence::OptionalArgument;
+    return lower_idl_type_to_cpp(context, *parameter.type, TypePosition::StackValue, presence, parameter.extended_attributes).name;
 }
 
 static CppType nullable_parameter_cpp_type(Context const& context, Type const& type, Optional<HashMap<ByteString, ByteString> const&> extended_attributes)
 {
-    VERIFY(type.is_nullable());
-
-    if (is<UnionType>(type))
-        return idl_type_name_to_cpp_type(type, context, extended_attributes);
-
-    if (type.name() == "any"sv)
-        return { .name = "JS::Value"sv, .sequence_storage_type = SequenceStorageType::RootVector };
-
-    if (auto const* callback_interface = callback_interface_for_type(context, type))
-        return { .name = ByteString::formatted("GC::Ptr<{}>", interface_cpp_type_name(*callback_interface)), .sequence_storage_type = SequenceStorageType::RootVector };
-
-    if (IDL::is_platform_object(context, type))
-        return { .name = ByteString::formatted("GC::Ptr<{}>", cpp_type_name(type, context)), .sequence_storage_type = SequenceStorageType::RootVector };
-
-    if (is_javascript_builtin_buffer_source_type(type))
-        return { .name = ByteString::formatted("GC::Ptr<JS::{}>", type.name()), .sequence_storage_type = SequenceStorageType::RootVector };
-
-    if (context.callback_functions.contains(type.name()))
-        return { .name = "GC::Ptr<WebIDL::CallbackType>"sv, .sequence_storage_type = SequenceStorageType::RootVector };
-
-    if (type.name() == "object"sv)
-        return { .name = "GC::Ptr<JS::Object>"sv, .sequence_storage_type = SequenceStorageType::RootVector };
-
-    if (type.name() == "BufferSource"sv)
-        return { .name = "GC::Ptr<WebIDL::BufferSource>"sv, .sequence_storage_type = SequenceStorageType::RootVector };
-
-    if (type.name() == "ArrayBufferView"sv)
-        return { .name = "GC::Ptr<WebIDL::ArrayBufferView>"sv, .sequence_storage_type = SequenceStorageType::RootVector };
-
-    if (type.name() == "Promise"sv)
-        return { .name = "GC::Ptr<WebIDL::Promise>"sv, .sequence_storage_type = SequenceStorageType::RootVector };
-
-    auto inner_type = clone_type(type, false);
-    auto inner_cpp_type = idl_type_name_to_cpp_type(*inner_type, context, extended_attributes);
-    return { .name = ByteString::formatted("Optional<{}>", inner_cpp_type.name), .sequence_storage_type = SequenceStorageType::Vector };
+    return lower_idl_type_to_cpp(context, type, TypePosition::StackValue, Presence::Required, extended_attributes);
 }
 
 static bool nullable_callback_function_treats_non_object_as_null(Context const& context, Type const& type)
@@ -849,7 +916,7 @@ static bool nullable_callback_function_treats_non_object_as_null(Context const& 
     return callback_function->value.is_legacy_treat_non_object_as_null;
 }
 
-static ByteString optional_string_default_value_expression(ByteString const& cpp_type, ByteString const& default_value)
+static ByteString string_default_value_expression(ByteString const& cpp_type, ByteString const& default_value)
 {
     if (cpp_type == "String"sv)
         return default_value == "\"\""sv ? ByteString { "String {}"sv } : ByteString::formatted("{}_string", default_value);
@@ -919,9 +986,10 @@ static Optional<ByteString> dictionary_heap_default_initializers(Context const& 
     return ByteString::join(", "sv, initializers);
 }
 
-static ByteString optional_type_default_constructed_value_expression(Context const& context, Type const& type, Optional<HashMap<ByteString, ByteString> const&> extended_attributes = {});
+static ByteString type_default_value_expression(Context const& context, Type const& type, ByteString const& default_value, Optional<HashMap<ByteString, ByteString> const&> extended_attributes = {});
+static ByteString type_default_constructed_value_expression(Context const& context, Type const& type, Optional<HashMap<ByteString, ByteString> const&> extended_attributes = {});
 
-static ByteString optional_union_default_value_expression(Context const& context, UnionType const& union_type, ByteString const& default_value)
+static ByteString union_default_value_expression(Context const& context, UnionType const& union_type, ByteString const& default_value)
 {
     auto types = union_type.flattened_member_types();
 
@@ -934,7 +1002,7 @@ static ByteString optional_union_default_value_expression(Context const& context
     if (default_value == "[]"sv) {
         auto sequence_type = types.find_if([](auto const& type) { return type->name().is_one_of("sequence"sv, "FrozenArray"sv); });
         VERIFY(sequence_type != types.end());
-        return default_construct_cpp_type_expression(idl_type_name_to_cpp_type(**sequence_type, context).name);
+        return type_default_value_expression(context, **sequence_type, default_value);
     }
 
     if (default_value == "{}"sv) {
@@ -942,7 +1010,7 @@ static ByteString optional_union_default_value_expression(Context const& context
             return type->name() == "record"sv || context.dictionaries.contains(type->name());
         });
         VERIFY(object_type != types.end());
-        return default_construct_cpp_type_expression(idl_type_name_to_cpp_type(**object_type, context).name);
+        return type_default_value_expression(context, **object_type, default_value);
     }
 
     if (default_value.starts_with("\""sv) && default_value.ends_with("\""sv)) {
@@ -953,17 +1021,12 @@ static ByteString optional_union_default_value_expression(Context const& context
                 return enumeration->value.translated_cpp_names.contains(enum_member_name);
             return false;
         });
-        if (enumeration_type != types.end()) {
-            auto const& enumeration_name = (*enumeration_type)->name();
-            auto const& enumeration = context.enumerations.find(enumeration_name)->value;
-            auto default_value_cpp_name = enumeration.translated_cpp_names.get(enum_member_name);
-            VERIFY(default_value_cpp_name.has_value());
-            return ByteString::formatted("{}::{}", enumeration_name, *default_value_cpp_name);
-        }
+        if (enumeration_type != types.end())
+            return type_default_value_expression(context, **enumeration_type, default_value);
 
         auto string_type = types.find_if([](auto const& type) { return type->is_string(); });
         VERIFY(string_type != types.end());
-        return optional_string_default_value_expression(idl_type_name_to_cpp_type(**string_type, context).name, default_value);
+        return type_default_value_expression(context, **string_type, default_value);
     }
 
     if (default_value == "true"sv || default_value == "false"sv) {
@@ -981,13 +1044,13 @@ static ByteString optional_union_default_value_expression(Context const& context
     TODO();
 }
 
-static ByteString optional_type_default_value_expression(Context const& context, Type const& type, ByteString const& default_value, Optional<HashMap<ByteString, ByteString> const&> extended_attributes = {})
+static ByteString type_default_value_expression(Context const& context, Type const& type, ByteString const& default_value, Optional<HashMap<ByteString, ByteString> const&> extended_attributes)
 {
     auto inner_type = clone_type(type, false);
     auto cpp_type = idl_type_name_to_cpp_type(*inner_type, context, extended_attributes).name;
 
     if (is<UnionType>(type))
-        return optional_union_default_value_expression(context, as<UnionType>(type), default_value);
+        return union_default_value_expression(context, as<UnionType>(type), default_value);
 
     if (type.is_nullable() && default_value == "null"sv)
         return "{}"sv;
@@ -1011,7 +1074,7 @@ static ByteString optional_type_default_value_expression(Context const& context,
     }
 
     if (type.is_string())
-        return optional_string_default_value_expression(cpp_type, default_value);
+        return string_default_value_expression(cpp_type, default_value);
 
     if (type.is_boolean() || type.is_numeric())
         return default_value;
@@ -1047,10 +1110,10 @@ static ByteString optional_type_default_value_expression(Context const& context,
 template<typename ParameterType>
 static ByteString optional_parameter_default_value_expression(Context const& context, ParameterType const& parameter, ByteString const& default_value)
 {
-    return optional_type_default_value_expression(context, *parameter.type, default_value, parameter.extended_attributes);
+    return type_default_value_expression(context, *parameter.type, default_value, parameter.extended_attributes);
 }
 
-static ByteString optional_type_default_constructed_value_expression(Context const& context, Type const& type, Optional<HashMap<ByteString, ByteString> const&> extended_attributes)
+static ByteString type_default_constructed_value_expression(Context const& context, Type const& type, Optional<HashMap<ByteString, ByteString> const&> extended_attributes)
 {
     auto cpp_type = idl_type_name_to_cpp_type(type, context, extended_attributes).name;
 
@@ -1061,7 +1124,7 @@ static ByteString optional_type_default_constructed_value_expression(Context con
 
         auto types = union_type.flattened_member_types();
         VERIFY(!types.is_empty());
-        return optional_type_default_constructed_value_expression(context, *types.first());
+        return type_default_constructed_value_expression(context, *types.first());
     }
 
     if (type.is_nullable())
@@ -1098,8 +1161,7 @@ static ByteString optional_type_default_constructed_value_expression(Context con
     if (IDL::is_platform_object(context, type)
         || callback_interface_for_type(context, type)
         || context.callback_functions.contains(type.name())
-        || type.name() == "Promise"sv
-        || type.name() == "object"sv) {
+        || type.name().is_one_of("Promise"sv, "object"sv, "BufferSource"sv, "ArrayBufferView"sv)) {
         return "{}"sv;
     }
 
@@ -1109,7 +1171,7 @@ static ByteString optional_type_default_constructed_value_expression(Context con
 template<typename ParameterType>
 static ByteString optional_parameter_default_constructed_value_expression(Context const& context, ParameterType const& parameter)
 {
-    return optional_type_default_constructed_value_expression(context, *parameter.type, parameter.extended_attributes);
+    return type_default_constructed_value_expression(context, *parameter.type, parameter.extended_attributes);
 }
 
 template<typename ParameterType>
@@ -2477,6 +2539,17 @@ static void generate_wrap_statement(SourceGenerator& generator, ByteString const
     scoped_generator.set("recursion_depth", ByteString::number(recursion_depth));
     scoped_generator.set("iteration_index", ByteString::number(iteration_index));
 
+    if (is_optional && type.is_nullable() && !is<UnionType>(type)) {
+        scoped_generator.append(R"~~~(
+    if (@value@.has_value()) {
+)~~~");
+        generate_wrap_statement(scoped_generator, ByteString::formatted("{}.value()", value), type, context, result_expression, recursion_depth, false, iteration_index);
+        scoped_generator.append(R"~~~(
+    }
+)~~~");
+        return;
+    }
+
     if (type.name() == "undefined") {
         scoped_generator.append(R"~~~(
     @result_expression@ JS::js_undefined();
@@ -2743,7 +2816,7 @@ static void generate_wrap_statement(SourceGenerator& generator, ByteString const
                 //      determine whether the type is present or not (e.g through a has_value() on an Optional<T>, or a null
                 //      check on a GC::Ptr<T>). So to save some complexity in the generator, give ourselves a hint of what to do.
                 bool is_optional_storage = !member.required && !member.default_value.has_value();
-                bool is_optional_property = !member.required && !member.extended_attributes.contains("GenerateAsRequired") && !member.default_value.has_value() && !member.type->is_nullable();
+                bool is_optional_property = !member.required && !member.extended_attributes.contains("GenerateAsRequired") && !member.default_value.has_value();
                 if (is_optional_storage) {
                     dictionary_generator.append(R"~~~(
         Optional<JS::Value> @wrapped_value_name@;
@@ -3841,43 +3914,12 @@ static void emit_idl_value_conversion_support_includes(StringBuilder& builder)
 )~~~"sv);
 }
 
-static bool nullable_type_uses_optional_cpp_type(Context const& context, Type const& type)
-{
-    if (!type.is_nullable() || type.is_union())
-        return false;
-
-    if (type.name() == "any"sv)
-        return false;
-
-    if (callback_interface_for_type(context, type))
-        return false;
-
-    if (IDL::is_platform_object(context, type))
-        return false;
-
-    if (context.callback_functions.contains(type.name()))
-        return false;
-
-    return true;
-}
-
 static ByteString dictionary_member_cpp_type(Context const& context, DictionaryMember const& member)
 {
-    auto const& type = *member.type;
-
-    if (!member.required && !member.default_value.has_value())
-        return optional_parameter_cpp_type(context, member, {});
-
-    auto base_type = idl_type_name_to_cpp_type(type, context).name;
-    if (nullable_type_uses_optional_cpp_type(context, type))
-        base_type = idl_type_name_to_cpp_type(*clone_type(type, false), context).name;
-
-    bool should_wrap_in_optional = nullable_type_uses_optional_cpp_type(context, type);
-
-    if (should_wrap_in_optional)
-        return ByteString::formatted("Optional<{}>", base_type);
-
-    return base_type;
+    auto presence = !member.required && !member.default_value.has_value()
+        ? Presence::OptionalDictionaryMember
+        : Presence::Required;
+    return lower_idl_type_to_cpp(context, *member.type, TypePosition::AggregateMember, presence, member.extended_attributes).name;
 }
 
 static bool type_default_value_needs_heap_for_construction(Context const& context, Type const& type, ByteString const& default_value)
@@ -3938,165 +3980,6 @@ static bool dictionary_member_needs_builder(Context const& context, DictionaryMe
     return false;
 }
 
-static ByteString dictionary_default_value_expression(Context const&, Type const&, ByteString const&);
-static ByteString dictionary_default_constructed_value_expression(Context const&, Type const&);
-
-static ByteString dictionary_union_default_value_expression(Context const& context, UnionType const& union_type, ByteString const& default_value)
-{
-    auto types = union_type.flattened_member_types();
-
-    if (default_value == "null"sv) {
-        if (union_type.includes_undefined() || union_type.includes_nullable_type())
-            return "Empty {}"sv;
-        return "{}"sv;
-    }
-
-    if (default_value == "[]"sv) {
-        auto sequence_type = types.find_if([](auto const& type) { return type->name().is_one_of("sequence"sv, "FrozenArray"sv); });
-        VERIFY(sequence_type != types.end());
-        return default_construct_cpp_type_expression(idl_type_name_to_cpp_type(**sequence_type, context).name);
-    }
-
-    if (default_value == "{}"sv) {
-        auto object_type = types.find_if([&context](auto const& type) {
-            return type->name() == "record"sv || context.dictionaries.contains(type->name());
-        });
-        VERIFY(object_type != types.end());
-        return default_construct_cpp_type_expression(idl_type_name_to_cpp_type(**object_type, context).name);
-    }
-
-    if (default_value.starts_with("\""sv) && default_value.ends_with("\""sv)) {
-        auto default_string_value = default_value.substring_view(1, default_value.length() - 2);
-
-        auto enumeration_type = types.find_if([&](auto const& type) {
-            if (auto enumeration = context.enumerations.find(type->name()); enumeration != context.enumerations.end())
-                return enumeration->value.translated_cpp_names.contains(default_string_value);
-            return false;
-        });
-        if (enumeration_type != types.end())
-            return dictionary_default_value_expression(context, **enumeration_type, default_value);
-
-        auto string_type = types.find_if([](auto const& type) { return type->is_string(); });
-        VERIFY(string_type != types.end());
-        return dictionary_default_value_expression(context, **string_type, default_value);
-    }
-
-    if (default_value == "true"sv || default_value == "false"sv) {
-        auto boolean_type = types.find_if([](auto const& type) { return type->is_boolean(); });
-        VERIFY(boolean_type != types.end());
-        return default_value;
-    }
-
-    if (default_value.to_number<i32>().has_value() || default_value.to_number<u32>().has_value() || default_value.to_number<double>().has_value()) {
-        auto numeric_type = types.find_if([](auto const& type) { return type->is_numeric(); });
-        VERIFY(numeric_type != types.end());
-        return default_value;
-    }
-
-    TODO();
-}
-
-static ByteString dictionary_default_value_expression(Context const& context, Type const& type, ByteString const& default_value)
-{
-    auto cpp_type = idl_type_name_to_cpp_type(type, context).name;
-
-    if (is<UnionType>(type))
-        return dictionary_union_default_value_expression(context, as<UnionType>(type), default_value);
-
-    if (type.is_nullable() && default_value == "null"sv)
-        return "{}"sv;
-
-    if (type.name() == "any"sv && default_value == "null"sv)
-        return "JS::js_null()"sv;
-
-    if (type.name() == "object"sv && default_value == "null"sv)
-        return "{}"sv;
-
-    if (type.is_string()) {
-        if (cpp_type == "String"sv)
-            return default_value == "\"\""sv ? ByteString { "String {}"sv } : ByteString::formatted("{}_string", default_value);
-        if (cpp_type == "ByteString"sv)
-            return default_value == "\"\""sv ? ByteString { "ByteString {}"sv } : ByteString::formatted("ByteString {{ {}sv }}", default_value);
-        if (cpp_type == "Utf16String"sv)
-            return default_value == "\"\""sv ? ByteString { "Utf16String {}"sv } : ByteString::formatted("Utf16String::from_utf8_without_validation({}sv)", default_value);
-    }
-
-    if (type.is_boolean() || type.is_numeric())
-        return default_value;
-
-    if (type.name().is_one_of("sequence"sv, "FrozenArray"sv)) {
-        VERIFY(default_value == "[]"sv);
-        return default_construct_cpp_type_expression(cpp_type);
-    }
-
-    if (type.name() == "record"sv) {
-        VERIFY(default_value == "{}"sv);
-        return default_construct_cpp_type_expression(cpp_type);
-    }
-
-    if (context.dictionaries.contains(type.name())) {
-        VERIFY(default_value == "{}"sv);
-        return ByteString::formatted("{} {{}}", cpp_type);
-    }
-
-    if (context.enumerations.contains(type.name())) {
-        VERIFY(default_value.length() >= 2 && default_value[0] == '"' && default_value[default_value.length() - 1] == '"');
-        auto enum_member_name = default_value.substring_view(1, default_value.length() - 2);
-        auto default_value_cpp_name = context.enumerations.find(type.name())->value.translated_cpp_names.get(enum_member_name);
-        VERIFY(default_value_cpp_name.has_value());
-        return ByteString::formatted("{}::{}", type.name(), *default_value_cpp_name);
-    }
-
-    TODO();
-}
-
-static ByteString dictionary_default_constructed_value_expression(Context const& context, Type const& type)
-{
-    auto cpp_type = idl_type_name_to_cpp_type(type, context).name;
-
-    if (is<UnionType>(type)) {
-        auto const& union_type = as<UnionType>(type);
-        if (union_type.includes_undefined() || union_type.includes_nullable_type())
-            return "Empty {}"sv;
-
-        auto types = union_type.flattened_member_types();
-        VERIFY(!types.is_empty());
-        return dictionary_default_constructed_value_expression(context, *types.first());
-    }
-
-    if (type.is_nullable())
-        return "{}"sv;
-
-    if (type.is_string())
-        return ByteString::formatted("{} {{}}", cpp_type);
-
-    if (type.is_boolean())
-        return "false"sv;
-
-    if (type.is_numeric())
-        return "0"sv;
-
-    if (type.name().is_one_of("sequence"sv, "FrozenArray"sv, "record"sv))
-        return default_construct_cpp_type_expression(cpp_type);
-
-    if (context.dictionaries.contains(type.name()))
-        return ByteString::formatted("{} {{}}", cpp_type);
-
-    if (context.enumerations.contains(type.name())) {
-        auto& enumeration = context.enumerations.find(type.name())->value;
-        VERIFY(!enumeration.translated_cpp_names.is_empty());
-        return ByteString::formatted("{}::{}", type.name(), enumeration.translated_cpp_names.begin()->value);
-    }
-
-    if (is_platform_object(context, type)
-        || callback_interface_for_type(context, type)
-        || context.callback_functions.contains(type.name())
-        || type.name().is_one_of("any"sv, "object"sv, "BufferSource"sv, "ArrayBufferView"sv, "Promise"sv))
-        return "{}"sv;
-
-    TODO();
-}
-
 static ByteString dictionary_member_initializer(Context const& context, DictionaryMember const& member)
 {
     auto member_cpp_type = dictionary_member_cpp_type(context, member);
@@ -4108,7 +3991,7 @@ static ByteString dictionary_member_initializer(Context const& context, Dictiona
         if (member_cpp_type.starts_with("Optional<"sv) && *member.default_value == "null"sv)
             return " {}"sv;
 
-        auto default_value_expression = dictionary_default_value_expression(context, *member.type, *member.default_value);
+        auto default_value_expression = type_default_value_expression(context, *member.type, *member.default_value, member.extended_attributes);
         if (default_value_expression == "{}"sv)
             return " {}"sv;
 
@@ -4116,7 +3999,7 @@ static ByteString dictionary_member_initializer(Context const& context, Dictiona
     }
 
     if (is<UnionType>(*member.type) && !member_cpp_type.starts_with("Optional<"sv))
-        return ByteString::formatted(" {{ {} }}", dictionary_default_constructed_value_expression(context, *member.type));
+        return ByteString::formatted(" {{ {} }}", type_default_constructed_value_expression(context, *member.type, member.extended_attributes));
 
     return " {}"sv;
 }

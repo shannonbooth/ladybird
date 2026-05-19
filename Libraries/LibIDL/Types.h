@@ -36,10 +36,41 @@ enum class SequenceStorageType {
     RootVector,         // Used to root GC values directly.
 };
 
-struct CppType {
-    ByteString name;
-    SequenceStorageType sequence_storage_type;
+enum class TypePosition {
+    StackValue,
+    AggregateMember,
+    SequenceElement,
+    UnionMember,
 };
+
+enum class Presence {
+    Required,
+    OptionalArgument,
+    OptionalDictionaryMember,
+};
+
+struct LoweredCppType {
+    enum class ValueAccess {
+        Direct,
+        OptionalValue,
+        Pointer,
+        JSValue,
+    };
+
+    ByteString name;
+
+    bool is_gc_type { false };
+    bool is_nullable { false };
+    bool is_optional_presence { false };
+
+    SequenceStorageType sequence_storage_type { SequenceStorageType::Vector };
+    ValueAccess value_access { ValueAccess::Direct };
+
+    ByteString null_expression;
+    ByteString default_constructed_expression;
+};
+
+using CppType = LoweredCppType;
 
 class Context;
 class ParameterizedType;

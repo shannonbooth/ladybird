@@ -25,7 +25,7 @@ static bool is_empty(Bindings::RequestInit const& request_init)
 {
     return !(request_init.method.has_value()
         || request_init.headers.has_value()
-        || request_init.body.has_value()
+        || !request_init.body.has<Empty>()
         || request_init.referrer.has_value()
         || request_init.referrer_policy.has_value()
         || request_init.mode.has_value()
@@ -468,16 +468,16 @@ WebIDL::ExceptionOr<GC::Ref<Request>> Request::construct_impl(JS::Realm& realm, 
         input_body = input.get<GC::Ref<Request>>()->request()->body();
 
     // 35. If either init["body"] exists and is non-null or inputBody is non-null, and request’s method is `GET` or `HEAD`, then throw a TypeError.
-    if (((init.body.has_value() && !init.body->has<Empty>()) || (input_body.has_value() && !input_body.value().has<Empty>())) && request->method().is_one_of("GET"sv, "HEAD"sv))
+    if ((!init.body.has<Empty>() || (input_body.has_value() && !input_body.value().has<Empty>())) && request->method().is_one_of("GET"sv, "HEAD"sv))
         return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "Method must not be GET or HEAD when body is provided"sv };
 
     // 36. Let initBody be null.
     Optional<Infrastructure::Request::BodyType> init_body;
 
     // 37. If init["body"] exists and is non-null, then:
-    if (init.body.has_value() && !init.body->has<Empty>()) {
+    if (!init.body.has<Empty>()) {
         // 1. Let bodyWithType be the result of extracting init["body"], with keepalive set to request's keepalive.
-        auto body_with_type = TRY(extract_body(realm, init.body->downcast<GC::Ref<Streams::ReadableStream>, GC::Ref<FileAPI::Blob>, GC::Ref<WebIDL::BufferSource>, GC::Ref<XHR::FormData>, GC::Ref<DOMURL::URLSearchParams>, String>(), request->keepalive()));
+        auto body_with_type = TRY(extract_body(realm, init.body.downcast<GC::Ref<Streams::ReadableStream>, GC::Ref<FileAPI::Blob>, GC::Ref<WebIDL::BufferSource>, GC::Ref<XHR::FormData>, GC::Ref<DOMURL::URLSearchParams>, String>(), request->keepalive()));
 
         // 2. Set initBody to bodyWithType’s body.
         init_body = body_with_type.body;
