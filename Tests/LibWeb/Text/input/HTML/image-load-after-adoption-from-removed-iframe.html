@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    asyncTest(done => {
+        const iframe = document.createElement("iframe");
+        iframe.src = "../../Assets/blank.html";
+        iframe.onload = () => {
+            const img = iframe.contentDocument.createElement("img");
+            img.onload = () => {
+                println("image loaded after adoption");
+                done();
+            };
+            img.onerror = () => {
+                println("image errored after adoption");
+                done();
+            };
+
+            img.src = new URL("../../../Assets/120.png", document.baseURI).href;
+            iframe.contentDocument.body.appendChild(img);
+
+            iframe.remove();
+            document.body.appendChild(document.adoptNode(img));
+        };
+
+        document.body.appendChild(iframe);
+    });
+</script>
