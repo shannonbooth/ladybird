@@ -6,6 +6,7 @@ from io import StringIO
 from typing import TextIO
 from typing import Union
 
+from Generators.libweb_bindings import interfaces
 from Generators.libweb_bindings import type_conversion
 from Generators.libweb_bindings.context import GenerationContext
 from Generators.libweb_bindings.includes import GeneratedIncludes
@@ -22,6 +23,8 @@ def write_header(out: TextIO, module: Module) -> None:
     context = GenerationContext(module)
     includes = GeneratedIncludes()
     body = StringIO()
+
+    interfaces.write_declaration(body, includes, context)
 
     for enumeration in module.enumerations:
         write_enumeration_declaration(body, enumeration, includes)
@@ -80,6 +83,8 @@ def write_implementation(out: TextIO, module: Module) -> None:
     includes = GeneratedIncludes()
     includes.add_binding(module.path.stem)
     body = StringIO()
+
+    interfaces.write_implementation(body, includes, context)
 
     for enumeration in module.enumerations:
         write_enumeration_conversion(body, enumeration, includes)

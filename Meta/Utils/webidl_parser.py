@@ -33,6 +33,7 @@ class Interface:
     is_namespace: bool = False
     is_callback_interface: bool = False
     parent_name: str = ""
+    member_declarations: List[str] = field(default_factory=list)
     constants: List[Constant] = field(default_factory=list)
     named_property_getter: Optional[SpecialOperation] = None
     indexed_property_getter: Optional[SpecialOperation] = None
@@ -463,6 +464,7 @@ class Parser:
             stripped_statement = strip_leading_extended_attributes(statement).strip()
             if not stripped_statement:
                 continue
+            interface.member_declarations.append(stripped_statement)
 
             if stripped_statement.startswith("const "):
                 interface.constants.append(Constant(stripped_statement))
