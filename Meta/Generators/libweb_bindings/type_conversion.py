@@ -71,26 +71,10 @@ def add_header_includes_for_type(
         includes.add_binding(member.type)
 
 
-def boolean_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
-    includes.add("LibJS/Runtime/Value.h")
-
-    # https://webidl.spec.whatwg.org/#js-boolean
-    # 1. Let x be the result of computing ToBoolean(V).
-    # 2. Return the IDL boolean value that is the one that represents the same truth value as the JavaScript Boolean value x.
-    return f"{value_name}.to_boolean()"
-
-
-def unrestricted_double_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
-    includes.add("LibJS/Runtime/ValueInlines.h")
-
-    # https://webidl.spec.whatwg.org/#js-unrestricted-float
-    return f"{value_name}.to_double(vm)"
-
-
+# 3.2.1. any, https://webidl.spec.whatwg.org/#js-any
 def any_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
     includes.add("LibJS/Runtime/Value.h")
 
-    # https://webidl.spec.whatwg.org/#js-any
     # 1. If V is undefined, then return the unique undefined IDL value.
     # 2. If V is null, then return the null object? reference.
     # 3. If V is a Boolean, then return the boolean value that represents the same truth value.
@@ -103,13 +87,189 @@ def any_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
     return value_name
 
 
-def unsigned_long_long_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
-    includes.add("LibWeb/WebIDL/AbstractOperations.h")
+# 3.2.3. boolean, https://webidl.spec.whatwg.org/#js-boolean
+def boolean_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    includes.add("LibJS/Runtime/Value.h")
 
-    # https://webidl.spec.whatwg.org/#js-unsigned-long-long
+    # 1. Let x be the result of computing ToBoolean(V).
+    # 2. Return the IDL boolean value that is the one that represents the same truth value as the JavaScript Boolean value x.
+    return f"{value_name}.to_boolean()"
+
+
+# 3.2.4.1. byte, https://webidl.spec.whatwg.org/#js-byte
+def byte_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    includes.add("LibWeb/WebIDL/Types.h")
+
+    # 1. Let x be ? ConvertToInt(V, 8, "signed").
+    # 2. Return the IDL byte value that represents the same numeric value as x.
+    return f"WebIDL::convert_to_int<WebIDL::Byte>(vm, {value_name}, WebIDL::EnforceRange::Yes, WebIDL::Clamp::No)"
+
+
+# 3.2.4.2. octet, https://webidl.spec.whatwg.org/#js-octet
+def octet_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    includes.add("LibWeb/WebIDL/Types.h")
+
+    # 1. Let x be ? ConvertToInt(V, 8, "unsigned").
+    # 2. Return the IDL octet value that represents the same numeric value as x.
+    return f"WebIDL::convert_to_int<WebIDL::Octet>(vm, {value_name}, WebIDL::EnforceRange::Yes, WebIDL::Clamp::No)"
+
+
+# 3.2.4.3. short, https://webidl.spec.whatwg.org/#js-short
+def short_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    includes.add("LibWeb/WebIDL/Types.h")
+
+    # 1. Let x be ? ConvertToInt(V, 16, "signed").
+    # 2. Return the IDL short value that represents the same numeric value as x.
+    return f"WebIDL::convert_to_int<WebIDL::Short>(vm, {value_name}, WebIDL::EnforceRange::Yes, WebIDL::Clamp::No)"
+
+
+# 3.2.4.4. unsigned short, https://webidl.spec.whatwg.org/#js-unsigned-short
+def unsigned_short_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    includes.add("LibWeb/WebIDL/Types.h")
+
+    # 1. Let x be ? ConvertToInt(V, 16, "unsigned").
+    # 2. Return the IDL unsigned short value that represents the same numeric value as x.
+    return f"WebIDL::convert_to_int<WebIDL::UnsignedShort>(vm, {value_name}, WebIDL::EnforceRange::Yes, WebIDL::Clamp::No)"
+
+
+# 3.2.4.5. long, https://webidl.spec.whatwg.org/#js-long
+def long_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    includes.add("LibWeb/WebIDL/Types.h")
+
+    # 1. Let x be ? ConvertToInt(V, 32, "signed").
+    # 2. Return the IDL long value that represents the same numeric value as x.
+    return f"WebIDL::convert_to_int<WebIDL::Long>(vm, {value_name}, WebIDL::EnforceRange::Yes, WebIDL::Clamp::No)"
+
+
+# 3.2.4.6. unsigned long, https://webidl.spec.whatwg.org/#js-unsigned-long
+def unsigned_long_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    includes.add("LibWeb/WebIDL/Types.h")
+
+    # 1. Let x be ? ConvertToInt(V, 32, "unsigned").
+    # 2. Return the IDL unsigned long value that represents the same numeric value as x.
+    return f"WebIDL::convert_to_int<WebIDL::UnsignedLong>(vm, {value_name}, WebIDL::EnforceRange::Yes, WebIDL::Clamp::No)"
+
+
+# 3.2.4.7. long long, https://webidl.spec.whatwg.org/#js-long-long
+def long_long_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    includes.add("LibWeb/WebIDL/Types.h")
+
+    # 1. Let x be ? ConvertToInt(V, 64, "signed").
+    # 2. Return the IDL long long value that represents the same numeric value as x.
+    return f"WebIDL::convert_to_int<WebIDL::LongLong>(vm, {value_name}, WebIDL::EnforceRange::Yes, WebIDL::Clamp::No)"
+
+
+# 3.2.4.8. unsigned long long, https://webidl.spec.whatwg.org/#js-unsigned-long-long
+def unsigned_long_long_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    includes.add("LibWeb/WebIDL/Types.h")
+
     # 1. Let x be ? ConvertToInt(V, 64, "unsigned").
     # 2. Return the IDL unsigned long long value that represents the same numeric value as x.
     return f"WebIDL::convert_to_int<WebIDL::UnsignedLongLong>(vm, {value_name}, WebIDL::EnforceRange::Yes, WebIDL::Clamp::No)"
+
+
+# 3.2.5. float, https://webidl.spec.whatwg.org/#js-float
+def float_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+
+    # 1. Let x be ? ToNumber(V).
+    # 2. If x is NaN, +∞, or −∞, then throw a TypeError.
+    # 3. Let S be the set of finite IEEE 754 single-precision floating point values except −0, but with two special values added: 2^128 and −2^128.
+    # 4. Let y be the number in S that is closest to x, selecting the number with an even significand if there are two equally close values. (The two special values 2^128 and −2^128 are considered to have even significands for this purpose.)
+    # 5. If y is 2^128 or −2^128, then throw a TypeError.
+    # 6. If y is +0 and x is negative, return −0.
+    # 7. Return y.
+    # FIXME.
+    raise RuntimeError("float to IDL value conversion is not yet implemented")
+    return f"{value_name}.to_double(vm)"
+
+
+# 3.2.6. unrestricted float, https://webidl.spec.whatwg.org/#js-unrestricted-float
+def unrestricted_float_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    # 1. Let x be ? ToNumber(V).
+    # 2. If x is NaN, then return the IDL unrestricted float value that represents the IEEE 754 NaN value with the bit pattern 0x7fc00000 [IEEE-754].
+    # 3. Let S be the set of finite IEEE 754 single-precision floating point values except −0, but with two special values added: 2^128 and −2^128.
+    # 4. Let y be the number in S that is closest to x, selecting the number with an even significand if there are two equally close values. (The two special values 2^128 and −2^128 are considered to have even significands for this purpose.)
+    # 5. If y is 2^128, return +∞.
+    # 6. If y is −2^128, return −∞.
+    # 7. If y is +0 and x is negative, return −0.
+    # 8. Return y.
+    # FIXME.
+    raise RuntimeError("unrestricted float to IDL value conversion is not yet implemented")
+    return f"{value_name}.to_double(vm)"
+
+
+# 3.2.7. double, https://webidl.spec.whatwg.org/#js-double
+def double_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    # 1. Let x be ? ToNumber(V).
+    # 2. If x is NaN, +∞, or −∞, then throw a TypeError.
+    # 3. Return the IDL double value that represents the same numeric value as x.
+    # FIXME.
+    raise RuntimeError("double to IDL value conversion is not yet implemented")
+    return f"{value_name}.to_double(vm)"
+
+
+# 3.2.8. unrestricted double, https://webidl.spec.whatwg.org/#js-unrestricted-double
+def unrestricted_double_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    includes.add("LibJS/Runtime/ValueInlines.h")
+    # 1. Let x be ? ToNumber(V).
+    # 2. If x is NaN, then return the IDL unrestricted double value that represents the IEEE 754 NaN value with the bit pattern 0x7ff8000000000000 [IEEE-754].
+    # 3. Return the IDL unrestricted double value that represents the same numeric value as x.
+    # FIXME!
+    return f"{value_name}.to_double(vm)"
+
+
+# 3.2.9. bigint, https://webidl.spec.whatwg.org/#js-bigint
+def bigint_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    includes.add("LibJS/Runtime/Value.h")
+
+    # 1. Let x be ? ToBigInt(V).
+    # 2. Return the IDL bigint value that represents the same numeric value as x.
+    # FIXME.
+    raise RuntimeError("bigint to IDL value conversion is not yet implemented")
+
+
+# 3.2.10. DOMString, https://webidl.spec.whatwg.org/#js-domstring
+def dom_string_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    includes.add("LibJS/Runtime/Value.h")
+    # 1. If V is null and the conversion is to an IDL type associated with the [LegacyNullToEmptyString] extended attribute, then return the DOMString value that represents the empty string.
+    # 2. Let x be ? ToString(V).
+    # 3. Return the IDL DOMString value that represents the same sequence of code units as the one the JavaScript String value x represents.
+    raise RuntimeError("DOMString to IDL value conversion is not yet implemented")
+
+
+# 3.2.11. ByteString, https://webidl.spec.whatwg.org/#js-bytestring
+def bytestring_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    includes.add("LibJS/Runtime/Value.h")
+    # 1. Let x be ? ToString(V).
+    # 2. If the value of any element of x is greater than 255, then throw a TypeError.
+    # 3. Return an IDL ByteString value whose length is the length of x, and where the value of each element is the value of the corresponding element of x.
+    raise RuntimeError("ByteString to IDL value conversion is not yet implemented")
+
+
+# 3.2.12. USVString, https://webidl.spec.whatwg.org/#js-usvstring
+def usv_string_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    includes.add("LibJS/Runtime/Value.h")
+    # 1. Let string be the result of converting V to a DOMString.
+    # 2. If x contains any lone surrogates, then throw a TypeError.
+    # 3. Return the IDL USVString value that represents the same sequence of code units as the one the JavaScript String value x represents.
+    raise RuntimeError("USVString to IDL value conversion is not yet implemented")
+
+
+# 3.2.13. object, https://webidl.spec.whatwg.org/#js-object
+def object_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    includes.add("LibJS/Runtime/Value.h")
+    # 1. If V is null, then return the null object? reference.
+    # 2. If V is not an Object, then throw a TypeError.
+    # 3. Return an IDL object value that references the same object that V represents.
+    raise RuntimeError("object to IDL value conversion is not yet implemented")
+
+
+# 3.2.14. symbol, https://webidl.spec.whatwg.org/#js-symbol
+def symbol_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+    includes.add("LibJS/Runtime/Value.h")
+    # 1. If V is not a Symbol, then throw a TypeError.
+    # 2. Return the result of converting V to an IDL symbol value.
+    raise RuntimeError("symbol to IDL value conversion is not yet implemented")
 
 
 def callback_function_to_idl_value(
@@ -150,6 +310,7 @@ def callback_function_to_idl_value(
                     }}()"""
 
 
+# FIXME: Factor this in a way matching the specification.
 def idl_value_to_javascript_value(
     idl_type: str,
     value: str,
@@ -192,10 +353,42 @@ def to_idl_value(
         return any_to_idl_value(value_name, includes)
     if member.type == "boolean":
         return boolean_to_idl_value(value_name, includes)
-    if member.type == "unrestricted double":
-        return unrestricted_double_to_idl_value(value_name, includes)
+    if member.type == "byte":
+        return byte_to_idl_value(value_name, includes)
+    if member.type == "octet":
+        return octet_to_idl_value(value_name, includes)
+    if member.type == "short":
+        return short_to_idl_value(value_name, includes)
+    if member.type == "unsigned short":
+        return unsigned_short_to_idl_value(value_name, includes)
+    if member.type == "long":
+        return long_to_idl_value(value_name, includes)
+    if member.type == "unsigned long":
+        return unsigned_long_to_idl_value(value_name, includes)
+    if member.type == "long long":
+        return long_long_to_idl_value(value_name, includes)
     if member.type == "unsigned long long":
         return unsigned_long_long_to_idl_value(value_name, includes)
+    if member.type == "float":
+        return float_to_idl_value(value_name, includes)
+    if member.type == "unrestricted float":
+        return unrestricted_float_to_idl_value(value_name, includes)
+    if member.type == "double":
+        return double_to_idl_value(value_name, includes)
+    if member.type == "unrestricted double":
+        return unrestricted_double_to_idl_value(value_name, includes)
+    if member.type == "bigint":
+        return bigint_to_idl_value(value_name, includes)
+    if member.type == "DOMString":
+        return dom_string_to_idl_value(value_name, includes)
+    if member.type == "ByteString":
+        return bytestring_to_idl_value(value_name, includes)
+    if member.type == "USVString":
+        return usv_string_to_idl_value(value_name, includes)
+    if member.type == "object":
+        return object_to_idl_value(value_name, includes)
+    if member.type == "symbol":
+        return symbol_to_idl_value(value_name, includes)
     callback_function = context.callback_function(member.type)
     if callback_function is not None:
         return callback_function_to_idl_value(callback_function, value_name, includes)
