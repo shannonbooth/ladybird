@@ -147,7 +147,39 @@ def callback_function_to_idl_value(
                         {value_name}.as_object(),
                         HTML::incumbent_realm(),
                         {operation_returns_promise});
-                }}()"""
+                    }}()"""
+
+
+def idl_value_to_javascript_value(
+    idl_type: str,
+    value: str,
+    includes: GeneratedIncludes,
+) -> str:
+    includes.add("LibJS/Runtime/Value.h")
+
+    # https://webidl.spec.whatwg.org/#js-type-mapping
+    # The result of converting an IDL value to a JavaScript value depends on the IDL type of the value.
+    if idl_type == "boolean":
+        return f"JS::Value({value})"
+
+    integer_type_map = {
+        "byte": "WebIDL::Byte",
+        "octet": "WebIDL::Octet",
+        "short": "WebIDL::Short",
+        "unsigned short": "WebIDL::UnsignedShort",
+        "long": "WebIDL::Long",
+        "unsigned long": "WebIDL::UnsignedLong",
+        "long long": "double",
+        "unsigned long long": "double",
+    }
+    if idl_type in integer_type_map:
+        includes.add("LibWeb/WebIDL/Types.h")
+        return f"JS::Value(static_cast<{integer_type_map[idl_type]}>({value}))"
+
+    if idl_type in ("float", "unrestricted float", "double", "unrestricted double"):
+        return f"JS::Value({value})"
+
+    raise RuntimeError(f"Unsupported IDL value conversion for '{idl_type}'")
 
 
 def to_idl_value(

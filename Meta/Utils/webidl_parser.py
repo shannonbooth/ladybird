@@ -17,6 +17,9 @@ from Utils.lexer import Lexer
 @dataclass
 class Constant:
     declaration: str
+    type: str
+    name: str
+    value: str
 
 
 @dataclass
@@ -467,7 +470,7 @@ class Parser:
             interface.member_declarations.append(stripped_statement)
 
             if stripped_statement.startswith("const "):
-                interface.constants.append(Constant(stripped_statement))
+                interface.constants.append(self.parse_constant(stripped_statement))
                 continue
 
             if (
@@ -491,6 +494,32 @@ class Parser:
                         f"named/indexed property getter must use DOMString or unsigned long, got '{identifier_type}'"
                     )
                 continue
+
+    def parse_constant(self, declaration: str) -> Constant:
+        parser = Parser(self.path, declaration)
+
+        parser.consume_keyword("const")
+        parser.consume_whitespace()
+
+        constant_type = parser.parse_type()
+        parser.consume_whitespace()
+
+        name = parser.parse_identifier_ending_with_space_or("=")
+        parser.consume_whitespace()
+        parser.assert_specific("=")
+        parser.consume_whitespace()
+
+        value = parser.lexer.consume_while(lambda character: not character.isspace()).strip()
+        parser.consume_whitespace()
+        if not parser.lexer.is_eof():
+            parser.raise_parse_error("unexpected trailing text after constant value")
+
+        return Constant(
+            declaration=declaration,
+            type=constant_type,
+            name=name,
+            value=value,
+        )
 
     def parse_extended_attributes(self) -> Dict[str, str]:
         extended_attributes: Dict[str, str] = {}
