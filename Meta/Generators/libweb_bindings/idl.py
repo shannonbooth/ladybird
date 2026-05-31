@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 from io import StringIO
+from typing import List
 from typing import TextIO
 from typing import Union
 
@@ -19,8 +20,8 @@ from Utils.webidl_parser import Enumeration
 from Utils.webidl_parser import Module
 
 
-def write_header(out: TextIO, module: Module) -> None:
-    context = GenerationContext(module)
+def write_header(out: TextIO, module: Module, modules: List[Module] | None = None) -> None:
+    context = GenerationContext(module, modules or [module])
     includes = GeneratedIncludes()
     body = StringIO()
 
@@ -78,8 +79,8 @@ def write_dictionary_declaration(
     )
 
 
-def write_implementation(out: TextIO, module: Module) -> None:
-    context = GenerationContext(module)
+def write_implementation(out: TextIO, module: Module, modules: List[Module] | None = None) -> None:
+    context = GenerationContext(module, modules or [module])
     includes = GeneratedIncludes()
     includes.add_binding(module.path.stem)
     body = StringIO()

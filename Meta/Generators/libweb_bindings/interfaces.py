@@ -80,7 +80,7 @@ def write_implementation(out: TextIO, includes: GeneratedIncludes, context: Gene
     object.define_direct_property(vm.names.prototype, &ensure_web_prototype<{interface.prototype_class}>(realm, "{interface.name}"_fly_string), 0);
 """
     )
-    define_the_constants(out, interface, includes)
+    define_the_constants(out, context, includes)
     out.write(
         f"""}}
 
@@ -98,7 +98,7 @@ void {interface.prototype_class}::initialize(JS::Realm& realm, JS::Object& objec
     object.set_prototype({parent_prototype});
 """
     )
-    define_the_constants(out, interface, includes)
+    define_the_constants(out, context, includes)
     out.write(
         f"""    object.define_direct_property(vm.well_known_symbol_to_string_tag(), JS::PrimitiveString::create(vm, "{interface.name}"_string), JS::Attribute::Configurable);
 }}
@@ -135,7 +135,10 @@ def implementation_header_for_interface(interface: Interface) -> str:
 
 # https://webidl.spec.whatwg.org/#define-the-constants
 # To define the constants of interface, callback interface, or namespace definition on target, given realm realm, run the following steps:
-def define_the_constants(out: TextIO, interface: Interface, includes: GeneratedIncludes) -> None:
+def define_the_constants(out: TextIO, context: GenerationContext, includes: GeneratedIncludes) -> None:
+    interface = context.module.interface
+    if interface is None:
+        return
     if not interface.constants:
         return
     includes.add("LibJS/Runtime/PropertyDescriptor.h")
@@ -143,7 +146,7 @@ def define_the_constants(out: TextIO, interface: Interface, includes: GeneratedI
 
     # 1. For each constant const that is a member of definition:
     for constant in interface.constants:
-        value = type_conversion.idl_value_to_javascript_value(constant.type, constant.value, includes)
+        value = type_conversion.idl_value_to_javascript_value(constant.type, constant.value, includes, context)
         out.write(
             f"""    // 1. FIXME: If const is not exposed in realm, then continue.
 

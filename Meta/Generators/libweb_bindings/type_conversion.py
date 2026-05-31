@@ -315,8 +315,10 @@ def idl_value_to_javascript_value(
     idl_type: str,
     value: str,
     includes: GeneratedIncludes,
+    context: GenerationContext,
 ) -> str:
     includes.add("LibJS/Runtime/Value.h")
+    idl_type = context.resolve_typedef(idl_type)
 
     # https://webidl.spec.whatwg.org/#js-type-mapping
     # The result of converting an IDL value to a JavaScript value depends on the IDL type of the value.

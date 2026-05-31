@@ -185,9 +185,11 @@ def main() -> int:
         module = parse_module(path, path.read_text(encoding="utf-8"))
         modules.append(module)
 
+    for module in modules:
+        path = module.path
         if str(path) in python_generated_idl_files:
-            write_generated_file(output_directory / f"{path.stem}.h", write_idl_header, module)
-            write_generated_file(output_directory / f"{path.stem}.cpp", write_idl_implementation, module)
+            write_generated_file(output_directory / f"{path.stem}.h", write_idl_header, module, modules)
+            write_generated_file(output_directory / f"{path.stem}.cpp", write_idl_implementation, module, modules)
 
     interface_sets = collect_interface_sets(modules)
 

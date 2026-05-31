@@ -95,12 +95,20 @@ class Enumeration:
 
 
 @dataclass
+class Typedef:
+    name: str
+    path: Path
+    type: str
+
+
+@dataclass
 class Module:
     path: Path
     interface: Optional[Interface] = None
     callback_functions: List[CallbackFunction] = field(default_factory=list)
     dictionaries: List[Dictionary] = field(default_factory=list)
     enumerations: List[Enumeration] = field(default_factory=list)
+    typedefs: List[Typedef] = field(default_factory=list)
 
 
 @dataclass
@@ -162,8 +170,7 @@ class Parser:
             elif self.next_is_keyword("enum"):
                 module.enumerations.append(self.parse_enumeration(extended_attributes))
             elif self.next_is_keyword("typedef"):
-                self.consume_keyword("typedef")
-                self.consume_statement_text()
+                module.typedefs.append(self.parse_typedef())
             elif self.next_is_keyword("partial interface mixin"):
                 self.skip_braced_declaration()
             elif self.next_is_keyword("partial interface"):
@@ -356,6 +363,19 @@ class Parser:
             return_type=return_type,
             extended_attributes=extended_attributes,
         )
+
+    def parse_typedef(self) -> Typedef:
+        self.consume_keyword("typedef")
+        self.consume_whitespace()
+
+        typedef_type = self.parse_type()
+        self.consume_whitespace()
+
+        name = self.parse_identifier_ending_with_space_or(";")
+        self.consume_whitespace()
+        self.assert_specific(";")
+
+        return Typedef(name=name, path=self.path, type=typedef_type)
 
     def parse_type(self) -> str:
         if self.lexer.consume_specific("("):
