@@ -29,6 +29,15 @@ class SpecialOperation:
 
 
 @dataclass
+class Attribute:
+    declaration: str
+    name: str
+    type: str
+    readonly: bool = False
+    extended_attributes: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class Interface:
     name: str
     path: Path
@@ -38,6 +47,7 @@ class Interface:
     parent_name: str = ""
     member_declarations: List[str] = field(default_factory=list)
     constants: List[Constant] = field(default_factory=list)
+    attributes: List[Attribute] = field(default_factory=list)
     named_property_getter: Optional[SpecialOperation] = None
     indexed_property_getter: Optional[SpecialOperation] = None
     has_special_member: bool = False
@@ -493,6 +503,10 @@ class Parser:
                 interface.constants.append(self.parse_constant(stripped_statement))
                 continue
 
+            if stripped_statement.startswith("readonly attribute ") or stripped_statement.startswith("attribute "):
+                interface.attributes.append(self.parse_attribute(stripped_statement))
+                continue
+
             if (
                 stripped_statement.startswith("iterable<")
                 or stripped_statement.startswith("async iterable<")
@@ -539,6 +553,33 @@ class Parser:
             type=constant_type,
             name=name,
             value=value,
+        )
+
+    def parse_attribute(self, declaration: str) -> Attribute:
+        parser = Parser(self.path, declaration)
+
+        readonly = False
+        if parser.next_is_keyword("readonly"):
+            readonly = True
+            parser.consume_keyword("readonly")
+            parser.consume_whitespace()
+
+        parser.consume_keyword("attribute")
+        parser.consume_whitespace()
+
+        attribute_type = parser.parse_type()
+        parser.consume_whitespace()
+
+        name = parser.parse_identifier_ending_with_space()
+        parser.consume_whitespace()
+        if not parser.lexer.is_eof():
+            parser.raise_parse_error("unexpected trailing text after attribute")
+
+        return Attribute(
+            declaration=declaration,
+            name=name,
+            type=attribute_type,
+            readonly=readonly,
         )
 
     def parse_extended_attributes(self) -> Dict[str, str]:

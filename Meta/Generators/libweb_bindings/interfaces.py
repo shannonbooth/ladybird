@@ -8,6 +8,9 @@ from typing import TextIO
 from Generators.libweb_bindings import type_conversion
 from Generators.libweb_bindings.context import GenerationContext
 from Generators.libweb_bindings.includes import GeneratedIncludes
+from Utils.utils import make_name_acceptable_cpp
+from Utils.utils import title_case_to_snake_case
+from Utils.webidl_parser import Attribute
 from Utils.webidl_parser import Interface
 
 
@@ -37,7 +40,14 @@ public:
     static void define_unforgeable_attributes(JS::Realm&, JS::Object&);
 
 private:
-}};
+"""
+    )
+    for attribute in interface.attributes:
+        out.write(f"    JS_DECLARE_NATIVE_FUNCTION({attribute_getter_callback_name(attribute)});\n")
+        if not attribute.readonly:
+            out.write(f"    JS_DECLARE_NATIVE_FUNCTION({attribute_setter_callback_name(attribute)});\n")
+    out.write(
+        """};
 
 """
     )
@@ -57,6 +67,9 @@ def write_implementation(out: TextIO, includes: GeneratedIncludes, context: Gene
     if interface.parent_name:
         includes.add_binding(interface.parent_name)
     includes.add(implementation_header_for_interface(interface))
+    if interface.attributes:
+        includes.add("LibJS/Runtime/Error.h")
+        includes.add("LibWeb/Bindings/ExceptionOrUtils.h")
 
     parent_constructor_setup = ""
     if interface.parent_name:
@@ -98,6 +111,7 @@ void {interface.prototype_class}::initialize(JS::Realm& realm, JS::Object& objec
     object.set_prototype({parent_prototype});
 """
     )
+    define_the_regular_attributes(out, context, includes)
     define_the_constants(out, context, includes)
     out.write(
         f"""    object.define_direct_property(vm.well_known_symbol_to_string_tag(), JS::PrimitiveString::create(vm, "{interface.name}"_string), JS::Attribute::Configurable);
@@ -111,6 +125,7 @@ void {interface.prototype_class}::define_unforgeable_attributes(JS::Realm& realm
 
 """
     )
+    write_attribute_getters(out, context, includes)
 
 
 def ensure_interface_is_supported(interface: Interface) -> None:
@@ -120,6 +135,7 @@ def ensure_interface_is_supported(interface: Interface) -> None:
         raise RuntimeError(f"Unsupported callback interface '{interface.name}'")
 
     supported_declarations = {constant.declaration for constant in interface.constants}
+    supported_declarations.update(attribute.declaration for attribute in interface.attributes)
     unsupported_declarations = [
         declaration for declaration in interface.member_declarations if declaration not in supported_declarations
     ]
@@ -131,6 +147,109 @@ def implementation_header_for_interface(interface: Interface) -> str:
     path = interface.path.with_suffix(".h")
     parts = path.parts
     return str(Path("LibWeb").joinpath(*parts[parts.index("LibWeb") + 1 :]))
+
+
+# https://webidl.spec.whatwg.org/#define-the-regular-attributes
+# To define the regular attributes of interface or namespace definition on target, given realm realm, run the following steps:
+def define_the_regular_attributes(out: TextIO, context: GenerationContext, includes: GeneratedIncludes) -> None:
+    interface = context.module.interface
+    if interface is None:
+        return
+
+    # 1. Let attributes be the list of regular attributes that are members of definition.
+    attributes = interface.attributes
+    if not attributes:
+        return
+    out.write(
+        """    // 1. Let attributes be the list of regular attributes that are members of definition.
+
+"""
+    )
+
+    # 2. Remove from attributes all the attributes that are unforgeable.
+    attributes = [
+        attribute for attribute in attributes if "LegacyUnforgeable" not in attribute.extended_attributes
+    ]
+    out.write(
+        """    // 2. Remove from attributes all the attributes that are unforgeable.
+
+"""
+    )
+
+    # 3. Define the attributes attributes of definition on target given realm.
+    out.write(
+        """    // 3. Define the attributes attributes of definition on target given realm.
+
+"""
+    )
+    define_the_attributes(out, context, includes, attributes)
+
+
+# https://webidl.spec.whatwg.org/#define-the-attributes
+# To define the attributes attributes of interface or namespace definition on target given realm realm, run the following steps:
+def define_the_attributes(
+    out: TextIO,
+    context: GenerationContext,
+    includes: GeneratedIncludes,
+    attributes: list[Attribute],
+) -> None:
+    if not attributes:
+        return
+
+    includes.add("LibJS/Runtime/PropertyDescriptor.h")
+    out.write("\n")
+
+    # 1. For each attribute attr of attributes:
+    for attribute in attributes:
+        getter_name = attribute_getter_callback_name(attribute)
+        setter_name = attribute_setter_callback_name(attribute)
+        cpp_name = attribute_cpp_name(attribute)
+        native_getter_name = f"native_{getter_name}"
+        native_setter_name = f"native_{setter_name}"
+        out.write(
+            f"""    // 1. FIXME: If attr is not exposed in realm, then continue.
+
+    // 2. Let getter be the result of creating an attribute getter given attr, definition, and realm.
+    auto {native_getter_name} = JS::NativeFunction::create(realm, {getter_name}, 0, "{attribute.name}"_utf16_fly_string, &realm, "get"sv);
+
+    // 3. Let setter be the result of creating an attribute setter given attr, definition, and realm.
+"""
+        )
+        if attribute.readonly:
+            out.write(
+                f"""    // Note: the algorithm to create an attribute setter returns undefined if attr is read only.
+    GC::Ptr<JS::NativeFunction> {native_setter_name};
+"""
+            )
+        else:
+            out.write(
+                f"""    auto {native_setter_name} = JS::NativeFunction::create(realm, {setter_name}, 1, "{attribute.name}"_utf16_fly_string, &realm, "set"sv);
+"""
+            )
+        configurable = "false" if "LegacyUnforgeable" in attribute.extended_attributes else "true"
+        out.write(
+            f"""
+    // 4. Let configurable be false if attr is unforgeable and true otherwise.
+    auto {cpp_name}_configurable = {configurable};
+
+    // 5. Let desc be the PropertyDescriptor{{[[Get]]: getter, [[Set]]: setter, [[Enumerable]]: true, [[Configurable]]: configurable}}.
+    JS::PropertyDescriptor {cpp_name}_desc {{
+        .get = {native_getter_name},
+        .set = {native_setter_name},
+        .enumerable = true,
+        .configurable = {cpp_name}_configurable,
+    }};
+
+    // 6. Let id be attr’s identifier.
+    auto {cpp_name}_id = "{attribute.name}"_utf16_fly_string;
+
+    // 7. Perform ! DefinePropertyOrThrow(target, id, desc).
+    MUST(object.define_property_or_throw({cpp_name}_id, {cpp_name}_desc));
+
+    // 8. FIXME: If attr’s type is an observable array type with type argument T, then set target’s backing observable array exotic object for attr to the result of creating an observable array exotic object in realm, given T, attr’s set an indexed value algorithm, and attr’s delete an indexed value algorithm.
+
+"""
+        )
 
 
 # https://webidl.spec.whatwg.org/#define-the-constants
@@ -169,3 +288,101 @@ def define_the_constants(out: TextIO, context: GenerationContext, includes: Gene
 
 """
         )
+
+
+# https://webidl.spec.whatwg.org/#dfn-attribute-getter
+# The attribute getter is created as follows, given an attribute attribute, a namespace or interface target, and a realm realm:
+def write_attribute_getters(out: TextIO, context: GenerationContext, includes: GeneratedIncludes) -> None:
+    interface = context.module.interface
+    if interface is None:
+        return
+
+    for attribute in interface.attributes:
+        write_attribute_getter(out, context, includes, attribute)
+
+
+def write_attribute_getter(
+    out: TextIO,
+    context: GenerationContext,
+    includes: GeneratedIncludes,
+    attribute: Attribute,
+) -> None:
+    interface = context.module.interface
+    if interface is None:
+        return
+
+    return_value = type_conversion.idl_value_to_javascript_value(attribute.type, "R", includes, context)
+    out.write(
+        f"""JS_DEFINE_NATIVE_FUNCTION({interface.prototype_class}::{attribute_getter_callback_name(attribute)})
+{{
+    WebIDL::log_trace(vm, "{interface.prototype_class}::{attribute_getter_callback_name(attribute)}");
+    auto& realm = *vm.current_realm();
+
+    // 1. Let steps be the following series of steps:
+
+    // 1. Try running the following steps:
+
+    // 1. Let idlObject be null.
+    [[maybe_unused]] {fully_qualified_name(interface)}* idl_object = nullptr;
+
+    // 2. If target is an interface, and attribute is a regular attribute:
+
+    // 1. Let jsValue be the this value, if it is not null or undefined, or realm’s global object otherwise. (This will subsequently cause a TypeError in a few steps, if the global object does not implement target and [LegacyLenientThis] is not specified.)
+    auto js_value = vm.this_value();
+    if (js_value.is_nullish())
+        js_value = &realm.global_object();
+
+    // 2. FIXME: If jsValue is a platform object, then perform a security check, passing jsValue, attribute’s identifier, and "getter".
+
+    // 3. If jsValue does not implement target, then:
+    if (auto impl = js_value.as_if<{fully_qualified_name(interface)}>()) {{
+        // 5. Set idlObject to the IDL interface type value that represents a reference to jsValue.
+        idl_object = impl.ptr();
+    }} else {{
+        // 1. FIXME: If attribute was specified with the [LegacyLenientThis] extended attribute, then return undefined.
+
+        // 2. Otherwise, throw a TypeError.
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "{interface.namespaced_name}");
+    }}
+
+    // 4. FIXME: If attribute’s type is an observable array type, then return jsValue’s backing observable array exotic object for attribute.
+
+    // 3. Let R be the result of running the getter steps of attribute with idlObject as this.
+    auto R = TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->{attribute_cpp_name(attribute)}(); }}));
+
+    // 4. Return the result of converting R to a JavaScript value of the type attribute is declared as.
+    return {return_value};
+
+    // 2. And then, if an exception E was thrown:
+
+    // 1. FIXME: If attribute’s type is a promise type, then return ! Call(%Promise.reject%, %Promise%, «E»).
+
+    // 2. Otherwise, end these steps and allow the exception to propagate.
+
+    // 2. Let name be the string "get " prepended to attribute’s identifier.
+
+    // 3. Let F be CreateBuiltinFunction(steps, 0, name, « », realm).
+
+    // 4. Return F.
+}}
+
+"""
+    )
+
+
+def attribute_cpp_name(attribute: Attribute) -> str:
+    return make_name_acceptable_cpp(title_case_to_snake_case(attribute.name))
+
+
+def attribute_getter_callback_name(attribute: Attribute) -> str:
+    return f"{attribute_cpp_name(attribute)}_getter"
+
+
+def attribute_setter_callback_name(attribute: Attribute) -> str:
+    return f"{attribute_cpp_name(attribute)}_setter"
+
+
+def fully_qualified_name(interface: Interface) -> str:
+    parts = interface.path.parts
+    namespace_name = parts[parts.index("LibWeb") + 1]
+    return f"{namespace_name}::{interface.implemented_name}"
