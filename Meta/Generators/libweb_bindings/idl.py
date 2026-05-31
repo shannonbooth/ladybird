@@ -7,6 +7,7 @@ from typing import TextIO
 from typing import Union
 
 from Generators.libweb_bindings import type_conversion
+from Generators.libweb_bindings.context import GenerationContext
 from Generators.libweb_bindings.includes import GeneratedIncludes
 from Utils.utils import make_name_acceptable_cpp
 from Utils.utils import title_case_to_snake_case
@@ -18,15 +19,15 @@ from Utils.webidl_parser import Module
 
 
 def write_header(out: TextIO, module: Module) -> None:
+    context = GenerationContext(module)
     includes = GeneratedIncludes()
     body = StringIO()
-    local_types = {enumeration.name for enumeration in module.enumerations}
 
     for enumeration in module.enumerations:
         write_enumeration_declaration(body, enumeration, includes)
 
     for dictionary in module.dictionaries:
-        write_dictionary_declaration(body, dictionary, includes, local_types)
+        write_dictionary_declaration(body, dictionary, includes, context)
 
     out.write("#pragma once\n\n")
     includes.write(out)
@@ -51,19 +52,23 @@ def write_enumeration_declaration(out: TextIO, enumeration: Enumeration, include
 
 
 def write_dictionary_declaration(
-    out: TextIO, dictionary: Dictionary, includes: GeneratedIncludes, local_types: set[str]
+    out: TextIO,
+    dictionary: Dictionary,
+    includes: GeneratedIncludes,
+    context: GenerationContext,
 ) -> None:
     includes.add("LibJS/Forward.h")
     includes.add("LibJS/Runtime/Value.h")
 
     out.write(f"struct {dictionary.name} {{\n")
     for member in dictionary.members:
-        type_conversion.add_header_includes_for_type(member, includes, local_types)
+        type_conversion.add_header_includes_for_type(member, includes, context)
 
         default_value = ""
         if member.default_value is not None:
-            default_value = f" {type_conversion.cpp_default_value_conversion(member)} "
-        out.write(f"    {type_conversion.cpp_type(member)} {type_conversion.cpp_name(member)} {{{default_value}}};\n")
+            default_value = f" {type_conversion.cpp_default_value_conversion(member, context)} "
+        cpp_type = type_conversion.cpp_type(member, context)
+        out.write(f"    {cpp_type} {type_conversion.cpp_name(member)} {{{default_value}}};\n")
     out.write("};\n\n")
     out.write(
         f"JS::ThrowCompletionOr<{dictionary.name}> {conversion_function_name(dictionary)}(JS::VM&, JS::Value);\n\n"
@@ -71,6 +76,7 @@ def write_dictionary_declaration(
 
 
 def write_implementation(out: TextIO, module: Module) -> None:
+    context = GenerationContext(module)
     includes = GeneratedIncludes()
     includes.add_binding(module.path.stem)
     body = StringIO()
@@ -79,7 +85,7 @@ def write_implementation(out: TextIO, module: Module) -> None:
         write_enumeration_conversion(body, enumeration, includes)
 
     for dictionary in module.dictionaries:
-        write_dictionary_conversion(body, dictionary, includes)
+        write_dictionary_conversion(body, dictionary, includes, context)
 
     includes.write(out)
     out.write("namespace Web::Bindings {\n\n")
@@ -140,7 +146,12 @@ String idl_enum_to_string({enumeration.name} value)
     )
 
 
-def write_dictionary_conversion(out: TextIO, dictionary: Dictionary, includes: GeneratedIncludes) -> None:
+def write_dictionary_conversion(
+    out: TextIO,
+    dictionary: Dictionary,
+    includes: GeneratedIncludes,
+    context: GenerationContext,
+) -> None:
     includes.add("LibJS/Runtime/Error.h")
     includes.add("LibJS/Runtime/VM.h")
     includes.add("LibJS/Runtime/Value.h")
@@ -165,9 +176,10 @@ JS::ThrowCompletionOr<{dictionary.name}> {conversion_function_name(dictionary)}(
 
     # 4.1. For each dictionary member member declared on dictionary, in lexicographical order:
     for member in dictionary.members:
-        conversion = type_conversion.to_idl_value(member, "js_member_value", includes)
+        conversion = type_conversion.to_idl_value(member, "js_member_value", includes, context)
+        cpp_type = type_conversion.cpp_type(member, context)
         out.write(
-            f"""        .{type_conversion.cpp_name(member)} = TRY([&]() -> JS::ThrowCompletionOr<{type_conversion.cpp_type(member)}> {{
+            f"""        .{type_conversion.cpp_name(member)} = TRY([&]() -> JS::ThrowCompletionOr<{cpp_type}> {{
             // 1. Let key be the identifier of member.
             // 2. If jsDict is either undefined or null, then:
             //     1. Let jsMemberValue be undefined.
@@ -191,7 +203,7 @@ JS::ThrowCompletionOr<{dictionary.name}> {conversion_function_name(dictionary)}(
             out.write(
                 f"""            // 5. Otherwise, if jsMemberValue is undefined but member has a default value, then:
             // 1. Let idlMemberValue be the result of converting member's default value to an IDL value whose type is the type member is declared to be of.
-            auto idl_member_value = {type_conversion.cpp_default_value_conversion(member)};
+            auto idl_member_value = {type_conversion.cpp_default_value_conversion(member, context)};
 
             // 2. Set idlDict[key] to idlMemberValue.
             return idl_member_value;
@@ -204,7 +216,11 @@ JS::ThrowCompletionOr<{dictionary.name}> {conversion_function_name(dictionary)}(
 """
             )
         else:
-            raise RuntimeError(f"Unsupported optional dictionary member '{member.name}' on '{dictionary.name}' without default value")
+            out.write(
+                f"""            // 7. Otherwise, jsMemberValue is undefined and the member is optional.
+            return {type_conversion.cpp_empty_value(member, context)};
+"""
+            )
 
         out.write("        }()),\n")
     out.write(

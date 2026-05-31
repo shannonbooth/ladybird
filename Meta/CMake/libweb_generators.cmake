@@ -299,6 +299,7 @@ function (generate_js_bindings target)
     set(bindings_generator_dependencies
         "${bindings_generator}"
         "${LADYBIRD_SOURCE_DIR}/Meta/Generators/libweb_bindings/__init__.py"
+        "${LADYBIRD_SOURCE_DIR}/Meta/Generators/libweb_bindings/context.py"
         "${LADYBIRD_SOURCE_DIR}/Meta/Generators/libweb_bindings/idl.py"
         "${LADYBIRD_SOURCE_DIR}/Meta/Generators/libweb_bindings/includes.py"
         "${LADYBIRD_SOURCE_DIR}/Meta/Generators/libweb_bindings/intrinsics.py"

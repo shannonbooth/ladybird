@@ -75,6 +75,14 @@ class DictionaryMember:
 
 
 @dataclass
+class CallbackFunction:
+    name: str
+    path: Path
+    return_type: str
+    extended_attributes: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class Enumeration:
     name: str
     path: Path
@@ -86,6 +94,7 @@ class Enumeration:
 class Module:
     path: Path
     interface: Optional[Interface] = None
+    callback_functions: List[CallbackFunction] = field(default_factory=list)
     dictionaries: List[Dictionary] = field(default_factory=list)
     enumerations: List[Enumeration] = field(default_factory=list)
 
@@ -165,8 +174,7 @@ class Parser:
                     self.parse_interface(extended_attributes, is_callback_interface=True),
                 )
             elif self.next_is_keyword("callback"):
-                self.consume_keyword("callback")
-                self.consume_statement_text()
+                module.callback_functions.append(self.parse_callback_function(extended_attributes))
             elif self.next_is_keyword("namespace"):
                 module.interface = self.set_or_check_module_interface(
                     module.interface,
@@ -324,6 +332,26 @@ class Parser:
             return None
 
         return Dictionary(name=dictionary_name, path=self.path, members=members)
+
+    def parse_callback_function(self, extended_attributes: Dict[str, str]) -> CallbackFunction:
+        self.consume_keyword("callback")
+        self.consume_whitespace()
+
+        name = self.parse_identifier_ending_with_space_or("=")
+        self.consume_whitespace()
+        self.assert_specific("=")
+        self.consume_whitespace()
+
+        return_type = self.parse_type()
+        self.consume_whitespace()
+        self.consume_statement_text()
+
+        return CallbackFunction(
+            name=name,
+            path=self.path,
+            return_type=return_type,
+            extended_attributes=extended_attributes,
+        )
 
     def parse_type(self) -> str:
         if self.lexer.consume_specific("("):
