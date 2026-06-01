@@ -300,6 +300,12 @@ def cpp_empty_value(member: DictionaryMember, context: GenerationContext) -> str
     return "OptionalNone {}"
 
 
+def cpp_null_value(idl_type: IDLType, context: GenerationContext) -> str:
+    if cpp_type_for_idl_type_details(idl_type, context).gc_ref_target_type:
+        return "nullptr"
+    return "OptionalNone {}"
+
+
 def add_header_includes_for_idl_type(
     idl_type: IDLType,
     includes: GeneratedIncludes,
@@ -643,9 +649,18 @@ def symbol_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
 
 # 3.2.15. Interface types, https://webidl.spec.whatwg.org/#js-interface
 def interface_to_idl_value(value_name: str, includes: GeneratedIncludes, interface: Interface) -> str:
+    includes.add("LibJS/Runtime/Error.h")
+    includes.add("LibJS/Runtime/Value.h")
+    includes.add("LibJS/Runtime/ValueInlines.h")
+    includes.add(implementation_header_for_interface(interface))
+
     # 1. If V implements I, then return the IDL interface type value that represents a reference to that platform object.
     # 2. Throw a TypeError.
-    raise RuntimeError("interface to IDL value conversion is not yet implemented")
+    return f"""[&]() -> JS::ThrowCompletionOr<GC::Ref<{fully_qualified_name_for_interface(interface)}>> {{
+        if (auto impl = {value_name}.as_if<{fully_qualified_name_for_interface(interface)}>())
+            return *impl;
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "{interface.name}");
+    }}()"""
 
 
 # 3.2.16. Callback interface types, https://webidl.spec.whatwg.org/#js-callback-interface
@@ -721,9 +736,7 @@ def nullable_to_idl_value(
     inner_type = member_type.clone_with_nullable(False)
     inner_member = DictionaryMember(name=member.name, type=inner_type, required=True)
     inner_conversion = to_idl_value(inner_member, value_name, includes, context)
-    null_value = (
-        "nullptr" if cpp_type_for_idl_type_details(member_type, context).gc_ref_target_type else "OptionalNone {}"
-    )
+    null_value = cpp_null_value(member_type, context)
     return f"""[&]() -> JS::ThrowCompletionOr<{cpp_type(member, context)}> {{
         if ({value_name}.is_nullish())
             return {null_value};
@@ -1123,7 +1136,7 @@ def cpp_default_value_conversion(
         return expression
 
     if member.default_value == "null":
-        return "OptionalNone {}"
+        return cpp_null_value(member_type, context)
     if member.type == "boolean":
         if member.default_value == "true":
             return "true"

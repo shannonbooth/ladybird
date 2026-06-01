@@ -63,8 +63,14 @@ def write_dictionary_declaration(
 ) -> None:
     includes.add("LibJS/Forward.h")
     includes.add("LibJS/Runtime/Value.h")
+    if dictionary.parent_name:
+        parent_dictionary = context.dictionary(dictionary.parent_name)
+        if parent_dictionary is None:
+            raise RuntimeError(f"Dictionary '{dictionary.name}' inherits from unknown dictionary '{dictionary.parent_name}'")
+        includes.add_binding(parent_dictionary.path.stem)
 
-    out.write(f"struct {dictionary.name} {{\n")
+    parent = f" : public {dictionary.parent_name}" if dictionary.parent_name else ""
+    out.write(f"struct {dictionary.name}{parent} {{\n")
     for member in dictionary.members:
         type_conversion.add_header_includes_for_type(member, includes, context)
 
@@ -164,6 +170,10 @@ def write_dictionary_conversion(
     includes.add("LibJS/Runtime/ValueInlines.h")
     includes.add("LibWeb/Bindings/ExceptionOrUtils.h")
 
+    parent_dictionary = context.dictionary(dictionary.parent_name) if dictionary.parent_name else None
+    if dictionary.parent_name and parent_dictionary is None:
+        raise RuntimeError(f"Dictionary '{dictionary.name}' inherits from unknown dictionary '{dictionary.parent_name}'")
+
     out.write(f"""// https://webidl.spec.whatwg.org/#es-dictionary
 JS::ThrowCompletionOr<{dictionary.name}> {conversion_function_name(dictionary)}(JS::VM& vm, JS::Value js_dict)
 {{
@@ -179,13 +189,16 @@ JS::ThrowCompletionOr<{dictionary.name}> {conversion_function_name(dictionary)}(
     // 5. Return idlDict.
     return {dictionary.name} {{
 """)
+    if parent_dictionary is not None:
+        out.write(f"        TRY({conversion_function_name(parent_dictionary)}(vm, js_dict)),\n")
 
     # 4.1. For each dictionary member member declared on dictionary, in lexicographical order:
     for member in dictionary.members:
         conversion = type_conversion.to_idl_value(member, "js_member_value", includes, context)
         cpp_type = type_conversion.cpp_type(member, context)
+        member_designator = "" if parent_dictionary is not None else f".{type_conversion.cpp_name(member)} = "
         out.write(
-            f"""        .{type_conversion.cpp_name(member)} = TRY([&]() -> JS::ThrowCompletionOr<{cpp_type}> {{
+            f"""        {member_designator}TRY([&]() -> JS::ThrowCompletionOr<{cpp_type}> {{
             // 1. Let key be the identifier of member.
             // 2. If jsDict is either undefined or null, then:
             //     1. Let jsMemberValue be undefined.

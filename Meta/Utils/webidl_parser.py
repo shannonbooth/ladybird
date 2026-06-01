@@ -197,6 +197,7 @@ class Interface:
 class Dictionary:
     name: str
     path: Path
+    parent_name: str = ""
     members: List["DictionaryMember"] = field(default_factory=list)
 
 
@@ -419,9 +420,10 @@ class Parser:
         dictionary_name = self.parse_identifier_ending_with_space_or(":", "{")
         self.consume_whitespace()
 
+        parent_name = ""
         if self.lexer.consume_specific(":"):
             self.consume_whitespace()
-            self.parse_identifier_ending_with_space_or("{")
+            parent_name = self.parse_identifier_ending_with_space_or("{")
             self.consume_whitespace()
 
         self.assert_specific("{")
@@ -478,7 +480,7 @@ class Parser:
         if is_partial:
             return None
 
-        return Dictionary(name=dictionary_name, path=self.path, members=members)
+        return Dictionary(name=dictionary_name, path=self.path, parent_name=parent_name, members=members)
 
     def parse_callback_function(self, extended_attributes: Dict[str, str]) -> CallbackFunction:
         self.consume_keyword("callback")

@@ -115,6 +115,7 @@ def write_implementation(out: TextIO, includes: GeneratedIncludes, context: Gene
     includes.add(implementation_header_for_interface(interface))
     if (
         interface.attributes
+        or interface.operations
         or stringifier_attribute(interface) is not None
         or interface.indexed_property_getter is not None
         or interface.named_property_getter is not None
@@ -895,7 +896,7 @@ def write_parameter_conversions(
                 out.write(
                     f"""    {operation_parameter_cpp_type(parameter, context)} {parameter_cpp_name} {{}};
     if (!{argument_value_name}.is_undefined())
-        {parameter_cpp_name} = TRY({conversion});
+        {parameter_cpp_name} = TRY(throw_dom_exception_if_needed(vm, [&] {{ return {conversion}; }}));
 
 """
                 )
@@ -903,13 +904,13 @@ def write_parameter_conversions(
                 out.write(
                     f"""    auto {parameter_cpp_name} = {operation_parameter_default_value(parameter, context)};
     if (!{argument_value_name}.is_undefined())
-        {parameter_cpp_name} = TRY({conversion});
+        {parameter_cpp_name} = TRY(throw_dom_exception_if_needed(vm, [&] {{ return {conversion}; }}));
 
 """
                 )
         else:
             out.write(
-                f"""    auto {parameter_cpp_name} = TRY({conversion});
+                f"""    auto {parameter_cpp_name} = TRY(throw_dom_exception_if_needed(vm, [&] {{ return {conversion}; }}));
 
 """
             )
@@ -1154,9 +1155,15 @@ def operation_parameter_default_value(parameter: OperationParameter, context: Ge
     if parameter.default_value is None:
         raise RuntimeError(f"Operation parameter '{parameter.name}' has no default value")
 
-    parameter_type = context.resolve_typedef(parameter.type).name
+    member = DictionaryMember(name=parameter.name, type=parameter.type, required=True)
+    resolved_parameter_type = context.resolve_typedef(parameter.type)
+    parameter_type = resolved_parameter_type.name
     if parameter.default_value == "{}":
         return f"{parameter_type} {{}}"
+    if parameter.default_value == "null":
+        cpp_value_type = type_conversion.cpp_value_type(member, context)
+        null_value = type_conversion.cpp_null_value(resolved_parameter_type, context)
+        return f"{cpp_value_type} {{ {null_value} }}"
     if parameter.default_value in ("true", "false"):
         return parameter.default_value
     if parameter.default_value == "0":
