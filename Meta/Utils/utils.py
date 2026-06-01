@@ -103,6 +103,23 @@ def underlying_type_for_enum(member_count: int) -> str:
 
 
 def make_name_acceptable_cpp(name: str) -> str:
-    if name == "float":
-        return "float_"
-    return name
+    if name in (
+        "break",
+        "char",
+        "class",
+        "continue",
+        "default",
+        "delete",
+        "float",
+        "for",
+        "initialize",
+        "inline",
+        "mutable",
+        "namespace",
+        "operator",
+        "register",
+        "switch",
+        "template",
+    ):
+        return f"{name}_"
+    return name.replace("-", "_")

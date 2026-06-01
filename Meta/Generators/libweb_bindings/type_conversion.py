@@ -915,6 +915,10 @@ def sequence_to_idl_value(
     includes: GeneratedIncludes,
     context: GenerationContext,
 ) -> str:
+    # 1. If V is not an Object, throw a TypeError.
+    # 2. Let method be ? GetMethod(V, %Symbol.iterator%).
+    # 3. If method is undefined, throw a TypeError.
+    # 4. Return the result of creating a sequence from V and method.
     raise RuntimeError("sequence to IDL value conversion is not yet implemented")
 
 
@@ -1199,6 +1203,7 @@ def idl_value_to_javascript_value(
     value: str,
     includes: GeneratedIncludes,
     context: GenerationContext,
+    recursion_depth: int = 0,
 ) -> str:
     includes.add("LibJS/Runtime/Value.h")
     idl_type = context.resolve_typedef(idl_type)
@@ -1212,7 +1217,9 @@ def idl_value_to_javascript_value(
             inner_type = member_type.clone_with_nullable(False)
             visited_value = f"visited_union_value{index}"
             visited_cpp_type = cpp_type_for_idl_type(inner_type, context)
-            converted_value = idl_value_to_javascript_value(inner_type, visited_value, includes, context)
+            converted_value = idl_value_to_javascript_value(
+                inner_type, visited_value, includes, context, recursion_depth + 1
+            )
             conversions.append(
                 f"""        [&]({visited_cpp_type} const& {visited_value}) -> JS::Value
         {{
@@ -1247,7 +1254,7 @@ def idl_value_to_javascript_value(
         inner_value = value
         if not value_is_nullable_pointer:
             inner_value = f"{value}.value()"
-        converted_value = idl_value_to_javascript_value(inner_type, inner_value, includes, context)
+        converted_value = idl_value_to_javascript_value(inner_type, inner_value, includes, context, recursion_depth + 1)
         has_value = value if value_is_nullable_pointer else f"{value}.has_value()"
         return f"""[&]() -> JS::Value {{
         if ({has_value})
@@ -1256,6 +1263,44 @@ def idl_value_to_javascript_value(
     }}()"""
 
     idl_type_name = idl_type.name
+
+    if isinstance(idl_type, IDLParameterizedType) and idl_type_name == "sequence":
+        includes.add("LibJS/Runtime/Array.h")
+        element_type = idl_type.parameters[0]
+        length_name = f"sequence_length{recursion_depth}"
+        array_name = f"sequence_array{recursion_depth}"
+        index_name = f"sequence_index{recursion_depth}"
+        element_name = f"sequence_element{recursion_depth}"
+        js_element_name = f"js_sequence_element{recursion_depth}"
+        converted_element = idl_value_to_javascript_value(
+            element_type, element_name, includes, context, recursion_depth + 1
+        )
+
+        return f"""[&]() -> JS::Value {{
+        // An IDL sequence<T> value S is converted to a JavaScript value as follows:
+        // 1. Let n be the length of S.
+        auto {length_name} = {value}.size();
+
+        // 2. Let A be ! ArrayCreate(n).
+        auto {array_name} = MUST(JS::Array::create(realm, {length_name}));
+
+        // 3. Initialize i to be 0.
+        // 4. For each element E of S, in order:
+        for (size_t {index_name} = 0; {index_name} < {length_name}; ++{index_name}) {{
+            auto& {element_name} = {value}.at({index_name});
+
+            // 1. Let V be the result of converting E to a JavaScript value of the type T.
+            JS::Value {js_element_name} = {converted_element};
+
+            // 2. Perform ! CreateDataProperty(A, ! ToString(i), V).
+            MUST({array_name}->create_data_property(JS::PropertyKey {{ {index_name} }}, {js_element_name}));
+
+            // 3. Set i to i + 1.
+        }}
+
+        // 5. Return A.
+        return {array_name};
+    }}()"""
 
     # https://webidl.spec.whatwg.org/#js-type-mapping
     # The result of converting an IDL value to a JavaScript value depends on the IDL type of the value.
