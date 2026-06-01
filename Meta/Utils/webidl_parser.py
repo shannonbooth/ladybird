@@ -167,6 +167,9 @@ class Interface:
     iterable: Optional[IterableDeclaration] = None
     named_property_getter: Optional[SpecialOperation] = None
     indexed_property_getter: Optional[SpecialOperation] = None
+    named_property_setter: Optional[SpecialOperation] = None
+    named_property_deleter: Optional[SpecialOperation] = None
+    indexed_property_setter: Optional[SpecialOperation] = None
     has_special_member: bool = False
     implemented_name: str = ""
     namespaced_name: str = ""
@@ -645,7 +648,7 @@ class Parser:
                 continue
 
             if parser.next_is_keyword("getter"):
-                special_operation = self.parse_special_operation(member_declaration)
+                special_operation = self.parse_special_operation(member_declaration, "getter")
                 identifier_type = special_operation.identifier_type
 
                 if identifier_type == "DOMString":
@@ -656,6 +659,30 @@ class Parser:
                     self.raise_parse_error(
                         f"named/indexed property getter must use DOMString or unsigned long, got '{identifier_type}'"
                     )
+                continue
+
+            if parser.next_is_keyword("setter"):
+                special_operation = self.parse_special_operation(member_declaration, "setter")
+                identifier_type = special_operation.identifier_type
+
+                if identifier_type == "DOMString":
+                    interface.named_property_setter = special_operation
+                elif identifier_type == "unsigned long":
+                    interface.indexed_property_setter = special_operation
+                else:
+                    self.raise_parse_error(
+                        f"named/indexed property setter must use DOMString or unsigned long, got '{identifier_type}'"
+                    )
+                continue
+
+            if parser.next_is_keyword("deleter"):
+                special_operation = self.parse_special_operation(member_declaration, "deleter")
+                identifier_type = special_operation.identifier_type
+
+                if identifier_type == "DOMString":
+                    interface.named_property_deleter = special_operation
+                else:
+                    self.raise_parse_error(f"named property deleter must use DOMString, got '{identifier_type}'")
                 continue
 
             if parser.next_is_special_member_declaration():
@@ -691,10 +718,10 @@ class Parser:
             key_type=key_type,
         )
 
-    def parse_special_operation(self, declaration: str) -> SpecialOperation:
+    def parse_special_operation(self, declaration: str, keyword: str) -> SpecialOperation:
         parser = Parser(self.path, declaration)
 
-        parser.consume_keyword("getter")
+        parser.consume_keyword(keyword)
         parser.consume_whitespace()
 
         return_type = parser.parse_type()

@@ -138,6 +138,9 @@ def can_use_shared_interface_prototype(interface: Interface) -> bool:
         and not interface.has_special_member
         and interface.named_property_getter is None
         and interface.indexed_property_getter is None
+        and interface.named_property_setter is None
+        and interface.named_property_deleter is None
+        and interface.indexed_property_setter is None
     )
 
 

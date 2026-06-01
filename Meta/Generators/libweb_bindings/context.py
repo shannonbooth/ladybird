@@ -85,6 +85,15 @@ class GenerationContext:
             merged_interface.indexed_property_getter = (
                 merged_interface.indexed_property_getter or partial_interface.indexed_property_getter
             )
+            merged_interface.named_property_setter = (
+                merged_interface.named_property_setter or partial_interface.named_property_setter
+            )
+            merged_interface.named_property_deleter = (
+                merged_interface.named_property_deleter or partial_interface.named_property_deleter
+            )
+            merged_interface.indexed_property_setter = (
+                merged_interface.indexed_property_setter or partial_interface.indexed_property_setter
+            )
             merged_interface.iterable = merged_interface.iterable or partial_interface.iterable
         return merged_interface
 

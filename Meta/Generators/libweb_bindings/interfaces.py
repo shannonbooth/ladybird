@@ -80,6 +80,18 @@ private:
         out.write(
             f"    JS_DECLARE_NATIVE_FUNCTION({special_operation_callback_name(interface.indexed_property_getter)});\n"
         )
+    if interface.named_property_getter is not None and interface.named_property_getter.name:
+        out.write(
+            f"    JS_DECLARE_NATIVE_FUNCTION({special_operation_callback_name(interface.named_property_getter)});\n"
+        )
+    if interface.named_property_setter is not None and interface.named_property_setter.name:
+        out.write(
+            f"    JS_DECLARE_NATIVE_FUNCTION({special_operation_callback_name(interface.named_property_setter)});\n"
+        )
+    if interface.named_property_deleter is not None and interface.named_property_deleter.name:
+        out.write(
+            f"    JS_DECLARE_NATIVE_FUNCTION({special_operation_callback_name(interface.named_property_deleter)});\n"
+        )
     out.write(
         """};
 
@@ -105,6 +117,7 @@ def write_implementation(out: TextIO, includes: GeneratedIncludes, context: Gene
         interface.attributes
         or stringifier_attribute(interface) is not None
         or interface.indexed_property_getter is not None
+        or interface.named_property_getter is not None
     ):
         includes.add("LibJS/Runtime/Error.h")
         includes.add("LibWeb/Bindings/ExceptionOrUtils.h")
@@ -194,6 +207,9 @@ void {interface.prototype_class}::initialize(JS::Realm& realm)
     define_the_operations(out, context)
     define_the_stringifier(out, context)
     define_the_indexed_property_getter(out, context, includes)
+    define_the_named_property_getter(out, context)
+    define_the_named_property_setter(out, context)
+    define_the_named_property_deleter(out, context)
 
     define_the_constants(out, context, includes)
     out.write(
@@ -222,6 +238,9 @@ void {interface.prototype_class}::define_unforgeable_attributes(JS::Realm& realm
     write_operations(out, context, includes)
     write_stringifier(out, context, includes)
     write_indexed_property_getter(out, context, includes)
+    write_named_property_getter(out, context, includes)
+    write_named_property_setter(out, context, includes)
+    write_named_property_deleter(out, context, includes)
 
 
 def ensure_interface_is_supported(interface: Interface) -> None:
@@ -238,6 +257,12 @@ def ensure_interface_is_supported(interface: Interface) -> None:
     supported_declarations.update(constructor.declaration for constructor in interface.constructors)
     if interface.indexed_property_getter is not None:
         supported_declarations.add(interface.indexed_property_getter.declaration)
+    if interface.named_property_getter is not None:
+        supported_declarations.add(interface.named_property_getter.declaration)
+    if interface.named_property_setter is not None:
+        supported_declarations.add(interface.named_property_setter.declaration)
+    if interface.named_property_deleter is not None:
+        supported_declarations.add(interface.named_property_deleter.declaration)
     if interface.iterable is not None:
         supported_declarations.add(interface.iterable.declaration)
     unsupported_declarations = [
@@ -419,8 +444,66 @@ def define_the_indexed_property_getter(
             f"""    object.define_native_function(realm, "{operation.name}"_utf16_fly_string, {special_operation_callback_name(operation)}, {len(operation.parameters)}, default_attributes);
 """
         )
+
+    if interface.named_property_getter is not None and interface.named_property_getter.name:
+        operation = interface.named_property_getter
+        out.write(
+            f"""    object.define_native_function(realm, "{operation.name}"_utf16_fly_string, {special_operation_callback_name(operation)}, {len(operation.parameters)}, default_attributes);
+"""
+        )
+
     out.write(
         """    object.define_direct_property(vm.well_known_symbol_iterator(), realm.intrinsics().array_prototype()->get_without_side_effects(vm.names.values), JS::Attribute::Configurable | JS::Attribute::Writable);
+
+"""
+    )
+
+
+def define_the_named_property_getter(out: TextIO, context: GenerationContext) -> None:
+    interface = context.interface_for_generation()
+    if interface is None or interface.named_property_getter is None:
+        return
+    if interface.indexed_property_getter is not None:
+        return
+
+    operation = interface.named_property_getter
+    if not operation.name:
+        return
+
+    out.write(
+        f"""    object.define_native_function(realm, "{operation.name}"_utf16_fly_string, {special_operation_callback_name(operation)}, {len(operation.parameters)}, default_attributes);
+
+"""
+    )
+
+
+def define_the_named_property_setter(out: TextIO, context: GenerationContext) -> None:
+    interface = context.interface_for_generation()
+    if interface is None or interface.named_property_setter is None:
+        return
+
+    operation = interface.named_property_setter
+    if not operation.name:
+        return
+
+    out.write(
+        f"""    object.define_native_function(realm, "{operation.name}"_utf16_fly_string, {special_operation_callback_name(operation)}, {len(operation.parameters)}, default_attributes);
+
+"""
+    )
+
+
+def define_the_named_property_deleter(out: TextIO, context: GenerationContext) -> None:
+    interface = context.interface_for_generation()
+    if interface is None or interface.named_property_deleter is None:
+        return
+
+    operation = interface.named_property_deleter
+    if not operation.name:
+        return
+
+    out.write(
+        f"""    object.define_native_function(realm, "{operation.name}"_utf16_fly_string, {special_operation_callback_name(operation)}, {len(operation.parameters)}, default_attributes);
 
 """
     )
@@ -885,6 +968,156 @@ def write_indexed_property_getter(
     )
 
 
+def write_named_property_getter(
+    out: TextIO,
+    context: GenerationContext,
+    includes: GeneratedIncludes,
+) -> None:
+    interface = context.interface_for_generation()
+    if interface is None or interface.named_property_getter is None:
+        return
+
+    operation = interface.named_property_getter
+    if not operation.name:
+        return
+
+    if len(operation.parameters) != 1:
+        raise RuntimeError(f"Unsupported named property getter arity on '{interface.name}'")
+
+    parameter = operation.parameters[0]
+    idl_parameter = DictionaryMember(name=parameter.name, type=parameter.type, required=True)
+    argument_conversion = type_conversion.to_idl_value(idl_parameter, "arg0", includes, context)
+    return_value = type_conversion.idl_value_to_javascript_value(operation.return_type, "R", includes, context)
+
+    out.write(
+        f"""JS_DEFINE_NATIVE_FUNCTION({interface.prototype_class}::{special_operation_callback_name(operation)})
+{{
+    WebIDL::log_trace(vm, "{interface.prototype_class}::{special_operation_callback_name(operation)}");
+    auto& realm = *vm.current_realm();
+
+    [[maybe_unused]] {fully_qualified_name(interface)}* idl_object = nullptr;
+
+    auto js_value = vm.this_value();
+    if (js_value.is_nullish())
+        js_value = &realm.global_object();
+
+    if (auto impl = js_value.as_if<{fully_qualified_name(interface)}>()) {{
+        idl_object = impl.ptr();
+    }} else {{
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "{interface.namespaced_name}");
+    }}
+
+    if (vm.argument_count() < 1)
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::BadArgCountOne, "{operation.name}");
+
+    auto arg0 = vm.argument(0);
+    auto {make_name_acceptable_cpp(parameter.name)} = TRY({argument_conversion});
+
+    auto R = TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->{special_operation_callback_name(operation)}({make_name_acceptable_cpp(parameter.name)}); }}));
+    return {return_value};
+}}
+
+"""
+    )
+
+
+def write_named_property_setter(
+    out: TextIO,
+    context: GenerationContext,
+    includes: GeneratedIncludes,
+) -> None:
+    interface = context.interface_for_generation()
+    if interface is None or interface.named_property_setter is None:
+        return
+
+    operation = interface.named_property_setter
+    if not operation.name:
+        return
+
+    write_named_property_operation(out, context, includes, operation)
+
+
+def write_named_property_deleter(
+    out: TextIO,
+    context: GenerationContext,
+    includes: GeneratedIncludes,
+) -> None:
+    interface = context.interface_for_generation()
+    if interface is None or interface.named_property_deleter is None:
+        return
+
+    operation = interface.named_property_deleter
+    if not operation.name:
+        return
+
+    write_named_property_operation(out, context, includes, operation)
+
+
+def write_named_property_operation(
+    out: TextIO,
+    context: GenerationContext,
+    includes: GeneratedIncludes,
+    operation: SpecialOperation,
+) -> None:
+    interface = context.interface_for_generation()
+    if interface is None:
+        return
+
+    if not operation.parameters:
+        raise RuntimeError(f"Unsupported named property operation arity on '{interface.name}'")
+
+    return_value = type_conversion.idl_value_to_javascript_value(operation.return_type, "R", includes, context)
+    arguments = ", ".join(make_name_acceptable_cpp(parameter.name) for parameter in operation.parameters)
+
+    out.write(
+        f"""JS_DEFINE_NATIVE_FUNCTION({interface.prototype_class}::{special_operation_callback_name(operation)})
+{{
+    WebIDL::log_trace(vm, "{interface.prototype_class}::{special_operation_callback_name(operation)}");
+    auto& realm = *vm.current_realm();
+
+    [[maybe_unused]] {fully_qualified_name(interface)}* idl_object = nullptr;
+
+    auto js_value = vm.this_value();
+    if (js_value.is_nullish())
+        js_value = &realm.global_object();
+
+    if (auto impl = js_value.as_if<{fully_qualified_name(interface)}>()) {{
+        idl_object = impl.ptr();
+    }} else {{
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "{interface.namespaced_name}");
+    }}
+
+"""
+    )
+    if len(operation.parameters) == 1:
+        out.write(
+            f"""    if (vm.argument_count() < 1)
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::BadArgCountOne, "{operation.name}");
+
+"""
+        )
+    else:
+        out.write(
+            f"""    if (vm.argument_count() < {len(operation.parameters)})
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::BadArgCountMany, "{operation.name}", "{len(operation.parameters)}");
+
+"""
+        )
+
+    write_parameter_conversions(out, operation.parameters, includes, context)
+
+    return_statement = "return JS::js_undefined();"
+    if context.resolve_typedef(operation.return_type).name != "undefined":
+        return_statement = f"return {return_value};"
+    out.write(
+        f"""    [[maybe_unused]] auto R = TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->{special_operation_callback_name(operation)}({arguments}); }}));
+    {return_statement}
+}}
+
+"""
+    )
+
+
 def attribute_cpp_name(attribute: Attribute) -> str:
     return make_name_acceptable_cpp(title_case_to_snake_case(attribute.name))
 
@@ -954,7 +1187,13 @@ def operation_parameter_cpp_type(parameter: OperationParameter, context: Generat
 
 
 def interface_requires_custom_prototype(interface: Interface) -> bool:
-    return interface.indexed_property_getter is not None
+    return (
+        interface.indexed_property_getter is not None
+        or interface.named_property_getter is not None
+        or interface.named_property_setter is not None
+        or interface.named_property_deleter is not None
+        or interface.indexed_property_setter is not None
+    )
 
 
 def attribute_getter_callback_name(attribute: Attribute) -> str:

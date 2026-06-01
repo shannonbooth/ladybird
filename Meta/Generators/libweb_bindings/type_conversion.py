@@ -611,6 +611,32 @@ def symbol_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
     raise RuntimeError("symbol to IDL value conversion is not yet implemented")
 
 
+# 3.2.15. Interface types, https://webidl.spec.whatwg.org/#js-interface
+def interface_to_idl_value(value_name: str, includes: GeneratedIncludes, interface: Interface) -> str:
+    # 1. If V implements I, then return the IDL interface type value that represents a reference to that platform object.
+    # 2. Throw a TypeError.
+    raise RuntimeError("interface to IDL value conversion is not yet implemented")
+
+
+# 3.2.16. Callback interface types, https://webidl.spec.whatwg.org/#js-callback-interface
+def callback_interface_to_idl_value() -> str:
+    # 1. If V is not an Object, then throw a TypeError.
+    # 2. Return the IDL callback interface type value that represents a reference to V, with the incumbent settings object as the callback context.
+    raise RuntimeError("callback interface to IDL value conversion is not yet implemented")
+
+
+# FIXME: Maybe we should put this here and call from idl.py?
+# 3.2.17. Dictionary types, https://webidl.spec.whatwg.org/#js-dictionary
+def dictionary_to_idl_value() -> str:
+    raise RuntimeError("dictionary to IDL value conversion is not yet implemented")
+
+# FIXME: Maybe we should put this here and call from idl.py?
+# 3.2.18. Enumeration types, https://webidl.spec.whatwg.org/#js-enumeration
+def enumeration_to_idl_value() -> str:
+    raise RuntimeError("enumeration to IDL value conversion is not yet implemented")
+
+
+# 3.2.19. Callback function types, https://webidl.spec.whatwg.org/#js-callback-function
 def callback_function_to_idl_value(
     callback_function: CallbackFunction,
     value_name: str,
@@ -649,74 +675,35 @@ def callback_function_to_idl_value(
                     }}()"""
 
 
-# FIXME: Factor this in a way matching the specification.
-def idl_value_to_javascript_value(
-    idl_type: Union[IDLType, str],
-    value: str,
-    includes: GeneratedIncludes,
-    context: GenerationContext,
-) -> str:
-    includes.add("LibJS/Runtime/Value.h")
-    idl_type = context.resolve_typedef(idl_type)
-
-    if idl_type.nullable:
-        inner_type = idl_type.clone_with_nullable(False)
-        inner_value = value
-        if context.interface(inner_type) is None:
-            inner_value = f"{value}.value()"
-        converted_value = idl_value_to_javascript_value(inner_type, inner_value, includes, context)
-        has_value = value if context.interface(inner_type) is not None else f"{value}.has_value()"
-        return f"""[&]() -> JS::Value {{
-        if ({has_value})
-            return JS::Value({converted_value});
-        return JS::js_null();
-    }}()"""
-
-    idl_type_name = idl_type.name
-
-    # https://webidl.spec.whatwg.org/#js-type-mapping
-    # The result of converting an IDL value to a JavaScript value depends on the IDL type of the value.
-    if idl_type_name == "undefined":
-        return "JS::js_undefined()"
-
-    if idl_type_name == "boolean":
-        return f"JS::Value({value})"
-
-    integer_type_map = {
-        "byte": "WebIDL::Byte",
-        "octet": "WebIDL::Octet",
-        "short": "WebIDL::Short",
-        "unsigned short": "WebIDL::UnsignedShort",
-        "long": "WebIDL::Long",
-        "unsigned long": "WebIDL::UnsignedLong",
-        "long long": "double",
-        "unsigned long long": "double",
-    }
-    if idl_type_name in integer_type_map:
-        includes.add("LibWeb/WebIDL/Types.h")
-        return f"JS::Value(static_cast<{integer_type_map[idl_type_name]}>({value}))"
-
-    if idl_type_name in ("float", "unrestricted float", "double", "unrestricted double"):
-        return f"JS::Value({value})"
-
-    if idl_type_name in ("DOMString", "ByteString", "USVString"):
-        includes.add("LibJS/Runtime/PrimitiveString.h")
-        return f"JS::PrimitiveString::create(vm, {value})"
-
-    if idl_type_name == "Promise":
-        includes.add("AK/TypeCasts.h")
-        includes.add("LibJS/Runtime/Promise.h")
-        includes.add("LibWeb/WebIDL/Promise.h")
-        return f"GC::Ref {{ as<JS::Promise>(*{value}->promise()) }}"
-
-    interface = context.interface(idl_type_name)
-    if interface is not None:
-        includes.add(implementation_header_for_interface(interface))
-        return f"&const_cast<{fully_qualified_name_for_interface(interface)}&>(*{value})"
-
-    raise RuntimeError(f"Unsupported IDL value conversion for '{idl_type_name}'")
+# 3.2.20. Nullable types — T?, https://webidl.spec.whatwg.org/#js-nullable-type
+def nullable_to_idl_value() -> str:
+    raise RuntimeError("nullable to IDL value conversion is not yet implemented")
 
 
+# 3.2.21. Sequences — sequence<T>, https://webidl.spec.whatwg.org/#js-sequence
+def sequence_to_idl_value() -> str:
+    raise RuntimeError("sequence to IDL value conversion is not yet implemented")
+
+
+# 3.2.22. Async sequences — async_sequence<T>, https://webidl.spec.whatwg.org/#js-async-iterable
+def async_sequence_to_idl_value() -> str:
+    raise RuntimeError("async sequence to IDL value conversion is not yet implemented")
+
+
+# 3.2.23. Records — record<K, V>, https://webidl.spec.whatwg.org/#js-record
+def record_to_idl_value() -> str:
+    raise RuntimeError("record to IDL value conversion is not yet implemented")
+
+
+# 3.2.24. Promise types — Promise<T>, https://webidl.spec.whatwg.org/#js-promise
+def promise_to_idl_value() -> str:
+    # 1. Let promiseCapability be ? NewPromiseCapability(%Promise%).
+    # 2. Perform ? Call(promiseCapability.[[Resolve]], undefined, « V »).
+    # 3. Return promiseCapability.
+    raise RuntimeError("promise to IDL value conversion is not yet implemented")
+
+
+# 3.2.25. Union types, https://webidl.spec.whatwg.org/#js-union
 def union_to_idl_value(
     member: DictionaryMemberOrAttribute,
     union_type: IDLUnionType,
@@ -834,6 +821,18 @@ def union_to_idl_value(
 {undefined_conversion}{nullable_conversion}{object_conversions}{boolean_conversion}{numeric_conversion}{string_conversion}{throw_type_error}    }}()"""
 
 
+# 3.2.26. Buffer source types, https://webidl.spec.whatwg.org/#js-buffer-source-types
+def buffer_source_to_idl_value() -> str:
+    raise RuntimeError("buffer source to IDL value conversion is not yet implemented")
+
+
+# 3.2.27. Frozen arrays — FrozenArray<T>, https://webidl.spec.whatwg.org/#js-frozen-array
+def frozen_array_to_idl_value() -> str:
+    # 1. Let values be the result of converting V to IDL type sequence<T>.
+    # 2. Return the result of creating a frozen array from values.
+    raise RuntimeError("frozen array to IDL value conversion is not yet implemented")
+
+
 def to_idl_value(
     member: DictionaryMemberOrAttribute,
     value_name: str,
@@ -906,6 +905,74 @@ def to_idl_value(
         return callback_function_to_idl_value(callback_function, value_name, includes)
     converter_name = make_name_acceptable_cpp(title_case_to_snake_case(type_name))
     return f"convert_to_idl_value_for_{converter_name}(vm, {value_name})"
+
+
+# FIXME: Factor this in a way matching the specification.
+def idl_value_to_javascript_value(
+    idl_type: Union[IDLType, str],
+    value: str,
+    includes: GeneratedIncludes,
+    context: GenerationContext,
+) -> str:
+    includes.add("LibJS/Runtime/Value.h")
+    idl_type = context.resolve_typedef(idl_type)
+
+    if idl_type.nullable:
+        inner_type = idl_type.clone_with_nullable(False)
+        inner_value = value
+        if context.interface(inner_type) is None:
+            inner_value = f"{value}.value()"
+        converted_value = idl_value_to_javascript_value(inner_type, inner_value, includes, context)
+        has_value = value if context.interface(inner_type) is not None else f"{value}.has_value()"
+        return f"""[&]() -> JS::Value {{
+        if ({has_value})
+            return JS::Value({converted_value});
+        return JS::js_null();
+    }}()"""
+
+    idl_type_name = idl_type.name
+
+    # https://webidl.spec.whatwg.org/#js-type-mapping
+    # The result of converting an IDL value to a JavaScript value depends on the IDL type of the value.
+    if idl_type_name == "undefined":
+        return "JS::js_undefined()"
+
+    if idl_type_name == "boolean":
+        return f"JS::Value({value})"
+
+    integer_type_map = {
+        "byte": "WebIDL::Byte",
+        "octet": "WebIDL::Octet",
+        "short": "WebIDL::Short",
+        "unsigned short": "WebIDL::UnsignedShort",
+        "long": "WebIDL::Long",
+        "unsigned long": "WebIDL::UnsignedLong",
+        "long long": "double",
+        "unsigned long long": "double",
+    }
+    if idl_type_name in integer_type_map:
+        includes.add("LibWeb/WebIDL/Types.h")
+        return f"JS::Value(static_cast<{integer_type_map[idl_type_name]}>({value}))"
+
+    if idl_type_name in ("float", "unrestricted float", "double", "unrestricted double"):
+        return f"JS::Value({value})"
+
+    if idl_type_name in ("DOMString", "ByteString", "USVString"):
+        includes.add("LibJS/Runtime/PrimitiveString.h")
+        return f"JS::PrimitiveString::create(vm, {value})"
+
+    if idl_type_name == "Promise":
+        includes.add("AK/TypeCasts.h")
+        includes.add("LibJS/Runtime/Promise.h")
+        includes.add("LibWeb/WebIDL/Promise.h")
+        return f"GC::Ref {{ as<JS::Promise>(*{value}->promise()) }}"
+
+    interface = context.interface(idl_type_name)
+    if interface is not None:
+        includes.add(implementation_header_for_interface(interface))
+        return f"&const_cast<{fully_qualified_name_for_interface(interface)}&>(*{value})"
+
+    raise RuntimeError(f"Unsupported IDL value conversion for '{idl_type_name}'")
 
 
 def cpp_default_value_conversion(
