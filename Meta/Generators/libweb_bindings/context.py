@@ -74,6 +74,12 @@ class GenerationContext:
             merged_interface.constants.extend(partial_interface.constants)
             merged_interface.attributes.extend(partial_interface.attributes)
             merged_interface.has_special_member = merged_interface.has_special_member or partial_interface.has_special_member
+            merged_interface.named_property_getter = (
+                merged_interface.named_property_getter or partial_interface.named_property_getter
+            )
+            merged_interface.indexed_property_getter = (
+                merged_interface.indexed_property_getter or partial_interface.indexed_property_getter
+            )
         return merged_interface
 
     def resolve_typedef(self, type_: IDLType | str) -> IDLType:

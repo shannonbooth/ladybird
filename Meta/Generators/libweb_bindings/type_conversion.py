@@ -119,7 +119,7 @@ def byte_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
 
     # 1. Let x be ? ConvertToInt(V, 8, "signed").
     # 2. Return the IDL byte value that represents the same numeric value as x.
-    return f"WebIDL::convert_to_int<WebIDL::Byte>(vm, {value_name}, WebIDL::EnforceRange::Yes, WebIDL::Clamp::No)"
+    return f"WebIDL::convert_to_int<WebIDL::Byte>(vm, {value_name}, WebIDL::EnforceRange::No, WebIDL::Clamp::No)"
 
 
 # 3.2.4.2. octet, https://webidl.spec.whatwg.org/#js-octet
@@ -129,7 +129,7 @@ def octet_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
 
     # 1. Let x be ? ConvertToInt(V, 8, "unsigned").
     # 2. Return the IDL octet value that represents the same numeric value as x.
-    return f"WebIDL::convert_to_int<WebIDL::Octet>(vm, {value_name}, WebIDL::EnforceRange::Yes, WebIDL::Clamp::No)"
+    return f"WebIDL::convert_to_int<WebIDL::Octet>(vm, {value_name}, WebIDL::EnforceRange::No, WebIDL::Clamp::No)"
 
 
 # 3.2.4.3. short, https://webidl.spec.whatwg.org/#js-short
@@ -139,7 +139,7 @@ def short_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
 
     # 1. Let x be ? ConvertToInt(V, 16, "signed").
     # 2. Return the IDL short value that represents the same numeric value as x.
-    return f"WebIDL::convert_to_int<WebIDL::Short>(vm, {value_name}, WebIDL::EnforceRange::Yes, WebIDL::Clamp::No)"
+    return f"WebIDL::convert_to_int<WebIDL::Short>(vm, {value_name}, WebIDL::EnforceRange::No, WebIDL::Clamp::No)"
 
 
 # 3.2.4.4. unsigned short, https://webidl.spec.whatwg.org/#js-unsigned-short
@@ -149,7 +149,7 @@ def unsigned_short_to_idl_value(value_name: str, includes: GeneratedIncludes) ->
 
     # 1. Let x be ? ConvertToInt(V, 16, "unsigned").
     # 2. Return the IDL unsigned short value that represents the same numeric value as x.
-    return f"WebIDL::convert_to_int<WebIDL::UnsignedShort>(vm, {value_name}, WebIDL::EnforceRange::Yes, WebIDL::Clamp::No)"
+    return f"WebIDL::convert_to_int<WebIDL::UnsignedShort>(vm, {value_name}, WebIDL::EnforceRange::No, WebIDL::Clamp::No)"
 
 
 # 3.2.4.5. long, https://webidl.spec.whatwg.org/#js-long
@@ -159,7 +159,7 @@ def long_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
 
     # 1. Let x be ? ConvertToInt(V, 32, "signed").
     # 2. Return the IDL long value that represents the same numeric value as x.
-    return f"WebIDL::convert_to_int<WebIDL::Long>(vm, {value_name}, WebIDL::EnforceRange::Yes, WebIDL::Clamp::No)"
+    return f"WebIDL::convert_to_int<WebIDL::Long>(vm, {value_name}, WebIDL::EnforceRange::No, WebIDL::Clamp::No)"
 
 
 # 3.2.4.6. unsigned long, https://webidl.spec.whatwg.org/#js-unsigned-long
@@ -169,7 +169,7 @@ def unsigned_long_to_idl_value(value_name: str, includes: GeneratedIncludes) -> 
 
     # 1. Let x be ? ConvertToInt(V, 32, "unsigned").
     # 2. Return the IDL unsigned long value that represents the same numeric value as x.
-    return f"WebIDL::convert_to_int<WebIDL::UnsignedLong>(vm, {value_name}, WebIDL::EnforceRange::Yes, WebIDL::Clamp::No)"
+    return f"WebIDL::convert_to_int<WebIDL::UnsignedLong>(vm, {value_name}, WebIDL::EnforceRange::No, WebIDL::Clamp::No)"
 
 
 # 3.2.4.7. long long, https://webidl.spec.whatwg.org/#js-long-long
@@ -179,7 +179,7 @@ def long_long_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
 
     # 1. Let x be ? ConvertToInt(V, 64, "signed").
     # 2. Return the IDL long long value that represents the same numeric value as x.
-    return f"WebIDL::convert_to_int<WebIDL::LongLong>(vm, {value_name}, WebIDL::EnforceRange::Yes, WebIDL::Clamp::No)"
+    return f"WebIDL::convert_to_int<WebIDL::LongLong>(vm, {value_name}, WebIDL::EnforceRange::No, WebIDL::Clamp::No)"
 
 
 # 3.2.4.8. unsigned long long, https://webidl.spec.whatwg.org/#js-unsigned-long-long
@@ -189,7 +189,7 @@ def unsigned_long_long_to_idl_value(value_name: str, includes: GeneratedIncludes
 
     # 1. Let x be ? ConvertToInt(V, 64, "unsigned").
     # 2. Return the IDL unsigned long long value that represents the same numeric value as x.
-    return f"WebIDL::convert_to_int<WebIDL::UnsignedLongLong>(vm, {value_name}, WebIDL::EnforceRange::Yes, WebIDL::Clamp::No)"
+    return f"WebIDL::convert_to_int<WebIDL::UnsignedLongLong>(vm, {value_name}, WebIDL::EnforceRange::No, WebIDL::Clamp::No)"
 
 
 # 3.2.5. float, https://webidl.spec.whatwg.org/#js-float

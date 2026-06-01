@@ -46,9 +46,18 @@ class Constant:
 
 
 @dataclass
+class OperationParameter:
+    name: str
+    type: IDLType
+
+
+@dataclass
 class SpecialOperation:
     identifier_type: str
     declaration: str
+    return_type: IDLType
+    name: str
+    parameters: List[OperationParameter]
 
 
 @dataclass
@@ -544,8 +553,8 @@ class Parser:
                 interface.has_special_member = True
 
             if stripped_statement.startswith("getter "):
-                identifier_type = parse_special_operation_identifier_type(stripped_statement)
-                special_operation = SpecialOperation(identifier_type=identifier_type, declaration=stripped_statement)
+                special_operation = self.parse_special_operation(stripped_statement)
+                identifier_type = special_operation.identifier_type
 
                 if identifier_type == "DOMString":
                     interface.named_property_getter = special_operation
@@ -556,6 +565,59 @@ class Parser:
                         f"named/indexed property getter must use DOMString or unsigned long, got '{identifier_type}'"
                     )
                 continue
+
+    def parse_special_operation(self, declaration: str) -> SpecialOperation:
+        parser = Parser(self.path, declaration)
+
+        parser.consume_keyword("getter")
+        parser.consume_whitespace()
+
+        return_type = parser.parse_type()
+        parser.consume_whitespace()
+
+        name = ""
+        if not parser.lexer.next_is("("):
+            name = parser.parse_identifier_ending_with_space_or("(")
+            parser.consume_whitespace()
+
+        parser.assert_specific("(")
+        parameters = parser.parse_operation_parameters()
+        parser.assert_specific(")")
+        parser.consume_whitespace()
+        if not parser.lexer.is_eof():
+            parser.raise_parse_error("unexpected trailing text after special operation")
+
+        if not parameters:
+            parser.raise_parse_error("special operation must have an identifier parameter")
+
+        return SpecialOperation(
+            identifier_type=str(parameters[0].type),
+            declaration=declaration,
+            return_type=return_type,
+            name=name,
+            parameters=parameters,
+        )
+
+    def parse_operation_parameters(self) -> List[OperationParameter]:
+        parameters: List[OperationParameter] = []
+
+        self.consume_whitespace()
+        while not self.lexer.next_is(")"):
+            if self.lexer.consume_specific("["):
+                self.parse_extended_attributes()
+                self.consume_whitespace()
+
+            parameter_type = self.parse_type()
+            self.consume_whitespace()
+            parameter_name = self.parse_identifier_ending_with_space_or(",", ")")
+            parameters.append(OperationParameter(name=parameter_name, type=parameter_type))
+
+            self.consume_whitespace()
+            if not self.lexer.consume_specific(","):
+                break
+            self.consume_whitespace()
+
+        return parameters
 
     def parse_constant(self, declaration: str) -> Constant:
         parser = Parser(self.path, declaration)
@@ -829,104 +891,3 @@ def split_top_level_statements(text: str) -> List[str]:
         statements.append(trailing_text)
 
     return statements
-
-
-def strip_leading_extended_attributes(text: str) -> str:
-    remaining_text = text.lstrip()
-    while remaining_text.startswith("["):
-        closing_bracket = find_matching_closer(remaining_text, 0, "[", "]")
-        remaining_text = remaining_text[closing_bracket + 1 :].lstrip()
-    return remaining_text
-
-
-def parse_special_operation_identifier_type(statement: str) -> str:
-    parenthesized_text = extract_final_parenthesized_group(statement)
-    parameter_text = split_top_level_items(parenthesized_text, ",")[0].strip()
-    parameter_text = strip_leading_extended_attributes(parameter_text)
-
-    last_space = find_last_top_level_whitespace(parameter_text)
-    if last_space == -1:
-        raise ParseError(f"could not determine getter identifier type from '{statement}'")
-
-    return normalize_whitespace(parameter_text[:last_space])
-
-
-def extract_final_parenthesized_group(text: str) -> str:
-    stripped_text = text.rstrip()
-    if not stripped_text.endswith(")"):
-        raise ParseError(f"expected a trailing parameter list in '{text}'")
-
-    closing_index = len(stripped_text) - 1
-    opening_index = find_matching_opener(stripped_text, closing_index, "(", ")")
-    return stripped_text[opening_index + 1 : closing_index]
-
-
-def split_top_level_items(text: str, delimiter: str) -> List[str]:
-    items: List[str] = []
-    start = 0
-    nesting_state = NestingState()
-    active_quote = ""
-
-    for index, character in enumerate(text):
-        if active_quote:
-            if character == active_quote:
-                active_quote = ""
-            continue
-
-        if character in ('"', "'"):
-            active_quote = character
-            continue
-
-        if character == delimiter and nesting_state.is_at_top_level():
-            items.append(text[start:index])
-            start = index + 1
-            continue
-
-        nesting_state.update_for_character(character)
-
-    items.append(text[start:])
-    return items
-
-
-def find_last_top_level_whitespace(text: str) -> int:
-    last_space = -1
-    nesting_state = NestingState()
-
-    for index, character in enumerate(text):
-        if character.isspace() and nesting_state.is_at_top_level():
-            last_space = index
-        nesting_state.update_for_character(character)
-
-    return last_space
-
-
-def find_matching_closer(text: str, start_index: int, opener: str, closer: str) -> int:
-    depth = 0
-    for index in range(start_index, len(text)):
-        character = text[index]
-        if character == opener:
-            depth += 1
-        elif character == closer:
-            depth -= 1
-            if depth == 0:
-                return index
-
-    raise ParseError(f"unterminated '{opener}' in '{text}'")
-
-
-def find_matching_opener(text: str, start_index: int, opener: str, closer: str) -> int:
-    depth = 0
-    for index in range(start_index, -1, -1):
-        character = text[index]
-        if character == closer:
-            depth += 1
-        elif character == opener:
-            depth -= 1
-            if depth == 0:
-                return index
-
-    raise ParseError(f"unterminated '{opener}' in '{text}'")
-
-
-def normalize_whitespace(text: str) -> str:
-    return " ".join(text.split())

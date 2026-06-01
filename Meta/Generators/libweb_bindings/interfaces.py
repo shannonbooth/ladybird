@@ -11,7 +11,9 @@ from Generators.libweb_bindings.includes import GeneratedIncludes
 from Utils.utils import make_name_acceptable_cpp
 from Utils.utils import title_case_to_snake_case
 from Utils.webidl_parser import Attribute
+from Utils.webidl_parser import DictionaryMember
 from Utils.webidl_parser import Interface
+from Utils.webidl_parser import SpecialOperation
 
 
 def write_declaration(out: TextIO, includes: GeneratedIncludes, context: GenerationContext) -> None:
@@ -34,18 +36,40 @@ public:
 private:
 }};
 
-struct {interface.prototype_class} {{
+"""
+    )
+    if interface_requires_custom_prototype(interface):
+        out.write(
+            f"""class {interface.prototype_class} : public JS::Object {{
+    JS_OBJECT({interface.prototype_class}, JS::Object);
+    GC_DECLARE_ALLOCATOR({interface.prototype_class});
+
+public:
+    static void define_unforgeable_attributes(JS::Realm&, JS::Object&);
+
+    explicit {interface.prototype_class}(JS::Realm&);
+    virtual void initialize(JS::Realm&) override;
+    virtual ~{interface.prototype_class}() override;
+
+private:
+"""
+        )
+    else:
+        out.write(
+            f"""struct {interface.prototype_class} {{
 public:
     static void initialize(JS::Realm&, JS::Object&);
     static void define_unforgeable_attributes(JS::Realm&, JS::Object&);
 
 private:
 """
-    )
+        )
     for attribute in interface.attributes:
         out.write(f"    JS_DECLARE_NATIVE_FUNCTION({attribute_getter_callback_name(attribute)});\n")
         if attribute_has_setter(attribute):
             out.write(f"    JS_DECLARE_NATIVE_FUNCTION({attribute_setter_callback_name(attribute)});\n")
+    if interface.indexed_property_getter is not None:
+        out.write(f"    JS_DECLARE_NATIVE_FUNCTION({special_operation_callback_name(interface.indexed_property_getter)});\n")
     out.write(
         """};
 
@@ -67,7 +91,7 @@ def write_implementation(out: TextIO, includes: GeneratedIncludes, context: Gene
     if interface.parent_name:
         includes.add_binding(interface.parent_name)
     includes.add(implementation_header_for_interface(interface))
-    if interface.attributes:
+    if interface.attributes or interface.indexed_property_getter is not None:
         includes.add("LibJS/Runtime/Error.h")
         includes.add("LibWeb/Bindings/ExceptionOrUtils.h")
 
@@ -103,20 +127,55 @@ JS::ThrowCompletionOr<GC::Ref<JS::Object>> {interface.constructor_class}::constr
     return constructor.vm().throw_completion<JS::TypeError>(JS::ErrorType::NotAConstructor, "{interface.name}");
 }}
 
-void {interface.prototype_class}::initialize(JS::Realm& realm, JS::Object& object)
+"""
+    )
+    if interface_requires_custom_prototype(interface):
+        out.write(
+            f"""GC_DEFINE_ALLOCATOR({interface.prototype_class});
+
+{interface.prototype_class}::{interface.prototype_class}([[maybe_unused]] JS::Realm& realm)
+    : Object(ConstructWithPrototypeTag::Tag, {parent_prototype})
 {{
-    [[maybe_unused]] auto& vm = realm.vm();
+}}
+
+{interface.prototype_class}::~{interface.prototype_class}()
+{{
+}}
+
+void {interface.prototype_class}::initialize(JS::Realm& realm)
+{{
+    auto& object = *this;
+"""
+        )
+    else:
+        out.write(
+            f"""void {interface.prototype_class}::initialize(JS::Realm& realm, JS::Object& object)
+{{
+"""
+        )
+    out.write(
+        f"""    [[maybe_unused]] auto& vm = realm.vm();
     [[maybe_unused]] u8 default_attributes = JS::Attribute::Enumerable | JS::Attribute::Configurable | JS::Attribute::Writable;
 
     object.set_prototype({parent_prototype});
 """
     )
     define_the_regular_attributes(out, context, includes)
+    define_the_indexed_property_getter(out, context, includes)
 
     define_the_constants(out, context, includes)
     out.write(
         f"""    object.define_direct_property(vm.well_known_symbol_to_string_tag(), JS::PrimitiveString::create(vm, "{interface.name}"_string), JS::Attribute::Configurable);
-}}
+"""
+    )
+    if interface_requires_custom_prototype(interface):
+        out.write(
+            """
+    Base::initialize(realm);
+"""
+        )
+    out.write(
+        f"""}}
 
 void {interface.prototype_class}::define_unforgeable_attributes(JS::Realm& realm, [[maybe_unused]] JS::Object& object)
 {{
@@ -128,6 +187,7 @@ void {interface.prototype_class}::define_unforgeable_attributes(JS::Realm& realm
     )
     write_attribute_getters(out, context, includes)
     write_attribute_setters(out, context, includes)
+    write_indexed_property_getter(out, context, includes)
 
 
 def ensure_interface_is_supported(interface: Interface) -> None:
@@ -138,6 +198,8 @@ def ensure_interface_is_supported(interface: Interface) -> None:
 
     supported_declarations = {constant.declaration for constant in interface.constants}
     supported_declarations.update(attribute.declaration for attribute in interface.attributes)
+    if interface.indexed_property_getter is not None:
+        supported_declarations.add(interface.indexed_property_getter.declaration)
     unsupported_declarations = [
         declaration for declaration in interface.member_declarations if declaration not in supported_declarations
     ]
@@ -252,6 +314,28 @@ def define_the_attributes(
 
 """
         )
+
+
+def define_the_indexed_property_getter(
+    out: TextIO,
+    context: GenerationContext,
+    includes: GeneratedIncludes,
+) -> None:
+    interface = context.interface_for_generation()
+    if interface is None or interface.indexed_property_getter is None:
+        return
+
+    operation = interface.indexed_property_getter
+    if not operation.name:
+        raise RuntimeError(f"Unsupported anonymous indexed property getter on '{interface.name}'")
+
+    includes.add("LibJS/Runtime/ArrayPrototype.h")
+    out.write(
+        f"""    object.define_native_function(realm, "{operation.name}"_utf16_fly_string, {special_operation_callback_name(operation)}, {len(operation.parameters)}, default_attributes);
+    object.define_direct_property(vm.well_known_symbol_iterator(), realm.intrinsics().array_prototype()->get_without_side_effects(vm.names.values), JS::Attribute::Configurable | JS::Attribute::Writable);
+
+"""
+    )
 
 
 # https://webidl.spec.whatwg.org/#define-the-constants
@@ -478,6 +562,59 @@ def write_attribute_setter(
     )
 
 
+def write_indexed_property_getter(
+    out: TextIO,
+    context: GenerationContext,
+    includes: GeneratedIncludes,
+) -> None:
+    interface = context.interface_for_generation()
+    if interface is None or interface.indexed_property_getter is None:
+        return
+
+    operation = interface.indexed_property_getter
+    if not operation.name:
+        raise RuntimeError(f"Unsupported anonymous indexed property getter on '{interface.name}'")
+
+    if len(operation.parameters) != 1:
+        raise RuntimeError(f"Unsupported indexed property getter arity on '{interface.name}'")
+
+    parameter = operation.parameters[0]
+    idl_parameter = DictionaryMember(name=parameter.name, type=parameter.type)
+    argument_conversion = type_conversion.to_idl_value(idl_parameter, "arg0", includes, context)
+    return_value = type_conversion.idl_value_to_javascript_value(operation.return_type, "R", includes, context)
+
+    out.write(
+        f"""JS_DEFINE_NATIVE_FUNCTION({interface.prototype_class}::{special_operation_callback_name(operation)})
+{{
+    WebIDL::log_trace(vm, "{interface.prototype_class}::{special_operation_callback_name(operation)}");
+    auto& realm = *vm.current_realm();
+
+    [[maybe_unused]] {fully_qualified_name(interface)}* idl_object = nullptr;
+
+    auto js_value = vm.this_value();
+    if (js_value.is_nullish())
+        js_value = &realm.global_object();
+
+    if (auto impl = js_value.as_if<{fully_qualified_name(interface)}>()) {{
+        idl_object = impl.ptr();
+    }} else {{
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "{interface.namespaced_name}");
+    }}
+
+    if (vm.argument_count() < 1)
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::BadArgCountOne, "{operation.name}");
+
+    auto arg0 = vm.argument(0);
+    auto {make_name_acceptable_cpp(parameter.name)} = TRY({argument_conversion});
+
+    auto R = TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->{operation.name}({make_name_acceptable_cpp(parameter.name)}); }}));
+    return {return_value};
+}}
+
+"""
+    )
+
+
 def attribute_cpp_name(attribute: Attribute) -> str:
     return make_name_acceptable_cpp(title_case_to_snake_case(attribute.name))
 
@@ -490,12 +627,20 @@ def attribute_has_setter(attribute: Attribute) -> bool:
     return not attribute.readonly or "PutForwards" in attribute.extended_attributes
 
 
+def interface_requires_custom_prototype(interface: Interface) -> bool:
+    return interface.indexed_property_getter is not None
+
+
 def attribute_getter_callback_name(attribute: Attribute) -> str:
     return f"{attribute_cpp_name(attribute)}_getter"
 
 
 def attribute_setter_callback_name(attribute: Attribute) -> str:
     return f"{attribute_cpp_name(attribute)}_setter"
+
+
+def special_operation_callback_name(operation: SpecialOperation) -> str:
+    return make_name_acceptable_cpp(title_case_to_snake_case(operation.name))
 
 
 def fully_qualified_name(interface: Interface) -> str:
