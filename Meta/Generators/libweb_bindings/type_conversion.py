@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 from dataclasses import dataclass
+from dataclasses import replace
 from enum import Enum
 from typing import Optional
 from typing import TextIO
@@ -22,7 +23,7 @@ from Utils.webidl_parser import IDLUnionType
 from Utils.webidl_parser import Interface
 from Utils.webidl_parser import OperationParameter
 
-DictionaryMemberOrAttribute = Union[DictionaryMember, Attribute]
+DictionaryMemberOrAttribute = Union[DictionaryMember, Attribute, OperationParameter]
 
 
 class ContainedStorageType(Enum):
@@ -71,6 +72,77 @@ def is_numeric_type(type_name: str) -> bool:
 
 def is_string_type(type_name: str) -> bool:
     return type_name in ("DOMString", "USVString", "ByteString")
+
+
+ARRAY_BUFFER_VIEW_TYPES = (
+    "Int8Array",
+    "Int16Array",
+    "Int32Array",
+    "Uint8Array",
+    "Uint16Array",
+    "Uint32Array",
+    "Uint8ClampedArray",
+    "BigInt64Array",
+    "BigUint64Array",
+    "Float16Array",
+    "Float32Array",
+    "Float64Array",
+    "DataView",
+)
+
+BUFFER_SOURCE_TYPES = ("ArrayBuffer", *ARRAY_BUFFER_VIEW_TYPES)
+TYPED_ARRAY_TYPES = tuple(type_name for type_name in ARRAY_BUFFER_VIEW_TYPES if type_name != "DataView")
+
+
+def is_buffer_source_type(idl_type: IDLType) -> bool:
+    return idl_type.name in BUFFER_SOURCE_TYPES
+
+
+def is_typed_array_type(idl_type: IDLType) -> bool:
+    return idl_type.name in TYPED_ARRAY_TYPES
+
+
+def add_buffer_source_type_include(idl_type: IDLType, includes: GeneratedIncludes) -> None:
+    if idl_type.name == "DataView":
+        includes.add("LibJS/Runtime/DataView.h")
+    elif idl_type.name == "ArrayBuffer":
+        includes.add("LibJS/Runtime/ArrayBuffer.h")
+    else:
+        includes.add("LibJS/Runtime/TypedArray.h")
+
+
+def builtin_type_to_union(idl_type: IDLType) -> Optional[IDLType]:
+    if idl_type.name == "ArrayBufferView":
+        return IDLUnionType([IDLType(name) for name in ARRAY_BUFFER_VIEW_TYPES], idl_type.nullable)
+    if idl_type.name == "BufferSource":
+        return IDLUnionType(
+            [IDLType(name) for name in ARRAY_BUFFER_VIEW_TYPES] + [IDLType("ArrayBuffer")],
+            idl_type.nullable,
+        )
+    return None
+
+
+def resolve_type_for_conversion(idl_type: Union[IDLType, str], context: GenerationContext) -> IDLType:
+    resolved_type = context.resolve_typedef(idl_type)
+
+    if isinstance(resolved_type, IDLUnionType):
+        return IDLUnionType(
+            [resolve_type_for_conversion(member_type, context) for member_type in resolved_type.member_types],
+            resolved_type.nullable,
+        )
+
+    if isinstance(resolved_type, IDLParameterizedType):
+        return IDLParameterizedType(
+            resolved_type.name,
+            [resolve_type_for_conversion(parameter, context) for parameter in resolved_type.parameters],
+            resolved_type.nullable,
+        )
+
+    builtin_type = builtin_type_to_union(resolved_type)
+    if builtin_type is not None:
+        return builtin_type
+
+    return resolved_type
 
 
 def contained_storage_type_to_cpp_name(contained_storage_type: ContainedStorageType) -> str:
@@ -126,6 +198,7 @@ def type_contains_gc_like_value(context: GenerationContext, idl_type: IDLType) -
 
     return (
         context.interface(idl_type) is not None
+        or is_buffer_source_type(idl_type)
         or context.callback_function(idl_type) is not None
         or idl_type.name in ("any", "object", "Promise")
     )
@@ -182,7 +255,7 @@ def union_member_type_for_default_value(
 
 
 def cpp_value_type(member: DictionaryMemberOrAttribute, context: GenerationContext) -> str:
-    member_type = context.resolve_typedef(member.type)
+    member_type = resolve_type_for_conversion(member.type, context)
     return cpp_type_for_idl_type(member_type, context, optional=is_optional_without_default(member))
 
 
@@ -195,6 +268,9 @@ def cpp_type_for_non_nullable_idl_type(idl_type: IDLType, context: GenerationCon
 
     if context.callback_function(type_name) is not None:
         return gc_ref_type("WebIDL::CallbackType")
+
+    if is_buffer_source_type(idl_type):
+        return gc_ref_type(f"JS::{type_name}")
 
     if type_name == "any":
         return make_cpp_type("JS::Value", ContainedStorageType.RootVector)
@@ -279,7 +355,7 @@ def with_optional_cpp_type(cpp_type: CppType) -> CppType:
 
 
 def cpp_type_for_idl_type_details(idl_type: IDLType, context: GenerationContext, optional: bool = False) -> CppType:
-    resolved_type = context.resolve_typedef(idl_type)
+    resolved_type = resolve_type_for_conversion(idl_type, context)
     if not resolved_type.nullable or isinstance(resolved_type, IDLUnionType):
         cpp_type = cpp_type_for_non_nullable_idl_type(resolved_type, context)
     else:
@@ -315,7 +391,7 @@ def cpp_empty_value(member: DictionaryMember, context: GenerationContext) -> str
 
 
 def cpp_null_value(idl_type: IDLType, context: GenerationContext) -> str:
-    if isinstance(context.resolve_typedef(idl_type), IDLUnionType):
+    if isinstance(resolve_type_for_conversion(idl_type, context), IDLUnionType):
         return "Empty {}"
     if cpp_type_for_idl_type_details(idl_type, context).gc_ref_target_type:
         return "nullptr"
@@ -351,7 +427,7 @@ def operation_parameter_default_value(parameter: OperationParameter, context: Ge
         raise RuntimeError(f"Operation parameter '{parameter.name}' has no default value")
 
     member = DictionaryMember(name=parameter.name, type=parameter.type, required=True)
-    resolved_parameter_type = context.resolve_typedef(parameter.type)
+    resolved_parameter_type = resolve_type_for_conversion(parameter.type, context)
     parameter_type = resolved_parameter_type.name
     if parameter.default_value == "{}":
         return f"{parameter_type} {{}}"
@@ -405,8 +481,7 @@ def write_single_operation_parameter_conversion(
 ) -> None:
     argument_value_name = f"arg{index}"
     parameter_name = operation_parameter_cpp_name(parameter)
-    conversion_member = DictionaryMember(name=parameter.name, type=parameter.type, required=True)
-    conversion = to_idl_value(conversion_member, argument_value_name, includes, context)
+    conversion = to_idl_value(parameter, argument_value_name, includes, context)
 
     out.write(f"    auto {argument_value_name} = vm.argument({index});\n")
 
@@ -450,8 +525,7 @@ def write_variadic_operation_parameter_conversion(
     parameter_name = operation_parameter_cpp_name(parameter)
     argument_value_name = f"variadic_argument{index}"
     element_name = f"{parameter_name}_element"
-    conversion_member = DictionaryMember(name=parameter.name, type=parameter.type, required=True)
-    conversion = to_idl_value(conversion_member, argument_value_name, includes, context)
+    conversion = to_idl_value(parameter, argument_value_name, includes, context)
     parameter_cpp_type = operation_parameter_cpp_type(parameter, context)
 
     out.write(
@@ -474,6 +548,8 @@ def add_header_includes_for_idl_type(
     includes: GeneratedIncludes,
     context: GenerationContext,
 ) -> None:
+    idl_type = resolve_type_for_conversion(idl_type, context)
+
     if isinstance(idl_type, IDLUnionType):
         includes.add("AK/Variant.h")
         if idl_type.includes_undefined() or idl_type.includes_nullable_type():
@@ -520,6 +596,11 @@ def add_header_includes_for_idl_type(
         includes.add("LibWeb/WebIDL/CallbackType.h")
         return
 
+    if is_buffer_source_type(idl_type):
+        includes.add("LibGC/Ptr.h")
+        add_buffer_source_type_include(idl_type, includes)
+        return
+
     if cpp_type_for_idl_type(idl_type, context) == type_name and not context.is_local_type(idl_type):
         includes.add_binding(type_name)
 
@@ -531,7 +612,7 @@ def add_header_includes_for_type(
 ) -> None:
     if is_optional_without_default(member) and not is_callback(member, context):
         includes.add("AK/Optional.h")
-    member_type = context.resolve_typedef(member.type)
+    member_type = resolve_type_for_conversion(member.type, context)
     if "Optional<" in cpp_type(member, context):
         includes.add("AK/Optional.h")
     add_header_includes_for_idl_type(member_type, includes, context)
@@ -556,27 +637,6 @@ def converter_function_name_for_idl_type(idl_type: IDLType) -> str:
 
 def unsupported_to_idl_value(idl_type: IDLType) -> str:
     raise RuntimeError(f"Unsupported IDL value conversion for '{idl_type}'")
-
-
-def is_buffer_source_type(idl_type: IDLType) -> bool:
-    return idl_type.name in (
-        "ArrayBuffer",
-        "DataView",
-        "Int8Array",
-        "Int16Array",
-        "Int32Array",
-        "Uint8Array",
-        "Uint8ClampedArray",
-        "Uint16Array",
-        "Uint32Array",
-        "BigInt64Array",
-        "BigUint64Array",
-        "Float16Array",
-        "Float32Array",
-        "Float64Array",
-        "ArrayBufferView",
-        "BufferSource",
-    )
 
 
 # 3.2.1. any, https://webidl.spec.whatwg.org/#js-any
@@ -895,7 +955,7 @@ def nullable_to_idl_value(
     includes: GeneratedIncludes,
     context: GenerationContext,
 ) -> str:
-    member_type = context.resolve_typedef(member.type)
+    member_type = resolve_type_for_conversion(member.type, context)
     inner_type = member_type.clone_with_nullable(False)
     inner_member = DictionaryMember(name=member.name, type=inner_type, required=True)
     inner_conversion = to_idl_value(inner_member, value_name, includes, context)
@@ -993,7 +1053,16 @@ def union_to_idl_value(
     object_conversions = ""
     platform_object_types = [member_type for member_type in member_types if context.interface(member_type) is not None]
     includes_object = any(member_type.name == "object" for member_type in member_types)
-    if platform_object_types or includes_object:
+    array_buffer_type = next((member_type for member_type in member_types if member_type.name == "ArrayBuffer"), None)
+    data_view_type = next((member_type for member_type in member_types if member_type.name == "DataView"), None)
+    typed_array_types = [member_type for member_type in member_types if is_typed_array_type(member_type)]
+    if (
+        platform_object_types
+        or includes_object
+        or array_buffer_type is not None
+        or data_view_type is not None
+        or typed_array_types
+    ):
         includes.add("AK/TypeCasts.h")
         object_conversions += f"""        if ({value_name}.is_object()) {{
             auto& object = {value_name}.as_object();
@@ -1018,6 +1087,46 @@ def union_to_idl_value(
                 return {variant_type} {{ GC::Ref {{ object }} }};
 """
             object_conversions += """            }
+"""
+
+        if array_buffer_type is not None:
+            includes.add("LibJS/Runtime/ArrayBuffer.h")
+            conversion_member = replace(member, type=array_buffer_type)
+            array_buffer_conversion = to_idl_value(conversion_member, value_name, includes, context)
+            object_conversions += f"""            // 6. If Type(V) is Object, V has an [[ArrayBufferData]] internal slot, and IsSharedArrayBuffer(V) is false, then:
+            if (auto* array_buffer = as_if<JS::ArrayBuffer>(object)) {{
+                if (!array_buffer->is_shared_array_buffer()) {{
+                    // 1. If types includes ArrayBuffer, then return the result of converting V to ArrayBuffer.
+                    auto array_buffer_union_type = TRY({array_buffer_conversion});
+                    return {variant_type} {{ array_buffer_union_type }};
+                }}
+            }}
+"""
+
+        if data_view_type is not None:
+            includes.add("LibJS/Runtime/DataView.h")
+            conversion_member = replace(member, type=data_view_type)
+            data_view_conversion = to_idl_value(conversion_member, value_name, includes, context)
+            object_conversions += f"""            // 8. If Type(V) is Object and V has a [[DataView]] internal slot, then:
+            if (as_if<JS::DataView>(object)) {{
+                // 1. If types includes DataView, then return the result of converting V to DataView.
+                auto data_view_union_type = TRY({data_view_conversion});
+                return {variant_type} {{ data_view_union_type }};
+            }}
+"""
+
+        if typed_array_types:
+            includes.add("LibJS/Runtime/TypedArray.h")
+            for typed_array_type in typed_array_types:
+                conversion_member = replace(member, type=typed_array_type)
+                typed_array_conversion = to_idl_value(conversion_member, value_name, includes, context)
+                typed_array_cpp_name = make_name_acceptable_cpp(title_case_to_snake_case(typed_array_type.name))
+                object_conversions += f"""            // 9. If Type(V) is Object and V has a [[TypedArrayName]] internal slot, then:
+            if (as_if<JS::{typed_array_type.name}>(object)) {{
+                // 1. If types includes a typed array type whose name is the value of V's [[TypedArrayName]] internal slot, then return the result of converting V to that type.
+                auto {typed_array_cpp_name}_union_type = TRY({typed_array_conversion});
+                return {variant_type} {{ {typed_array_cpp_name}_union_type }};
+            }}
 """
 
         if includes_object:
@@ -1083,7 +1192,102 @@ def buffer_source_to_idl_value(
     includes: GeneratedIncludes,
     context: GenerationContext,
 ) -> str:
-    raise RuntimeError("buffer source to IDL value conversion is not yet implemented")
+    member_type = resolve_type_for_conversion(member.type, context)
+    type_name = member_type.name
+    cpp_value = cpp_value_type(member, context)
+    extended_attributes = getattr(member, "extended_attributes", {})
+
+    includes.add("AK/TypeCasts.h")
+    includes.add("LibJS/Runtime/Error.h")
+    includes.add("LibJS/Runtime/Value.h")
+    add_buffer_source_type_include(member_type, includes)
+
+    def array_buffer_checks(buffer_name: str) -> str:
+        allow_shared_check = ""
+        if "AllowShared" not in extended_attributes:
+            allow_shared_check = f"""        // 2. If IsSharedArrayBuffer(V) is true, then throw a TypeError.
+        if ({buffer_name}->is_shared_array_buffer())
+            return vm.throw_completion<JS::TypeError>(JS::ErrorType::SharedArrayBuffer);
+
+"""
+
+        allow_resizable_check = ""
+        if "AllowResizable" not in extended_attributes:
+            allow_resizable_check = f"""        // 3. If the conversion is not to an IDL type associated with the [AllowResizable] extended attribute, and
+        //    IsFixedLengthArrayBuffer(V) is false, then throw a TypeError.
+        if (!{buffer_name}->is_fixed_length())
+            return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "fixed-length {type_name}");
+
+"""
+
+        return f"{allow_shared_check}{allow_resizable_check}"
+
+    def array_buffer_view_checks(buffer_name: str) -> str:
+        allow_shared_check = ""
+        if "AllowShared" not in extended_attributes:
+            allow_shared_check = f"""        // 2. If the conversion is not to an IDL type associated with the [AllowShared] extended attribute, and
+        //    IsSharedArrayBuffer(V.[[ViewedArrayBuffer]]) is true, then throw a TypeError.
+        if ({buffer_name}.is_shared_array_buffer())
+            return vm.throw_completion<JS::TypeError>(JS::ErrorType::SharedArrayBuffer);
+
+"""
+
+        allow_resizable_check = ""
+        if "AllowResizable" not in extended_attributes:
+            allow_resizable_check = f"""        // 3. If the conversion is not to an IDL type associated with the [AllowResizable] extended attribute, and
+        //    IsFixedLengthArrayBuffer(V.[[ViewedArrayBuffer]]) is false, then throw a TypeError.
+        if (!{buffer_name}.is_fixed_length())
+            return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "fixed-length {type_name}");
+
+"""
+
+        return f"{allow_shared_check}{allow_resizable_check}"
+
+    if type_name == "ArrayBuffer":
+        return f"""[&]() -> JS::ThrowCompletionOr<{cpp_value}> {{
+        // A JavaScript value V is converted to an IDL ArrayBuffer value by running the following algorithm:
+        // 1. If V is not an Object, or V does not have an [[ArrayBufferData]] internal slot, then throw a TypeError.
+        auto builtin_buffer = {value_name}.as_if<JS::ArrayBuffer>();
+        if (!builtin_buffer)
+            return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "{type_name}");
+
+{array_buffer_checks("builtin_buffer")}        // 4. Return the IDL ArrayBuffer value that is a reference to the same object as V.
+        return GC::Ref {{ *builtin_buffer }};
+    }}()"""
+
+    if type_name == "DataView":
+        includes.add("LibJS/Runtime/DataView.h")
+        return f"""[&]() -> JS::ThrowCompletionOr<{cpp_value}> {{
+        // A JavaScript value V is converted to an IDL DataView value by running the following algorithm:
+        // 1. If V is not an Object, or V does not have a [[DataView]] internal slot, then throw a TypeError.
+        auto builtin_buffer = {value_name}.as_if<JS::DataView>();
+        if (!builtin_buffer)
+            return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "{type_name}");
+
+        auto& viewed_array_buffer = *builtin_buffer->viewed_array_buffer();
+
+{array_buffer_view_checks("viewed_array_buffer")}        // 4. Return the IDL DataView value that is a reference to the same object as V.
+        return GC::Ref {{ *builtin_buffer }};
+    }}()"""
+
+    if is_typed_array_type(member_type):
+        includes.add("LibJS/Runtime/TypedArray.h")
+        return f"""[&]() -> JS::ThrowCompletionOr<{cpp_value}> {{
+        // A JavaScript value V is converted to an IDL typed array value by running the following algorithm:
+        // 1. Let T be the IDL type V is being converted to.
+        // 2. If V is not an Object, or V does not have a [[TypedArrayName]] internal slot with a value equal to T's name,
+        //    then throw a TypeError.
+        auto builtin_buffer = {value_name}.as_if<JS::{type_name}>();
+        if (!builtin_buffer)
+            return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "{type_name}");
+
+        auto& viewed_array_buffer = *builtin_buffer->viewed_array_buffer();
+
+{array_buffer_view_checks("viewed_array_buffer")}        // 5. Return the IDL value of type T that is a reference to the same object as V.
+        return GC::Ref {{ *builtin_buffer }};
+    }}()"""
+
+    return unsupported_to_idl_value(member_type)
 
 
 # 3.2.27. Frozen arrays — FrozenArray<T>, https://webidl.spec.whatwg.org/#js-frozen-array
@@ -1105,7 +1309,7 @@ def to_idl_value(
     includes: GeneratedIncludes,
     context: GenerationContext,
 ) -> str:
-    member_type = context.resolve_typedef(member.type)
+    member_type = resolve_type_for_conversion(member.type, context)
     type_name = member_type.name
 
     if member_type.nullable:
@@ -1206,7 +1410,7 @@ def idl_value_to_javascript_value(
     recursion_depth: int = 0,
 ) -> str:
     includes.add("LibJS/Runtime/Value.h")
-    idl_type = context.resolve_typedef(idl_type)
+    idl_type = resolve_type_for_conversion(idl_type, context)
 
     if isinstance(idl_type, IDLUnionType):
         includes.add("AK/Variant.h")
@@ -1360,7 +1564,7 @@ def cpp_default_value_conversion(
     if member.default_value is None:
         raise RuntimeError(f"Dictionary member '{member.name}' has no default value")
 
-    member_type = context.resolve_typedef(member.type)
+    member_type = resolve_type_for_conversion(member.type, context)
     if isinstance(member_type, IDLUnionType):
         if member.default_value == "null" and (
             member_type.includes_undefined() or member_type.includes_nullable_type()
@@ -1393,7 +1597,7 @@ def cpp_default_value_conversion(
             return "false"
     if member.default_value.startswith('"') and member.default_value.endswith('"'):
         default_value = title_casify(member.default_value.removeprefix('"').removesuffix('"'))
-        if context.resolve_typedef(member.type).name in ("DOMString", "USVString"):
+        if resolve_type_for_conversion(member.type, context).name in ("DOMString", "USVString"):
             return f"{member.default_value}_string"
         return f"{cpp_type(member, context)}::{default_value}"
     raise RuntimeError(f"Unsupported default value for dictionary member '{member.name}'")

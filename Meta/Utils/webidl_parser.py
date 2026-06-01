@@ -107,6 +107,7 @@ class OperationParameter:
     optional: bool = False
     default_value: Optional[str] = None
     variadic: bool = False
+    extended_attributes: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -758,8 +759,9 @@ class Parser:
 
         self.consume_whitespace()
         while not self.lexer.next_is(")"):
+            extended_attributes: Dict[str, str] = {}
             if self.lexer.consume_specific("["):
-                self.parse_extended_attributes()
+                extended_attributes.update(self.parse_extended_attributes())
                 self.consume_whitespace()
 
             optional = False
@@ -769,7 +771,7 @@ class Parser:
                 self.consume_whitespace()
 
             if self.lexer.consume_specific("["):
-                self.parse_extended_attributes()
+                extended_attributes.update(self.parse_extended_attributes())
                 self.consume_whitespace()
 
             parameter_type = self.parse_type()
@@ -792,6 +794,7 @@ class Parser:
                     optional=optional,
                     default_value=default_value,
                     variadic=variadic,
+                    extended_attributes=extended_attributes,
                 )
             )
             if not self.lexer.consume_specific(","):
