@@ -432,6 +432,8 @@ def operation_parameter_default_value(parameter: OperationParameter, context: Ge
     if parameter.default_value == "{}":
         return f"{parameter_type} {{}}"
     if parameter.default_value == "null":
+        if parameter_type == "any":
+            return "JS::js_null()"
         cpp_value = cpp_value_type(member, context)
         null_value = cpp_null_value(resolved_parameter_type, context)
         return f"{cpp_value} {{ {null_value} }}"
@@ -578,7 +580,18 @@ def add_header_includes_for_idl_type(
     if type_name == "any":
         includes.add("LibJS/Runtime/Value.h")
         return
-    if type_name in ("unsigned long", "unsigned long long"):
+    if type_name == "boolean" or type_name in ("float", "unrestricted float", "double", "unrestricted double"):
+        return
+    if type_name in (
+        "byte",
+        "octet",
+        "short",
+        "unsigned short",
+        "long",
+        "unsigned long",
+        "long long",
+        "unsigned long long",
+    ):
         includes.add("LibWeb/WebIDL/Types.h")
         return
     if is_string_type(type_name):
@@ -785,13 +798,19 @@ def unrestricted_float_to_idl_value(value_name: str, includes: GeneratedIncludes
 
 
 # 3.2.7. double, https://webidl.spec.whatwg.org/#js-double
-def double_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+def double_to_idl_value(value_name: str, includes: GeneratedIncludes, identifier: str) -> str:
+    includes.add("LibJS/Runtime/Error.h")
+    includes.add("LibJS/Runtime/ValueInlines.h")
+
     # 1. Let x be ? ToNumber(V).
     # 2. If x is NaN, +∞, or −∞, then throw a TypeError.
     # 3. Return the IDL double value that represents the same numeric value as x.
-    # FIXME.
-    raise RuntimeError("double to IDL value conversion is not yet implemented")
-    return f"{value_name}.to_double(vm)"
+    return f"""[&]() -> JS::ThrowCompletionOr<double> {{
+        auto x = TRY({value_name}.to_double(vm));
+        if (isinf(x) || isnan(x))
+            return vm.throw_completion<JS::TypeError>(JS::ErrorType::InvalidRestrictedFloatingPointParameter, "{identifier}");
+        return x;
+    }}()"""
 
 
 # 3.2.8. unrestricted double, https://webidl.spec.whatwg.org/#js-unrestricted-double
@@ -975,11 +994,57 @@ def sequence_to_idl_value(
     includes: GeneratedIncludes,
     context: GenerationContext,
 ) -> str:
+    includes.add("LibJS/Runtime/Error.h")
+    includes.add("LibJS/Runtime/Iterator.h")
+    includes.add("LibJS/Runtime/Value.h")
+    includes.add("LibJS/Runtime/ValueInlines.h")
+    includes.add("LibWeb/Bindings/ExceptionOrUtils.h")
+
+    element_type = sequence_type.parameters[0]
+    element_cpp_type = cpp_type_for_idl_type_details(element_type, context)
+    storage_type_name = contained_storage_type_to_cpp_name(element_cpp_type.contained_storage_type)
+    sequence_cpp_type = f"{storage_type_name}<{element_cpp_type.name}>"
+    element_member = DictionaryMember(name=member.name, type=element_type, required=True)
+    element_conversion = to_idl_value(element_member, "next_value0", includes, context)
+
     # 1. If V is not an Object, throw a TypeError.
     # 2. Let method be ? GetMethod(V, %Symbol.iterator%).
     # 3. If method is undefined, throw a TypeError.
     # 4. Return the result of creating a sequence from V and method.
-    raise RuntimeError("sequence to IDL value conversion is not yet implemented")
+    return f"""[&]() -> JS::ThrowCompletionOr<{sequence_cpp_type}> {{
+        if (!{value_name}.is_object())
+            return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObject, {value_name});
+
+        auto iterator_method0 = TRY({value_name}.get_method(vm, vm.well_known_symbol_iterator()));
+        if (!iterator_method0)
+            return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotIterable, {value_name});
+
+        // To create an IDL value of type sequence<T> given an iterable iterable and an iterator getter method, perform the following steps:
+        // 1. Let iteratorRecord be ? GetIteratorFromMethod(iterable, method).
+        auto iterator0 = TRY(JS::get_iterator_from_method(vm, {value_name}, *iterator_method0));
+
+        {sequence_cpp_type} sequence0;
+
+        // 2. Initialize i to be 0.
+        // 3. Repeat
+        for (;;) {{
+            // 1. Let next be ? IteratorStepValue(iteratorRecord).
+            auto next0 = TRY(JS::iterator_step_value(vm, iterator0));
+
+            // 2. If next is done, then return an IDL sequence value of type sequence<T> of length i, where the value of the element at index j is Sj.
+            if (!next0.has_value())
+                break;
+
+            // 3. Initialize Si to the result of converting next to an IDL value of type T.
+            auto next_value0 = next0.release_value();
+            auto sequence_item0 = TRY(throw_dom_exception_if_needed(vm, [&] {{ return {element_conversion}; }}));
+
+            // 4. Set i to i + 1.
+            sequence0.append(sequence_item0);
+        }}
+
+        return sequence0;
+    }}()"""
 
 
 # 3.2.22. Async sequences — async_sequence<T>, https://webidl.spec.whatwg.org/#js-async-iterable
@@ -1340,7 +1405,7 @@ def to_idl_value(
     if type_name == "unrestricted float":
         return unrestricted_float_to_idl_value(value_name, includes)
     if type_name == "double":
-        return double_to_idl_value(value_name, includes)
+        return double_to_idl_value(value_name, includes, member.name)
     if type_name == "unrestricted double":
         return unrestricted_double_to_idl_value(value_name, includes)
     if type_name == "bigint":
@@ -1468,7 +1533,7 @@ def idl_value_to_javascript_value(
 
     idl_type_name = idl_type.name
 
-    if isinstance(idl_type, IDLParameterizedType) and idl_type_name == "sequence":
+    if isinstance(idl_type, IDLParameterizedType) and idl_type_name in ("sequence", "FrozenArray"):
         includes.add("LibJS/Runtime/Array.h")
         element_type = idl_type.parameters[0]
         length_name = f"sequence_length{recursion_depth}"
@@ -1479,6 +1544,12 @@ def idl_value_to_javascript_value(
         converted_element = idl_value_to_javascript_value(
             element_type, element_name, includes, context, recursion_depth + 1
         )
+        freeze_array = ""
+        if idl_type_name == "FrozenArray":
+            freeze_array = f"""
+        // 2. Return the result of creating a frozen array from values.
+        MUST({array_name}->set_integrity_level(JS::Object::IntegrityLevel::Frozen));
+"""
 
         return f"""[&]() -> JS::Value {{
         // An IDL sequence<T> value S is converted to a JavaScript value as follows:
@@ -1501,7 +1572,7 @@ def idl_value_to_javascript_value(
 
             // 3. Set i to i + 1.
         }}
-
+{freeze_array}
         // 5. Return A.
         return {array_name};
     }}()"""
@@ -1609,6 +1680,11 @@ def cpp_default_value_conversion(
         if member_type.name in integer_types:
             return f"{integer_types[member_type.name]} {{ 0 }}"
         return "0"
+    if member.default_value == "0.0":
+        if member_type.name in ("float", "unrestricted float", "double", "unrestricted double"):
+            return "0.0"
+    if member.default_value == "[]" and isinstance(member_type, IDLParameterizedType) and member_type.name == "sequence":
+        return f"{cpp_type(member, context)} {{}}"
     if member.default_value.startswith('"') and member.default_value.endswith('"'):
         default_value = title_casify(member.default_value.removeprefix('"').removesuffix('"'))
         if resolve_type_for_conversion(member.type, context).name in ("DOMString", "USVString"):
