@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from dataclasses import field
 from dataclasses import replace
 from typing import Optional
+from typing import Union
 
 from Utils.webidl_parser import CallbackFunction
+from Utils.webidl_parser import IDLParameterizedType
 from Utils.webidl_parser import IDLType
 from Utils.webidl_parser import IDLUnionType
 from Utils.webidl_parser import Interface
@@ -31,14 +33,10 @@ class GenerationContext:
 
         self.local_types = {enumeration.name for enumeration in self.module.enumerations}
         self.callback_functions = {
-            callback.name: callback
-            for module in self.modules
-            for callback in module.callback_functions
+            callback.name: callback for module in self.modules for callback in module.callback_functions
         }
         self.interfaces = {
-            module.interface.name: module.interface
-            for module in self.modules
-            if module.interface is not None
+            module.interface.name: module.interface for module in self.modules if module.interface is not None
         }
         self.partial_interfaces = {}
         for module in self.modules:
@@ -46,13 +44,13 @@ class GenerationContext:
                 self.partial_interfaces.setdefault(partial_interface.name, []).append(partial_interface)
         self.typedefs = {typedef.name: typedef for module in self.modules for typedef in module.typedefs}
 
-    def is_local_type(self, name: IDLType | str) -> bool:
+    def is_local_type(self, name: Union[IDLType, str]) -> bool:
         return type_name(name) in self.local_types
 
-    def callback_function(self, name: IDLType | str) -> Optional[CallbackFunction]:
+    def callback_function(self, name: Union[IDLType, str]) -> Optional[CallbackFunction]:
         return self.callback_functions.get(type_name(name))
 
-    def interface(self, name: IDLType | str) -> Optional[Interface]:
+    def interface(self, name: Union[IDLType, str]) -> Optional[Interface]:
         return self.interfaces.get(type_name(name))
 
     def interface_for_generation(self) -> Optional[Interface]:
@@ -78,21 +76,31 @@ class GenerationContext:
             merged_interface.attributes.extend(partial_interface.attributes)
             merged_interface.operations.extend(partial_interface.operations)
             merged_interface.constructors.extend(partial_interface.constructors)
-            merged_interface.has_special_member = merged_interface.has_special_member or partial_interface.has_special_member
+            merged_interface.has_special_member = (
+                merged_interface.has_special_member or partial_interface.has_special_member
+            )
             merged_interface.named_property_getter = (
                 merged_interface.named_property_getter or partial_interface.named_property_getter
             )
             merged_interface.indexed_property_getter = (
                 merged_interface.indexed_property_getter or partial_interface.indexed_property_getter
             )
+            merged_interface.iterable = merged_interface.iterable or partial_interface.iterable
         return merged_interface
 
-    def resolve_typedef(self, type_: IDLType | str) -> IDLType:
+    def resolve_typedef(self, type_: Union[IDLType, str]) -> IDLType:
         resolved_type = type_ if isinstance(type_, IDLType) else IDLType(type_)
 
         if isinstance(resolved_type, IDLUnionType):
             return IDLUnionType(
                 [self.resolve_typedef(member_type) for member_type in resolved_type.member_types],
+                resolved_type.nullable,
+            )
+
+        if isinstance(resolved_type, IDLParameterizedType):
+            return IDLParameterizedType(
+                resolved_type.name,
+                [self.resolve_typedef(parameter) for parameter in resolved_type.parameters],
                 resolved_type.nullable,
             )
 
@@ -111,8 +119,15 @@ class GenerationContext:
                     resolved_type.nullable,
                 )
 
+            if isinstance(resolved_type, IDLParameterizedType):
+                return IDLParameterizedType(
+                    resolved_type.name,
+                    [self.resolve_typedef(parameter) for parameter in resolved_type.parameters],
+                    resolved_type.nullable,
+                )
+
         return resolved_type
 
 
-def type_name(type_: IDLType | str) -> str:
+def type_name(type_: Union[IDLType, str]) -> str:
     return type_.name if isinstance(type_, IDLType) else type_

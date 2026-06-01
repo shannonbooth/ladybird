@@ -2,29 +2,51 @@
 #
 # SPDX-License-Identifier: BSD-2-Clause
 
+from dataclasses import dataclass
+from enum import Enum
+from typing import Optional
+from typing import Union
+
 from Generators.libweb_bindings.context import GenerationContext
-from Generators.libweb_bindings.context import type_name
 from Generators.libweb_bindings.includes import GeneratedIncludes
 from Utils.utils import make_name_acceptable_cpp
-from Utils.utils import title_casify
 from Utils.utils import title_case_to_snake_case
+from Utils.utils import title_casify
 from Utils.webidl_parser import Attribute
 from Utils.webidl_parser import CallbackFunction
 from Utils.webidl_parser import DictionaryMember
+from Utils.webidl_parser import IDLParameterizedType
 from Utils.webidl_parser import IDLType
 from Utils.webidl_parser import IDLUnionType
 from Utils.webidl_parser import Interface
+
+DictionaryMemberOrAttribute = Union[DictionaryMember, Attribute]
+
+
+class ContainedStorageType(Enum):
+    Vector = "Vector"
+    ConservativeVector = "GC::ConservativeVector"
+    RootVector = "GC::RootVector"
+
+
+@dataclass
+class CppType:
+    name: str
+    contained_storage_type: ContainedStorageType = ContainedStorageType.Vector
+    is_nullable: bool = False
+    is_optional_presence: bool = False
+    gc_ref_target_type: str = ""
 
 
 def cpp_name(member: DictionaryMember) -> str:
     return make_name_acceptable_cpp(title_case_to_snake_case(member.name))
 
 
-def is_optional_without_default(member: DictionaryMember) -> bool:
-    return not member.required and member.default_value is None
+def is_optional_without_default(member: DictionaryMemberOrAttribute) -> bool:
+    return isinstance(member, DictionaryMember) and not member.required and member.default_value is None
 
 
-def is_callback(member: DictionaryMember, context: GenerationContext) -> bool:
+def is_callback(member: DictionaryMemberOrAttribute, context: GenerationContext) -> bool:
     return context.callback_function(member.type) is not None
 
 
@@ -49,6 +71,58 @@ def is_string_type(type_name: str) -> bool:
     return type_name in ("DOMString", "USVString", "ByteString")
 
 
+def contained_storage_type_to_cpp_name(contained_storage_type: ContainedStorageType) -> str:
+    return contained_storage_type.value
+
+
+def make_cpp_type(
+    name: str,
+    contained_storage_type: ContainedStorageType = ContainedStorageType.Vector,
+) -> CppType:
+    return CppType(name=name, contained_storage_type=contained_storage_type)
+
+
+def gc_ref_type(referent_type: str) -> CppType:
+    return CppType(
+        name=f"GC::Ref<{referent_type}>",
+        contained_storage_type=ContainedStorageType.RootVector,
+        gc_ref_target_type=referent_type,
+    )
+
+
+def gc_ptr_type(referent_type: str) -> CppType:
+    return CppType(
+        name=f"GC::Ptr<{referent_type}>",
+        contained_storage_type=ContainedStorageType.RootVector,
+        is_nullable=True,
+        gc_ref_target_type=referent_type,
+    )
+
+
+def is_direct_gc_ref_cpp_type(cpp_type: CppType) -> bool:
+    return bool(cpp_type.gc_ref_target_type) and not cpp_type.is_nullable
+
+
+def type_contains_gc_like_value(context: GenerationContext, idl_type: IDLType) -> bool:
+    if isinstance(idl_type, IDLUnionType):
+        return any(type_contains_gc_like_value(context, member_type) for member_type in idl_type.member_types)
+
+    if isinstance(idl_type, IDLParameterizedType):
+        return any(type_contains_gc_like_value(context, parameter) for parameter in idl_type.parameters)
+
+    return (
+        context.interface(idl_type) is not None
+        or context.callback_function(idl_type) is not None
+        or idl_type.name in ("any", "object", "Promise")
+    )
+
+
+def contained_storage_type_for_aggregate_type(context: GenerationContext, idl_type: IDLType) -> ContainedStorageType:
+    if type_contains_gc_like_value(context, idl_type):
+        return ContainedStorageType.ConservativeVector
+    return ContainedStorageType.Vector
+
+
 def union_type_to_variant(union_type: IDLUnionType, context: GenerationContext) -> str:
     cpp_types = [
         cpp_type_for_idl_type(member_type.clone_with_nullable(False), context)
@@ -71,11 +145,7 @@ def union_member_type_for_default_value(
 
     if default_value.startswith('"') and default_value.endswith('"'):
         string_type = next(
-            (
-                member_type
-                for member_type in member_types
-                if is_string_type(member_type.name)
-            ),
+            (member_type for member_type in member_types if is_string_type(member_type.name)),
             None,
         )
         if string_type is not None:
@@ -97,53 +167,129 @@ def union_member_type_for_default_value(
     raise RuntimeError(f"Unsupported union default value '{default_value}' for '{union_type}'")
 
 
-def cpp_value_type(member: DictionaryMember, context: GenerationContext) -> str:
+def cpp_value_type(member: DictionaryMemberOrAttribute, context: GenerationContext) -> str:
     member_type = context.resolve_typedef(member.type)
-    if isinstance(member_type, IDLUnionType):
-        return cpp_type_for_idl_type(member_type, context)
-
-    if member_type.nullable:
-        inner_type = member_type.clone_with_nullable(False)
-        inner_cpp_type = cpp_type_for_idl_type(inner_type, context, optional=True)
-        if context.interface(inner_type) is not None:
-            return inner_cpp_type
-        return f"Optional<{inner_cpp_type}>"
-    return cpp_type_for_idl_type(member_type, context)
+    return cpp_type_for_idl_type(member_type, context, optional=is_optional_without_default(member))
 
 
-def cpp_type_for_idl_type(idl_type: IDLType, context: GenerationContext, optional: bool = False) -> str:
-    if isinstance(idl_type, IDLUnionType):
-        return union_type_to_variant(idl_type, context)
-
+def cpp_type_for_non_nullable_idl_type(idl_type: IDLType, context: GenerationContext) -> CppType:
     type_name = idl_type.name
-    if type_name == "any":
-        return "JS::Value"
-    if type_name == "boolean":
-        return "bool"
-    if type_name in ("DOMString", "USVString"):
-        return "String"
-    if type_name == "unrestricted double":
-        return "double"
-    if type_name == "unsigned long":
-        return "WebIDL::UnsignedLong"
-    if type_name == "unsigned long long":
-        return "WebIDL::UnsignedLongLong"
-    if context.callback_function(type_name) is not None:
-        return "GC::Ptr<WebIDL::CallbackType>"
 
     interface = context.interface(type_name)
     if interface is not None:
-        cpp_interface_name = fully_qualified_name_for_interface(interface)
-        if optional:
-            return f"GC::Ptr<{cpp_interface_name}>"
-        return f"GC::Ref<{cpp_interface_name}>"
+        return gc_ref_type(fully_qualified_name_for_interface(interface))
 
-    return type_name
+    if context.callback_function(type_name) is not None:
+        return gc_ref_type("WebIDL::CallbackType")
+
+    if type_name == "any":
+        return make_cpp_type("JS::Value", ContainedStorageType.RootVector)
+    if type_name == "boolean":
+        return make_cpp_type("bool")
+    if type_name in ("DOMString", "USVString"):
+        return make_cpp_type("String")
+    if type_name in ("double", "unrestricted double"):
+        return make_cpp_type("double")
+    if type_name in ("float", "unrestricted float"):
+        return make_cpp_type("float")
+    if type_name == "undefined":
+        return make_cpp_type("Empty")
+    if type_name == "object":
+        return gc_ref_type("JS::Object")
+    if type_name == "byte":
+        return make_cpp_type("WebIDL::Byte")
+    if type_name == "octet":
+        return make_cpp_type("WebIDL::Octet")
+    if type_name == "short":
+        return make_cpp_type("WebIDL::Short")
+    if type_name == "unsigned short":
+        return make_cpp_type("WebIDL::UnsignedShort")
+    if type_name == "long":
+        return make_cpp_type("WebIDL::Long")
+    if type_name == "unsigned long":
+        return make_cpp_type("WebIDL::UnsignedLong")
+    if type_name == "long long":
+        return make_cpp_type("WebIDL::LongLong")
+    if type_name == "unsigned long long":
+        return make_cpp_type("WebIDL::UnsignedLongLong")
+
+    if isinstance(idl_type, IDLParameterizedType):
+        if type_name in ("sequence", "FrozenArray"):
+            sequence_cpp_type = cpp_type_for_idl_type_details(idl_type.parameters[0], context)
+            storage_type_name = contained_storage_type_to_cpp_name(sequence_cpp_type.contained_storage_type)
+            return make_cpp_type(f"{storage_type_name}<{sequence_cpp_type.name}>")
+
+    if isinstance(idl_type, IDLUnionType):
+        cpp_type = make_cpp_type(
+            union_type_to_variant(idl_type, context), contained_storage_type_for_aggregate_type(context, idl_type)
+        )
+        cpp_type.is_nullable = idl_type.includes_undefined() or idl_type.includes_nullable_type()
+        return cpp_type
+
+    return make_cpp_type(type_name)
 
 
-def cpp_type(member: DictionaryMember, context: GenerationContext) -> str:
+def with_nullable_cpp_type(cpp_type: CppType) -> CppType:
+    if cpp_type.name == "JS::Value":
+        cpp_type.is_nullable = True
+        return cpp_type
+
+    if cpp_type.gc_ref_target_type:
+        return gc_ptr_type(cpp_type.gc_ref_target_type)
+
+    return CppType(
+        name=f"Optional<{cpp_type.name}>",
+        contained_storage_type=cpp_type.contained_storage_type,
+        is_nullable=True,
+        gc_ref_target_type=cpp_type.gc_ref_target_type,
+    )
+
+
+def with_optional_cpp_type(cpp_type: CppType) -> CppType:
+    if is_direct_gc_ref_cpp_type(cpp_type):
+        return CppType(
+            name=f"GC::Ptr<{cpp_type.gc_ref_target_type}>",
+            contained_storage_type=ContainedStorageType.RootVector,
+            is_nullable=True,
+            is_optional_presence=True,
+            gc_ref_target_type=cpp_type.gc_ref_target_type,
+        )
+
+    return CppType(
+        name=f"Optional<{cpp_type.name}>",
+        contained_storage_type=ContainedStorageType.Vector,
+        is_nullable=cpp_type.is_nullable,
+        is_optional_presence=True,
+        gc_ref_target_type=cpp_type.gc_ref_target_type,
+    )
+
+
+def cpp_type_for_idl_type_details(idl_type: IDLType, context: GenerationContext, optional: bool = False) -> CppType:
+    resolved_type = context.resolve_typedef(idl_type)
+    if not resolved_type.nullable or isinstance(resolved_type, IDLUnionType):
+        cpp_type = cpp_type_for_non_nullable_idl_type(resolved_type, context)
+    else:
+        cpp_type = with_nullable_cpp_type(
+            cpp_type_for_non_nullable_idl_type(resolved_type.clone_with_nullable(False), context)
+        )
+
+    if optional and not cpp_type.is_nullable:
+        return with_optional_cpp_type(cpp_type)
+
+    return cpp_type
+
+
+def cpp_type_for_idl_type(idl_type: IDLType, context: GenerationContext, optional: bool = False) -> str:
+    return cpp_type_for_idl_type_details(idl_type, context, optional).name
+
+
+def cpp_type(member: DictionaryMemberOrAttribute, context: GenerationContext) -> str:
     value_type = cpp_value_type(member, context)
-    if is_optional_without_default(member) and not is_callback(member, context) and not value_type.startswith("Optional<"):
+    if (
+        is_optional_without_default(member)
+        and not is_callback(member, context)
+        and not value_type.startswith("Optional<")
+    ):
         return f"Optional<{value_type}>"
     return value_type
 
@@ -166,6 +312,19 @@ def add_header_includes_for_idl_type(
         for member_type in idl_type.flattened_member_types():
             add_header_includes_for_idl_type(member_type.clone_with_nullable(False), includes, context)
         return
+
+    if isinstance(idl_type, IDLParameterizedType):
+        if idl_type.name in ("sequence", "FrozenArray"):
+            cpp_type = cpp_type_for_idl_type_details(idl_type, context)
+            if cpp_type.name.startswith("GC::ConservativeVector"):
+                includes.add("LibGC/ConservativeVector.h")
+            elif cpp_type.name.startswith("GC::RootVector"):
+                includes.add("LibGC/RootVector.h")
+            else:
+                includes.add("AK/Vector.h")
+            for parameter in idl_type.parameters:
+                add_header_includes_for_idl_type(parameter, includes, context)
+            return
 
     type_name = idl_type.name
     if type_name == "undefined":
@@ -283,7 +442,9 @@ def unsigned_short_to_idl_value(value_name: str, includes: GeneratedIncludes) ->
 
     # 1. Let x be ? ConvertToInt(V, 16, "unsigned").
     # 2. Return the IDL unsigned short value that represents the same numeric value as x.
-    return f"WebIDL::convert_to_int<WebIDL::UnsignedShort>(vm, {value_name}, WebIDL::EnforceRange::No, WebIDL::Clamp::No)"
+    return (
+        f"WebIDL::convert_to_int<WebIDL::UnsignedShort>(vm, {value_name}, WebIDL::EnforceRange::No, WebIDL::Clamp::No)"
+    )
 
 
 # 3.2.4.5. long, https://webidl.spec.whatwg.org/#js-long
@@ -303,7 +464,9 @@ def unsigned_long_to_idl_value(value_name: str, includes: GeneratedIncludes) -> 
 
     # 1. Let x be ? ConvertToInt(V, 32, "unsigned").
     # 2. Return the IDL unsigned long value that represents the same numeric value as x.
-    return f"WebIDL::convert_to_int<WebIDL::UnsignedLong>(vm, {value_name}, WebIDL::EnforceRange::No, WebIDL::Clamp::No)"
+    return (
+        f"WebIDL::convert_to_int<WebIDL::UnsignedLong>(vm, {value_name}, WebIDL::EnforceRange::No, WebIDL::Clamp::No)"
+    )
 
 
 # 3.2.4.7. long long, https://webidl.spec.whatwg.org/#js-long-long
@@ -396,7 +559,7 @@ def bigint_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
 def dom_string_to_idl_value(
     value_name: str,
     includes: GeneratedIncludes,
-    extended_attributes: dict[str, str] | None = None,
+    extended_attributes: Optional[dict[str, str]] = None,
 ) -> str:
     includes.add("LibJS/Runtime/Value.h")
     includes.add("LibWeb/WebIDL/AbstractOperations.h")
@@ -488,7 +651,7 @@ def callback_function_to_idl_value(
 
 # FIXME: Factor this in a way matching the specification.
 def idl_value_to_javascript_value(
-    idl_type: IDLType | str,
+    idl_type: Union[IDLType, str],
     value: str,
     includes: GeneratedIncludes,
     context: GenerationContext,
@@ -540,7 +703,7 @@ def idl_value_to_javascript_value(
         includes.add("LibJS/Runtime/PrimitiveString.h")
         return f"JS::PrimitiveString::create(vm, {value})"
 
-    if idl_type_name.startswith("Promise<"):
+    if idl_type_name == "Promise":
         includes.add("AK/TypeCasts.h")
         includes.add("LibJS/Runtime/Promise.h")
         includes.add("LibWeb/WebIDL/Promise.h")
@@ -555,7 +718,7 @@ def idl_value_to_javascript_value(
 
 
 def union_to_idl_value(
-    member: DictionaryMember | Attribute,
+    member: DictionaryMemberOrAttribute,
     union_type: IDLUnionType,
     value_name: str,
     includes: GeneratedIncludes,
@@ -637,7 +800,7 @@ def union_to_idl_value(
     numeric_type = next((member_type for member_type in member_types if is_numeric_type(member_type.name)), None)
     numeric_conversion = ""
     if numeric_type is not None:
-        numeric_member = DictionaryMember(name=member.name, type=numeric_type)
+        numeric_member = DictionaryMember(name=member.name, type=numeric_type, required=True)
         numeric_value_name = f"{make_name_acceptable_cpp(member.name)}_number"
         numeric_conversion_expression = to_idl_value(numeric_member, value_name, includes, context)
         numeric_conversion = f"""        // 12. If Type(V) is Number, then:
@@ -652,7 +815,7 @@ def union_to_idl_value(
     string_type = next((member_type for member_type in member_types if is_string_type(member_type.name)), None)
     string_conversion = ""
     if string_type is not None:
-        string_member = DictionaryMember(name=member.name, type=string_type)
+        string_member = DictionaryMember(name=member.name, type=string_type, required=True)
         string_value_name = f"{make_name_acceptable_cpp(member.name)}_string"
         string_conversion_expression = to_idl_value(string_member, value_name, includes, context)
         string_conversion = f"""        // 14. If types includes a string type, then return the result of converting V to that type.
@@ -672,7 +835,7 @@ def union_to_idl_value(
 
 
 def to_idl_value(
-    member: DictionaryMember | Attribute,
+    member: DictionaryMemberOrAttribute,
     value_name: str,
     includes: GeneratedIncludes,
     context: GenerationContext,
@@ -686,7 +849,7 @@ def to_idl_value(
 
     if member_type.nullable:
         inner_type = member_type.clone_with_nullable(False)
-        inner_member = DictionaryMember(name=member.name, type=inner_type)
+        inner_member = DictionaryMember(name=member.name, type=inner_type, required=True)
         inner_conversion = to_idl_value(inner_member, value_name, includes, context)
         return f"""[&]() -> JS::ThrowCompletionOr<{cpp_type(member, context)}> {{
         if ({value_name}.is_nullish())
@@ -754,14 +917,21 @@ def cpp_default_value_conversion(
 
     member_type = context.resolve_typedef(member.type)
     if isinstance(member_type, IDLUnionType):
-        if member.default_value == "null" and (member_type.includes_undefined() or member_type.includes_nullable_type()):
+        if member.default_value == "null" and (
+            member_type.includes_undefined() or member_type.includes_nullable_type()
+        ):
             return "Empty {}"
 
         union_member_type = union_member_type_for_default_value(member_type, member.default_value, context)
         if union_member_type.name == "undefined":
             return "Empty {}"
 
-        union_member = DictionaryMember(name=member.name, type=union_member_type, default_value=member.default_value)
+        union_member = DictionaryMember(
+            name=member.name,
+            type=union_member_type,
+            required=True,
+            default_value=member.default_value,
+        )
         expression = cpp_default_value_conversion(union_member, context)
         if expression == "{}":
             return f"{cpp_type_for_idl_type(union_member_type, context)} {{}}"

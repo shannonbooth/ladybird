@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 from pathlib import Path
+from typing import Optional
 from typing import TextIO
 
 from Generators.libweb_bindings import type_conversion
@@ -76,7 +77,9 @@ private:
     if stringifier_attribute(interface) is not None:
         out.write("    JS_DECLARE_NATIVE_FUNCTION(to_string);\n")
     if interface.indexed_property_getter is not None and interface.indexed_property_getter.name:
-        out.write(f"    JS_DECLARE_NATIVE_FUNCTION({special_operation_callback_name(interface.indexed_property_getter)});\n")
+        out.write(
+            f"    JS_DECLARE_NATIVE_FUNCTION({special_operation_callback_name(interface.indexed_property_getter)});\n"
+        )
     out.write(
         """};
 
@@ -98,7 +101,11 @@ def write_implementation(out: TextIO, includes: GeneratedIncludes, context: Gene
     if interface.parent_name:
         includes.add_binding(interface.parent_name)
     includes.add(implementation_header_for_interface(interface))
-    if interface.attributes or stringifier_attribute(interface) is not None or interface.indexed_property_getter is not None:
+    if (
+        interface.attributes
+        or stringifier_attribute(interface) is not None
+        or interface.indexed_property_getter is not None
+    ):
         includes.add("LibJS/Runtime/Error.h")
         includes.add("LibWeb/Bindings/ExceptionOrUtils.h")
     if interface.constructors:
@@ -114,7 +121,9 @@ def write_implementation(out: TextIO, includes: GeneratedIncludes, context: Gene
 
     parent_prototype = "realm.intrinsics().object_prototype()"
     if interface.parent_name:
-        parent_prototype = f'&ensure_web_prototype<{interface.parent_name}Prototype>(realm, "{interface.parent_name}"_fly_string)'
+        parent_prototype = (
+            f'&ensure_web_prototype<{interface.parent_name}Prototype>(realm, "{interface.parent_name}"_fly_string)'
+        )
     constructor_parent_prototype = parent_prototype.removeprefix("&")
 
     out.write(
@@ -223,10 +232,14 @@ def ensure_interface_is_supported(interface: Interface) -> None:
 
     supported_declarations = {constant.declaration for constant in interface.constants}
     supported_declarations.update(attribute.declaration for attribute in interface.attributes)
-    supported_declarations.update(operation.declaration for operation in interface.operations if operation_is_supported(operation))
+    supported_declarations.update(
+        operation.declaration for operation in interface.operations if operation_is_supported(operation)
+    )
     supported_declarations.update(constructor.declaration for constructor in interface.constructors)
     if interface.indexed_property_getter is not None:
         supported_declarations.add(interface.indexed_property_getter.declaration)
+    if interface.iterable is not None:
+        supported_declarations.add(interface.iterable.declaration)
     unsupported_declarations = [
         declaration for declaration in interface.member_declarations if declaration not in supported_declarations
     ]
@@ -306,9 +319,7 @@ def define_the_regular_attributes(out: TextIO, context: GenerationContext, inclu
     )
 
     # 2. Remove from attributes all the attributes that are unforgeable.
-    attributes = [
-        attribute for attribute in attributes if "LegacyUnforgeable" not in attribute.extended_attributes
-    ]
+    attributes = [attribute for attribute in attributes if "LegacyUnforgeable" not in attribute.extended_attributes]
     out.write(
         """    // 2. Remove from attributes all the attributes that are unforgeable.
 
@@ -793,7 +804,7 @@ def write_parameter_conversions(
     for index, parameter in enumerate(parameters):
         argument_value_name = f"arg{index}"
         out.write(f"    auto {argument_value_name} = vm.argument({index});\n")
-        conversion_member = DictionaryMember(name=parameter.name, type=parameter.type)
+        conversion_member = DictionaryMember(name=parameter.name, type=parameter.type, required=True)
         conversion = type_conversion.to_idl_value(conversion_member, argument_value_name, includes, context)
         parameter_cpp_name = make_name_acceptable_cpp(parameter.name)
         if parameter.optional:
@@ -838,7 +849,7 @@ def write_indexed_property_getter(
         raise RuntimeError(f"Unsupported indexed property getter arity on '{interface.name}'")
 
     parameter = operation.parameters[0]
-    idl_parameter = DictionaryMember(name=parameter.name, type=parameter.type)
+    idl_parameter = DictionaryMember(name=parameter.name, type=parameter.type, required=True)
     argument_conversion = type_conversion.to_idl_value(idl_parameter, "arg0", includes, context)
     return_value = type_conversion.idl_value_to_javascript_value(operation.return_type, "R", includes, context)
 
@@ -878,7 +889,7 @@ def attribute_cpp_name(attribute: Attribute) -> str:
     return make_name_acceptable_cpp(title_case_to_snake_case(attribute.name))
 
 
-def stringifier_attribute(interface: Interface) -> Attribute | None:
+def stringifier_attribute(interface: Interface) -> Optional[Attribute]:
     return next((attribute for attribute in interface.attributes if attribute.stringifier), None)
 
 
@@ -936,7 +947,7 @@ def operation_parameter_default_value(parameter: OperationParameter, context: Ge
 
 
 def operation_parameter_cpp_type(parameter: OperationParameter, context: GenerationContext) -> str:
-    member = DictionaryMember(name=parameter.name, type=parameter.type)
+    member = DictionaryMember(name=parameter.name, type=parameter.type, required=True)
     if parameter.optional:
         return f"Optional<{type_conversion.cpp_value_type(member, context)}>"
     return type_conversion.cpp_value_type(member, context)

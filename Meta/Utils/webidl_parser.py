@@ -69,6 +69,29 @@ class IDLUnionType(IDLType):
         return self.nullable or any(member_type.nullable for member_type in self.flattened_member_types())
 
 
+class IDLParameterizedType(IDLType):
+    def __init__(self, name: str, parameters: List[IDLType], nullable: bool = False) -> None:
+        self.parameters = parameters
+        super().__init__(name, nullable)
+
+    def __str__(self) -> str:
+        nullable_suffix = "?" if self.nullable else ""
+        return f"{self.name}<{', '.join(str(parameter) for parameter in self.parameters)}>{nullable_suffix}"
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, IDLParameterizedType):
+            return self.name == other.name and self.parameters == other.parameters and self.nullable == other.nullable
+        if isinstance(other, str):
+            return str(self) == other
+        return False
+
+    def __hash__(self) -> int:
+        return hash(str(self))
+
+    def clone_with_nullable(self, nullable: bool) -> "IDLParameterizedType":
+        return IDLParameterizedType(self.name, self.parameters, nullable)
+
+
 @dataclass
 class Constant:
     declaration: str
@@ -112,6 +135,13 @@ class Constructor:
 
 
 @dataclass
+class IterableDeclaration:
+    declaration: str
+    value_type: IDLType
+    key_type: Optional[IDLType] = None
+
+
+@dataclass
 class Attribute:
     declaration: str
     name: str
@@ -134,6 +164,7 @@ class Interface:
     attributes: List[Attribute] = field(default_factory=list)
     operations: List[Operation] = field(default_factory=list)
     constructors: List[Constructor] = field(default_factory=list)
+    iterable: Optional[IterableDeclaration] = None
     named_property_getter: Optional[SpecialOperation] = None
     indexed_property_getter: Optional[SpecialOperation] = None
     has_special_member: bool = False
@@ -516,6 +547,7 @@ class Parser:
             else:
                 self.lexer.position = position_before_whitespace
 
+        parameters: List[IDLType] = []
         if self.lexer.consume_specific("<"):
             parameters = [self.parse_type()]
             self.consume_whitespace()
@@ -524,7 +556,6 @@ class Parser:
                 parameters.append(self.parse_type())
                 self.consume_whitespace()
             self.assert_specific(">")
-            name = f"{name}<{', '.join(str(parameter) for parameter in parameters)}>"
 
         prefixes = []
         if unsigned:
@@ -532,7 +563,11 @@ class Parser:
         if unrestricted:
             prefixes.append("unrestricted")
         prefixes.append(name)
-        return IDLType(" ".join(prefixes), self.parse_nullable())
+        type_name = " ".join(prefixes)
+        nullable = self.parse_nullable()
+        if parameters:
+            return IDLParameterizedType(type_name, parameters, nullable)
+        return IDLType(type_name, nullable)
 
     def parse_nullable(self) -> bool:
         return self.lexer.consume_specific("?")
@@ -585,38 +620,32 @@ class Parser:
 
             parser = Parser(self.path, statement)
             extended_attributes = parser.parse_leading_extended_attributes()
-            stripped_statement = parser.remaining_text().strip()
-            if not stripped_statement:
-                continue
-            interface.member_declarations.append(stripped_statement)
-
-            if stripped_statement.startswith("const "):
-                interface.constants.append(self.parse_constant(stripped_statement))
+            parser.consume_whitespace()
+            if parser.lexer.is_eof():
                 continue
 
-            if (
-                stripped_statement.startswith("readonly attribute ")
-                or stripped_statement.startswith("attribute ")
-                or stripped_statement.startswith("stringifier attribute ")
-                or stripped_statement.startswith("stringifier readonly attribute ")
-            ):
-                interface.attributes.append(self.parse_attribute(stripped_statement, extended_attributes))
+            member_declaration = parser.remaining_text().strip()
+            interface.member_declarations.append(member_declaration)
+
+            if parser.next_is_keyword("const"):
+                interface.constants.append(self.parse_constant(member_declaration))
                 continue
 
-            if stripped_statement.startswith("constructor("):
-                interface.constructors.append(self.parse_constructor(stripped_statement, extended_attributes))
+            if parser.next_is_attribute_declaration():
+                interface.attributes.append(self.parse_attribute(member_declaration, extended_attributes))
                 continue
 
-            if (
-                stripped_statement.startswith("iterable<")
-                or stripped_statement.startswith("async iterable<")
-                or stripped_statement.startswith("maplike<")
-                or stripped_statement.startswith("setlike<")
-            ):
+            if parser.next_is_keyword("constructor"):
+                interface.constructors.append(self.parse_constructor(member_declaration, extended_attributes))
+                continue
+
+            if parser.next_is_iterable_declaration():
                 interface.has_special_member = True
+                interface.iterable = self.parse_iterable_declaration(member_declaration)
+                continue
 
-            if stripped_statement.startswith("getter "):
-                special_operation = self.parse_special_operation(stripped_statement)
+            if parser.next_is_keyword("getter"):
+                special_operation = self.parse_special_operation(member_declaration)
                 identifier_type = special_operation.identifier_type
 
                 if identifier_type == "DOMString":
@@ -629,12 +658,38 @@ class Parser:
                     )
                 continue
 
-            if stripped_statement.startswith("setter ") or stripped_statement.startswith("deleter "):
+            if parser.next_is_special_member_declaration():
                 interface.has_special_member = True
                 continue
 
-            if "(" in stripped_statement:
-                interface.operations.append(self.parse_operation(stripped_statement, extended_attributes))
+            if parser.next_is_operation_declaration():
+                interface.operations.append(self.parse_operation(member_declaration, extended_attributes))
+
+    def parse_iterable_declaration(self, declaration: str) -> IterableDeclaration:
+        parser = Parser(self.path, declaration)
+
+        parser.consume_keyword("iterable")
+        parser.assert_specific("<")
+        value_type = parser.parse_type()
+        parser.consume_whitespace()
+
+        key_type: Optional[IDLType] = None
+        if parser.lexer.consume_specific(","):
+            key_type = value_type
+            parser.consume_whitespace()
+            value_type = parser.parse_type()
+            parser.consume_whitespace()
+
+        parser.assert_specific(">")
+        parser.consume_whitespace()
+        if not parser.lexer.is_eof():
+            parser.raise_parse_error("unexpected trailing text after iterable declaration")
+
+        return IterableDeclaration(
+            declaration=declaration,
+            value_type=value_type,
+            key_type=key_type,
+        )
 
     def parse_special_operation(self, declaration: str) -> SpecialOperation:
         parser = Parser(self.path, declaration)
@@ -847,6 +902,70 @@ class Parser:
             return self.parse_extended_attributes()
         return {}
 
+    def next_is_attribute_declaration(self) -> bool:
+        position = self.lexer.tell()
+        try:
+            if self.next_is_keyword("stringifier"):
+                self.consume_keyword("stringifier")
+                self.consume_whitespace()
+
+            if self.next_is_keyword("readonly"):
+                self.consume_keyword("readonly")
+                self.consume_whitespace()
+
+            return self.next_is_keyword("attribute")
+        finally:
+            self.lexer.position = position
+
+    def next_is_iterable_declaration(self) -> bool:
+        position = self.lexer.tell()
+        try:
+            if not self.next_is_keyword("iterable"):
+                return False
+            self.consume_keyword("iterable")
+            self.consume_whitespace()
+            return self.lexer.next_is("<")
+        finally:
+            self.lexer.position = position
+
+    def next_is_async_iterable_declaration(self) -> bool:
+        position = self.lexer.tell()
+        try:
+            if not self.next_is_keyword("async"):
+                return False
+            self.consume_keyword("async")
+            self.consume_whitespace()
+            return self.next_is_keyword("iterable")
+        finally:
+            self.lexer.position = position
+
+    def next_is_special_member_declaration(self) -> bool:
+        return (
+            self.next_is_iterable_declaration()
+            or self.next_is_async_iterable_declaration()
+            or self.next_is_keyword("maplike")
+            or self.next_is_keyword("setlike")
+            or self.next_is_keyword("setter")
+            or self.next_is_keyword("deleter")
+        )
+
+    def next_is_operation_declaration(self) -> bool:
+        position = self.lexer.tell()
+        try:
+            if self.next_is_keyword("static"):
+                self.consume_keyword("static")
+                self.consume_whitespace()
+
+            self.parse_type()
+            self.consume_whitespace()
+            self.parse_identifier_ending_with_space_or("(")
+            self.consume_whitespace()
+            return self.lexer.next_is("(")
+        except ParseError:
+            return False
+        finally:
+            self.lexer.position = position
+
     def remaining_text(self) -> str:
         return self.contents[self.lexer.tell() :]
 
@@ -1001,7 +1120,7 @@ class Parser:
             return True
 
         trailing_character = self.contents[end]
-        return trailing_character.isspace() or trailing_character in "{([;:"
+        return trailing_character.isspace() or trailing_character in "{([;:<"
 
     def consume_keyword(self, keyword: str) -> None:
         if not self.next_is_keyword(keyword):
