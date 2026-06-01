@@ -138,6 +138,7 @@ class Typedef:
 class Module:
     path: Path
     interface: Optional[Interface] = None
+    partial_interfaces: List[Interface] = field(default_factory=list)
     callback_functions: List[CallbackFunction] = field(default_factory=list)
     dictionaries: List[Dictionary] = field(default_factory=list)
     enumerations: List[Enumeration] = field(default_factory=list)
@@ -207,7 +208,7 @@ class Parser:
             elif self.next_is_keyword("partial interface mixin"):
                 self.skip_braced_declaration()
             elif self.next_is_keyword("partial interface"):
-                self.skip_braced_declaration()
+                module.partial_interfaces.append(self.parse_partial_interface(extended_attributes))
             elif self.next_is_keyword("interface mixin"):
                 self.skip_braced_declaration()
             elif self.next_is_keyword("partial namespace"):
@@ -261,6 +262,11 @@ class Parser:
         self.parse_identifier_ending_with_space_or(";")
         self.consume_whitespace()
         self.assert_specific(";")
+
+    def parse_partial_interface(self, extended_attributes: Dict[str, str]) -> Interface:
+        self.consume_keyword("partial")
+        self.consume_whitespace()
+        return self.parse_interface(extended_attributes)
 
     def parse_interface(
         self,

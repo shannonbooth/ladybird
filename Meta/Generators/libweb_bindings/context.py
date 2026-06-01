@@ -4,6 +4,7 @@
 
 from dataclasses import dataclass
 from dataclasses import field
+from dataclasses import replace
 from typing import Optional
 
 from Utils.webidl_parser import CallbackFunction
@@ -21,6 +22,7 @@ class GenerationContext:
     callback_functions: dict[str, CallbackFunction] = field(init=False)
     interfaces: dict[str, Interface] = field(init=False)
     typedefs: dict[str, Typedef] = field(init=False)
+    partial_interfaces: dict[str, list[Interface]] = field(init=False)
 
     def __post_init__(self) -> None:
         if not self.modules:
@@ -37,6 +39,10 @@ class GenerationContext:
             for module in self.modules
             if module.interface is not None
         }
+        self.partial_interfaces = {}
+        for module in self.modules:
+            for partial_interface in module.partial_interfaces:
+                self.partial_interfaces.setdefault(partial_interface.name, []).append(partial_interface)
         self.typedefs = {typedef.name: typedef for module in self.modules for typedef in module.typedefs}
 
     def is_local_type(self, name: IDLType | str) -> bool:
@@ -47,6 +53,28 @@ class GenerationContext:
 
     def interface(self, name: IDLType | str) -> Optional[Interface]:
         return self.interfaces.get(type_name(name))
+
+    def interface_for_generation(self) -> Optional[Interface]:
+        interface = self.module.interface
+        if interface is None:
+            return None
+
+        partial_interfaces = self.partial_interfaces.get(interface.name, [])
+        if not partial_interfaces:
+            return interface
+
+        merged_interface = replace(
+            interface,
+            member_declarations=list(interface.member_declarations),
+            constants=list(interface.constants),
+            attributes=list(interface.attributes),
+        )
+        for partial_interface in partial_interfaces:
+            merged_interface.member_declarations.extend(partial_interface.member_declarations)
+            merged_interface.constants.extend(partial_interface.constants)
+            merged_interface.attributes.extend(partial_interface.attributes)
+            merged_interface.has_special_member = merged_interface.has_special_member or partial_interface.has_special_member
+        return merged_interface
 
     def resolve_typedef(self, type_: IDLType | str) -> IDLType:
         resolved_type = type_ if isinstance(type_, IDLType) else IDLType(type_)

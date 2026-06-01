@@ -261,10 +261,11 @@ def bigint_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
 # 3.2.10. DOMString, https://webidl.spec.whatwg.org/#js-domstring
 def dom_string_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
     includes.add("LibJS/Runtime/Value.h")
+    includes.add("LibWeb/WebIDL/AbstractOperations.h")
     # 1. If V is null and the conversion is to an IDL type associated with the [LegacyNullToEmptyString] extended attribute, then return the DOMString value that represents the empty string.
     # 2. Let x be ? ToString(V).
     # 3. Return the IDL DOMString value that represents the same sequence of code units as the one the JavaScript String value x represents.
-    raise RuntimeError("DOMString to IDL value conversion is not yet implemented")
+    return f"WebIDL::to_string(vm, {value_name})"
 
 
 # 3.2.11. ByteString, https://webidl.spec.whatwg.org/#js-bytestring
@@ -405,50 +406,53 @@ def to_idl_value(
     includes: GeneratedIncludes,
     context: GenerationContext,
 ) -> str:
-    if member.type == "any":
+    member_type = context.resolve_typedef(member.type)
+    type_name = member_type.name
+
+    if type_name == "any":
         return any_to_idl_value(value_name, includes)
-    if member.type == "boolean":
+    if type_name == "boolean":
         return boolean_to_idl_value(value_name, includes)
-    if member.type == "byte":
+    if type_name == "byte":
         return byte_to_idl_value(value_name, includes)
-    if member.type == "octet":
+    if type_name == "octet":
         return octet_to_idl_value(value_name, includes)
-    if member.type == "short":
+    if type_name == "short":
         return short_to_idl_value(value_name, includes)
-    if member.type == "unsigned short":
+    if type_name == "unsigned short":
         return unsigned_short_to_idl_value(value_name, includes)
-    if member.type == "long":
+    if type_name == "long":
         return long_to_idl_value(value_name, includes)
-    if member.type == "unsigned long":
+    if type_name == "unsigned long":
         return unsigned_long_to_idl_value(value_name, includes)
-    if member.type == "long long":
+    if type_name == "long long":
         return long_long_to_idl_value(value_name, includes)
-    if member.type == "unsigned long long":
+    if type_name == "unsigned long long":
         return unsigned_long_long_to_idl_value(value_name, includes)
-    if member.type == "float":
+    if type_name == "float":
         return float_to_idl_value(value_name, includes, member.name)
-    if member.type == "unrestricted float":
+    if type_name == "unrestricted float":
         return unrestricted_float_to_idl_value(value_name, includes)
-    if member.type == "double":
+    if type_name == "double":
         return double_to_idl_value(value_name, includes)
-    if member.type == "unrestricted double":
+    if type_name == "unrestricted double":
         return unrestricted_double_to_idl_value(value_name, includes)
-    if member.type == "bigint":
+    if type_name == "bigint":
         return bigint_to_idl_value(value_name, includes)
-    if member.type == "DOMString":
+    if type_name == "DOMString":
         return dom_string_to_idl_value(value_name, includes)
-    if member.type == "ByteString":
+    if type_name == "ByteString":
         return bytestring_to_idl_value(value_name, includes)
-    if member.type == "USVString":
+    if type_name == "USVString":
         return usv_string_to_idl_value(value_name, includes)
-    if member.type == "object":
+    if type_name == "object":
         return object_to_idl_value(value_name, includes)
-    if member.type == "symbol":
+    if type_name == "symbol":
         return symbol_to_idl_value(value_name, includes)
     callback_function = context.callback_function(member.type)
     if callback_function is not None:
         return callback_function_to_idl_value(callback_function, value_name, includes)
-    converter_name = make_name_acceptable_cpp(title_case_to_snake_case(type_name(member.type)))
+    converter_name = make_name_acceptable_cpp(title_case_to_snake_case(type_name))
     return f"convert_to_idl_value_for_{converter_name}(vm, {value_name})"
 
 

@@ -15,7 +15,7 @@ from Utils.webidl_parser import Interface
 
 
 def write_declaration(out: TextIO, includes: GeneratedIncludes, context: GenerationContext) -> None:
-    interface = context.module.interface
+    interface = context.interface_for_generation()
     if interface is None:
         return
 
@@ -54,7 +54,7 @@ private:
 
 
 def write_implementation(out: TextIO, includes: GeneratedIncludes, context: GenerationContext) -> None:
-    interface = context.module.interface
+    interface = context.interface_for_generation()
     if interface is None:
         return
 
@@ -154,7 +154,7 @@ def implementation_header_for_interface(interface: Interface) -> str:
 # https://webidl.spec.whatwg.org/#define-the-regular-attributes
 # To define the regular attributes of interface or namespace definition on target, given realm realm, run the following steps:
 def define_the_regular_attributes(out: TextIO, context: GenerationContext, includes: GeneratedIncludes) -> None:
-    interface = context.module.interface
+    interface = context.interface_for_generation()
     if interface is None:
         return
 
@@ -257,7 +257,7 @@ def define_the_attributes(
 # https://webidl.spec.whatwg.org/#define-the-constants
 # To define the constants of interface, callback interface, or namespace definition on target, given realm realm, run the following steps:
 def define_the_constants(out: TextIO, context: GenerationContext, includes: GeneratedIncludes) -> None:
-    interface = context.module.interface
+    interface = context.interface_for_generation()
     if interface is None:
         return
     if not interface.constants:
@@ -295,7 +295,7 @@ def define_the_constants(out: TextIO, context: GenerationContext, includes: Gene
 # https://webidl.spec.whatwg.org/#dfn-attribute-getter
 # The attribute getter is created as follows, given an attribute attribute, a namespace or interface target, and a realm realm:
 def write_attribute_getters(out: TextIO, context: GenerationContext, includes: GeneratedIncludes) -> None:
-    interface = context.module.interface
+    interface = context.interface_for_generation()
     if interface is None:
         return
 
@@ -309,7 +309,7 @@ def write_attribute_getter(
     includes: GeneratedIncludes,
     attribute: Attribute,
 ) -> None:
-    interface = context.module.interface
+    interface = context.interface_for_generation()
     if interface is None:
         return
 
@@ -373,7 +373,7 @@ def write_attribute_getter(
 
 
 def write_attribute_setters(out: TextIO, context: GenerationContext, includes: GeneratedIncludes) -> None:
-    interface = context.module.interface
+    interface = context.interface_for_generation()
     if interface is None:
         return
 
@@ -390,7 +390,7 @@ def write_attribute_setter(
     includes: GeneratedIncludes,
     attribute: Attribute,
 ) -> None:
-    interface = context.module.interface
+    interface = context.interface_for_generation()
     if interface is None:
         return
 
