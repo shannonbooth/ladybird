@@ -9,6 +9,8 @@ from typing import Optional
 from typing import Union
 
 from Utils.webidl_parser import CallbackFunction
+from Utils.webidl_parser import Dictionary
+from Utils.webidl_parser import Enumeration
 from Utils.webidl_parser import IDLParameterizedType
 from Utils.webidl_parser import IDLType
 from Utils.webidl_parser import IDLUnionType
@@ -23,6 +25,8 @@ class GenerationContext:
     modules: list[Module] = field(default_factory=list)
     local_types: set[str] = field(init=False)
     callback_functions: dict[str, CallbackFunction] = field(init=False)
+    dictionaries: dict[str, Dictionary] = field(init=False)
+    enumerations: dict[str, Enumeration] = field(init=False)
     interfaces: dict[str, Interface] = field(init=False)
     typedefs: dict[str, Typedef] = field(init=False)
     partial_interfaces: dict[str, list[Interface]] = field(init=False)
@@ -32,8 +36,15 @@ class GenerationContext:
             self.modules = [self.module]
 
         self.local_types = {enumeration.name for enumeration in self.module.enumerations}
+        self.local_types.update(dictionary.name for dictionary in self.module.dictionaries)
         self.callback_functions = {
             callback.name: callback for module in self.modules for callback in module.callback_functions
+        }
+        self.dictionaries = {
+            dictionary.name: dictionary for module in self.modules for dictionary in module.dictionaries
+        }
+        self.enumerations = {
+            enumeration.name: enumeration for module in self.modules for enumeration in module.enumerations
         }
         self.interfaces = {
             module.interface.name: module.interface for module in self.modules if module.interface is not None
@@ -49,6 +60,12 @@ class GenerationContext:
 
     def callback_function(self, name: Union[IDLType, str]) -> Optional[CallbackFunction]:
         return self.callback_functions.get(type_name(name))
+
+    def dictionary(self, name: Union[IDLType, str]) -> Optional[Dictionary]:
+        return self.dictionaries.get(type_name(name))
+
+    def enumeration(self, name: Union[IDLType, str]) -> Optional[Enumeration]:
+        return self.enumerations.get(type_name(name))
 
     def interface(self, name: Union[IDLType, str]) -> Optional[Interface]:
         return self.interfaces.get(type_name(name))

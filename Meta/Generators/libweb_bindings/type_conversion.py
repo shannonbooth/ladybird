@@ -380,6 +380,36 @@ def fully_qualified_name_for_interface(interface: Interface) -> str:
     return f"{namespace_name}::{interface.implemented_name}"
 
 
+def converter_function_name_for_idl_type(idl_type: IDLType) -> str:
+    converter_name = make_name_acceptable_cpp(title_case_to_snake_case(idl_type.name))
+    return f"convert_to_idl_value_for_{converter_name}"
+
+
+def unsupported_to_idl_value(idl_type: IDLType) -> str:
+    raise RuntimeError(f"Unsupported IDL value conversion for '{idl_type}'")
+
+
+def is_buffer_source_type(idl_type: IDLType) -> bool:
+    return idl_type.name in (
+        "ArrayBuffer",
+        "DataView",
+        "Int8Array",
+        "Int16Array",
+        "Int32Array",
+        "Uint8Array",
+        "Uint8ClampedArray",
+        "Uint16Array",
+        "Uint32Array",
+        "BigInt64Array",
+        "BigUint64Array",
+        "Float16Array",
+        "Float32Array",
+        "Float64Array",
+        "ArrayBufferView",
+        "BufferSource",
+    )
+
+
 # 3.2.1. any, https://webidl.spec.whatwg.org/#js-any
 def any_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
     includes.add("LibJS/Runtime/Value.h")
@@ -619,21 +649,26 @@ def interface_to_idl_value(value_name: str, includes: GeneratedIncludes, interfa
 
 
 # 3.2.16. Callback interface types, https://webidl.spec.whatwg.org/#js-callback-interface
-def callback_interface_to_idl_value() -> str:
+def callback_interface_to_idl_value(
+    value_name: str,
+    includes: GeneratedIncludes,
+    interface: Interface,
+) -> str:
     # 1. If V is not an Object, then throw a TypeError.
     # 2. Return the IDL callback interface type value that represents a reference to V, with the incumbent settings object as the callback context.
     raise RuntimeError("callback interface to IDL value conversion is not yet implemented")
 
 
-# FIXME: Maybe we should put this here and call from idl.py?
 # 3.2.17. Dictionary types, https://webidl.spec.whatwg.org/#js-dictionary
-def dictionary_to_idl_value() -> str:
-    raise RuntimeError("dictionary to IDL value conversion is not yet implemented")
+def dictionary_to_idl_value(idl_type: IDLType, value_name: str) -> str:
+    # The actual implementation of this conversion function is generated in idl.py.
+    return f"{converter_function_name_for_idl_type(idl_type)}(vm, {value_name})"
 
-# FIXME: Maybe we should put this here and call from idl.py?
+
 # 3.2.18. Enumeration types, https://webidl.spec.whatwg.org/#js-enumeration
-def enumeration_to_idl_value() -> str:
-    raise RuntimeError("enumeration to IDL value conversion is not yet implemented")
+def enumeration_to_idl_value(idl_type: IDLType, value_name: str) -> str:
+    # The actual implementation of this conversion function is generated in idl.py.
+    return f"{converter_function_name_for_idl_type(idl_type)}(vm, {value_name})"
 
 
 # 3.2.19. Callback function types, https://webidl.spec.whatwg.org/#js-callback-function
@@ -676,27 +711,64 @@ def callback_function_to_idl_value(
 
 
 # 3.2.20. Nullable types — T?, https://webidl.spec.whatwg.org/#js-nullable-type
-def nullable_to_idl_value() -> str:
-    raise RuntimeError("nullable to IDL value conversion is not yet implemented")
+def nullable_to_idl_value(
+    member: DictionaryMemberOrAttribute,
+    value_name: str,
+    includes: GeneratedIncludes,
+    context: GenerationContext,
+) -> str:
+    member_type = context.resolve_typedef(member.type)
+    inner_type = member_type.clone_with_nullable(False)
+    inner_member = DictionaryMember(name=member.name, type=inner_type, required=True)
+    inner_conversion = to_idl_value(inner_member, value_name, includes, context)
+    return f"""[&]() -> JS::ThrowCompletionOr<{cpp_type(member, context)}> {{
+        if ({value_name}.is_nullish())
+            return OptionalNone {{}};
+        return TRY({inner_conversion});
+    }}()"""
 
 
 # 3.2.21. Sequences — sequence<T>, https://webidl.spec.whatwg.org/#js-sequence
-def sequence_to_idl_value() -> str:
+def sequence_to_idl_value(
+    member: DictionaryMemberOrAttribute,
+    sequence_type: IDLParameterizedType,
+    value_name: str,
+    includes: GeneratedIncludes,
+    context: GenerationContext,
+) -> str:
     raise RuntimeError("sequence to IDL value conversion is not yet implemented")
 
 
 # 3.2.22. Async sequences — async_sequence<T>, https://webidl.spec.whatwg.org/#js-async-iterable
-def async_sequence_to_idl_value() -> str:
+def async_sequence_to_idl_value(
+    member: DictionaryMemberOrAttribute,
+    async_sequence_type: IDLParameterizedType,
+    value_name: str,
+    includes: GeneratedIncludes,
+    context: GenerationContext,
+) -> str:
     raise RuntimeError("async sequence to IDL value conversion is not yet implemented")
 
 
 # 3.2.23. Records — record<K, V>, https://webidl.spec.whatwg.org/#js-record
-def record_to_idl_value() -> str:
+def record_to_idl_value(
+    member: DictionaryMemberOrAttribute,
+    record_type: IDLParameterizedType,
+    value_name: str,
+    includes: GeneratedIncludes,
+    context: GenerationContext,
+) -> str:
     raise RuntimeError("record to IDL value conversion is not yet implemented")
 
 
 # 3.2.24. Promise types — Promise<T>, https://webidl.spec.whatwg.org/#js-promise
-def promise_to_idl_value() -> str:
+def promise_to_idl_value(
+    member: DictionaryMemberOrAttribute,
+    promise_type: IDLParameterizedType,
+    value_name: str,
+    includes: GeneratedIncludes,
+    context: GenerationContext,
+) -> str:
     # 1. Let promiseCapability be ? NewPromiseCapability(%Promise%).
     # 2. Perform ? Call(promiseCapability.[[Resolve]], undefined, « V »).
     # 3. Return promiseCapability.
@@ -822,12 +894,23 @@ def union_to_idl_value(
 
 
 # 3.2.26. Buffer source types, https://webidl.spec.whatwg.org/#js-buffer-source-types
-def buffer_source_to_idl_value() -> str:
+def buffer_source_to_idl_value(
+    member: DictionaryMemberOrAttribute,
+    value_name: str,
+    includes: GeneratedIncludes,
+    context: GenerationContext,
+) -> str:
     raise RuntimeError("buffer source to IDL value conversion is not yet implemented")
 
 
 # 3.2.27. Frozen arrays — FrozenArray<T>, https://webidl.spec.whatwg.org/#js-frozen-array
-def frozen_array_to_idl_value() -> str:
+def frozen_array_to_idl_value(
+    member: DictionaryMemberOrAttribute,
+    frozen_array_type: IDLParameterizedType,
+    value_name: str,
+    includes: GeneratedIncludes,
+    context: GenerationContext,
+) -> str:
     # 1. Let values be the result of converting V to IDL type sequence<T>.
     # 2. Return the result of creating a frozen array from values.
     raise RuntimeError("frozen array to IDL value conversion is not yet implemented")
@@ -840,21 +923,10 @@ def to_idl_value(
     context: GenerationContext,
 ) -> str:
     member_type = context.resolve_typedef(member.type)
-
-    if isinstance(member_type, IDLUnionType):
-        return union_to_idl_value(member, member_type, value_name, includes, context)
-
     type_name = member_type.name
 
     if member_type.nullable:
-        inner_type = member_type.clone_with_nullable(False)
-        inner_member = DictionaryMember(name=member.name, type=inner_type, required=True)
-        inner_conversion = to_idl_value(inner_member, value_name, includes, context)
-        return f"""[&]() -> JS::ThrowCompletionOr<{cpp_type(member, context)}> {{
-        if ({value_name}.is_nullish())
-            return OptionalNone {{}};
-        return TRY({inner_conversion});
-    }}()"""
+        return nullable_to_idl_value(member, value_name, includes, context)
 
     if type_name == "any":
         return any_to_idl_value(value_name, includes)
@@ -900,11 +972,46 @@ def to_idl_value(
         return object_to_idl_value(value_name, includes)
     if type_name == "symbol":
         return symbol_to_idl_value(value_name, includes)
-    callback_function = context.callback_function(member.type)
+
+    interface = context.interface(member_type)
+    if interface is not None and not interface.is_callback_interface:
+        return interface_to_idl_value(value_name, includes, interface)
+
+    if interface is not None and interface.is_callback_interface:
+        return callback_interface_to_idl_value(value_name, includes, interface)
+
+    if context.dictionary(member_type) is not None:
+        return dictionary_to_idl_value(member_type, value_name)
+
+    if context.enumeration(member_type) is not None:
+        return enumeration_to_idl_value(member_type, value_name)
+
+    callback_function = context.callback_function(member_type)
     if callback_function is not None:
         return callback_function_to_idl_value(callback_function, value_name, includes)
-    converter_name = make_name_acceptable_cpp(title_case_to_snake_case(type_name))
-    return f"convert_to_idl_value_for_{converter_name}(vm, {value_name})"
+
+    if isinstance(member_type, IDLParameterizedType) and type_name == "sequence":
+        return sequence_to_idl_value(member, member_type, value_name, includes, context)
+
+    if isinstance(member_type, IDLParameterizedType) and type_name == "async_sequence":
+        return async_sequence_to_idl_value(member, member_type, value_name, includes, context)
+
+    if isinstance(member_type, IDLParameterizedType) and type_name == "record":
+        return record_to_idl_value(member, member_type, value_name, includes, context)
+
+    if isinstance(member_type, IDLParameterizedType) and type_name == "Promise":
+        return promise_to_idl_value(member, member_type, value_name, includes, context)
+
+    if isinstance(member_type, IDLUnionType):
+        return union_to_idl_value(member, member_type, value_name, includes, context)
+
+    if is_buffer_source_type(member_type):
+        return buffer_source_to_idl_value(member, value_name, includes, context)
+
+    if isinstance(member_type, IDLParameterizedType) and type_name == "FrozenArray":
+        return frozen_array_to_idl_value(member, member_type, value_name, includes, context)
+
+    return unsupported_to_idl_value(member_type)
 
 
 # FIXME: Factor this in a way matching the specification.
