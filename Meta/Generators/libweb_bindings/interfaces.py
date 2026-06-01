@@ -757,7 +757,82 @@ def write_attribute_getter(
         return
 
     getter_steps = f"auto R = TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->{attribute_impl_cpp_name(attribute)}(); }}));"
-    if attribute_is_non_nullable_reflected_string(attribute):
+    if attribute_is_reflected_boolean(attribute):
+        getter_steps = f"""// If a reflected IDL attribute has the type boolean:
+    // 1. Let contentAttributeValue be the result of running this's get the content attribute.
+    // 2. If contentAttributeValue is null, then return false.
+    auto R = idl_object->has_attribute("{reflected_attribute_name(attribute)}"_fly_string);"""
+    elif attribute_is_reflected_signed_integer(attribute):
+        includes.add("LibWeb/HTML/Numbers.h")
+        getter_steps = f"""// If a reflected IDL attribute has the type long:
+    // 1. Let contentAttributeValue be the result of running this's get the content attribute.
+    // 2. If contentAttributeValue is not null:
+    //    1. Let parsedValue be the result of integer parsing contentAttributeValue.
+    //    2. If parsedValue is not an error and is within the long range, then return parsedValue.
+    i32 R = 0;
+    auto content_attribute_value = idl_object->get_attribute("{reflected_attribute_name(attribute)}"_fly_string);
+    if (content_attribute_value.has_value()) {{
+        auto maybe_parsed_value = Web::HTML::parse_integer(*content_attribute_value);
+        if (maybe_parsed_value.has_value())
+            R = *maybe_parsed_value;
+    }}"""
+    elif attribute_is_reflected_unsigned_long(attribute):
+        includes.add("LibWeb/HTML/Numbers.h")
+        getter_steps = f"""// If a reflected IDL attribute has the type unsigned long:
+    // 1. Let contentAttributeValue be the result of running this's get the content attribute.
+    // 2. Let minimum be 0.
+    // FIXME: 3. If the reflected IDL attribute is limited to only positive numbers or limited to only positive numbers with fallback, then set minimum to 1.
+    // FIXME: 4. If the reflected IDL attribute is clamped to the range, then set minimum to clampedMin.
+    // 5. Let maximum be 2147483647 if the reflected IDL attribute is not clamped to the range; otherwise clampedMax.
+    // 6. If contentAttributeValue is not null:
+    //    1. Let parsedValue be the result of non-negative integer parsing contentAttributeValue.
+    //    2. If parsedValue is not an error and is in the range minimum to maximum, inclusive, then return parsedValue.
+    u32 R = 0;
+    auto content_attribute_value = idl_object->get_attribute("{reflected_attribute_name(attribute)}"_fly_string);
+    u32 minimum = 0;
+    u32 maximum = 2147483647;
+    if (content_attribute_value.has_value()) {{
+        auto parsed_value = Web::HTML::parse_non_negative_integer(*content_attribute_value);
+        if (parsed_value.has_value()) {{
+            if (*parsed_value >= minimum && *parsed_value <= maximum)
+                R = *parsed_value;
+        }}
+    }}"""
+    elif attribute_is_reflected_usv_string(attribute):
+        includes.add("LibWeb/Infra/Strings.h")
+        getter_steps = f"""// If a reflected IDL attribute has the type USVString:
+    // 1. Let element be the result of running this's get the element.
+    // 2. Let contentAttributeValue be the result of running this's get the content attribute.
+    auto content_attribute_value = idl_object->attribute("{reflected_attribute_name(attribute)}"_fly_string);
+
+    // 3. Let attributeDefinition be the attribute definition of element's content attribute whose namespace is null and local name is the reflected content attribute name.
+
+    // 5. Return contentAttributeValue, converted to a scalar value string.
+    String R;
+    if (content_attribute_value.has_value())
+        R = MUST(Infra::convert_to_scalar_value_string(*content_attribute_value));"""
+        if "URL" in attribute.extended_attributes:
+            includes.add("LibWeb/DOM/Document.h")
+            getter_steps = f"""// If a reflected IDL attribute has the type USVString:
+    // 1. Let element be the result of running this's get the element.
+    // 2. Let contentAttributeValue be the result of running this's get the content attribute.
+    auto content_attribute_value = idl_object->attribute("{reflected_attribute_name(attribute)}"_fly_string);
+
+    // 3. Let attributeDefinition be the attribute definition of element's content attribute whose namespace is null and local name is the reflected content attribute name.
+
+    // 4. If attributeDefinition indicates it contains a URL:
+    String R;
+    if (content_attribute_value.has_value()) {{
+        // 2. Let urlString be the result of encoding-parsing-and-serializing a URL given contentAttributeValue, relative to element's node document.
+        auto url_string = idl_object->document().encoding_parse_and_serialize_url(*content_attribute_value);
+
+        // 3. If urlString is not failure, then return urlString.
+        if (url_string.has_value())
+            R = url_string.release_value();
+        else
+            R = MUST(Infra::convert_to_scalar_value_string(*content_attribute_value));
+    }}"""
+    elif attribute_is_non_nullable_reflected_string(attribute):
         getter_steps = f"""// If a reflected IDL attribute has the type DOMString:
     // 1. Let element be the result of running this's get the element.
     // 2. Let contentAttributeValue be the result of running this's get the content attribute.
@@ -917,7 +992,22 @@ def write_attribute_setter(
 
     conversion = type_conversion.to_idl_value(attribute, "V", includes, context)
     setter_steps = f"TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->set_{attribute_impl_cpp_name(attribute)}(idl_value); }}));"
-    if attribute_is_non_nullable_reflected_string(attribute):
+    if attribute_is_reflected_boolean(attribute):
+        setter_steps = f"""if (!idl_value)
+        idl_object->remove_attribute("{reflected_attribute_name(attribute)}"_fly_string);
+    else
+        idl_object->set_attribute_value("{reflected_attribute_name(attribute)}"_fly_string, String {{}});"""
+    elif attribute_is_reflected_unsigned_long(attribute):
+        setter_steps = f"""u32 minimum = 0;
+    u32 new_value = minimum;
+    if (idl_value >= minimum && idl_value <= 2147483647)
+        new_value = idl_value;
+    idl_object->set_attribute_value("{reflected_attribute_name(attribute)}"_fly_string, String::number(new_value));"""
+    elif attribute_is_reflected_signed_integer(attribute):
+        setter_steps = f'idl_object->set_attribute_value("{reflected_attribute_name(attribute)}"_fly_string, String::number(idl_value));'
+    elif attribute_is_reflected_usv_string(attribute):
+        setter_steps = f'idl_object->set_attribute_value("{reflected_attribute_name(attribute)}"_fly_string, idl_value);'
+    elif attribute_is_non_nullable_reflected_string(attribute):
         setter_steps = f'idl_object->set_attribute_value("{reflected_attribute_name(attribute)}"_fly_string, idl_value);'
     out.write(
         f"""    // 6. Let idlValue be determined as follows:
@@ -1291,9 +1381,29 @@ def attribute_has_setter(attribute: Attribute) -> bool:
     return not attribute.readonly or "PutForwards" in attribute.extended_attributes
 
 
+def attribute_is_reflected(attribute: Attribute) -> bool:
+    return "Reflect" in attribute.extended_attributes
+
+
+def attribute_is_reflected_boolean(attribute: Attribute) -> bool:
+    return attribute_is_reflected(attribute) and attribute.type.name == "boolean"
+
+
+def attribute_is_reflected_signed_integer(attribute: Attribute) -> bool:
+    return attribute_is_reflected(attribute) and not attribute.type.nullable and attribute.type.name == "long"
+
+
+def attribute_is_reflected_unsigned_long(attribute: Attribute) -> bool:
+    return attribute_is_reflected(attribute) and not attribute.type.nullable and attribute.type.name == "unsigned long"
+
+
+def attribute_is_reflected_usv_string(attribute: Attribute) -> bool:
+    return attribute_is_reflected(attribute) and not attribute.type.nullable and attribute.type.name == "USVString"
+
+
 def attribute_is_non_nullable_reflected_string(attribute: Attribute) -> bool:
     return (
-        "Reflect" in attribute.extended_attributes
+        attribute_is_reflected(attribute)
         and not attribute.type.nullable
         and attribute.type.name == "DOMString"
     )
