@@ -99,6 +99,10 @@ def write_implementation(out: TextIO, includes: GeneratedIncludes, context: Gene
     if interface.attributes or interface.indexed_property_getter is not None:
         includes.add("LibJS/Runtime/Error.h")
         includes.add("LibWeb/Bindings/ExceptionOrUtils.h")
+    if interface.constructors:
+        includes.add("LibJS/Runtime/AbstractOperations.h")
+        includes.add("LibJS/Runtime/Realm.h")
+        includes.add("LibWeb/Bindings/ExceptionOrUtils.h")
 
     parent_constructor_setup = ""
     if interface.parent_name:
@@ -130,8 +134,17 @@ def write_implementation(out: TextIO, includes: GeneratedIncludes, context: Gene
 JS::ThrowCompletionOr<GC::Ref<JS::Object>> {interface.constructor_class}::construct([[maybe_unused]] InterfaceConstructor& constructor, [[maybe_unused]] JS::FunctionObject& new_target)
 {{
     WebIDL::log_trace(constructor.vm(), "{interface.constructor_class}::construct");
-    return constructor.vm().throw_completion<JS::TypeError>(JS::ErrorType::NotAConstructor, "{interface.name}");
-}}
+"""
+    )
+    if interface.constructors:
+        write_constructor_steps(out, context, includes)
+    else:
+        out.write(
+            f"""    return constructor.vm().throw_completion<JS::TypeError>(JS::ErrorType::NotAConstructor, "{interface.name}");
+"""
+        )
+    out.write(
+        """}
 
 """
     )
@@ -207,6 +220,7 @@ def ensure_interface_is_supported(interface: Interface) -> None:
     supported_declarations = {constant.declaration for constant in interface.constants}
     supported_declarations.update(attribute.declaration for attribute in interface.attributes)
     supported_declarations.update(operation.declaration for operation in interface.operations if operation_is_supported(operation))
+    supported_declarations.update(constructor.declaration for constructor in interface.constructors)
     if interface.indexed_property_getter is not None:
         supported_declarations.add(interface.indexed_property_getter.declaration)
     unsupported_declarations = [
@@ -220,6 +234,54 @@ def implementation_header_for_interface(interface: Interface) -> str:
     path = interface.path.with_suffix(".h")
     parts = path.parts
     return str(Path("LibWeb").joinpath(*parts[parts.index("LibWeb") + 1 :]))
+
+
+def write_constructor_steps(out: TextIO, context: GenerationContext, includes: GeneratedIncludes) -> None:
+    interface = context.interface_for_generation()
+    if interface is None:
+        return
+    if len(interface.constructors) != 1:
+        raise RuntimeError(f"Unsupported constructor overload count on '{interface.name}'")
+
+    constructor = interface.constructors[0]
+    out.write(
+        f"""    auto& vm = constructor.vm();
+    auto& realm = *vm.current_realm();
+
+    // To internally create a new object implementing the interface {interface.name}:
+
+    // 3.2. Let prototype be ? Get(newTarget, "prototype").
+    auto prototype = TRY(new_target.get(vm.names.prototype));
+
+    // 3.3. If Type(prototype) is not Object, then:
+    if (!prototype.is_object()) {{
+        // 1. Let targetRealm be ? GetFunctionRealm(newTarget).
+        auto* target_realm = TRY(JS::get_function_realm(vm, new_target));
+
+        // 2. Set prototype to the interface prototype object for interface in targetRealm.
+        VERIFY(target_realm);
+        prototype = &Bindings::ensure_web_prototype<{interface.prototype_class}>(*target_realm, "{interface.name}"_fly_string);
+    }}
+
+"""
+    )
+    write_parameter_conversions(out, constructor.parameters, includes, context)
+    arguments = ", ".join(make_name_acceptable_cpp(parameter.name) for parameter in constructor.parameters)
+    if arguments:
+        arguments = f", {arguments}"
+    out.write(
+        f"""    auto impl = TRY(throw_dom_exception_if_needed(vm, [&] {{ return {fully_qualified_name(interface)}::construct_impl(realm{arguments}); }}));
+
+    // 7. Set instance.[[Prototype]] to prototype.
+    VERIFY(prototype.is_object());
+    impl->set_prototype(&prototype.as_object());
+
+    // FIXME: Steps 8...11. of the "internally create a new object implementing the interface {interface.name}" algorithm
+    // (https://webidl.spec.whatwg.org/#js-platform-objects) are currently not handled, or are handled within {fully_qualified_name(interface)}::construct_impl().
+
+    return *impl;
+"""
+    )
 
 
 # https://webidl.spec.whatwg.org/#define-the-regular-attributes
@@ -656,30 +718,7 @@ def write_operation(
 """
         )
 
-    for index, parameter in enumerate(operation.parameters):
-        argument_value_name = f"arg{index}"
-        out.write(f"    auto {argument_value_name} = vm.argument({index});\n")
-        conversion_member = DictionaryMember(name=parameter.name, type=parameter.type)
-        conversion = type_conversion.to_idl_value(conversion_member, argument_value_name, includes, context)
-        parameter_cpp_name = make_name_acceptable_cpp(parameter.name)
-        if parameter.optional:
-            if parameter.default_value is None:
-                raise RuntimeError(
-                    f"Unsupported optional operation parameter '{parameter.name}' without default value"
-                )
-            out.write(
-                f"""    auto {parameter_cpp_name} = {operation_parameter_default_value(parameter, context)};
-    if (!{argument_value_name}.is_undefined())
-        {parameter_cpp_name} = TRY({conversion});
-
-"""
-            )
-        else:
-            out.write(
-                f"""    auto {parameter_cpp_name} = TRY({conversion});
-
-"""
-            )
+    write_parameter_conversions(out, operation.parameters, includes, context)
 
     return_statement = "return JS::js_undefined();"
     if context.resolve_typedef(operation.return_type).name != "undefined":
@@ -691,6 +730,43 @@ def write_operation(
 
 """
     )
+
+
+def write_parameter_conversions(
+    out: TextIO,
+    parameters: list[OperationParameter],
+    includes: GeneratedIncludes,
+    context: GenerationContext,
+) -> None:
+    for index, parameter in enumerate(parameters):
+        argument_value_name = f"arg{index}"
+        out.write(f"    auto {argument_value_name} = vm.argument({index});\n")
+        conversion_member = DictionaryMember(name=parameter.name, type=parameter.type)
+        conversion = type_conversion.to_idl_value(conversion_member, argument_value_name, includes, context)
+        parameter_cpp_name = make_name_acceptable_cpp(parameter.name)
+        if parameter.optional:
+            if parameter.default_value is None:
+                out.write(
+                    f"""    {operation_parameter_cpp_type(parameter, context)} {parameter_cpp_name} {{}};
+    if (!{argument_value_name}.is_undefined())
+        {parameter_cpp_name} = TRY({conversion});
+
+"""
+                )
+            else:
+                out.write(
+                    f"""    auto {parameter_cpp_name} = {operation_parameter_default_value(parameter, context)};
+    if (!{argument_value_name}.is_undefined())
+        {parameter_cpp_name} = TRY({conversion});
+
+"""
+                )
+        else:
+            out.write(
+                f"""    auto {parameter_cpp_name} = TRY({conversion});
+
+"""
+            )
 
 
 def write_indexed_property_getter(
@@ -779,6 +855,8 @@ def operation_parameter_default_value(parameter: OperationParameter, context: Ge
         raise RuntimeError(f"Operation parameter '{parameter.name}' has no default value")
 
     parameter_type = context.resolve_typedef(parameter.type).name
+    if parameter.default_value == "{}":
+        return f"{parameter_type} {{}}"
     if parameter.default_value in ("true", "false"):
         return parameter.default_value
     if parameter.default_value == "0":
@@ -799,6 +877,13 @@ def operation_parameter_default_value(parameter: OperationParameter, context: Ge
         return f"{parameter.default_value}_string"
 
     raise RuntimeError(f"Unsupported default value for operation parameter '{parameter.name}'")
+
+
+def operation_parameter_cpp_type(parameter: OperationParameter, context: GenerationContext) -> str:
+    member = DictionaryMember(name=parameter.name, type=parameter.type)
+    if parameter.optional:
+        return f"Optional<{type_conversion.cpp_value_type(member, context)}>"
+    return type_conversion.cpp_value_type(member, context)
 
 
 def interface_requires_custom_prototype(interface: Interface) -> bool:

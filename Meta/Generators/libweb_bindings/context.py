@@ -9,6 +9,7 @@ from typing import Optional
 
 from Utils.webidl_parser import CallbackFunction
 from Utils.webidl_parser import IDLType
+from Utils.webidl_parser import IDLUnionType
 from Utils.webidl_parser import Interface
 from Utils.webidl_parser import Module
 from Utils.webidl_parser import Typedef
@@ -69,12 +70,14 @@ class GenerationContext:
             constants=list(interface.constants),
             attributes=list(interface.attributes),
             operations=list(interface.operations),
+            constructors=list(interface.constructors),
         )
         for partial_interface in partial_interfaces:
             merged_interface.member_declarations.extend(partial_interface.member_declarations)
             merged_interface.constants.extend(partial_interface.constants)
             merged_interface.attributes.extend(partial_interface.attributes)
             merged_interface.operations.extend(partial_interface.operations)
+            merged_interface.constructors.extend(partial_interface.constructors)
             merged_interface.has_special_member = merged_interface.has_special_member or partial_interface.has_special_member
             merged_interface.named_property_getter = (
                 merged_interface.named_property_getter or partial_interface.named_property_getter
@@ -86,6 +89,13 @@ class GenerationContext:
 
     def resolve_typedef(self, type_: IDLType | str) -> IDLType:
         resolved_type = type_ if isinstance(type_, IDLType) else IDLType(type_)
+
+        if isinstance(resolved_type, IDLUnionType):
+            return IDLUnionType(
+                [self.resolve_typedef(member_type) for member_type in resolved_type.member_types],
+                resolved_type.nullable,
+            )
+
         seen_types: set[str] = set()
         while resolved_type.name in self.typedefs:
             if resolved_type.name in seen_types:
@@ -94,6 +104,13 @@ class GenerationContext:
 
             typedef_type = self.typedefs[resolved_type.name].type
             resolved_type = typedef_type.clone_with_nullable(resolved_type.nullable or typedef_type.nullable)
+
+            if isinstance(resolved_type, IDLUnionType):
+                return IDLUnionType(
+                    [self.resolve_typedef(member_type) for member_type in resolved_type.member_types],
+                    resolved_type.nullable,
+                )
+
         return resolved_type
 
 

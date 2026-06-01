@@ -37,6 +37,38 @@ class IDLType:
         return IDLType(self.name, nullable)
 
 
+class IDLUnionType(IDLType):
+    def __init__(self, member_types: List[IDLType], nullable: bool = False) -> None:
+        self.member_types = member_types
+        super().__init__(self.name_for_member_types(member_types), nullable)
+
+    @staticmethod
+    def name_for_member_types(member_types: List[IDLType]) -> str:
+        return f"({' or '.join(str(member_type) for member_type in member_types)})"
+
+    def __str__(self) -> str:
+        nullable_suffix = "?" if self.nullable else ""
+        return f"{self.name_for_member_types(self.member_types)}{nullable_suffix}"
+
+    def clone_with_nullable(self, nullable: bool) -> "IDLUnionType":
+        return IDLUnionType(self.member_types, nullable)
+
+    def flattened_member_types(self) -> List[IDLType]:
+        flattened_member_types: List[IDLType] = []
+        for member_type in self.member_types:
+            if isinstance(member_type, IDLUnionType):
+                flattened_member_types.extend(member_type.flattened_member_types())
+            else:
+                flattened_member_types.append(member_type)
+        return flattened_member_types
+
+    def includes_undefined(self) -> bool:
+        return any(member_type.name == "undefined" for member_type in self.flattened_member_types())
+
+    def includes_nullable_type(self) -> bool:
+        return self.nullable or any(member_type.nullable for member_type in self.flattened_member_types())
+
+
 @dataclass
 class Constant:
     declaration: str
@@ -73,6 +105,13 @@ class Operation:
 
 
 @dataclass
+class Constructor:
+    declaration: str
+    parameters: List[OperationParameter]
+    extended_attributes: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class Attribute:
     declaration: str
     name: str
@@ -93,6 +132,7 @@ class Interface:
     constants: List[Constant] = field(default_factory=list)
     attributes: List[Attribute] = field(default_factory=list)
     operations: List[Operation] = field(default_factory=list)
+    constructors: List[Constructor] = field(default_factory=list)
     named_property_getter: Optional[SpecialOperation] = None
     indexed_property_getter: Optional[SpecialOperation] = None
     has_special_member: bool = False
@@ -453,7 +493,7 @@ class Parser:
                 self.consume_whitespace()
 
             self.assert_specific(")")
-            return IDLType(f"({' or '.join(str(member_type) for member_type in member_types)})", self.parse_nullable())
+            return IDLUnionType(member_types, self.parse_nullable())
 
         unsigned = self.lexer.consume_specific("unsigned")
         if unsigned:
@@ -555,6 +595,10 @@ class Parser:
 
             if stripped_statement.startswith("readonly attribute ") or stripped_statement.startswith("attribute "):
                 interface.attributes.append(self.parse_attribute(stripped_statement, extended_attributes))
+                continue
+
+            if stripped_statement.startswith("constructor("):
+                interface.constructors.append(self.parse_constructor(stripped_statement, extended_attributes))
                 continue
 
             if (
@@ -691,6 +735,24 @@ class Parser:
             parameters=parameters,
             extended_attributes=extended_attributes,
             is_static=is_static,
+        )
+
+    def parse_constructor(self, declaration: str, extended_attributes: Dict[str, str]) -> Constructor:
+        parser = Parser(self.path, declaration)
+
+        parser.consume_keyword("constructor")
+        parser.consume_whitespace()
+        parser.assert_specific("(")
+        parameters = parser.parse_operation_parameters()
+        parser.assert_specific(")")
+        parser.consume_whitespace()
+        if not parser.lexer.is_eof():
+            parser.raise_parse_error("unexpected trailing text after constructor")
+
+        return Constructor(
+            declaration=declaration,
+            parameters=parameters,
+            extended_attributes=extended_attributes,
         )
 
     def parse_constant(self, declaration: str) -> Constant:
