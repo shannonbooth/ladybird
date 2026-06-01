@@ -46,7 +46,7 @@ def is_numeric_type(type_name: str) -> bool:
 
 
 def is_string_type(type_name: str) -> bool:
-    return type_name in ("DOMString", "CSSOMString", "USVString", "ByteString")
+    return type_name in ("DOMString", "USVString", "ByteString")
 
 
 def union_type_to_variant(union_type: IDLUnionType, context: GenerationContext) -> str:
@@ -120,7 +120,7 @@ def cpp_type_for_idl_type(idl_type: IDLType, context: GenerationContext, optiona
         return "JS::Value"
     if type_name == "boolean":
         return "bool"
-    if type_name in ("DOMString", "CSSOMString", "USVString"):
+    if type_name in ("DOMString", "USVString"):
         return "String"
     if type_name == "unrestricted double":
         return "double"
@@ -393,10 +393,20 @@ def bigint_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
 
 
 # 3.2.10. DOMString, https://webidl.spec.whatwg.org/#js-domstring
-def dom_string_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+def dom_string_to_idl_value(
+    value_name: str,
+    includes: GeneratedIncludes,
+    extended_attributes: dict[str, str] | None = None,
+) -> str:
     includes.add("LibJS/Runtime/Value.h")
     includes.add("LibWeb/WebIDL/AbstractOperations.h")
     # 1. If V is null and the conversion is to an IDL type associated with the [LegacyNullToEmptyString] extended attribute, then return the DOMString value that represents the empty string.
+    if extended_attributes is not None and "LegacyNullToEmptyString" in extended_attributes:
+        return f"""[&]() -> JS::ThrowCompletionOr<String> {{
+        if ({value_name}.is_null())
+            return String {{}};
+        return TRY(WebIDL::to_string(vm, {value_name}));
+    }}()"""
     # 2. Let x be ? ToString(V).
     # 3. Return the IDL DOMString value that represents the same sequence of code units as the one the JavaScript String value x represents.
     return f"WebIDL::to_string(vm, {value_name})"
@@ -715,7 +725,11 @@ def to_idl_value(
     if type_name == "bigint":
         return bigint_to_idl_value(value_name, includes)
     if type_name == "DOMString":
-        return dom_string_to_idl_value(value_name, includes)
+        return dom_string_to_idl_value(
+            value_name,
+            includes,
+            getattr(member, "extended_attributes", {}),
+        )
     if type_name == "ByteString":
         return bytestring_to_idl_value(value_name, includes)
     if type_name == "USVString":
@@ -762,7 +776,7 @@ def cpp_default_value_conversion(
             return "false"
     if member.default_value.startswith('"') and member.default_value.endswith('"'):
         default_value = title_casify(member.default_value.removeprefix('"').removesuffix('"'))
-        if context.resolve_typedef(member.type).name in ("DOMString", "CSSOMString", "USVString"):
+        if context.resolve_typedef(member.type).name in ("DOMString", "USVString"):
             return f"{member.default_value}_string"
         return f"{cpp_type(member, context)}::{default_value}"
     raise RuntimeError(f"Unsupported default value for dictionary member '{member.name}'")

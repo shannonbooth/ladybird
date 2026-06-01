@@ -73,6 +73,8 @@ private:
     for operation in interface.operations:
         if "FIXME" not in operation.extended_attributes:
             out.write(f"    JS_DECLARE_NATIVE_FUNCTION({operation_callback_name(operation)});\n")
+    if stringifier_attribute(interface) is not None:
+        out.write("    JS_DECLARE_NATIVE_FUNCTION(to_string);\n")
     if interface.indexed_property_getter is not None and interface.indexed_property_getter.name:
         out.write(f"    JS_DECLARE_NATIVE_FUNCTION({special_operation_callback_name(interface.indexed_property_getter)});\n")
     out.write(
@@ -96,7 +98,7 @@ def write_implementation(out: TextIO, includes: GeneratedIncludes, context: Gene
     if interface.parent_name:
         includes.add_binding(interface.parent_name)
     includes.add(implementation_header_for_interface(interface))
-    if interface.attributes or interface.indexed_property_getter is not None:
+    if interface.attributes or stringifier_attribute(interface) is not None or interface.indexed_property_getter is not None:
         includes.add("LibJS/Runtime/Error.h")
         includes.add("LibWeb/Bindings/ExceptionOrUtils.h")
     if interface.constructors:
@@ -181,6 +183,7 @@ void {interface.prototype_class}::initialize(JS::Realm& realm)
     )
     define_the_regular_attributes(out, context, includes)
     define_the_operations(out, context)
+    define_the_stringifier(out, context)
     define_the_indexed_property_getter(out, context, includes)
 
     define_the_constants(out, context, includes)
@@ -208,6 +211,7 @@ void {interface.prototype_class}::define_unforgeable_attributes(JS::Realm& realm
     write_attribute_getters(out, context, includes)
     write_attribute_setters(out, context, includes)
     write_operations(out, context, includes)
+    write_stringifier(out, context, includes)
     write_indexed_property_getter(out, context, includes)
 
 
@@ -430,6 +434,18 @@ def define_the_operations(out: TextIO, context: GenerationContext) -> None:
 
 """
         )
+
+
+def define_the_stringifier(out: TextIO, context: GenerationContext) -> None:
+    interface = context.interface_for_generation()
+    if interface is None or stringifier_attribute(interface) is None:
+        return
+
+    out.write(
+        """    object.define_native_function(realm, "toString"_utf16_fly_string, to_string, 0, default_attributes);
+
+"""
+    )
 
 
 # https://webidl.spec.whatwg.org/#define-the-constants
@@ -667,6 +683,42 @@ def write_operations(out: TextIO, context: GenerationContext, includes: Generate
         write_operation(out, context, includes, operation)
 
 
+def write_stringifier(out: TextIO, context: GenerationContext, includes: GeneratedIncludes) -> None:
+    interface = context.interface_for_generation()
+    if interface is None:
+        return
+
+    attribute = stringifier_attribute(interface)
+    if attribute is None:
+        return
+
+    return_value = type_conversion.idl_value_to_javascript_value(attribute.type, "R", includes, context)
+    out.write(
+        f"""JS_DEFINE_NATIVE_FUNCTION({interface.prototype_class}::to_string)
+{{
+    WebIDL::log_trace(vm, "{interface.prototype_class}::to_string");
+    auto& realm = *vm.current_realm();
+
+    [[maybe_unused]] {fully_qualified_name(interface)}* idl_object = nullptr;
+
+    auto js_value = vm.this_value();
+    if (js_value.is_nullish())
+        js_value = &realm.global_object();
+
+    if (auto impl = js_value.as_if<{fully_qualified_name(interface)}>()) {{
+        idl_object = impl.ptr();
+    }} else {{
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "{interface.namespaced_name}");
+    }}
+
+    auto R = TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->{attribute_impl_cpp_name(attribute)}(); }}));
+    return {return_value};
+}}
+
+"""
+    )
+
+
 def write_operation(
     out: TextIO,
     context: GenerationContext,
@@ -824,6 +876,10 @@ def write_indexed_property_getter(
 
 def attribute_cpp_name(attribute: Attribute) -> str:
     return make_name_acceptable_cpp(title_case_to_snake_case(attribute.name))
+
+
+def stringifier_attribute(interface: Interface) -> Attribute | None:
+    return next((attribute for attribute in interface.attributes if attribute.stringifier), None)
 
 
 def attribute_impl_cpp_name(attribute: Attribute) -> str:

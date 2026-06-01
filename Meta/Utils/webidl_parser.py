@@ -117,6 +117,7 @@ class Attribute:
     name: str
     type: IDLType
     readonly: bool = False
+    stringifier: bool = False
     extended_attributes: Dict[str, str] = field(default_factory=dict)
 
 
@@ -593,7 +594,12 @@ class Parser:
                 interface.constants.append(self.parse_constant(stripped_statement))
                 continue
 
-            if stripped_statement.startswith("readonly attribute ") or stripped_statement.startswith("attribute "):
+            if (
+                stripped_statement.startswith("readonly attribute ")
+                or stripped_statement.startswith("attribute ")
+                or stripped_statement.startswith("stringifier attribute ")
+                or stripped_statement.startswith("stringifier readonly attribute ")
+            ):
                 interface.attributes.append(self.parse_attribute(stripped_statement, extended_attributes))
                 continue
 
@@ -784,6 +790,12 @@ class Parser:
     def parse_attribute(self, declaration: str, extended_attributes: Dict[str, str]) -> Attribute:
         parser = Parser(self.path, declaration)
 
+        stringifier = False
+        if parser.next_is_keyword("stringifier"):
+            stringifier = True
+            parser.consume_keyword("stringifier")
+            parser.consume_whitespace()
+
         readonly = False
         if parser.next_is_keyword("readonly"):
             readonly = True
@@ -806,6 +818,7 @@ class Parser:
             name=name,
             type=attribute_type,
             readonly=readonly,
+            stringifier=stringifier,
             extended_attributes=extended_attributes,
         )
 
