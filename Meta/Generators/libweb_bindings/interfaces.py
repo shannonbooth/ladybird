@@ -612,6 +612,15 @@ def write_attribute_getter(
     if interface is None:
         return
 
+    getter_steps = f"auto R = TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->{attribute_impl_cpp_name(attribute)}(); }}));"
+    if attribute_is_non_nullable_reflected_string(attribute):
+        getter_steps = f"""// If a reflected IDL attribute has the type DOMString:
+    // 1. Let element be the result of running this's get the element.
+    // 2. Let contentAttributeValue be the result of running this's get the content attribute.
+    // 5. If contentAttributeValue is null, then return the empty string.
+    // 6. Return contentAttributeValue.
+    auto R = idl_object->get_attribute_value("{reflected_attribute_name(attribute)}"_fly_string);"""
+
     return_value = type_conversion.idl_value_to_javascript_value(attribute.type, "R", includes, context)
     out.write(
         f"""JS_DEFINE_NATIVE_FUNCTION({interface.prototype_class}::{attribute_getter_callback_name(attribute)})
@@ -649,7 +658,7 @@ def write_attribute_getter(
     // 4. FIXME: If attribute’s type is an observable array type, then return jsValue’s backing observable array exotic object for attribute.
 
     // 3. Let R be the result of running the getter steps of attribute with idlObject as this.
-    auto R = TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->{attribute_impl_cpp_name(attribute)}(); }}));
+    {getter_steps}
 
     // 4. Return the result of converting R to a JavaScript value of the type attribute is declared as.
     return {return_value};
@@ -763,13 +772,16 @@ def write_attribute_setter(
         return
 
     conversion = type_conversion.to_idl_value(attribute, "V", includes, context)
+    setter_steps = f"TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->set_{attribute_impl_cpp_name(attribute)}(idl_value); }}));"
+    if attribute_is_non_nullable_reflected_string(attribute):
+        setter_steps = f'idl_object->set_attribute_value("{reflected_attribute_name(attribute)}"_fly_string, idl_value);'
     out.write(
         f"""    // 6. Let idlValue be determined as follows:
     // -> Otherwise, idlValue is the result of converting V to an IDL value of attribute’s type.
     auto idl_value = TRY(throw_dom_exception_if_needed(vm, [&] {{ return {conversion}; }}));
 
     // 7. Run the setter steps of attribute with idlObject as this and idlValue as the value.
-    TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->set_{attribute_impl_cpp_name(attribute)}(idl_value); }}));
+    {setter_steps}
 
     // 8. Return undefined.
     return JS::js_undefined();
@@ -1133,6 +1145,18 @@ def attribute_impl_cpp_name(attribute: Attribute) -> str:
 
 def attribute_has_setter(attribute: Attribute) -> bool:
     return not attribute.readonly or "PutForwards" in attribute.extended_attributes
+
+
+def attribute_is_non_nullable_reflected_string(attribute: Attribute) -> bool:
+    return (
+        "Reflect" in attribute.extended_attributes
+        and not attribute.type.nullable
+        and attribute.type.name == "DOMString"
+    )
+
+
+def reflected_attribute_name(attribute: Attribute) -> str:
+    return attribute.extended_attributes.get("Reflect") or title_case_to_snake_case(attribute.name)
 
 
 def operation_is_supported(operation: Operation) -> bool:
