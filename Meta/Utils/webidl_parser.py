@@ -49,6 +49,8 @@ class Constant:
 class OperationParameter:
     name: str
     type: IDLType
+    optional: bool = False
+    default_value: Optional[str] = None
 
 
 @dataclass
@@ -625,7 +627,9 @@ class Parser:
                 self.parse_extended_attributes()
                 self.consume_whitespace()
 
+            optional = False
             if self.next_is_keyword("optional"):
+                optional = True
                 self.consume_keyword("optional")
                 self.consume_whitespace()
 
@@ -640,12 +644,20 @@ class Parser:
             self.consume_whitespace()
 
             parameter_name = self.parse_identifier_ending_with_space_or(",", ")")
-            parameters.append(OperationParameter(name=parameter_name, type=parameter_type))
 
             self.consume_whitespace()
+            default_value: Optional[str] = None
             if self.lexer.consume_specific("="):
-                self.consume_until_top_level(",", ")")
+                default_value = self.consume_until_top_level(",", ")").strip()
                 self.consume_whitespace()
+            parameters.append(
+                OperationParameter(
+                    name=parameter_name,
+                    type=parameter_type,
+                    optional=optional,
+                    default_value=default_value,
+                )
+            )
             if not self.lexer.consume_specific(","):
                 break
             self.consume_whitespace()

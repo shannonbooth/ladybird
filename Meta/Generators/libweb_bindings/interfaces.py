@@ -14,6 +14,7 @@ from Utils.webidl_parser import Attribute
 from Utils.webidl_parser import DictionaryMember
 from Utils.webidl_parser import Interface
 from Utils.webidl_parser import Operation
+from Utils.webidl_parser import OperationParameter
 from Utils.webidl_parser import SpecialOperation
 
 
@@ -69,6 +70,9 @@ private:
         out.write(f"    JS_DECLARE_NATIVE_FUNCTION({attribute_getter_callback_name(attribute)});\n")
         if attribute_has_setter(attribute):
             out.write(f"    JS_DECLARE_NATIVE_FUNCTION({attribute_setter_callback_name(attribute)});\n")
+    for operation in interface.operations:
+        if "FIXME" not in operation.extended_attributes:
+            out.write(f"    JS_DECLARE_NATIVE_FUNCTION({operation_callback_name(operation)});\n")
     if interface.indexed_property_getter is not None and interface.indexed_property_getter.name:
         out.write(f"    JS_DECLARE_NATIVE_FUNCTION({special_operation_callback_name(interface.indexed_property_getter)});\n")
     out.write(
@@ -190,6 +194,7 @@ void {interface.prototype_class}::define_unforgeable_attributes(JS::Realm& realm
     )
     write_attribute_getters(out, context, includes)
     write_attribute_setters(out, context, includes)
+    write_operations(out, context, includes)
     write_indexed_property_getter(out, context, includes)
 
 
@@ -351,7 +356,12 @@ def define_the_operations(out: TextIO, context: GenerationContext) -> None:
 
     for operation in interface.operations:
         if "FIXME" not in operation.extended_attributes:
-            raise RuntimeError(f"Unsupported operation '{operation.name}' on '{interface.name}'")
+            out.write(
+                f"""    object.define_native_function(realm, "{operation.name}"_utf16_fly_string, {operation_callback_name(operation)}, {operation_length(operation)}, default_attributes);
+
+"""
+            )
+            continue
 
         out.write(
             f"""    object.define_direct_property("{operation.name}"_utf16_fly_string, JS::js_undefined(), default_attributes | JS::Attribute::Unimplemented);
@@ -584,6 +594,105 @@ def write_attribute_setter(
     )
 
 
+def write_operations(out: TextIO, context: GenerationContext, includes: GeneratedIncludes) -> None:
+    interface = context.interface_for_generation()
+    if interface is None:
+        return
+
+    for operation in interface.operations:
+        if "FIXME" in operation.extended_attributes:
+            continue
+        write_operation(out, context, includes, operation)
+
+
+def write_operation(
+    out: TextIO,
+    context: GenerationContext,
+    includes: GeneratedIncludes,
+    operation: Operation,
+) -> None:
+    interface = context.interface_for_generation()
+    if interface is None:
+        return
+
+    if operation.is_static:
+        raise RuntimeError(f"Unsupported static operation '{operation.name}' on '{interface.name}'")
+
+    return_value = type_conversion.idl_value_to_javascript_value(operation.return_type, "R", includes, context)
+    arguments = ", ".join(make_name_acceptable_cpp(parameter.name) for parameter in operation.parameters)
+    out.write(
+        f"""JS_DEFINE_NATIVE_FUNCTION({interface.prototype_class}::{operation_callback_name(operation)})
+{{
+    WebIDL::log_trace(vm, "{interface.prototype_class}::{operation_callback_name(operation)}");
+    auto& realm = *vm.current_realm();
+
+    [[maybe_unused]] {fully_qualified_name(interface)}* idl_object = nullptr;
+
+    auto js_value = vm.this_value();
+    if (js_value.is_nullish())
+        js_value = &realm.global_object();
+
+    if (auto impl = js_value.as_if<{fully_qualified_name(interface)}>()) {{
+        idl_object = impl.ptr();
+    }} else {{
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "{interface.namespaced_name}");
+    }}
+
+"""
+    )
+    required_argument_count = operation_length(operation)
+    if required_argument_count == 1:
+        out.write(
+            f"""    if (vm.argument_count() < 1)
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::BadArgCountOne, "{operation.name}");
+
+"""
+        )
+    elif required_argument_count > 1:
+        out.write(
+            f"""    if (vm.argument_count() < {required_argument_count})
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::BadArgCountMany, "{operation.name}", "{required_argument_count}");
+
+"""
+        )
+
+    for index, parameter in enumerate(operation.parameters):
+        argument_value_name = f"arg{index}"
+        out.write(f"    auto {argument_value_name} = vm.argument({index});\n")
+        conversion_member = DictionaryMember(name=parameter.name, type=parameter.type)
+        conversion = type_conversion.to_idl_value(conversion_member, argument_value_name, includes, context)
+        parameter_cpp_name = make_name_acceptable_cpp(parameter.name)
+        if parameter.optional:
+            if parameter.default_value is None:
+                raise RuntimeError(
+                    f"Unsupported optional operation parameter '{parameter.name}' without default value"
+                )
+            out.write(
+                f"""    auto {parameter_cpp_name} = {operation_parameter_default_value(parameter, context)};
+    if (!{argument_value_name}.is_undefined())
+        {parameter_cpp_name} = TRY({conversion});
+
+"""
+            )
+        else:
+            out.write(
+                f"""    auto {parameter_cpp_name} = TRY({conversion});
+
+"""
+            )
+
+    return_statement = "return JS::js_undefined();"
+    if context.resolve_typedef(operation.return_type).name != "undefined":
+        return_statement = f"return {return_value};"
+    out.write(
+        f"""    [[maybe_unused]] auto R = TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->{operation_cpp_name(operation)}({arguments}); }}));
+    {return_statement}
+}}
+
+"""
+    )
+
+
 def write_indexed_property_getter(
     out: TextIO,
     context: GenerationContext,
@@ -650,7 +759,46 @@ def attribute_has_setter(attribute: Attribute) -> bool:
 
 
 def operation_is_supported(operation: Operation) -> bool:
-    return "FIXME" in operation.extended_attributes
+    return not operation.is_static
+
+
+def operation_length(operation: Operation) -> int:
+    return sum(1 for parameter in operation.parameters if not parameter.optional)
+
+
+def operation_cpp_name(operation: Operation) -> str:
+    return make_name_acceptable_cpp(title_case_to_snake_case(operation.name))
+
+
+def operation_callback_name(operation: Operation) -> str:
+    return operation_cpp_name(operation)
+
+
+def operation_parameter_default_value(parameter: OperationParameter, context: GenerationContext) -> str:
+    if parameter.default_value is None:
+        raise RuntimeError(f"Operation parameter '{parameter.name}' has no default value")
+
+    parameter_type = context.resolve_typedef(parameter.type).name
+    if parameter.default_value in ("true", "false"):
+        return parameter.default_value
+    if parameter.default_value == "0":
+        integer_types = {
+            "byte": "WebIDL::Byte",
+            "octet": "WebIDL::Octet",
+            "short": "WebIDL::Short",
+            "unsigned short": "WebIDL::UnsignedShort",
+            "long": "WebIDL::Long",
+            "unsigned long": "WebIDL::UnsignedLong",
+            "long long": "WebIDL::LongLong",
+            "unsigned long long": "WebIDL::UnsignedLongLong",
+        }
+        if parameter_type in integer_types:
+            return f"{integer_types[parameter_type]} {{ 0 }}"
+        return "0"
+    if parameter.default_value.startswith('"') and parameter.default_value.endswith('"'):
+        return f"{parameter.default_value}_string"
+
+    raise RuntimeError(f"Unsupported default value for operation parameter '{parameter.name}'")
 
 
 def interface_requires_custom_prototype(interface: Interface) -> bool:

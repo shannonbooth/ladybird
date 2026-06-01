@@ -368,6 +368,9 @@ def idl_value_to_javascript_value(
 
     # https://webidl.spec.whatwg.org/#js-type-mapping
     # The result of converting an IDL value to a JavaScript value depends on the IDL type of the value.
+    if idl_type_name == "undefined":
+        return "JS::js_undefined()"
+
     if idl_type_name == "boolean":
         return f"JS::Value({value})"
 
