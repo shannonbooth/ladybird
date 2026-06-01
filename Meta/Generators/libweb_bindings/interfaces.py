@@ -12,7 +12,6 @@ from Generators.libweb_bindings.includes import GeneratedIncludes
 from Utils.utils import make_name_acceptable_cpp
 from Utils.utils import title_case_to_snake_case
 from Utils.webidl_parser import Attribute
-from Utils.webidl_parser import DictionaryMember
 from Utils.webidl_parser import Interface
 from Utils.webidl_parser import Operation
 from Utils.webidl_parser import OperationParameter
@@ -317,8 +316,8 @@ def write_constructor_steps(out: TextIO, context: GenerationContext, includes: G
 """
     )
     write_argument_count_check(out, interface.name, parameter_list_length(constructor.parameters))
-    write_parameter_conversions(out, constructor.parameters, includes, context)
-    arguments = ", ".join(make_name_acceptable_cpp(parameter.name) for parameter in constructor.parameters)
+    type_conversion.write_operation_parameter_conversions(out, constructor.parameters, includes, context)
+    arguments = ", ".join(type_conversion.operation_parameter_argument_name(parameter) for parameter in constructor.parameters)
     if arguments:
         arguments = f", {arguments}"
     out.write(
@@ -841,7 +840,7 @@ def write_operation(
         raise RuntimeError(f"Unsupported static operation '{operation.name}' on '{interface.name}'")
 
     return_value = type_conversion.idl_value_to_javascript_value(operation.return_type, "R", includes, context)
-    arguments = ", ".join(make_name_acceptable_cpp(parameter.name) for parameter in operation.parameters)
+    arguments = ", ".join(type_conversion.operation_parameter_argument_name(parameter) for parameter in operation.parameters)
     out.write(
         f"""JS_DEFINE_NATIVE_FUNCTION({interface.prototype_class}::{operation_callback_name(operation)})
 {{
@@ -878,7 +877,7 @@ def write_operation(
 """
         )
 
-    write_parameter_conversions(out, operation.parameters, includes, context)
+    type_conversion.write_operation_parameter_conversions(out, operation.parameters, includes, context)
 
     return_statement = "return JS::js_undefined();"
     if context.resolve_typedef(operation.return_type).name != "undefined":
@@ -890,43 +889,6 @@ def write_operation(
 
 """
     )
-
-
-def write_parameter_conversions(
-    out: TextIO,
-    parameters: list[OperationParameter],
-    includes: GeneratedIncludes,
-    context: GenerationContext,
-) -> None:
-    for index, parameter in enumerate(parameters):
-        argument_value_name = f"arg{index}"
-        out.write(f"    auto {argument_value_name} = vm.argument({index});\n")
-        conversion_member = DictionaryMember(name=parameter.name, type=parameter.type, required=True)
-        conversion = type_conversion.to_idl_value(conversion_member, argument_value_name, includes, context)
-        parameter_cpp_name = make_name_acceptable_cpp(parameter.name)
-        if parameter.optional:
-            if parameter.default_value is None:
-                out.write(
-                    f"""    {operation_parameter_cpp_type(parameter, context)} {parameter_cpp_name} {{}};
-    if (!{argument_value_name}.is_undefined())
-        {parameter_cpp_name} = TRY(throw_dom_exception_if_needed(vm, [&] {{ return {conversion}; }}));
-
-"""
-                )
-            else:
-                out.write(
-                    f"""    auto {parameter_cpp_name} = {operation_parameter_default_value(parameter, context)};
-    if (!{argument_value_name}.is_undefined())
-        {parameter_cpp_name} = TRY(throw_dom_exception_if_needed(vm, [&] {{ return {conversion}; }}));
-
-"""
-                )
-        else:
-            out.write(
-                f"""    auto {parameter_cpp_name} = TRY(throw_dom_exception_if_needed(vm, [&] {{ return {conversion}; }}));
-
-"""
-            )
 
 
 def write_argument_count_check(out: TextIO, function_name: str, argument_count: int) -> None:
@@ -967,9 +929,8 @@ def write_indexed_property_getter(
         raise RuntimeError(f"Unsupported indexed property getter arity on '{interface.name}'")
 
     parameter = operation.parameters[0]
-    idl_parameter = DictionaryMember(name=parameter.name, type=parameter.type, required=True)
-    argument_conversion = type_conversion.to_idl_value(idl_parameter, "arg0", includes, context)
     return_value = type_conversion.idl_value_to_javascript_value(operation.return_type, "R", includes, context)
+    parameter_name = type_conversion.operation_parameter_argument_name(parameter)
 
     out.write(
         f"""JS_DEFINE_NATIVE_FUNCTION({interface.prototype_class}::{special_operation_callback_name(operation)})
@@ -992,10 +953,13 @@ def write_indexed_property_getter(
     if (vm.argument_count() < 1)
         return vm.throw_completion<JS::TypeError>(JS::ErrorType::BadArgCountOne, "{operation.name}");
 
-    auto arg0 = vm.argument(0);
-    auto {make_name_acceptable_cpp(parameter.name)} = TRY({argument_conversion});
+"""
+    )
+    type_conversion.write_operation_parameter_conversions(out, operation.parameters, includes, context)
+    out.write(
+        f"""
 
-    auto R = TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->{operation.name}({make_name_acceptable_cpp(parameter.name)}); }}));
+    auto R = TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->{operation.name}({parameter_name}); }}));
     return {return_value};
 }}
 
@@ -1020,9 +984,8 @@ def write_named_property_getter(
         raise RuntimeError(f"Unsupported named property getter arity on '{interface.name}'")
 
     parameter = operation.parameters[0]
-    idl_parameter = DictionaryMember(name=parameter.name, type=parameter.type, required=True)
-    argument_conversion = type_conversion.to_idl_value(idl_parameter, "arg0", includes, context)
     return_value = type_conversion.idl_value_to_javascript_value(operation.return_type, "R", includes, context)
+    parameter_name = type_conversion.operation_parameter_argument_name(parameter)
 
     out.write(
         f"""JS_DEFINE_NATIVE_FUNCTION({interface.prototype_class}::{special_operation_callback_name(operation)})
@@ -1045,10 +1008,13 @@ def write_named_property_getter(
     if (vm.argument_count() < 1)
         return vm.throw_completion<JS::TypeError>(JS::ErrorType::BadArgCountOne, "{operation.name}");
 
-    auto arg0 = vm.argument(0);
-    auto {make_name_acceptable_cpp(parameter.name)} = TRY({argument_conversion});
+"""
+    )
+    type_conversion.write_operation_parameter_conversions(out, operation.parameters, includes, context)
+    out.write(
+        f"""
 
-    auto R = TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->{special_operation_callback_name(operation)}({make_name_acceptable_cpp(parameter.name)}); }}));
+    auto R = TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->{special_operation_callback_name(operation)}({parameter_name}); }}));
     return {return_value};
 }}
 
@@ -1102,7 +1068,7 @@ def write_named_property_operation(
         raise RuntimeError(f"Unsupported named property operation arity on '{interface.name}'")
 
     return_value = type_conversion.idl_value_to_javascript_value(operation.return_type, "R", includes, context)
-    arguments = ", ".join(make_name_acceptable_cpp(parameter.name) for parameter in operation.parameters)
+    arguments = ", ".join(type_conversion.operation_parameter_argument_name(parameter) for parameter in operation.parameters)
 
     out.write(
         f"""JS_DEFINE_NATIVE_FUNCTION({interface.prototype_class}::{special_operation_callback_name(operation)})
@@ -1139,7 +1105,7 @@ def write_named_property_operation(
 """
         )
 
-    write_parameter_conversions(out, operation.parameters, includes, context)
+    type_conversion.write_operation_parameter_conversions(out, operation.parameters, includes, context)
 
     return_statement = "return JS::js_undefined();"
     if context.resolve_typedef(operation.return_type).name != "undefined":
@@ -1182,7 +1148,7 @@ def operation_length(operation: Operation) -> int:
 
 
 def parameter_list_length(parameters: list[OperationParameter]) -> int:
-    return sum(1 for parameter in parameters if not parameter.optional)
+    return sum(1 for parameter in parameters if not parameter.optional and not parameter.variadic)
 
 
 def operation_cpp_name(operation: Operation) -> str:
@@ -1191,48 +1157,6 @@ def operation_cpp_name(operation: Operation) -> str:
 
 def operation_callback_name(operation: Operation) -> str:
     return operation_cpp_name(operation)
-
-
-def operation_parameter_default_value(parameter: OperationParameter, context: GenerationContext) -> str:
-    if parameter.default_value is None:
-        raise RuntimeError(f"Operation parameter '{parameter.name}' has no default value")
-
-    member = DictionaryMember(name=parameter.name, type=parameter.type, required=True)
-    resolved_parameter_type = context.resolve_typedef(parameter.type)
-    parameter_type = resolved_parameter_type.name
-    if parameter.default_value == "{}":
-        return f"{parameter_type} {{}}"
-    if parameter.default_value == "null":
-        cpp_value_type = type_conversion.cpp_value_type(member, context)
-        null_value = type_conversion.cpp_null_value(resolved_parameter_type, context)
-        return f"{cpp_value_type} {{ {null_value} }}"
-    if parameter.default_value in ("true", "false"):
-        return parameter.default_value
-    if parameter.default_value == "0":
-        integer_types = {
-            "byte": "WebIDL::Byte",
-            "octet": "WebIDL::Octet",
-            "short": "WebIDL::Short",
-            "unsigned short": "WebIDL::UnsignedShort",
-            "long": "WebIDL::Long",
-            "unsigned long": "WebIDL::UnsignedLong",
-            "long long": "WebIDL::LongLong",
-            "unsigned long long": "WebIDL::UnsignedLongLong",
-        }
-        if parameter_type in integer_types:
-            return f"{integer_types[parameter_type]} {{ 0 }}"
-        return "0"
-    if parameter.default_value.startswith('"') and parameter.default_value.endswith('"'):
-        return f"{parameter.default_value}_string"
-
-    raise RuntimeError(f"Unsupported default value for operation parameter '{parameter.name}'")
-
-
-def operation_parameter_cpp_type(parameter: OperationParameter, context: GenerationContext) -> str:
-    member = DictionaryMember(name=parameter.name, type=parameter.type, required=True)
-    if parameter.optional:
-        return f"Optional<{type_conversion.cpp_value_type(member, context)}>"
-    return type_conversion.cpp_value_type(member, context)
 
 
 def interface_requires_custom_prototype(interface: Interface) -> bool:

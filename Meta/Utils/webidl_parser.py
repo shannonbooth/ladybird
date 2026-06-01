@@ -106,6 +106,7 @@ class OperationParameter:
     type: IDLType
     optional: bool = False
     default_value: Optional[str] = None
+    variadic: bool = False
 
 
 @dataclass
@@ -774,7 +775,7 @@ class Parser:
             parameter_type = self.parse_type()
             self.consume_whitespace()
 
-            self.lexer.consume_specific("...")
+            variadic = self.lexer.consume_specific("...")
             self.consume_whitespace()
 
             parameter_name = self.parse_identifier_ending_with_space_or(",", ")")
@@ -790,6 +791,7 @@ class Parser:
                     type=parameter_type,
                     optional=optional,
                     default_value=default_value,
+                    variadic=variadic,
                 )
             )
             if not self.lexer.consume_specific(","):

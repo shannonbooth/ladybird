@@ -5,6 +5,7 @@
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
+from typing import TextIO
 from typing import Union
 
 from Generators.libweb_bindings.context import GenerationContext
@@ -19,6 +20,7 @@ from Utils.webidl_parser import IDLParameterizedType
 from Utils.webidl_parser import IDLType
 from Utils.webidl_parser import IDLUnionType
 from Utils.webidl_parser import Interface
+from Utils.webidl_parser import OperationParameter
 
 DictionaryMemberOrAttribute = Union[DictionaryMember, Attribute]
 
@@ -73,6 +75,18 @@ def is_string_type(type_name: str) -> bool:
 
 def contained_storage_type_to_cpp_name(contained_storage_type: ContainedStorageType) -> str:
     return contained_storage_type.value
+
+
+def add_include_for_contained_storage_type(
+    contained_storage_type: ContainedStorageType,
+    includes: GeneratedIncludes,
+) -> None:
+    if contained_storage_type is ContainedStorageType.ConservativeVector:
+        includes.add("LibGC/ConservativeVector.h")
+    elif contained_storage_type is ContainedStorageType.RootVector:
+        includes.add("LibGC/RootVector.h")
+    else:
+        includes.add("AK/Vector.h")
 
 
 def make_cpp_type(
@@ -306,6 +320,153 @@ def cpp_null_value(idl_type: IDLType, context: GenerationContext) -> str:
     if cpp_type_for_idl_type_details(idl_type, context).gc_ref_target_type:
         return "nullptr"
     return "OptionalNone {}"
+
+
+def operation_parameter_cpp_name(parameter: OperationParameter) -> str:
+    return make_name_acceptable_cpp(parameter.name)
+
+
+def operation_parameter_argument_name(parameter: OperationParameter) -> str:
+    parameter_name = operation_parameter_cpp_name(parameter)
+    if parameter.variadic:
+        return f"move({parameter_name})"
+    return parameter_name
+
+
+def operation_parameter_cpp_type(parameter: OperationParameter, context: GenerationContext) -> str:
+    if parameter.variadic:
+        cpp_type = cpp_type_for_idl_type_details(parameter.type, context)
+        storage_type_name = contained_storage_type_to_cpp_name(cpp_type.contained_storage_type)
+        return f"{storage_type_name}<{cpp_type.name}>"
+
+    if parameter.optional:
+        return cpp_type_for_idl_type(parameter.type, context, optional=True)
+
+    member = DictionaryMember(name=parameter.name, type=parameter.type, required=True)
+    return cpp_value_type(member, context)
+
+
+def operation_parameter_default_value(parameter: OperationParameter, context: GenerationContext) -> str:
+    if parameter.default_value is None:
+        raise RuntimeError(f"Operation parameter '{parameter.name}' has no default value")
+
+    member = DictionaryMember(name=parameter.name, type=parameter.type, required=True)
+    resolved_parameter_type = context.resolve_typedef(parameter.type)
+    parameter_type = resolved_parameter_type.name
+    if parameter.default_value == "{}":
+        return f"{parameter_type} {{}}"
+    if parameter.default_value == "null":
+        cpp_value = cpp_value_type(member, context)
+        null_value = cpp_null_value(resolved_parameter_type, context)
+        return f"{cpp_value} {{ {null_value} }}"
+    if parameter.default_value in ("true", "false"):
+        return parameter.default_value
+    if parameter.default_value == "0":
+        integer_types = {
+            "byte": "WebIDL::Byte",
+            "octet": "WebIDL::Octet",
+            "short": "WebIDL::Short",
+            "unsigned short": "WebIDL::UnsignedShort",
+            "long": "WebIDL::Long",
+            "unsigned long": "WebIDL::UnsignedLong",
+            "long long": "WebIDL::LongLong",
+            "unsigned long long": "WebIDL::UnsignedLongLong",
+        }
+        if parameter_type in integer_types:
+            return f"{integer_types[parameter_type]} {{ 0 }}"
+        return "0"
+    if parameter.default_value.startswith('"') and parameter.default_value.endswith('"'):
+        return f"{parameter.default_value}_string"
+
+    raise RuntimeError(f"Unsupported default value for operation parameter '{parameter.name}'")
+
+
+def write_operation_parameter_conversions(
+    out: TextIO,
+    parameters: list[OperationParameter],
+    includes: GeneratedIncludes,
+    context: GenerationContext,
+) -> None:
+    includes.add("LibWeb/Bindings/ExceptionOrUtils.h")
+
+    for index, parameter in enumerate(parameters):
+        if parameter.variadic:
+            write_variadic_operation_parameter_conversion(out, parameter, index, includes, context)
+        else:
+            write_single_operation_parameter_conversion(out, parameter, index, includes, context)
+
+
+def write_single_operation_parameter_conversion(
+    out: TextIO,
+    parameter: OperationParameter,
+    index: int,
+    includes: GeneratedIncludes,
+    context: GenerationContext,
+) -> None:
+    argument_value_name = f"arg{index}"
+    parameter_name = operation_parameter_cpp_name(parameter)
+    conversion_member = DictionaryMember(name=parameter.name, type=parameter.type, required=True)
+    conversion = to_idl_value(conversion_member, argument_value_name, includes, context)
+
+    out.write(f"    auto {argument_value_name} = vm.argument({index});\n")
+
+    if parameter.optional and parameter.default_value is None:
+        out.write(
+            f"""    {operation_parameter_cpp_type(parameter, context)} {parameter_name} {{}};
+    if (!{argument_value_name}.is_undefined())
+        {parameter_name} = TRY(throw_dom_exception_if_needed(vm, [&] {{ return {conversion}; }}));
+
+"""
+        )
+        return
+
+    if parameter.optional:
+        out.write(
+            f"""    auto {parameter_name} = {operation_parameter_default_value(parameter, context)};
+    if (!{argument_value_name}.is_undefined())
+        {parameter_name} = TRY(throw_dom_exception_if_needed(vm, [&] {{ return {conversion}; }}));
+
+"""
+        )
+        return
+
+    out.write(
+        f"""    auto {parameter_name} = TRY(throw_dom_exception_if_needed(vm, [&] {{ return {conversion}; }}));
+
+"""
+    )
+
+
+def write_variadic_operation_parameter_conversion(
+    out: TextIO,
+    parameter: OperationParameter,
+    index: int,
+    includes: GeneratedIncludes,
+    context: GenerationContext,
+) -> None:
+    cpp_type = cpp_type_for_idl_type_details(parameter.type, context)
+    add_include_for_contained_storage_type(cpp_type.contained_storage_type, includes)
+
+    parameter_name = operation_parameter_cpp_name(parameter)
+    argument_value_name = f"variadic_argument{index}"
+    element_name = f"{parameter_name}_element"
+    conversion_member = DictionaryMember(name=parameter.name, type=parameter.type, required=True)
+    conversion = to_idl_value(conversion_member, argument_value_name, includes, context)
+    parameter_cpp_type = operation_parameter_cpp_type(parameter, context)
+
+    out.write(
+        f"""    {parameter_cpp_type} {parameter_name};
+    if (vm.argument_count() > {index}) {{
+        {parameter_name}.ensure_capacity(vm.argument_count() - {index});
+        for (size_t i = {index}; i < vm.argument_count(); ++i) {{
+            auto {argument_value_name} = vm.argument(i);
+            auto {element_name} = TRY(throw_dom_exception_if_needed(vm, [&] {{ return {conversion}; }}));
+            {parameter_name}.unchecked_append(move({element_name}));
+        }}
+    }}
+
+"""
+    )
 
 
 def add_header_includes_for_idl_type(
