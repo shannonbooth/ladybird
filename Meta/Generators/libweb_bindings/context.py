@@ -14,6 +14,7 @@ from Utils.webidl_parser import Enumeration
 from Utils.webidl_parser import IDLParameterizedType
 from Utils.webidl_parser import IDLType
 from Utils.webidl_parser import IDLUnionType
+from Utils.webidl_parser import IncludedMixin
 from Utils.webidl_parser import Interface
 from Utils.webidl_parser import Module
 from Utils.webidl_parser import Typedef
@@ -30,6 +31,9 @@ class GenerationContext:
     interfaces: dict[str, Interface] = field(init=False)
     typedefs: dict[str, Typedef] = field(init=False)
     partial_interfaces: dict[str, list[Interface]] = field(init=False)
+    mixins: dict[str, Interface] = field(init=False)
+    partial_mixins: dict[str, list[Interface]] = field(init=False)
+    included_mixins: dict[str, list[IncludedMixin]] = field(init=False)
 
     def __post_init__(self) -> None:
         if not self.modules:
@@ -53,6 +57,15 @@ class GenerationContext:
         for module in self.modules:
             for partial_interface in module.partial_interfaces:
                 self.partial_interfaces.setdefault(partial_interface.name, []).append(partial_interface)
+        self.mixins = {mixin.name: mixin for module in self.modules for mixin in module.mixins}
+        self.partial_mixins = {}
+        for module in self.modules:
+            for partial_mixin in module.partial_mixins:
+                self.partial_mixins.setdefault(partial_mixin.name, []).append(partial_mixin)
+        self.included_mixins = {}
+        for module in self.modules:
+            for included_mixin in module.included_mixins:
+                self.included_mixins.setdefault(included_mixin.interface_name, []).append(included_mixin)
         self.typedefs = {typedef.name: typedef for module in self.modules for typedef in module.typedefs}
 
     def is_local_type(self, name: Union[IDLType, str]) -> bool:
@@ -76,7 +89,8 @@ class GenerationContext:
             return None
 
         partial_interfaces = self.partial_interfaces.get(interface.name, [])
-        if not partial_interfaces:
+        included_mixins = self.included_mixins.get(interface.name, [])
+        if not partial_interfaces and not included_mixins:
             return interface
 
         merged_interface = replace(
@@ -88,31 +102,35 @@ class GenerationContext:
             constructors=list(interface.constructors),
         )
         for partial_interface in partial_interfaces:
-            merged_interface.member_declarations.extend(partial_interface.member_declarations)
-            merged_interface.constants.extend(partial_interface.constants)
-            merged_interface.attributes.extend(partial_interface.attributes)
-            merged_interface.operations.extend(partial_interface.operations)
-            merged_interface.constructors.extend(partial_interface.constructors)
-            merged_interface.has_special_member = (
-                merged_interface.has_special_member or partial_interface.has_special_member
-            )
-            merged_interface.named_property_getter = (
-                merged_interface.named_property_getter or partial_interface.named_property_getter
-            )
-            merged_interface.indexed_property_getter = (
-                merged_interface.indexed_property_getter or partial_interface.indexed_property_getter
-            )
-            merged_interface.named_property_setter = (
-                merged_interface.named_property_setter or partial_interface.named_property_setter
-            )
-            merged_interface.named_property_deleter = (
-                merged_interface.named_property_deleter or partial_interface.named_property_deleter
-            )
-            merged_interface.indexed_property_setter = (
-                merged_interface.indexed_property_setter or partial_interface.indexed_property_setter
-            )
-            merged_interface.iterable = merged_interface.iterable or partial_interface.iterable
+            merge_interface_members(merged_interface, partial_interface)
+
+        for included_mixin in included_mixins:
+            mixin = self.mixin_for_generation(included_mixin.mixin_name)
+            if mixin is None:
+                raise RuntimeError(f"Included mixin '{included_mixin.mixin_name}' does not exist")
+            merge_interface_members(merged_interface, mixin)
         return merged_interface
+
+    def mixin_for_generation(self, name: str) -> Optional[Interface]:
+        mixin = self.mixins.get(name)
+        if mixin is None:
+            return None
+
+        partial_mixins = self.partial_mixins.get(mixin.name, [])
+        if not partial_mixins:
+            return mixin
+
+        merged_mixin = replace(
+            mixin,
+            member_declarations=list(mixin.member_declarations),
+            constants=list(mixin.constants),
+            attributes=list(mixin.attributes),
+            operations=list(mixin.operations),
+            constructors=list(mixin.constructors),
+        )
+        for partial_mixin in partial_mixins:
+            merge_interface_members(merged_mixin, partial_mixin)
+        return merged_mixin
 
     def resolve_typedef(self, type_: Union[IDLType, str]) -> IDLType:
         resolved_type = type_ if isinstance(type_, IDLType) else IDLType(type_)
@@ -157,3 +175,18 @@ class GenerationContext:
 
 def type_name(type_: Union[IDLType, str]) -> str:
     return type_.name if isinstance(type_, IDLType) else type_
+
+
+def merge_interface_members(target: Interface, source: Interface) -> None:
+    target.member_declarations.extend(source.member_declarations)
+    target.constants.extend(source.constants)
+    target.attributes.extend(source.attributes)
+    target.operations.extend(source.operations)
+    target.constructors.extend(source.constructors)
+    target.has_special_member = target.has_special_member or source.has_special_member
+    target.named_property_getter = target.named_property_getter or source.named_property_getter
+    target.indexed_property_getter = target.indexed_property_getter or source.indexed_property_getter
+    target.named_property_setter = target.named_property_setter or source.named_property_setter
+    target.named_property_deleter = target.named_property_deleter or source.named_property_deleter
+    target.indexed_property_setter = target.indexed_property_setter or source.indexed_property_setter
+    target.iterable = target.iterable or source.iterable

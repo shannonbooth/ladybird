@@ -160,6 +160,7 @@ class Interface:
     extended_attributes: Dict[str, str] = field(default_factory=dict)
     is_namespace: bool = False
     is_callback_interface: bool = False
+    is_mixin: bool = False
     parent_name: str = ""
     member_declarations: List[str] = field(default_factory=list)
     constants: List[Constant] = field(default_factory=list)
@@ -209,6 +210,7 @@ class DictionaryMember:
     type: IDLType
     required: bool = False
     default_value: Optional[str] = None
+    extended_attributes: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -235,10 +237,19 @@ class Typedef:
 
 
 @dataclass
+class IncludedMixin:
+    interface_name: str
+    mixin_name: str
+
+
+@dataclass
 class Module:
     path: Path
     interface: Optional[Interface] = None
     partial_interfaces: List[Interface] = field(default_factory=list)
+    mixins: List[Interface] = field(default_factory=list)
+    partial_mixins: List[Interface] = field(default_factory=list)
+    included_mixins: List[IncludedMixin] = field(default_factory=list)
     callback_functions: List[CallbackFunction] = field(default_factory=list)
     dictionaries: List[Dictionary] = field(default_factory=list)
     enumerations: List[Enumeration] = field(default_factory=list)
@@ -306,11 +317,11 @@ class Parser:
             elif self.next_is_keyword("typedef"):
                 module.typedefs.append(self.parse_typedef())
             elif self.next_is_keyword("partial interface mixin"):
-                self.skip_braced_declaration()
+                module.partial_mixins.append(self.parse_partial_interface(extended_attributes, is_mixin=True))
             elif self.next_is_keyword("partial interface"):
                 module.partial_interfaces.append(self.parse_partial_interface(extended_attributes))
             elif self.next_is_keyword("interface mixin"):
-                self.skip_braced_declaration()
+                module.mixins.append(self.parse_interface(extended_attributes, is_mixin=True))
             elif self.next_is_keyword("partial namespace"):
                 self.skip_braced_declaration()
             elif self.next_is_keyword("callback interface"):
@@ -331,7 +342,7 @@ class Parser:
                     self.parse_interface(extended_attributes),
                 )
             else:
-                self.parse_includes_statement()
+                module.included_mixins.append(self.parse_includes_statement())
 
             self.consume_whitespace()
 
@@ -350,8 +361,8 @@ class Parser:
             "encountered multiple interface, callback interface, or namespace declarations in one file"
         )
 
-    def parse_includes_statement(self) -> None:
-        self.parse_identifier_ending_with_space()
+    def parse_includes_statement(self) -> IncludedMixin:
+        interface_name = self.parse_identifier_ending_with_space()
         self.consume_whitespace()
 
         if not self.next_is_keyword("includes"):
@@ -359,20 +370,22 @@ class Parser:
 
         self.consume_keyword("includes")
         self.consume_whitespace()
-        self.parse_identifier_ending_with_space_or(";")
+        mixin_name = self.parse_identifier_ending_with_space_or(";")
         self.consume_whitespace()
         self.assert_specific(";")
+        return IncludedMixin(interface_name=interface_name, mixin_name=mixin_name)
 
-    def parse_partial_interface(self, extended_attributes: Dict[str, str]) -> Interface:
+    def parse_partial_interface(self, extended_attributes: Dict[str, str], is_mixin: bool = False) -> Interface:
         self.consume_keyword("partial")
         self.consume_whitespace()
-        return self.parse_interface(extended_attributes)
+        return self.parse_interface(extended_attributes, is_mixin=is_mixin)
 
     def parse_interface(
         self,
         extended_attributes: Dict[str, str],
         is_namespace: bool = False,
         is_callback_interface: bool = False,
+        is_mixin: bool = False,
     ) -> Interface:
         if is_callback_interface:
             self.consume_keyword("callback")
@@ -384,6 +397,9 @@ class Parser:
             self.consume_keyword("interface")
 
         self.consume_whitespace()
+        if is_mixin:
+            self.consume_keyword("mixin")
+            self.consume_whitespace()
 
         interface = Interface(
             name=self.parse_identifier_ending_with_space_or(":", "{"),
@@ -391,6 +407,7 @@ class Parser:
             extended_attributes=extended_attributes,
             is_namespace=is_namespace,
             is_callback_interface=is_callback_interface,
+            is_mixin=is_mixin,
         )
 
         self.consume_whitespace()
@@ -439,8 +456,9 @@ class Parser:
                 self.assert_specific(";")
                 break
 
+            extended_attributes: Dict[str, str] = {}
             if self.lexer.consume_specific("["):
-                self.parse_extended_attributes()
+                extended_attributes.update(self.parse_extended_attributes())
                 self.consume_whitespace()
 
             required = False
@@ -450,7 +468,7 @@ class Parser:
                 self.consume_whitespace()
 
             if self.lexer.consume_specific("["):
-                self.parse_extended_attributes()
+                extended_attributes.update(self.parse_extended_attributes())
                 self.consume_whitespace()
 
             member_type = self.parse_type()
@@ -474,6 +492,7 @@ class Parser:
                     type=member_type,
                     required=required,
                     default_value=default_value,
+                    extended_attributes=extended_attributes,
                 )
             )
 
