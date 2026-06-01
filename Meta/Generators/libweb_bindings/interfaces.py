@@ -112,6 +112,7 @@ void {interface.prototype_class}::initialize(JS::Realm& realm, JS::Object& objec
 """
     )
     define_the_regular_attributes(out, context, includes)
+
     define_the_constants(out, context, includes)
     out.write(
         f"""    object.define_direct_property(vm.well_known_symbol_to_string_tag(), JS::PrimitiveString::create(vm, "{interface.name}"_string), JS::Attribute::Configurable);
@@ -126,6 +127,7 @@ void {interface.prototype_class}::define_unforgeable_attributes(JS::Realm& realm
 """
     )
     write_attribute_getters(out, context, includes)
+    write_attribute_setters(out, context, includes)
 
 
 def ensure_interface_is_supported(interface: Interface) -> None:
@@ -364,6 +366,84 @@ def write_attribute_getter(
     // 3. Let F be CreateBuiltinFunction(steps, 0, name, « », realm).
 
     // 4. Return F.
+}}
+
+"""
+    )
+
+
+def write_attribute_setters(out: TextIO, context: GenerationContext, includes: GeneratedIncludes) -> None:
+    interface = context.module.interface
+    if interface is None:
+        return
+
+    for attribute in interface.attributes:
+        if attribute.readonly:
+            continue
+        write_attribute_setter(out, context, includes, attribute)
+
+
+# https://webidl.spec.whatwg.org/#dfn-attribute-setter
+def write_attribute_setter(
+    out: TextIO,
+    context: GenerationContext,
+    includes: GeneratedIncludes,
+    attribute: Attribute,
+) -> None:
+    interface = context.module.interface
+    if interface is None:
+        return
+
+    includes.add("LibJS/Runtime/Value.h")
+    includes.add("LibWeb/WebIDL/Tracing.h")
+    conversion = type_conversion.to_idl_value(attribute, "V", includes, context)
+    out.write(
+        f"""JS_DEFINE_NATIVE_FUNCTION({interface.prototype_class}::{attribute_setter_callback_name(attribute)})
+{{
+    WebIDL::log_trace(vm, "{interface.prototype_class}::{attribute_setter_callback_name(attribute)}");
+    [[maybe_unused]] auto& realm = *vm.current_realm();
+
+    // 1. Let V be undefined.
+    auto V = JS::js_undefined();
+
+    // 2. If any arguments were passed, then set V to the value of the first argument passed.
+    if (vm.argument_count() > 0)
+        V = vm.argument(0);
+
+    // 3. Let id be attribute’s identifier.
+
+    // 4. Let idlObject be null.
+    [[maybe_unused]] {fully_qualified_name(interface)}* idl_object = nullptr;
+
+    // 5. If attribute is a regular attribute:
+
+    // 1. Let jsValue be the this value, if it is not null or undefined, or realm’s global object otherwise. (This will subsequently cause a TypeError in a few steps, if the global object does not implement target and [LegacyLenientThis] is not specified.)
+    auto js_value = vm.this_value();
+    if (js_value.is_nullish())
+        js_value = &realm.global_object();
+
+    // 2. FIXME: If jsValue is a platform object, then perform a security check, passing jsValue, attribute’s identifier, and "setter".
+
+    // 3. Let validThis be true if jsValue implements target, or false otherwise.
+    if (auto impl = js_value.as_if<{fully_qualified_name(interface)}>()) {{
+        idl_object = impl.ptr();
+    }} else {{
+        // 4. If validThis is false and attribute was not specified with the [LegacyLenientThis] extended attribute, then throw a TypeError.
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObjectOfType, "{interface.namespaced_name}");
+    }}
+
+"""
+    )
+    out.write(
+        f"""    // 6. Let idlValue be determined as follows:
+    // -> Otherwise, idlValue is the result of converting V to an IDL value of attribute’s type.
+    auto idl_value = TRY(throw_dom_exception_if_needed(vm, [&] {{ return {conversion}; }}));
+
+    // 7. Run the setter steps of attribute with idlObject as this and idlValue as the value.
+    TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->set_{attribute_cpp_name(attribute)}(idl_value); }}));
+
+    // 8. Return undefined.
+    return JS::js_undefined();
 }}
 
 """

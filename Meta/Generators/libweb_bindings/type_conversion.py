@@ -7,6 +7,7 @@ from Generators.libweb_bindings.includes import GeneratedIncludes
 from Utils.utils import make_name_acceptable_cpp
 from Utils.utils import title_casify
 from Utils.utils import title_case_to_snake_case
+from Utils.webidl_parser import Attribute
 from Utils.webidl_parser import CallbackFunction
 from Utils.webidl_parser import DictionaryMember
 
@@ -99,6 +100,7 @@ def boolean_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
 # 3.2.4.1. byte, https://webidl.spec.whatwg.org/#js-byte
 def byte_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
     includes.add("LibWeb/WebIDL/Types.h")
+    includes.add("LibWeb/WebIDL/AbstractOperations.h")
 
     # 1. Let x be ? ConvertToInt(V, 8, "signed").
     # 2. Return the IDL byte value that represents the same numeric value as x.
@@ -108,6 +110,7 @@ def byte_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
 # 3.2.4.2. octet, https://webidl.spec.whatwg.org/#js-octet
 def octet_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
     includes.add("LibWeb/WebIDL/Types.h")
+    includes.add("LibWeb/WebIDL/AbstractOperations.h")
 
     # 1. Let x be ? ConvertToInt(V, 8, "unsigned").
     # 2. Return the IDL octet value that represents the same numeric value as x.
@@ -117,6 +120,7 @@ def octet_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
 # 3.2.4.3. short, https://webidl.spec.whatwg.org/#js-short
 def short_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
     includes.add("LibWeb/WebIDL/Types.h")
+    includes.add("LibWeb/WebIDL/AbstractOperations.h")
 
     # 1. Let x be ? ConvertToInt(V, 16, "signed").
     # 2. Return the IDL short value that represents the same numeric value as x.
@@ -126,6 +130,7 @@ def short_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
 # 3.2.4.4. unsigned short, https://webidl.spec.whatwg.org/#js-unsigned-short
 def unsigned_short_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
     includes.add("LibWeb/WebIDL/Types.h")
+    includes.add("LibWeb/WebIDL/AbstractOperations.h")
 
     # 1. Let x be ? ConvertToInt(V, 16, "unsigned").
     # 2. Return the IDL unsigned short value that represents the same numeric value as x.
@@ -135,6 +140,7 @@ def unsigned_short_to_idl_value(value_name: str, includes: GeneratedIncludes) ->
 # 3.2.4.5. long, https://webidl.spec.whatwg.org/#js-long
 def long_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
     includes.add("LibWeb/WebIDL/Types.h")
+    includes.add("LibWeb/WebIDL/AbstractOperations.h")
 
     # 1. Let x be ? ConvertToInt(V, 32, "signed").
     # 2. Return the IDL long value that represents the same numeric value as x.
@@ -144,6 +150,7 @@ def long_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
 # 3.2.4.6. unsigned long, https://webidl.spec.whatwg.org/#js-unsigned-long
 def unsigned_long_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
     includes.add("LibWeb/WebIDL/Types.h")
+    includes.add("LibWeb/WebIDL/AbstractOperations.h")
 
     # 1. Let x be ? ConvertToInt(V, 32, "unsigned").
     # 2. Return the IDL unsigned long value that represents the same numeric value as x.
@@ -153,6 +160,7 @@ def unsigned_long_to_idl_value(value_name: str, includes: GeneratedIncludes) -> 
 # 3.2.4.7. long long, https://webidl.spec.whatwg.org/#js-long-long
 def long_long_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
     includes.add("LibWeb/WebIDL/Types.h")
+    includes.add("LibWeb/WebIDL/AbstractOperations.h")
 
     # 1. Let x be ? ConvertToInt(V, 64, "signed").
     # 2. Return the IDL long long value that represents the same numeric value as x.
@@ -162,6 +170,7 @@ def long_long_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
 # 3.2.4.8. unsigned long long, https://webidl.spec.whatwg.org/#js-unsigned-long-long
 def unsigned_long_long_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
     includes.add("LibWeb/WebIDL/Types.h")
+    includes.add("LibWeb/WebIDL/AbstractOperations.h")
 
     # 1. Let x be ? ConvertToInt(V, 64, "unsigned").
     # 2. Return the IDL unsigned long long value that represents the same numeric value as x.
@@ -169,7 +178,9 @@ def unsigned_long_long_to_idl_value(value_name: str, includes: GeneratedIncludes
 
 
 # 3.2.5. float, https://webidl.spec.whatwg.org/#js-float
-def float_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
+def float_to_idl_value(value_name: str, includes: GeneratedIncludes, identifier: str) -> str:
+    includes.add("LibJS/Runtime/Error.h")
+    includes.add("LibJS/Runtime/ValueInlines.h")
 
     # 1. Let x be ? ToNumber(V).
     # 2. If x is NaN, +∞, or −∞, then throw a TypeError.
@@ -178,9 +189,13 @@ def float_to_idl_value(value_name: str, includes: GeneratedIncludes) -> str:
     # 5. If y is 2^128 or −2^128, then throw a TypeError.
     # 6. If y is +0 and x is negative, return −0.
     # 7. Return y.
-    # FIXME.
-    raise RuntimeError("float to IDL value conversion is not yet implemented")
-    return f"{value_name}.to_double(vm)"
+    # FIXME: Correctly implement steps 3-7.
+    return f"""[&]() -> JS::ThrowCompletionOr<float> {{
+        float x = TRY({value_name}.to_double(vm));
+        if (isinf(x) || isnan(x))
+            return vm.throw_completion<JS::TypeError>(JS::ErrorType::InvalidRestrictedFloatingPointParameter, "{identifier}");
+        return x;
+    }}()"""
 
 
 # 3.2.6. unrestricted float, https://webidl.spec.whatwg.org/#js-unrestricted-float
@@ -342,11 +357,15 @@ def idl_value_to_javascript_value(
     if idl_type in ("float", "unrestricted float", "double", "unrestricted double"):
         return f"JS::Value({value})"
 
+    if idl_type in ("DOMString", "ByteString", "USVString"):
+        includes.add("LibJS/Runtime/PrimitiveString.h")
+        return f"JS::PrimitiveString::create(vm, {value})"
+
     raise RuntimeError(f"Unsupported IDL value conversion for '{idl_type}'")
 
 
 def to_idl_value(
-    member: DictionaryMember,
+    member: DictionaryMember | Attribute,
     value_name: str,
     includes: GeneratedIncludes,
     context: GenerationContext,
@@ -372,7 +391,7 @@ def to_idl_value(
     if member.type == "unsigned long long":
         return unsigned_long_long_to_idl_value(value_name, includes)
     if member.type == "float":
-        return float_to_idl_value(value_name, includes)
+        return float_to_idl_value(value_name, includes, member.name)
     if member.type == "unrestricted float":
         return unrestricted_float_to_idl_value(value_name, includes)
     if member.type == "double":
