@@ -68,6 +68,8 @@ private:
 """
         )
     for attribute in interface.attributes:
+        if not attribute_is_supported(attribute):
+            continue
         out.write(f"    JS_DECLARE_NATIVE_FUNCTION({attribute_getter_callback_name(attribute)});\n")
         if attribute_has_setter(attribute):
             out.write(f"    JS_DECLARE_NATIVE_FUNCTION({attribute_setter_callback_name(attribute)});\n")
@@ -140,6 +142,12 @@ def write_implementation(out: TextIO, includes: GeneratedIncludes, context: Gene
         )
     constructor_parent_prototype = parent_prototype.removeprefix("&")
 
+    constructor_length = 0
+    if interface.constructors:
+        if len(interface.constructors) != 1:
+            raise RuntimeError(f"Unsupported constructor overload count on '{interface.name}'")
+        constructor_length = parameter_list_length(interface.constructors[0].parameters)
+
     out.write(
         f"""void {interface.constructor_class}::initialize(JS::Realm& realm, JS::NativeFunction& object)
 {{
@@ -147,7 +155,7 @@ def write_implementation(out: TextIO, includes: GeneratedIncludes, context: Gene
     [[maybe_unused]] u8 default_attributes = JS::Attribute::Enumerable;
 
 {parent_constructor_setup}\
-    object.define_direct_property(vm.names.length, JS::Value(0), JS::Attribute::Configurable);
+    object.define_direct_property(vm.names.length, JS::Value({constructor_length}), JS::Attribute::Configurable);
     object.define_direct_property(vm.names.name, JS::PrimitiveString::create(vm, "{interface.name}"_string), JS::Attribute::Configurable);
     object.define_direct_property(vm.names.prototype, &ensure_web_prototype<{interface.prototype_class}>(realm, "{interface.name}"_fly_string), 0);
 """
@@ -308,6 +316,7 @@ def write_constructor_steps(out: TextIO, context: GenerationContext, includes: G
 
 """
     )
+    write_argument_count_check(out, interface.name, parameter_list_length(constructor.parameters))
     write_parameter_conversions(out, constructor.parameters, includes, context)
     arguments = ", ".join(make_name_acceptable_cpp(parameter.name) for parameter in constructor.parameters)
     if arguments:
@@ -335,7 +344,7 @@ def define_the_regular_attributes(out: TextIO, context: GenerationContext, inclu
         return
 
     # 1. Let attributes be the list of regular attributes that are members of definition.
-    attributes = interface.attributes
+    attributes = [attribute for attribute in interface.attributes if attribute_is_supported(attribute)]
     if not attributes:
         return
     out.write(
@@ -589,6 +598,8 @@ def write_attribute_getters(out: TextIO, context: GenerationContext, includes: G
         return
 
     for attribute in interface.attributes:
+        if not attribute_is_supported(attribute):
+            continue
         write_attribute_getter(out, context, includes, attribute)
 
 
@@ -667,6 +678,8 @@ def write_attribute_setters(out: TextIO, context: GenerationContext, includes: G
         return
 
     for attribute in interface.attributes:
+        if not attribute_is_supported(attribute):
+            continue
         if not attribute_has_setter(attribute):
             continue
         write_attribute_setter(out, context, includes, attribute)
@@ -916,6 +929,27 @@ def write_parameter_conversions(
             )
 
 
+def write_argument_count_check(out: TextIO, function_name: str, argument_count: int) -> None:
+    if argument_count == 0:
+        return
+
+    if argument_count == 1:
+        out.write(
+            f"""    if (vm.argument_count() < {argument_count})
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::BadArgCountOne, "{function_name}");
+
+"""
+        )
+        return
+
+    out.write(
+        f"""    if (vm.argument_count() < {argument_count})
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::BadArgCountMany, "{function_name}", "{argument_count}");
+
+"""
+    )
+
+
 def write_indexed_property_getter(
     out: TextIO,
     context: GenerationContext,
@@ -1139,8 +1173,16 @@ def operation_is_supported(operation: Operation) -> bool:
     return not operation.is_static
 
 
+def attribute_is_supported(attribute: Attribute) -> bool:
+    return "FIXME" not in attribute.extended_attributes
+
+
 def operation_length(operation: Operation) -> int:
-    return sum(1 for parameter in operation.parameters if not parameter.optional)
+    return parameter_list_length(operation.parameters)
+
+
+def parameter_list_length(parameters: list[OperationParameter]) -> int:
+    return sum(1 for parameter in parameters if not parameter.optional)
 
 
 def operation_cpp_name(operation: Operation) -> str:

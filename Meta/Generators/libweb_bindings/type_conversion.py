@@ -301,6 +301,8 @@ def cpp_empty_value(member: DictionaryMember, context: GenerationContext) -> str
 
 
 def cpp_null_value(idl_type: IDLType, context: GenerationContext) -> str:
+    if isinstance(context.resolve_typedef(idl_type), IDLUnionType):
+        return "Empty {}"
     if cpp_type_for_idl_type_details(idl_type, context).gc_ref_target_type:
         return "nullptr"
     return "OptionalNone {}"
@@ -1040,6 +1042,42 @@ def idl_value_to_javascript_value(
     includes.add("LibJS/Runtime/Value.h")
     idl_type = context.resolve_typedef(idl_type)
 
+    if isinstance(idl_type, IDLUnionType):
+        includes.add("AK/Variant.h")
+        conversions = []
+        for index, member_type in enumerate(idl_type.flattened_member_types()):
+            if member_type.name == "undefined":
+                continue
+            inner_type = member_type.clone_with_nullable(False)
+            visited_value = f"visited_union_value{index}"
+            visited_cpp_type = cpp_type_for_idl_type(inner_type, context)
+            converted_value = idl_value_to_javascript_value(inner_type, visited_value, includes, context)
+            conversions.append(
+                f"""        [&]({visited_cpp_type} const& {visited_value}) -> JS::Value
+        {{
+            return {converted_value};
+        }}"""
+            )
+
+        if idl_type.includes_nullable_type():
+            conversions.append(
+                """        [](Empty) -> JS::Value
+        {
+            return JS::js_null();
+        }"""
+            )
+        elif idl_type.includes_undefined():
+            conversions.append(
+                """        [](Empty) -> JS::Value
+        {
+            return JS::js_undefined();
+        }"""
+            )
+
+        return f"""{value}.visit(
+{",\n".join(conversions)}
+    )"""
+
     if idl_type.nullable:
         inner_type = idl_type.clone_with_nullable(False)
         value_is_nullable_pointer = (
@@ -1062,6 +1100,9 @@ def idl_value_to_javascript_value(
     # The result of converting an IDL value to a JavaScript value depends on the IDL type of the value.
     if idl_type_name == "undefined":
         return "JS::js_undefined()"
+
+    if idl_type_name == "any":
+        return value
 
     if idl_type_name == "boolean":
         return f"JS::Value({value})"
@@ -1136,6 +1177,8 @@ def cpp_default_value_conversion(
         return expression
 
     if member.default_value == "null":
+        if member_type.name == "any":
+            return "JS::js_null()"
         return cpp_null_value(member_type, context)
     if member.type == "boolean":
         if member.default_value == "true":
