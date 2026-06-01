@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 from Generators.libweb_bindings.context import GenerationContext
+from Generators.libweb_bindings.context import type_name
 from Generators.libweb_bindings.includes import GeneratedIncludes
 from Utils.utils import make_name_acceptable_cpp
 from Utils.utils import title_casify
@@ -10,6 +11,7 @@ from Utils.utils import title_case_to_snake_case
 from Utils.webidl_parser import Attribute
 from Utils.webidl_parser import CallbackFunction
 from Utils.webidl_parser import DictionaryMember
+from Utils.webidl_parser import IDLType
 from Utils.webidl_parser import Interface
 
 
@@ -36,7 +38,7 @@ def cpp_value_type(member: DictionaryMember, context: GenerationContext) -> str:
         return "WebIDL::UnsignedLongLong"
     if is_callback(member, context):
         return "GC::Ptr<WebIDL::CallbackType>"
-    return member.type
+    return str(member.type)
 
 
 def cpp_type(member: DictionaryMember, context: GenerationContext) -> str:
@@ -69,8 +71,8 @@ def add_header_includes_for_type(
         includes.add("LibGC/Ptr.h")
         includes.add("LibWeb/WebIDL/CallbackType.h")
         return
-    if cpp_value_type(member, context) == member.type and not context.is_local_type(member.type):
-        includes.add_binding(member.type)
+    if cpp_value_type(member, context) == str(member.type) and not context.is_local_type(member.type):
+        includes.add_binding(str(member.type))
 
 
 def implementation_header_for_interface(interface: Interface) -> str:
@@ -316,7 +318,7 @@ def callback_function_to_idl_value(
     # 2. Return the IDL callback function type value that represents a reference to the same object that V represents, with the incumbent settings object as the callback context.
     operation_returns_promise = (
         "WebIDL::OperationReturnsPromise::Yes"
-        if callback_function.return_type.split("<", 1)[0] == "Promise"
+        if callback_function.return_type.name.split("<", 1)[0] == "Promise"
         else "WebIDL::OperationReturnsPromise::No"
     )
 
@@ -340,7 +342,7 @@ def callback_function_to_idl_value(
 
 # FIXME: Factor this in a way matching the specification.
 def idl_value_to_javascript_value(
-    idl_type: str,
+    idl_type: IDLType | str,
     value: str,
     includes: GeneratedIncludes,
     context: GenerationContext,
@@ -348,9 +350,24 @@ def idl_value_to_javascript_value(
     includes.add("LibJS/Runtime/Value.h")
     idl_type = context.resolve_typedef(idl_type)
 
+    if idl_type.nullable:
+        inner_type = idl_type.clone_with_nullable(False)
+        inner_value = value
+        if context.interface(inner_type) is None:
+            inner_value = f"{value}.value()"
+        converted_value = idl_value_to_javascript_value(inner_type, inner_value, includes, context)
+        has_value = value if context.interface(inner_type) is not None else f"{value}.has_value()"
+        return f"""[&]() -> JS::Value {{
+        if ({has_value})
+            return JS::Value({converted_value});
+        return JS::js_null();
+    }}()"""
+
+    idl_type_name = idl_type.name
+
     # https://webidl.spec.whatwg.org/#js-type-mapping
     # The result of converting an IDL value to a JavaScript value depends on the IDL type of the value.
-    if idl_type == "boolean":
+    if idl_type_name == "boolean":
         return f"JS::Value({value})"
 
     integer_type_map = {
@@ -363,23 +380,23 @@ def idl_value_to_javascript_value(
         "long long": "double",
         "unsigned long long": "double",
     }
-    if idl_type in integer_type_map:
+    if idl_type_name in integer_type_map:
         includes.add("LibWeb/WebIDL/Types.h")
-        return f"JS::Value(static_cast<{integer_type_map[idl_type]}>({value}))"
+        return f"JS::Value(static_cast<{integer_type_map[idl_type_name]}>({value}))"
 
-    if idl_type in ("float", "unrestricted float", "double", "unrestricted double"):
+    if idl_type_name in ("float", "unrestricted float", "double", "unrestricted double"):
         return f"JS::Value({value})"
 
-    if idl_type in ("DOMString", "ByteString", "USVString"):
+    if idl_type_name in ("DOMString", "ByteString", "USVString"):
         includes.add("LibJS/Runtime/PrimitiveString.h")
         return f"JS::PrimitiveString::create(vm, {value})"
 
-    interface = context.interface(idl_type)
+    interface = context.interface(idl_type_name)
     if interface is not None:
         includes.add(implementation_header_for_interface(interface))
         return f"&const_cast<{fully_qualified_name_for_interface(interface)}&>(*{value})"
 
-    raise RuntimeError(f"Unsupported IDL value conversion for '{idl_type}'")
+    raise RuntimeError(f"Unsupported IDL value conversion for '{idl_type_name}'")
 
 
 def to_idl_value(
@@ -431,7 +448,7 @@ def to_idl_value(
     callback_function = context.callback_function(member.type)
     if callback_function is not None:
         return callback_function_to_idl_value(callback_function, value_name, includes)
-    converter_name = make_name_acceptable_cpp(title_case_to_snake_case(member.type))
+    converter_name = make_name_acceptable_cpp(title_case_to_snake_case(type_name(member.type)))
     return f"convert_to_idl_value_for_{converter_name}(vm, {value_name})"
 
 

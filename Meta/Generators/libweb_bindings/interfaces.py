@@ -350,7 +350,7 @@ def write_attribute_getter(
     // 4. FIXME: If attribute’s type is an observable array type, then return jsValue’s backing observable array exotic object for attribute.
 
     // 3. Let R be the result of running the getter steps of attribute with idlObject as this.
-    auto R = TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->{attribute_cpp_name(attribute)}(); }}));
+    auto R = TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->{attribute_impl_cpp_name(attribute)}(); }}));
 
     // 4. Return the result of converting R to a JavaScript value of the type attribute is declared as.
     return {return_value};
@@ -468,7 +468,7 @@ def write_attribute_setter(
     auto idl_value = TRY(throw_dom_exception_if_needed(vm, [&] {{ return {conversion}; }}));
 
     // 7. Run the setter steps of attribute with idlObject as this and idlValue as the value.
-    TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->set_{attribute_cpp_name(attribute)}(idl_value); }}));
+    TRY(throw_dom_exception_if_needed(vm, [&] {{ return idl_object->set_{attribute_impl_cpp_name(attribute)}(idl_value); }}));
 
     // 8. Return undefined.
     return JS::js_undefined();
@@ -480,6 +480,10 @@ def write_attribute_setter(
 
 def attribute_cpp_name(attribute: Attribute) -> str:
     return make_name_acceptable_cpp(title_case_to_snake_case(attribute.name))
+
+
+def attribute_impl_cpp_name(attribute: Attribute) -> str:
+    return attribute.extended_attributes.get("ImplementedAs", attribute_cpp_name(attribute))
 
 
 def attribute_has_setter(attribute: Attribute) -> bool:

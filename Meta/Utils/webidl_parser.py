@@ -14,10 +14,33 @@ from typing import Set
 from Utils.lexer import Lexer
 
 
+@dataclass(eq=False)
+class IDLType:
+    name: str
+    nullable: bool = False
+
+    def __str__(self) -> str:
+        nullable_suffix = "?" if self.nullable else ""
+        return f"{self.name}{nullable_suffix}"
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, IDLType):
+            return self.name == other.name and self.nullable == other.nullable
+        if isinstance(other, str):
+            return str(self) == other
+        return False
+
+    def __hash__(self) -> int:
+        return hash(str(self))
+
+    def clone_with_nullable(self, nullable: bool) -> "IDLType":
+        return IDLType(self.name, nullable)
+
+
 @dataclass
 class Constant:
     declaration: str
-    type: str
+    type: IDLType
     name: str
     value: str
 
@@ -32,7 +55,7 @@ class SpecialOperation:
 class Attribute:
     declaration: str
     name: str
-    type: str
+    type: IDLType
     readonly: bool = False
     extended_attributes: Dict[str, str] = field(default_factory=dict)
 
@@ -83,7 +106,7 @@ class Dictionary:
 @dataclass
 class DictionaryMember:
     name: str
-    type: str
+    type: IDLType
     required: bool = False
     default_value: Optional[str] = None
 
@@ -92,7 +115,7 @@ class DictionaryMember:
 class CallbackFunction:
     name: str
     path: Path
-    return_type: str
+    return_type: IDLType
     extended_attributes: Dict[str, str] = field(default_factory=dict)
 
 
@@ -108,7 +131,7 @@ class Enumeration:
 class Typedef:
     name: str
     path: Path
-    type: str
+    type: IDLType
 
 
 @dataclass
@@ -387,7 +410,7 @@ class Parser:
 
         return Typedef(name=name, path=self.path, type=typedef_type)
 
-    def parse_type(self) -> str:
+    def parse_type(self) -> IDLType:
         if self.lexer.consume_specific("("):
             member_types = [self.parse_type()]
             self.consume_whitespace()
@@ -402,7 +425,7 @@ class Parser:
                 self.consume_whitespace()
 
             self.assert_specific(")")
-            return f"({' or '.join(member_types)}){self.parse_nullable_suffix()}"
+            return IDLType(f"({' or '.join(str(member_type) for member_type in member_types)})", self.parse_nullable())
 
         unsigned = self.lexer.consume_specific("unsigned")
         if unsigned:
@@ -432,21 +455,18 @@ class Parser:
                 parameters.append(self.parse_type())
                 self.consume_whitespace()
             self.assert_specific(">")
-            name = f"{name}<{', '.join(parameters)}>"
+            name = f"{name}<{', '.join(str(parameter) for parameter in parameters)}>"
 
-        nullable_suffix = self.parse_nullable_suffix()
         prefixes = []
         if unsigned:
             prefixes.append("unsigned")
         if unrestricted:
             prefixes.append("unrestricted")
         prefixes.append(name)
-        return f"{' '.join(prefixes)}{nullable_suffix}"
+        return IDLType(" ".join(prefixes), self.parse_nullable())
 
-    def parse_nullable_suffix(self) -> str:
-        if self.lexer.consume_specific("?"):
-            return "?"
-        return ""
+    def parse_nullable(self) -> bool:
+        return self.lexer.consume_specific("?")
 
     def parse_enumeration(self, extended_attributes: Dict[str, str]) -> Enumeration:
         self.consume_keyword("enum")

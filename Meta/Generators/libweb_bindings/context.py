@@ -7,6 +7,7 @@ from dataclasses import field
 from typing import Optional
 
 from Utils.webidl_parser import CallbackFunction
+from Utils.webidl_parser import IDLType
 from Utils.webidl_parser import Interface
 from Utils.webidl_parser import Module
 from Utils.webidl_parser import Typedef
@@ -38,20 +39,27 @@ class GenerationContext:
         }
         self.typedefs = {typedef.name: typedef for module in self.modules for typedef in module.typedefs}
 
-    def is_local_type(self, name: str) -> bool:
-        return name in self.local_types
+    def is_local_type(self, name: IDLType | str) -> bool:
+        return type_name(name) in self.local_types
 
-    def callback_function(self, name: str) -> Optional[CallbackFunction]:
-        return self.callback_functions.get(name)
+    def callback_function(self, name: IDLType | str) -> Optional[CallbackFunction]:
+        return self.callback_functions.get(type_name(name))
 
-    def interface(self, name: str) -> Optional[Interface]:
-        return self.interfaces.get(name)
+    def interface(self, name: IDLType | str) -> Optional[Interface]:
+        return self.interfaces.get(type_name(name))
 
-    def resolve_typedef(self, name: str) -> str:
+    def resolve_typedef(self, type_: IDLType | str) -> IDLType:
+        resolved_type = type_ if isinstance(type_, IDLType) else IDLType(type_)
         seen_types: set[str] = set()
-        while name in self.typedefs:
-            if name in seen_types:
-                raise RuntimeError(f"Typedef '{name}' resolves recursively")
-            seen_types.add(name)
-            name = self.typedefs[name].type
-        return name
+        while resolved_type.name in self.typedefs:
+            if resolved_type.name in seen_types:
+                raise RuntimeError(f"Typedef '{resolved_type.name}' resolves recursively")
+            seen_types.add(resolved_type.name)
+
+            typedef_type = self.typedefs[resolved_type.name].type
+            resolved_type = typedef_type.clone_with_nullable(resolved_type.nullable or typedef_type.nullable)
+        return resolved_type
+
+
+def type_name(type_: IDLType | str) -> str:
+    return type_.name if isinstance(type_, IDLType) else type_
