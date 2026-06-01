@@ -721,9 +721,12 @@ def nullable_to_idl_value(
     inner_type = member_type.clone_with_nullable(False)
     inner_member = DictionaryMember(name=member.name, type=inner_type, required=True)
     inner_conversion = to_idl_value(inner_member, value_name, includes, context)
+    null_value = (
+        "nullptr" if cpp_type_for_idl_type_details(member_type, context).gc_ref_target_type else "OptionalNone {}"
+    )
     return f"""[&]() -> JS::ThrowCompletionOr<{cpp_type(member, context)}> {{
         if ({value_name}.is_nullish())
-            return OptionalNone {{}};
+            return {null_value};
         return TRY({inner_conversion});
     }}()"""
 
@@ -1026,11 +1029,14 @@ def idl_value_to_javascript_value(
 
     if idl_type.nullable:
         inner_type = idl_type.clone_with_nullable(False)
+        value_is_nullable_pointer = (
+            context.interface(inner_type) is not None or context.callback_function(inner_type) is not None
+        )
         inner_value = value
-        if context.interface(inner_type) is None:
+        if not value_is_nullable_pointer:
             inner_value = f"{value}.value()"
         converted_value = idl_value_to_javascript_value(inner_type, inner_value, includes, context)
-        has_value = value if context.interface(inner_type) is not None else f"{value}.has_value()"
+        has_value = value if value_is_nullable_pointer else f"{value}.has_value()"
         return f"""[&]() -> JS::Value {{
         if ({has_value})
             return JS::Value({converted_value});
@@ -1078,6 +1084,11 @@ def idl_value_to_javascript_value(
     if interface is not None:
         includes.add(implementation_header_for_interface(interface))
         return f"&const_cast<{fully_qualified_name_for_interface(interface)}&>(*{value})"
+
+    callback_function = context.callback_function(idl_type_name)
+    if callback_function is not None:
+        includes.add("LibWeb/WebIDL/CallbackType.h")
+        return f"{value}->callback"
 
     raise RuntimeError(f"Unsupported IDL value conversion for '{idl_type_name}'")
 
