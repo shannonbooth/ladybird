@@ -13,6 +13,7 @@ from Utils.utils import title_case_to_snake_case
 from Utils.webidl_parser import Attribute
 from Utils.webidl_parser import DictionaryMember
 from Utils.webidl_parser import Interface
+from Utils.webidl_parser import Operation
 from Utils.webidl_parser import SpecialOperation
 
 
@@ -68,7 +69,7 @@ private:
         out.write(f"    JS_DECLARE_NATIVE_FUNCTION({attribute_getter_callback_name(attribute)});\n")
         if attribute_has_setter(attribute):
             out.write(f"    JS_DECLARE_NATIVE_FUNCTION({attribute_setter_callback_name(attribute)});\n")
-    if interface.indexed_property_getter is not None:
+    if interface.indexed_property_getter is not None and interface.indexed_property_getter.name:
         out.write(f"    JS_DECLARE_NATIVE_FUNCTION({special_operation_callback_name(interface.indexed_property_getter)});\n")
     out.write(
         """};
@@ -104,6 +105,7 @@ def write_implementation(out: TextIO, includes: GeneratedIncludes, context: Gene
     parent_prototype = "realm.intrinsics().object_prototype()"
     if interface.parent_name:
         parent_prototype = f'&ensure_web_prototype<{interface.parent_name}Prototype>(realm, "{interface.parent_name}"_fly_string)'
+    constructor_parent_prototype = parent_prototype.removeprefix("&")
 
     out.write(
         f"""void {interface.constructor_class}::initialize(JS::Realm& realm, JS::NativeFunction& object)
@@ -134,7 +136,7 @@ JS::ThrowCompletionOr<GC::Ref<JS::Object>> {interface.constructor_class}::constr
             f"""GC_DEFINE_ALLOCATOR({interface.prototype_class});
 
 {interface.prototype_class}::{interface.prototype_class}([[maybe_unused]] JS::Realm& realm)
-    : Object(ConstructWithPrototypeTag::Tag, {parent_prototype})
+    : Object(ConstructWithPrototypeTag::Tag, {constructor_parent_prototype})
 {{
 }}
 
@@ -161,6 +163,7 @@ void {interface.prototype_class}::initialize(JS::Realm& realm)
 """
     )
     define_the_regular_attributes(out, context, includes)
+    define_the_operations(out, context)
     define_the_indexed_property_getter(out, context, includes)
 
     define_the_constants(out, context, includes)
@@ -198,6 +201,7 @@ def ensure_interface_is_supported(interface: Interface) -> None:
 
     supported_declarations = {constant.declaration for constant in interface.constants}
     supported_declarations.update(attribute.declaration for attribute in interface.attributes)
+    supported_declarations.update(operation.declaration for operation in interface.operations if operation_is_supported(operation))
     if interface.indexed_property_getter is not None:
         supported_declarations.add(interface.indexed_property_getter.declaration)
     unsupported_declarations = [
@@ -326,16 +330,34 @@ def define_the_indexed_property_getter(
         return
 
     operation = interface.indexed_property_getter
-    if not operation.name:
-        raise RuntimeError(f"Unsupported anonymous indexed property getter on '{interface.name}'")
 
     includes.add("LibJS/Runtime/ArrayPrototype.h")
+    if operation.name:
+        out.write(
+            f"""    object.define_native_function(realm, "{operation.name}"_utf16_fly_string, {special_operation_callback_name(operation)}, {len(operation.parameters)}, default_attributes);
+"""
+        )
     out.write(
-        f"""    object.define_native_function(realm, "{operation.name}"_utf16_fly_string, {special_operation_callback_name(operation)}, {len(operation.parameters)}, default_attributes);
-    object.define_direct_property(vm.well_known_symbol_iterator(), realm.intrinsics().array_prototype()->get_without_side_effects(vm.names.values), JS::Attribute::Configurable | JS::Attribute::Writable);
+        """    object.define_direct_property(vm.well_known_symbol_iterator(), realm.intrinsics().array_prototype()->get_without_side_effects(vm.names.values), JS::Attribute::Configurable | JS::Attribute::Writable);
 
 """
     )
+
+
+def define_the_operations(out: TextIO, context: GenerationContext) -> None:
+    interface = context.interface_for_generation()
+    if interface is None:
+        return
+
+    for operation in interface.operations:
+        if "FIXME" not in operation.extended_attributes:
+            raise RuntimeError(f"Unsupported operation '{operation.name}' on '{interface.name}'")
+
+        out.write(
+            f"""    object.define_direct_property("{operation.name}"_utf16_fly_string, JS::js_undefined(), default_attributes | JS::Attribute::Unimplemented);
+
+"""
+        )
 
 
 # https://webidl.spec.whatwg.org/#define-the-constants
@@ -573,7 +595,7 @@ def write_indexed_property_getter(
 
     operation = interface.indexed_property_getter
     if not operation.name:
-        raise RuntimeError(f"Unsupported anonymous indexed property getter on '{interface.name}'")
+        return
 
     if len(operation.parameters) != 1:
         raise RuntimeError(f"Unsupported indexed property getter arity on '{interface.name}'")
@@ -625,6 +647,10 @@ def attribute_impl_cpp_name(attribute: Attribute) -> str:
 
 def attribute_has_setter(attribute: Attribute) -> bool:
     return not attribute.readonly or "PutForwards" in attribute.extended_attributes
+
+
+def operation_is_supported(operation: Operation) -> bool:
+    return "FIXME" in operation.extended_attributes
 
 
 def interface_requires_custom_prototype(interface: Interface) -> bool:

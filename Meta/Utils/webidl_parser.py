@@ -61,6 +61,16 @@ class SpecialOperation:
 
 
 @dataclass
+class Operation:
+    declaration: str
+    name: str
+    return_type: IDLType
+    parameters: List[OperationParameter]
+    extended_attributes: Dict[str, str] = field(default_factory=dict)
+    is_static: bool = False
+
+
+@dataclass
 class Attribute:
     declaration: str
     name: str
@@ -80,6 +90,7 @@ class Interface:
     member_declarations: List[str] = field(default_factory=list)
     constants: List[Constant] = field(default_factory=list)
     attributes: List[Attribute] = field(default_factory=list)
+    operations: List[Operation] = field(default_factory=list)
     named_property_getter: Optional[SpecialOperation] = None
     indexed_property_getter: Optional[SpecialOperation] = None
     has_special_member: bool = False
@@ -566,6 +577,13 @@ class Parser:
                     )
                 continue
 
+            if stripped_statement.startswith("setter ") or stripped_statement.startswith("deleter "):
+                interface.has_special_member = True
+                continue
+
+            if "(" in stripped_statement:
+                interface.operations.append(self.parse_operation(stripped_statement, extended_attributes))
+
     def parse_special_operation(self, declaration: str) -> SpecialOperation:
         parser = Parser(self.path, declaration)
 
@@ -607,17 +625,61 @@ class Parser:
                 self.parse_extended_attributes()
                 self.consume_whitespace()
 
+            if self.next_is_keyword("optional"):
+                self.consume_keyword("optional")
+                self.consume_whitespace()
+
+            if self.lexer.consume_specific("["):
+                self.parse_extended_attributes()
+                self.consume_whitespace()
+
             parameter_type = self.parse_type()
             self.consume_whitespace()
+
+            self.lexer.consume_specific("...")
+            self.consume_whitespace()
+
             parameter_name = self.parse_identifier_ending_with_space_or(",", ")")
             parameters.append(OperationParameter(name=parameter_name, type=parameter_type))
 
             self.consume_whitespace()
+            if self.lexer.consume_specific("="):
+                self.consume_until_top_level(",", ")")
+                self.consume_whitespace()
             if not self.lexer.consume_specific(","):
                 break
             self.consume_whitespace()
 
         return parameters
+
+    def parse_operation(self, declaration: str, extended_attributes: Dict[str, str]) -> Operation:
+        parser = Parser(self.path, declaration)
+
+        is_static = False
+        if parser.next_is_keyword("static"):
+            is_static = True
+            parser.consume_keyword("static")
+            parser.consume_whitespace()
+
+        return_type = parser.parse_type()
+        parser.consume_whitespace()
+        name = parser.parse_identifier_ending_with_space_or("(")
+        parser.consume_whitespace()
+        parser.assert_specific("(")
+        parameters = parser.parse_operation_parameters()
+        parser.assert_specific(")")
+        parser.consume_whitespace()
+        if not parser.lexer.is_eof():
+            parser.raise_parse_error("unexpected trailing text after operation")
+
+        return Operation(
+            declaration=declaration,
+            name=name,
+            return_type=return_type,
+            parameters=parameters,
+            extended_attributes=extended_attributes,
+            is_static=is_static,
+        )
 
     def parse_constant(self, declaration: str) -> Constant:
         parser = Parser(self.path, declaration)
@@ -794,6 +856,32 @@ class Parser:
             nesting_state.update_for_character(character)
 
         self.raise_parse_error("unterminated statement")
+
+    def consume_until_top_level(self, *terminators: str) -> str:
+        start = self.lexer.tell()
+        nesting_state = NestingState()
+        active_quote = ""
+
+        while not self.lexer.is_eof():
+            character = self.lexer.peek()
+
+            if active_quote:
+                self.lexer.consume()
+                if character == active_quote:
+                    active_quote = ""
+                continue
+
+            if character in ('"', "'"):
+                active_quote = character
+                self.lexer.consume()
+                continue
+
+            if character in terminators and nesting_state.is_at_top_level():
+                return self.contents[start : self.lexer.tell()]
+
+            nesting_state.update_for_character(self.lexer.consume())
+
+        return self.contents[start : self.lexer.tell()]
 
     def parse_identifier_ending_with_space(self) -> str:
         return self.parse_identifier_ending_with_space_or()

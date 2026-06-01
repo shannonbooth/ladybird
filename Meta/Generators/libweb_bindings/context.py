@@ -68,11 +68,13 @@ class GenerationContext:
             member_declarations=list(interface.member_declarations),
             constants=list(interface.constants),
             attributes=list(interface.attributes),
+            operations=list(interface.operations),
         )
         for partial_interface in partial_interfaces:
             merged_interface.member_declarations.extend(partial_interface.member_declarations)
             merged_interface.constants.extend(partial_interface.constants)
             merged_interface.attributes.extend(partial_interface.attributes)
+            merged_interface.operations.extend(partial_interface.operations)
             merged_interface.has_special_member = merged_interface.has_special_member or partial_interface.has_special_member
             merged_interface.named_property_getter = (
                 merged_interface.named_property_getter or partial_interface.named_property_getter
