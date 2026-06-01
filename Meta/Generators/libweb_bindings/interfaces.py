@@ -44,7 +44,7 @@ private:
     )
     for attribute in interface.attributes:
         out.write(f"    JS_DECLARE_NATIVE_FUNCTION({attribute_getter_callback_name(attribute)});\n")
-        if not attribute.readonly:
+        if attribute_has_setter(attribute):
             out.write(f"    JS_DECLARE_NATIVE_FUNCTION({attribute_setter_callback_name(attribute)});\n")
     out.write(
         """};
@@ -217,7 +217,7 @@ def define_the_attributes(
     // 3. Let setter be the result of creating an attribute setter given attr, definition, and realm.
 """
         )
-        if attribute.readonly:
+        if not attribute_has_setter(attribute):
             out.write(
                 f"""    // Note: the algorithm to create an attribute setter returns undefined if attr is read only.
     GC::Ptr<JS::NativeFunction> {native_setter_name};
@@ -378,7 +378,7 @@ def write_attribute_setters(out: TextIO, context: GenerationContext, includes: G
         return
 
     for attribute in interface.attributes:
-        if attribute.readonly:
+        if not attribute_has_setter(attribute):
             continue
         write_attribute_setter(out, context, includes, attribute)
 
@@ -396,7 +396,8 @@ def write_attribute_setter(
 
     includes.add("LibJS/Runtime/Value.h")
     includes.add("LibWeb/WebIDL/Tracing.h")
-    conversion = type_conversion.to_idl_value(attribute, "V", includes, context)
+    if "PutForwards" in attribute.extended_attributes:
+        includes.add("LibJS/Runtime/PropertyKey.h")
     out.write(
         f"""JS_DEFINE_NATIVE_FUNCTION({interface.prototype_class}::{attribute_setter_callback_name(attribute)})
 {{
@@ -434,6 +435,33 @@ def write_attribute_setter(
 
 """
     )
+    if put_forwards_identifier := attribute.extended_attributes.get("PutForwards"):
+        out.write(
+            f"""    // 8. If attribute is declared with a [PutForwards] extended attribute, then:
+
+    // 1. Let Q be ? Get(jsValue, id).
+    auto receiver_value = TRY(idl_object->get("{attribute.name}"_utf16_fly_string));
+
+    // 2. If Q is not an Object, then throw a TypeError.
+    if (!receiver_value.is_object())
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObject, receiver_value);
+    auto& receiver = receiver_value.as_object();
+
+    // 3. Let forwardId be the identifier argument of the [PutForwards] extended attribute.
+    auto forward_id = "{put_forwards_identifier}"_utf16_fly_string;
+
+    // 4. Perform ? Set(Q, forwardId, V, false).
+    TRY(receiver.set(JS::PropertyKey {{ forward_id, JS::PropertyKey::StringMayBeNumber::No }}, V, JS::Object::ShouldThrowExceptions::No));
+
+    // 5. Return undefined.
+    return JS::js_undefined();
+}}
+
+"""
+        )
+        return
+
+    conversion = type_conversion.to_idl_value(attribute, "V", includes, context)
     out.write(
         f"""    // 6. Let idlValue be determined as follows:
     // -> Otherwise, idlValue is the result of converting V to an IDL value of attribute’s type.
@@ -452,6 +480,10 @@ def write_attribute_setter(
 
 def attribute_cpp_name(attribute: Attribute) -> str:
     return make_name_acceptable_cpp(title_case_to_snake_case(attribute.name))
+
+
+def attribute_has_setter(attribute: Attribute) -> bool:
+    return not attribute.readonly or "PutForwards" in attribute.extended_attributes
 
 
 def attribute_getter_callback_name(attribute: Attribute) -> str:

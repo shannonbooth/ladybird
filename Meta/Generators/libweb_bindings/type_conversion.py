@@ -10,6 +10,7 @@ from Utils.utils import title_case_to_snake_case
 from Utils.webidl_parser import Attribute
 from Utils.webidl_parser import CallbackFunction
 from Utils.webidl_parser import DictionaryMember
+from Utils.webidl_parser import Interface
 
 
 def cpp_name(member: DictionaryMember) -> str:
@@ -70,6 +71,18 @@ def add_header_includes_for_type(
         return
     if cpp_value_type(member, context) == member.type and not context.is_local_type(member.type):
         includes.add_binding(member.type)
+
+
+def implementation_header_for_interface(interface: Interface) -> str:
+    path = interface.path.with_suffix(".h")
+    parts = path.parts
+    return f"LibWeb/{'/'.join(parts[parts.index('LibWeb') + 1 :])}"
+
+
+def fully_qualified_name_for_interface(interface: Interface) -> str:
+    parts = interface.path.parts
+    namespace_name = parts[parts.index("LibWeb") + 1]
+    return f"{namespace_name}::{interface.implemented_name}"
 
 
 # 3.2.1. any, https://webidl.spec.whatwg.org/#js-any
@@ -360,6 +373,11 @@ def idl_value_to_javascript_value(
     if idl_type in ("DOMString", "ByteString", "USVString"):
         includes.add("LibJS/Runtime/PrimitiveString.h")
         return f"JS::PrimitiveString::create(vm, {value})"
+
+    interface = context.interface(idl_type)
+    if interface is not None:
+        includes.add(implementation_header_for_interface(interface))
+        return f"&const_cast<{fully_qualified_name_for_interface(interface)}&>(*{value})"
 
     raise RuntimeError(f"Unsupported IDL value conversion for '{idl_type}'")
 

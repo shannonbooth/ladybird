@@ -494,7 +494,9 @@ class Parser:
             if not statement:
                 continue
 
-            stripped_statement = strip_leading_extended_attributes(statement).strip()
+            parser = Parser(self.path, statement)
+            extended_attributes = parser.parse_leading_extended_attributes()
+            stripped_statement = parser.remaining_text().strip()
             if not stripped_statement:
                 continue
             interface.member_declarations.append(stripped_statement)
@@ -504,7 +506,7 @@ class Parser:
                 continue
 
             if stripped_statement.startswith("readonly attribute ") or stripped_statement.startswith("attribute "):
-                interface.attributes.append(self.parse_attribute(stripped_statement))
+                interface.attributes.append(self.parse_attribute(stripped_statement, extended_attributes))
                 continue
 
             if (
@@ -555,7 +557,7 @@ class Parser:
             value=value,
         )
 
-    def parse_attribute(self, declaration: str) -> Attribute:
+    def parse_attribute(self, declaration: str, extended_attributes: Dict[str, str]) -> Attribute:
         parser = Parser(self.path, declaration)
 
         readonly = False
@@ -580,6 +582,7 @@ class Parser:
             name=name,
             type=attribute_type,
             readonly=readonly,
+            extended_attributes=extended_attributes,
         )
 
     def parse_extended_attributes(self) -> Dict[str, str]:
@@ -600,6 +603,15 @@ class Parser:
 
         self.consume_whitespace()
         return extended_attributes
+
+    def parse_leading_extended_attributes(self) -> Dict[str, str]:
+        self.consume_whitespace()
+        if self.lexer.consume_specific("["):
+            return self.parse_extended_attributes()
+        return {}
+
+    def remaining_text(self) -> str:
+        return self.contents[self.lexer.tell() :]
 
     def consume_extended_attribute_value(self) -> str:
         start = self.lexer.tell()

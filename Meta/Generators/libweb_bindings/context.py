@@ -7,6 +7,7 @@ from dataclasses import field
 from typing import Optional
 
 from Utils.webidl_parser import CallbackFunction
+from Utils.webidl_parser import Interface
 from Utils.webidl_parser import Module
 from Utils.webidl_parser import Typedef
 
@@ -17,6 +18,7 @@ class GenerationContext:
     modules: list[Module] = field(default_factory=list)
     local_types: set[str] = field(init=False)
     callback_functions: dict[str, CallbackFunction] = field(init=False)
+    interfaces: dict[str, Interface] = field(init=False)
     typedefs: dict[str, Typedef] = field(init=False)
 
     def __post_init__(self) -> None:
@@ -29,6 +31,11 @@ class GenerationContext:
             for module in self.modules
             for callback in module.callback_functions
         }
+        self.interfaces = {
+            module.interface.name: module.interface
+            for module in self.modules
+            if module.interface is not None
+        }
         self.typedefs = {typedef.name: typedef for module in self.modules for typedef in module.typedefs}
 
     def is_local_type(self, name: str) -> bool:
@@ -36,6 +43,9 @@ class GenerationContext:
 
     def callback_function(self, name: str) -> Optional[CallbackFunction]:
         return self.callback_functions.get(name)
+
+    def interface(self, name: str) -> Optional[Interface]:
+        return self.interfaces.get(name)
 
     def resolve_typedef(self, name: str) -> str:
         seen_types: set[str] = set()
