@@ -1590,11 +1590,25 @@ def cpp_default_value_conversion(
         if member_type.name == "any":
             return "JS::js_null()"
         return cpp_null_value(member_type, context)
-    if member.type == "boolean":
+    if member_type.name == "boolean":
         if member.default_value == "true":
             return "true"
         if member.default_value == "false":
             return "false"
+    if member.default_value == "0":
+        integer_types = {
+            "byte": "WebIDL::Byte",
+            "octet": "WebIDL::Octet",
+            "short": "WebIDL::Short",
+            "unsigned short": "WebIDL::UnsignedShort",
+            "long": "WebIDL::Long",
+            "unsigned long": "WebIDL::UnsignedLong",
+            "long long": "WebIDL::LongLong",
+            "unsigned long long": "WebIDL::UnsignedLongLong",
+        }
+        if member_type.name in integer_types:
+            return f"{integer_types[member_type.name]} {{ 0 }}"
+        return "0"
     if member.default_value.startswith('"') and member.default_value.endswith('"'):
         default_value = title_casify(member.default_value.removeprefix('"').removesuffix('"'))
         if resolve_type_for_conversion(member.type, context).name in ("DOMString", "USVString"):

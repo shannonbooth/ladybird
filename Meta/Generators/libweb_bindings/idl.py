@@ -78,7 +78,10 @@ def write_dictionary_declaration(
         if member.default_value is not None:
             default_value = f" {type_conversion.cpp_default_value_conversion(member, context)} "
         cpp_type = type_conversion.cpp_type(member, context)
-        out.write(f"    {cpp_type} {type_conversion.cpp_name(member)} {{{default_value}}};\n")
+        if member.required and member.default_value is None:
+            out.write(f"    {cpp_type} {type_conversion.cpp_name(member)};\n")
+        else:
+            out.write(f"    {cpp_type} {type_conversion.cpp_name(member)} {{{default_value}}};\n")
     out.write("};\n\n")
     out.write(
         f"JS::ThrowCompletionOr<{dictionary.name}> {conversion_function_name(dictionary)}(JS::VM&, JS::Value);\n\n"
