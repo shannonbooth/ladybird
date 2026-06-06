@@ -4,7 +4,7 @@
     asyncTest(async (done) => {
         internals.setTestTimeout(5000);
 
-        const httpServer = httpTestServer();
+        const httpServer = httpTestServer({ sharedHost: true });
         const prefix = `<!DOCTYPE html><body>${" ".repeat(1500)}<span id="before">before</span><script>document.write("inserted");<\/script>`;
         const body = `${prefix}<span id="after">after</span>`;
         const url = await httpServer.createEcho("GET", "/parser-streams-with-document-write", {

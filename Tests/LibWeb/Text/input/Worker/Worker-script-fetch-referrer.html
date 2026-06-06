@@ -2,7 +2,7 @@
 <script src="../include.js"></script>
 <script>
     asyncTest(async done => {
-        const server = httpTestServer();
+        const server = httpTestServer({ sharedHost: true });
 
         const workerUrl = await server.createEcho("GET", "/worker-script-fetch-referrer/worker.js", {
             status: 200,

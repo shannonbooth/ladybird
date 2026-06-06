@@ -139,11 +139,20 @@ const __httpTestServer = (function () {
     return null;
 })();
 
-function httpTestServer() {
+function httpTestServer(options = {}) {
     if (!__httpTestServer) {
         throw new Error("window.internals must be exposed to use HTTPTestServer");
     }
-    return __httpTestServer;
+
+    const { sharedHost = false } = options;
+    // Keep per-host state isolated by default. Tests that need shared/current hosts can pass { sharedHost: true }.
+    if (sharedHost) {
+        return __httpTestServer;
+    }
+
+    const url = new URL(__httpTestServer.baseURL);
+    url.hostname = uniqueLocalhostHostname("http-test-server");
+    return new HTTPTestServer(url.origin);
 }
 
 // Per-call unique loopback host, so tests that mutate global per-host state

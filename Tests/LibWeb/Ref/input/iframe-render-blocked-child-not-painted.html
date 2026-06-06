@@ -34,7 +34,7 @@
         <iframe></iframe>
         <script>
             document.addEventListener("DOMContentLoaded", async () => {
-                const server = httpTestServer();
+                const server = httpTestServer({ sharedHost: true });
                 const stylesheetURL = await server.createEcho("GET", "/iframe-render-blocked-child-not-painted.css", {
                     status: 200,
                     headers: {

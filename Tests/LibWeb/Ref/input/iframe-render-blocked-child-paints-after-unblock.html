@@ -27,7 +27,7 @@
             const nextFrame = () => new Promise(resolve => requestAnimationFrame(resolve));
 
             window.addEventListener("load", async () => {
-                const server = httpTestServer();
+                const server = httpTestServer({ sharedHost: true });
                 const unblockToken = "iframe-render-blocked-child-paints-after-unblock";
                 const stylesheetURL = await server.createEcho("GET", "/iframe-render-blocked-child-paints-after-unblock.css", {
                     status: 200,

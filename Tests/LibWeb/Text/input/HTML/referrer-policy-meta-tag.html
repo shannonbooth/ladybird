@@ -2,7 +2,7 @@
 <script src="../include.js"></script>
 <script>
     asyncTest(async done => {
-        const server = httpTestServer();
+        const server = httpTestServer({ sharedHost: true });
 
         const reflectorUrl = await server.createEcho("GET", "/referrer-policy-meta-tag/reflector", {
             status: 200,

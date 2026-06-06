@@ -4,7 +4,7 @@
     asyncTest(async (done) => {
         internals.setTestTimeout(5000);
 
-        const httpServer = httpTestServer();
+        const httpServer = httpTestServer({ sharedHost: true });
         const marker = "caf\u00e9";
         const body = `<!DOCTYPE html><meta charset="UTF-8"><body>${"a".repeat(1500)}<span id="target">${marker}</span>`;
         const targetIndex = body.indexOf("\u00e9");

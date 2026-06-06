@@ -2,7 +2,7 @@
 <script src="../include.js"></script>
 <script>
     asyncTest(async (done) => {
-        const server = httpTestServer();
+        const server = httpTestServer({ sharedHost: true });
 
         const url = await server.createEcho("GET", "/close-connection", {
             status: 0,
