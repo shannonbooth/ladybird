@@ -10,6 +10,18 @@ import argparse
 from pathlib import Path
 
 
+def idna_encoded_rule(rule: str) -> str:
+    prefix = ""
+    if rule.startswith("!"):
+        prefix = "!"
+        rule = rule[1:]
+    elif rule.startswith("*."):
+        prefix = "*."
+        rule = rule[2:]
+
+    return prefix + rule.encode("idna").decode("ascii")
+
+
 def generate_header_file(output_path: Path) -> None:
     content = """#pragma once
 
@@ -58,7 +70,7 @@ namespace URL {
 
 static constexpr auto s_public_suffixes = Array {"""
 
-    reversed_lines = []
+    reversed_lines = set()
     with open(input_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -66,10 +78,11 @@ static constexpr auto s_public_suffixes = Array {"""
             if line.startswith("//") or not line:
                 continue
 
-            reversed_line = ".".join(line.split(".")[::-1])
-            reversed_lines.append(reversed_line)
+            for rule in { line, idna_encoded_rule(line) }:
+                reversed_line = ".".join(rule.split(".")[::-1])
+                reversed_lines.add(reversed_line)
 
-    reversed_lines.sort()
+    reversed_lines = sorted(reversed_lines)
 
     for item in reversed_lines:
         content += f'\n    "{item}"sv,'
