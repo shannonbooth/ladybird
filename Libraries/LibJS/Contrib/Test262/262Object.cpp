@@ -69,14 +69,14 @@ JS_DEFINE_NATIVE_FUNCTION($262Object::collect_garbage)
 JS_DEFINE_NATIVE_FUNCTION($262Object::create_realm)
 {
     GC::Ptr<JS::Test262::GlobalObject> global_object;
-    auto root_execution_context = MUST(JS::Realm::initialize_host_defined_realm(
+    auto root_execution_context = JS::Realm::initialize_host_defined_realm(
         vm,
-        [&](JS::Realm& realm) -> JS::GlobalObject* {
-            global_object = vm.heap().allocate<JS::Test262::GlobalObject>(realm);
-            return global_object;
-        },
-        nullptr));
-    vm.pop_execution_context();
+        [&](JS::ExecutionContext& execution_context) -> JS::Realm::GlobalAndThisValue {
+            auto& realm = *execution_context.realm;
+            global_object = realm.create<JS::Test262::GlobalObject>(realm);
+            return { global_object, nullptr };
+        });
+    (void)root_execution_context;
     return Value(global_object->$262());
 }
 

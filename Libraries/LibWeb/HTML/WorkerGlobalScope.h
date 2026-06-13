@@ -15,7 +15,6 @@
 #include <LibWeb/Export.h>
 #include <LibWeb/Forward.h>
 #include <LibWeb/HTML/Scripting/Fetching.h>
-#include <LibWeb/HTML/Scripting/SerializedEnvironmentSettingsObject.h>
 #include <LibWeb/HTML/UniversalGlobalScope.h>
 #include <LibWeb/HTML/WindowOrWorkerGlobalScope.h>
 #include <LibWeb/HTML/WorkerLocation.h>
@@ -43,8 +42,6 @@ class WEB_API WorkerGlobalScope
     GC_DECLARE_ALLOCATOR(WorkerGlobalScope);
 
 public:
-    using Owner = Variant<SerializedDocument, SerializedWorkerGlobalScope>;
-
     static constexpr bool OVERRIDES_FINALIZE = true;
 
     virtual ~WorkerGlobalScope() override;
@@ -104,8 +101,6 @@ public:
 
     void set_internal_port(GC::Ref<MessagePort> port);
 
-    void initialize_web_interfaces(Badge<WorkerEnvironmentSettingsObject>) { initialize_web_interfaces_impl(); }
-
     Web::Page* page() { return m_page.ptr(); }
 
     GC::Ref<PolicyContainer> policy_container() const;
@@ -115,15 +110,12 @@ public:
     void initialize_policy_container(GC::Ref<Fetch::Infrastructure::Response const> response, GC::Ref<EnvironmentSettingsObject> environment);
     [[nodiscard]] ContentSecurityPolicy::Directives::Directive::Result run_csp_initialization() const;
 
-    auto& owner_set() { return m_owner_set; }
-    auto const& owner_set() const { return m_owner_set; }
-
 protected:
-    explicit WorkerGlobalScope(JS::Realm&, GC::Ref<Web::Page>);
+    WorkerGlobalScope(JS::Realm&, GC::Ref<Web::Page>);
 
     virtual void visit_edges(Cell::Visitor&) override;
 
-    virtual void initialize_web_interfaces_impl();
+    virtual void initialize(JS::Realm&) override;
 
     void close_a_worker();
 
@@ -135,13 +127,9 @@ private:
     virtual bool is_universal_global_scope_mixin() const final { return true; }
 
     GC::Ptr<WorkerLocation> m_location;
-    GC::Ptr<WorkerNavigator> m_navigator;
+    mutable GC::Ptr<WorkerNavigator> m_navigator;
 
     GC::Ref<Web::Page> m_page;
-
-    // https://html.spec.whatwg.org/multipage/workers.html#concept-WorkerGlobalScope-owner-set
-    // FIXME: A WorkerGlobalScope object has an associated owner set (a set of Document and WorkerGlobalScope objects). It is initially empty and populated when the worker is created or obtained.
-    //     Note: It is a set, instead of a single owner, to accommodate SharedWorkerGlobalScope objects.
 
     // https://html.spec.whatwg.org/multipage/workers.html#concept-workerglobalscope-type
     // A WorkerGlobalScope object has an associated type ("classic" or "module"). It is set during creation.
@@ -178,10 +166,6 @@ private:
 
     // https://drafts.csswg.org/css-font-loading/#font-source
     GC::Ptr<CSS::FontFaceSet> m_fonts;
-
-    // https://html.spec.whatwg.org/multipage/workers.html#concept-WorkerGlobalScope-owner-set
-    // A WorkerGlobalScope object has an associated owner set (a set of Document and WorkerGlobalScope objects). It is initially empty and populated when the worker is created or obtained.
-    Vector<Owner> m_owner_set;
 };
 
 }

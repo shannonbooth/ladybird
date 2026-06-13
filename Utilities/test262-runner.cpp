@@ -213,14 +213,15 @@ static ErrorOr<void, TestError> run_test(StringView source, StringView filepath,
     GC::Ptr<JS::Realm> realm;
     GC::Ptr<JS::Test262::GlobalObject> global_object;
 
-    auto root_execution_context = MUST(JS::Realm::initialize_host_defined_realm(
+    auto root_execution_context = JS::Realm::initialize_host_defined_realm(
         *vm,
-        [&](JS::Realm& realm_) -> JS::GlobalObject* {
-            realm = &realm_;
-            global_object = vm->heap().allocate<JS::Test262::GlobalObject>(realm_);
-            return global_object;
-        },
-        nullptr));
+        [&](JS::ExecutionContext& execution_context) -> JS::Realm::GlobalAndThisValue {
+            realm = execution_context.realm;
+            global_object = realm->create<JS::Test262::GlobalObject>(*realm);
+            return { global_object, nullptr };
+        });
+    vm->push_execution_context(*root_execution_context);
+    ScopeGuard pop_execution_context = [&] { vm->pop_execution_context(); };
 
     auto program = TRY(parse_program(*realm, source, filepath, metadata.program_type));
 

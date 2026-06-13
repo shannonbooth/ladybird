@@ -142,8 +142,6 @@ public:
     // https://html.spec.whatwg.org/multipage/interaction.html#history-action-activation
     bool has_history_action_activation() const;
 
-    WebIDL::ExceptionOr<void> initialize_web_interfaces(Badge<WindowEnvironmentSettingsObject>);
-
     Vector<GC::Ref<Plugin>> pdf_viewer_plugin_objects();
     Vector<GC::Ref<MimeType>> pdf_viewer_mime_type_objects();
 
@@ -275,6 +273,7 @@ private:
 
     virtual void visit_edges(Cell::Visitor&) override;
     virtual void finalize() override;
+    virtual void initialize(JS::Realm&) override;
 
     virtual bool is_html_window() const override { return true; }
 

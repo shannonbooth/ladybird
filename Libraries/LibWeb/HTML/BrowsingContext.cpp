@@ -169,38 +169,47 @@ BrowsingContext::BrowsingContextAndDocument BrowsingContext::create_a_new_browsi
 
     GC::Ptr<Window> window;
 
-    // 10. Let realm execution context be the result of creating a new JavaScript realm given agent and the following customizations:
-    auto realm_execution_context = Bindings::create_a_new_javascript_realm(
-        Bindings::main_thread_vm(),
-        [&](JS::Realm& realm) -> JS::Object* {
-            auto window_proxy = realm.create<WindowProxy>(realm);
-            browsing_context->set_window_proxy(window_proxy);
-
-            // - For the global object, create a new Window object.
-            window = Window::create(realm);
-            return window.ptr();
-        },
-        [&](JS::Realm&) -> JS::Object* {
-            // - For the global this binding, use browsingContext's WindowProxy object.
-            return browsing_context->window_proxy();
-        });
-
-    auto& realm = window->realm();
-
     // 11. Let topLevelCreationURL be about:blank if embedder is null; otherwise embedder's relevant settings object's top-level creation URL.
     auto top_level_creation_url = !embedder ? URL::about_blank() : relevant_settings_object(*embedder).top_level_creation_url.value();
 
     // 12. Let topLevelOrigin be origin if embedder is null; otherwise embedder's relevant settings object's top-level origin.
     auto top_level_origin = !embedder ? origin : relevant_settings_object(*embedder).origin();
 
-    // 13. Set up a window environment settings object with about:blank, realm execution context, null, topLevelCreationURL, and topLevelOrigin.
-    WindowEnvironmentSettingsObject::setup(
-        page,
-        URL::about_blank(),
-        move(realm_execution_context),
-        {},
-        top_level_creation_url,
-        top_level_origin);
+    // 10. Let realm execution context be the result of creating a new JavaScript realm given agent and the following customizations:
+    GC::Ptr<WindowEnvironmentSettingsObject> settings_object;
+    auto realm_execution_context = Bindings::create_a_new_javascript_realm(
+        Bindings::main_thread_vm(),
+        [&](JS::ExecutionContext& execution_context) -> JS::Realm::GlobalAndThisValue {
+            auto& realm = *execution_context.realm;
+
+            // 1. Let settings object be the result of setting up a window environment settings object with realm, execution context,
+            //    about:blank, null, topLevelCreationURL, and topLevelOrigin.
+            settings_object = WindowEnvironmentSettingsObject::setup(
+                page,
+                realm,
+                execution_context,
+                URL::about_blank(),
+                {},
+                top_level_creation_url,
+                top_level_origin);
+
+            // 2. Create a new WindowProxy object.
+            auto window_proxy = realm.create<WindowProxy>(realm);
+            browsing_context->set_window_proxy(window_proxy);
+
+            // 3. For the global object, create a new Window object.
+            window = realm.create<Window>(realm);
+
+            // 4. Set settings object's window to the global object.
+            settings_object->set_window(*window);
+
+            // 5. For the global this binding, use browsingContext's WindowProxy object.
+            // 6. Return the global object and global this binding.
+            return { window, browsing_context->window_proxy() };
+        });
+    settings_object->take_realm_execution_context(move(realm_execution_context));
+
+    auto& realm = window->realm();
 
     // 14. Let loadTimingInfo be a new document load timing info with its navigation start time set to the result of calling
     //     coarsen time with unsafeContextCreationTime and the new environment settings object's cross-origin isolated capability.

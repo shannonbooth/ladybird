@@ -25,14 +25,13 @@ DedicatedWorkerGlobalScope::DedicatedWorkerGlobalScope(JS::Realm& realm, GC::Ref
 
 DedicatedWorkerGlobalScope::~DedicatedWorkerGlobalScope() = default;
 
-void DedicatedWorkerGlobalScope::initialize_web_interfaces_impl()
+void DedicatedWorkerGlobalScope::initialize(JS::Realm& realm)
 {
-    auto& realm = this->realm();
     add_dedicated_worker_exposed_interfaces(*this);
 
     DedicatedWorkerGlobalScopeGlobalMixin::initialize(realm, *this);
 
-    Base::initialize_web_interfaces_impl();
+    Base::initialize(realm);
 }
 
 // https://html.spec.whatwg.org/multipage/workers.html#dom-dedicatedworkerglobalscope-close

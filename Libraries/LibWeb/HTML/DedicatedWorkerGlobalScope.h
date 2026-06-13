@@ -40,7 +40,7 @@ public:
 private:
     DedicatedWorkerGlobalScope(JS::Realm&, GC::Ref<Web::Page>);
 
-    virtual void initialize_web_interfaces_impl() override;
+    virtual void initialize(JS::Realm&) override;
 };
 
 }

@@ -5,8 +5,10 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+#include <LibWeb/Bindings/Intrinsics.h>
 #include <LibWeb/Bindings/PrincipalHostDefined.h>
 #include <LibWeb/HTML/DedicatedWorkerGlobalScope.h>
+#include <LibWeb/HTML/Scripting/Agent.h>
 #include <LibWeb/HTML/Scripting/WorkerEnvironmentSettingsObject.h>
 #include <LibWeb/HTML/WorkerGlobalScope.h>
 #include <LibWeb/HighResolutionTime/TimeOrigin.h>
@@ -16,55 +18,49 @@ namespace Web::HTML {
 GC_DEFINE_ALLOCATOR(WorkerEnvironmentSettingsObject);
 
 // https://html.spec.whatwg.org/multipage/workers.html#set-up-a-worker-environment-settings-object
-GC::Ref<WorkerEnvironmentSettingsObject> WorkerEnvironmentSettingsObject::setup(GC::Ref<Page> page, NonnullOwnPtr<JS::ExecutionContext> execution_context, SerializedEnvironmentSettingsObject const& outside_settings, HighResolutionTime::DOMHighResTimeStamp unsafe_worker_creation_time)
+GC::Ref<WorkerEnvironmentSettingsObject> WorkerEnvironmentSettingsObject::setup(GC::Ref<Page> page, JS::Realm& realm, JS::ExecutionContext& execution_context, URL::URL const& worker_url, SerializedEnvironmentSettingsObject const& outside_settings, HighResolutionTime::DOMHighResTimeStamp unsafe_worker_creation_time)
 {
     // 1. Let realm be the value of execution context's Realm component.
-    auto realm = execution_context->realm;
-    VERIFY(realm);
+    VERIFY(execution_context.realm == &realm);
 
-    // 2. Let worker global scope be realm's global object.
-    auto& worker = as<HTML::WorkerGlobalScope>(realm->global_object());
+    // 2. Let origin be a unique opaque origin if workerURL's scheme is "data"; otherwise outside settings's origin.
+    auto origin = worker_url.scheme() == "data" ? URL::Origin::create_opaque() : outside_settings.origin;
 
-    // 3. Let origin be a unique opaque origin if worker global scope's url's scheme is "data"; otherwise outside settings's origin.
-    auto origin = worker.url().scheme() == "data" ? URL::Origin::create_opaque() : outside_settings.origin;
-
-    // 4. Let settings object be a new environment settings object whose algorithms are defined as follows:
+    // 3. Let settings object be a new environment settings object whose algorithms are defined as follows:
     // NOTE: See the functions defined for this class.
     // FIXME: Is it enough to cache the has_cross_site_ancestor of outside_settings, or do we need to check the live object somehow?
-    auto settings_object = realm->create<WorkerEnvironmentSettingsObject>(move(execution_context), worker, move(origin), outside_settings.has_cross_site_ancestor, unsafe_worker_creation_time);
+    auto settings_object = realm.create<WorkerEnvironmentSettingsObject>(execution_context, move(origin), outside_settings.has_cross_site_ancestor, unsafe_worker_creation_time);
     settings_object->target_browsing_context = nullptr;
 
-    // FIXME: 5. Set settings object's id to a new unique opaque string, creation URL to worker global scope's url, top-level creation URL to null, target browsing context to null, and active service worker to null.
+    // FIXME: 4. Set settings object's id to a new unique opaque string, creation URL to workerURL, top-level creation URL to null, target browsing context to null, and active service worker to null.
     // NB: WorkerHost sets (ad-hoc) the global scope's url to be the worker URL before redirects, as the spec does not
     //     do so at that point. See https://github.com/whatwg/html/issues/11340.
-    settings_object->creation_url = worker.url();
+    settings_object->creation_url = worker_url;
 
-    // 6. If worker global scope is a DedicatedWorkerGlobalScope object, then set settings object's top-level origin to
+    // 5. If the worker global scope to be created is a DedicatedWorkerGlobalScope object, then set settings object's top-level origin to
     //    outside settings's top-level origin.
-    if (is<DedicatedWorkerGlobalScope>(worker)) {
-        settings_object->top_level_origin = outside_settings.top_level_origin;
-    }
-    // 7. Otherwise, set settings object's top-level origin to an implementation-defined value.
-    else {
-        // FIXME: We set this to the same top-level origin as DedicatedWorkerGlobalScope objects for now, as this needs
-        //        to be non-null for determining network partition keys. The spec notes:
-        //
-        //        See Client-Side Storage Partitioning for the latest on properly defining this.
-        //        https://privacycg.github.io/storage-partitioning/
-        settings_object->top_level_origin = outside_settings.top_level_origin;
-    }
+    // 6. Otherwise, set settings object's top-level origin to an implementation-defined value.
+    // FIXME: We set this to the same top-level origin as DedicatedWorkerGlobalScope objects for now, as this needs
+    //        to be non-null for determining network partition keys. The spec notes:
+    //
+    //        See Client-Side Storage Partitioning for the latest on properly defining this.
+    //        https://privacycg.github.io/storage-partitioning/
+    settings_object->top_level_origin = outside_settings.top_level_origin;
 
-    // 8. Set realm's [[HostDefined]] field to settings object.
-    auto intrinsics = realm->create<Bindings::Intrinsics>(*realm);
+    // 7. Set realm's [[HostDefined]] field to settings object.
+    auto intrinsics = realm.create<Bindings::Intrinsics>(realm);
     auto host_defined = make<Bindings::PrincipalHostDefined>(settings_object, intrinsics, page);
-    realm->set_host_defined(move(host_defined));
+    realm.set_host_defined(move(host_defined));
 
-    // Non-Standard: We cannot fully initialize worker object until *after* the we set up
-    //    the realm's [[HostDefined]] internal slot as the internal slot contains the web platform intrinsics
-    worker.initialize_web_interfaces({});
-
-    // 9. Return settings object.
+    // 8. Return settings object.
     return settings_object;
+}
+
+void WorkerEnvironmentSettingsObject::set_global_scope(WorkerGlobalScope& global_scope)
+{
+    m_global_scope = global_scope;
+    set_universal_global_scope(global_scope);
+    register_with_responsible_event_loop(*relevant_agent(global_scope).event_loop);
 }
 
 // https://html.spec.whatwg.org/multipage/workers.html#script-settings-for-workers:api-base-url

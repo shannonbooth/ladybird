@@ -30,6 +30,7 @@ public:
     virtual GC::Ref<PolicyContainer> policy_container() const override { return m_policy_container; }
     virtual CanUseCrossOriginIsolatedAPIs cross_origin_isolated_capability() const override { return CanUseCrossOriginIsolatedAPIs::No; }
     virtual double time_origin() const override { return m_time_origin; }
+    bool is_secure_context() const { return m_is_secure_context; }
 
 protected:
     virtual void visit_edges(Cell::Visitor&) override;
@@ -40,6 +41,7 @@ private:
     bool m_has_cross_site_ancestor;
     GC::Ref<PolicyContainer> m_policy_container;
     double m_time_origin { 0 };
+    bool m_is_secure_context { false };
 };
 
 }

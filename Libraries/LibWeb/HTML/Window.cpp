@@ -800,9 +800,10 @@ bool Window::is_internals_object_exposed()
     return s_internals_object_exposed;
 }
 
-WebIDL::ExceptionOr<void> Window::initialize_web_interfaces(Badge<WindowEnvironmentSettingsObject>)
+void Window::initialize(JS::Realm& realm)
 {
-    auto& realm = this->realm();
+    Base::initialize(realm);
+
     add_window_exposed_interfaces(*this);
 
     WEB_SET_PROTOTYPE_FOR_INTERFACE(Window);
@@ -813,8 +814,6 @@ WebIDL::ExceptionOr<void> Window::initialize_web_interfaces(Badge<WindowEnvironm
 
     if (s_internals_object_exposed)
         define_direct_property("internals"_utf16_fly_string, realm.create<Internals::Internals>(realm), JS::default_attributes);
-
-    return {};
 }
 
 // https://webidl.spec.whatwg.org/#platform-object-setprototypeof

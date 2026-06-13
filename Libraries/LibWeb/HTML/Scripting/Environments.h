@@ -144,6 +144,8 @@ public:
 
     virtual void discard_environment() override;
 
+    void take_realm_execution_context(NonnullOwnPtr<JS::ExecutionContext>);
+
     void keep_worker_agent_alive_while_starting(WorkerAgentParent&);
     void release_worker_agent_from_startup_keep_alive(WorkerAgentParent&);
 
@@ -166,12 +168,17 @@ public:
     }
 
 protected:
+    explicit EnvironmentSettingsObject(JS::ExecutionContext&);
     explicit EnvironmentSettingsObject(NonnullOwnPtr<JS::ExecutionContext>);
 
     virtual void visit_edges(Cell::Visitor&) override;
 
+    void set_universal_global_scope(UniversalGlobalScopeMixin&);
+    void register_with_responsible_event_loop(EventLoop&);
+
 private:
-    NonnullOwnPtr<JS::ExecutionContext> m_realm_execution_context;
+    OwnPtr<JS::ExecutionContext> m_owned_realm_execution_context;
+    JS::ExecutionContext* m_realm_execution_context { nullptr };
     GC::Ptr<ModuleMap> m_module_map;
     UniversalGlobalScopeMixin* m_universal_global_scope { nullptr };
 

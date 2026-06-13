@@ -368,22 +368,6 @@ WebIDL::ExceptionOr<GC::Ref<Document>> Document::create_and_initialize(Type type
 
         // FIXME: 4. Let agent be the result of obtaining a similar-origin window agent given navigationParams's origin, browsingContext's group, and requestsOAC.
 
-        // 5. Let realm execution context be the result of creating a new JavaScript realm given agent and the following customizations:
-        auto realm_execution_context = Bindings::create_a_new_javascript_realm(
-            Bindings::main_thread_vm(),
-            [&](JS::Realm& realm) -> JS::Object* {
-                // - For the global object, create a new Window object.
-                window = HTML::Window::create(realm);
-                return window;
-            },
-            [&](JS::Realm&) -> JS::Object* {
-                // - For the global this binding, use browsingContext's WindowProxy object.
-                return browsing_context->window_proxy();
-            });
-
-        // 6. Set window to the global object of realmExecutionContext's Realm component.
-        window = as<HTML::Window>(realm_execution_context->realm->global_object());
-
         // 7. Let topLevelCreationURL be creationURL.
         auto top_level_creation_url = creation_url;
 
@@ -402,18 +386,40 @@ WebIDL::ExceptionOr<GC::Ref<Document>> Document::create_and_initialize(Type type
             top_level_origin = parent_environment.top_level_origin.value();
         }
 
-        // 10. Set up a window environment settings object with creationURL, realm execution context,
-        //    navigationParams's reserved environment, topLevelCreationURL, and topLevelOrigin.
+        // 5. Let realm execution context be the result of creating a new JavaScript realm given agent and the following customizations:
+        GC::Ptr<HTML::WindowEnvironmentSettingsObject> settings_object;
+        auto realm_execution_context = Bindings::create_a_new_javascript_realm(
+            Bindings::main_thread_vm(),
+            [&](JS::ExecutionContext& execution_context) -> JS::Realm::GlobalAndThisValue {
+                auto& realm = *execution_context.realm;
 
-        // FIXME: Why do we assume `creation_url` is non-empty here? Is this a spec bug?
-        // FIXME: Why do we assume `top_level_creation_url` is non-empty here? Is this a spec bug?
-        HTML::WindowEnvironmentSettingsObject::setup(
-            browsing_context->page(),
-            creation_url.value(),
-            move(realm_execution_context),
-            navigation_params.reserved_environment,
-            top_level_creation_url.value(),
-            top_level_origin);
+                // 1. Let settings object be the result of setting up a window environment settings object with realm, execution context,
+                //    creationURL, navigationParams's reserved environment, topLevelCreationURL, and topLevelOrigin.
+                // FIXME: Why do we assume `creation_url` is non-empty here? Is this a spec bug?
+                // FIXME: Why do we assume `top_level_creation_url` is non-empty here? Is this a spec bug?
+                settings_object = HTML::WindowEnvironmentSettingsObject::setup(
+                    browsing_context->page(),
+                    realm,
+                    execution_context,
+                    creation_url.value(),
+                    navigation_params.reserved_environment,
+                    top_level_creation_url.value(),
+                    top_level_origin);
+
+                // 2. For the global object, create a new Window object.
+                window = realm.create<HTML::Window>(realm);
+
+                // 3. Set settings object's window to the global object.
+                settings_object->set_window(*window);
+
+                // 4. For the global this binding, use browsingContext's WindowProxy object.
+                // 5. Return the global object and global this binding.
+                return { window, browsing_context->window_proxy() };
+            });
+        settings_object->take_realm_execution_context(move(realm_execution_context));
+
+        // 6. Set window to the global object of realmExecutionContext's Realm component.
+        window = as<HTML::Window>(window->realm().global_object());
     }
 
     // 8. Let loadTimingInfo be a new document load timing info with its navigation start time set to navigationParams's response's timing info's start time.
@@ -5456,7 +5462,7 @@ void Document::destroy()
         page().navigable_document_destroyed({}, *navigable);
     }
 
-    // FIXME: 10. Remove document from the owner set of each WorkerGlobalScope object whose set contains document.
+    // FIXME: 10. Remove document from the owner set of each worker environment settings object whose set contains document.
     // FIXME: 11. For each workletGlobalScope in document's worklet global scopes, terminate workletGlobalScope.
 }
 

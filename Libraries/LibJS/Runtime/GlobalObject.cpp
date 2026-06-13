@@ -97,7 +97,7 @@ void set_default_global_bindings(Realm& realm)
     //     a. Let name be the String value of the property name.
     //     b. Let desc be the fully populated data Property Descriptor for the property, containing the specified attributes for the property.
     //        For properties listed in 19.2, 19.3, or 19.4 the value of the [[Value]] attribute is the corresponding intrinsic object from realmRec.
-    //     c. Perform ? DefinePropertyOrThrow(global, name, desc).
+    //     c. Perform ! DefinePropertyOrThrow(global, name, desc).
     //     NOTE: This function is infallible as we set properties directly; property clashes in global object construction are not expected.
 
     u8 attr = Attribute::Writable | Attribute::Configurable;

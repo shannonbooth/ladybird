@@ -48,7 +48,12 @@ public:
         return *object;
     }
 
-    static ThrowCompletionOr<NonnullOwnPtr<ExecutionContext>> initialize_host_defined_realm(VM&, Function<Object*(Realm&)> create_global_object, Function<Object*(Realm&)> create_global_this_value);
+    struct GlobalAndThisValue {
+        GC::Ptr<Object> global;
+        GC::Ptr<Object> this_value;
+    };
+
+    static NonnullOwnPtr<ExecutionContext> initialize_host_defined_realm(VM&, Function<GlobalAndThisValue(ExecutionContext&)> customizations);
 
     [[nodiscard]] Object& global_object() const { return *m_global_object; }
     void set_global_object(GC::Ref<Object> global) { m_global_object = global; }

@@ -27,14 +27,12 @@ SharedWorkerGlobalScope::SharedWorkerGlobalScope(JS::Realm& realm, GC::Ref<Web::
 
 SharedWorkerGlobalScope::~SharedWorkerGlobalScope() = default;
 
-void SharedWorkerGlobalScope::initialize_web_interfaces_impl()
+void SharedWorkerGlobalScope::initialize(JS::Realm& realm)
 {
-    auto& realm = this->realm();
-
     Bindings::add_shared_worker_exposed_interfaces(*this);
 
     SharedWorkerGlobalScopeGlobalMixin::initialize(realm, *this);
-    Base::initialize_web_interfaces_impl();
+    Base::initialize(realm);
 }
 
 void SharedWorkerGlobalScope::finalize()

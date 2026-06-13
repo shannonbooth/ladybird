@@ -326,19 +326,17 @@ inline JSFileResult TestRunner::run_file_test(ByteString const& test_path)
 
     GC::Ptr<JS::Realm> realm;
     GC::Ptr<TestRunnerGlobalObject> global_object;
-    auto root_execution_context = MUST(JS::Realm::initialize_host_defined_realm(
+    auto root_execution_context = JS::Realm::initialize_host_defined_realm(
         *g_vm,
-        [&](JS::Realm& realm_) -> JS::GlobalObject* {
-            realm = &realm_;
+        [&](JS::ExecutionContext& execution_context) -> JS::Realm::GlobalAndThisValue {
+            realm = execution_context.realm;
             global_object = realm->create<TestRunnerGlobalObject>(*realm);
             if (this->needs_timings()) {
                 global_object->on_test_reported = print_test_timings;
             }
-            return global_object;
-        },
-        nullptr));
+            return { global_object, nullptr };
+        });
     auto& global_execution_context = *root_execution_context;
-    g_vm->pop_execution_context();
 
     g_vm->heap().set_should_collect_on_every_allocation(g_collect_on_every_allocation);
 

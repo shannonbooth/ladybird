@@ -8,6 +8,7 @@
 #include <LibWeb/Bindings/PrincipalHostDefined.h>
 #include <LibWeb/DOM/Document.h>
 #include <LibWeb/HTML/Navigable.h>
+#include <LibWeb/HTML/Scripting/Agent.h>
 #include <LibWeb/HTML/Scripting/WindowEnvironmentSettingsObject.h>
 #include <LibWeb/HTML/Window.h>
 
@@ -15,9 +16,8 @@ namespace Web::HTML {
 
 GC_DEFINE_ALLOCATOR(WindowEnvironmentSettingsObject);
 
-WindowEnvironmentSettingsObject::WindowEnvironmentSettingsObject(Window& window, NonnullOwnPtr<JS::ExecutionContext> execution_context)
-    : EnvironmentSettingsObject(move(execution_context))
-    , m_window(window)
+WindowEnvironmentSettingsObject::WindowEnvironmentSettingsObject(JS::ExecutionContext& execution_context)
+    : EnvironmentSettingsObject(execution_context)
 {
 }
 
@@ -29,21 +29,24 @@ void WindowEnvironmentSettingsObject::visit_edges(JS::Cell::Visitor& visitor)
     visitor.visit(m_window);
 }
 
+void WindowEnvironmentSettingsObject::set_window(Window& window)
+{
+    m_window = window;
+    set_universal_global_scope(window);
+    register_with_responsible_event_loop(*relevant_agent(window).event_loop);
+}
+
 // https://html.spec.whatwg.org/multipage/window-object.html#set-up-a-window-environment-settings-object
-void WindowEnvironmentSettingsObject::setup(Page& page, URL::URL const& creation_url, NonnullOwnPtr<JS::ExecutionContext> execution_context, GC::Ptr<Environment> reserved_environment, URL::URL top_level_creation_url, URL::Origin top_level_origin)
+GC::Ref<WindowEnvironmentSettingsObject> WindowEnvironmentSettingsObject::setup(Page& page, JS::Realm& realm, JS::ExecutionContext& execution_context, URL::URL const& creation_url, GC::Ptr<Environment> reserved_environment, URL::URL top_level_creation_url, URL::Origin top_level_origin)
 {
     // 1. Let realm be the value of execution context's Realm component.
-    auto realm = execution_context->realm;
-    VERIFY(realm);
+    VERIFY(execution_context.realm == &realm);
 
-    // 2. Let window be realm's global object.
-    auto& window = as<HTML::Window>(realm->global_object());
-
-    // 3. Let settings object be a new environment settings object whose algorithms are defined as follows:
+    // 2. Let settings object be a new environment settings object whose algorithms are defined as follows:
     // NOTE: See the functions defined for this class.
-    auto settings_object = realm->create<WindowEnvironmentSettingsObject>(window, move(execution_context));
+    auto settings_object = realm.create<WindowEnvironmentSettingsObject>(execution_context);
 
-    // 4. If reservedEnvironment is non-null, then:
+    // 3. If reservedEnvironment is non-null, then:
     if (reserved_environment) {
         // FIXME:    1. Set settings object's id to reservedEnvironment's id,
         //              target browsing context to reservedEnvironment's target browsing context,
@@ -55,7 +58,7 @@ void WindowEnvironmentSettingsObject::setup(Page& page, URL::URL const& creation
         reserved_environment->id = String {};
     }
 
-    // 5. Otherwise, ...
+    // 4. Otherwise, ...
     else {
         // FIXME: ...set settings object's id to a new unique opaque string,
         //        settings object's target browsing context to null,
@@ -65,22 +68,21 @@ void WindowEnvironmentSettingsObject::setup(Page& page, URL::URL const& creation
         settings_object->target_browsing_context = nullptr;
     }
 
-    // 6. Set settings object's creation URL to creationURL,
+    // 5. Set settings object's creation URL to creationURL,
     //    settings object's top-level creation URL to topLevelCreationURL,
     //    and settings object's top-level origin to topLevelOrigin.
     settings_object->creation_url = creation_url;
     settings_object->top_level_creation_url = move(top_level_creation_url);
     settings_object->top_level_origin = move(top_level_origin);
 
-    // 7. Set realm's [[HostDefined]] field to settings object.
+    // 6. Set realm's [[HostDefined]] field to settings object.
     // Non-Standard: We store the ESO next to the web intrinsics in a custom HostDefined object
-    auto intrinsics = realm->create<Bindings::Intrinsics>(*realm);
+    auto intrinsics = realm.create<Bindings::Intrinsics>(realm);
     auto host_defined = make<Bindings::PrincipalHostDefined>(settings_object, intrinsics, page);
-    realm->set_host_defined(move(host_defined));
+    realm.set_host_defined(move(host_defined));
 
-    // Non-Standard: We cannot fully initialize window object until *after* the we set up
-    //    the realm's [[HostDefined]] internal slot as the internal slot contains the web platform intrinsics
-    MUST(window.initialize_web_interfaces({}));
+    // 7. Return settings object.
+    return settings_object;
 }
 
 // https://html.spec.whatwg.org/multipage/window-object.html#script-settings-for-window-objects:responsible-document

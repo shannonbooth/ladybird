@@ -48,7 +48,7 @@ public:
 private:
     SharedWorkerGlobalScope(JS::Realm&, GC::Ref<Web::Page>);
 
-    virtual void initialize_web_interfaces_impl() override;
+    virtual void initialize(JS::Realm&) override;
     virtual void finalize() override;
 
     Optional<URL::Origin> m_constructor_origin;

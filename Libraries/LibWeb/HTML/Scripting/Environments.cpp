@@ -16,9 +16,11 @@
 #include <LibWeb/HTML/BrowsingContext.h>
 #include <LibWeb/HTML/PolicyContainers.h>
 #include <LibWeb/HTML/Scripting/Agent.h>
+#include <LibWeb/HTML/Scripting/EnvironmentSettingsSnapshot.h>
 #include <LibWeb/HTML/Scripting/Environments.h>
 #include <LibWeb/HTML/Scripting/ExceptionReporter.h>
 #include <LibWeb/HTML/Scripting/WindowEnvironmentSettingsObject.h>
+#include <LibWeb/HTML/Scripting/WorkerEnvironmentSettingsObject.h>
 #include <LibWeb/HTML/UniversalGlobalScope.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HTML/WorkerAgentParent.h>
@@ -41,16 +43,21 @@ void Environment::visit_edges(Cell::Visitor& visitor)
     visitor.visit(target_browsing_context);
 }
 
-EnvironmentSettingsObject::EnvironmentSettingsObject(NonnullOwnPtr<JS::ExecutionContext> realm_execution_context)
-    : m_realm_execution_context(move(realm_execution_context))
+EnvironmentSettingsObject::EnvironmentSettingsObject(JS::ExecutionContext& realm_execution_context)
+    : m_realm_execution_context(&realm_execution_context)
 {
-    // Register with the responsible event loop so we can perform step 4 of "perform a microtask checkpoint".
-    responsible_event_loop().register_environment_settings_object({}, *this);
+}
+
+EnvironmentSettingsObject::EnvironmentSettingsObject(NonnullOwnPtr<JS::ExecutionContext> realm_execution_context)
+    : m_owned_realm_execution_context(move(realm_execution_context))
+    , m_realm_execution_context(m_owned_realm_execution_context.ptr())
+{
 }
 
 void EnvironmentSettingsObject::finalize()
 {
-    responsible_event_loop().unregister_environment_settings_object({}, *this);
+    if (m_responsible_event_loop)
+        m_responsible_event_loop->unregister_environment_settings_object({}, *this);
     Base::finalize();
 }
 
@@ -58,7 +65,6 @@ void EnvironmentSettingsObject::initialize(JS::Realm& realm)
 {
     Base::initialize(realm);
     m_module_map = realm.heap().allocate<ModuleMap>();
-    m_universal_global_scope = &as<UniversalGlobalScopeMixin>(global_object());
 }
 
 void EnvironmentSettingsObject::visit_edges(Cell::Visitor& visitor)
@@ -66,7 +72,8 @@ void EnvironmentSettingsObject::visit_edges(Cell::Visitor& visitor)
     Base::visit_edges(visitor);
     visitor.visit(m_responsible_event_loop);
     visitor.visit(m_module_map);
-    m_realm_execution_context->visit_edges(visitor);
+    if (m_realm_execution_context)
+        m_realm_execution_context->visit_edges(visitor);
     visitor.visit(m_storage_manager);
     visitor.visit(m_service_worker_registration_object_map);
     visitor.visit(m_service_worker_object_map);
@@ -80,6 +87,24 @@ void EnvironmentSettingsObject::discard_environment()
 
     // 1. Set client’s discarded flag.
     set_discarded(true);
+}
+
+void EnvironmentSettingsObject::take_realm_execution_context(NonnullOwnPtr<JS::ExecutionContext> realm_execution_context)
+{
+    VERIFY(m_realm_execution_context == realm_execution_context.ptr());
+    m_owned_realm_execution_context = move(realm_execution_context);
+}
+
+void EnvironmentSettingsObject::set_universal_global_scope(UniversalGlobalScopeMixin& global_scope)
+{
+    m_universal_global_scope = &global_scope;
+}
+
+void EnvironmentSettingsObject::register_with_responsible_event_loop(EventLoop& event_loop)
+{
+    // Register with the responsible event loop so we can perform step 4 of "perform a microtask checkpoint".
+    m_responsible_event_loop = event_loop;
+    m_responsible_event_loop->register_environment_settings_object({}, *this);
 }
 
 void EnvironmentSettingsObject::keep_worker_agent_alive_while_starting(WorkerAgentParent& worker_agent)
@@ -97,12 +122,14 @@ void EnvironmentSettingsObject::release_worker_agent_from_startup_keep_alive(Wor
 JS::ExecutionContext& EnvironmentSettingsObject::realm_execution_context()
 {
     // NOTE: All environment settings objects are created with a realm execution context, so it's stored and returned here in the base class.
+    VERIFY(m_realm_execution_context);
     return *m_realm_execution_context;
 }
 
 JS::ExecutionContext const& EnvironmentSettingsObject::realm_execution_context() const
 {
     // NOTE: All environment settings objects are created with a realm execution context, so it's stored and returned here in the base class.
+    VERIFY(m_realm_execution_context);
     return *m_realm_execution_context;
 }
 
@@ -476,14 +503,15 @@ bool is_secure_context(Environment const& environment)
 {
     // 1. If environment is an environment settings object, then:
     if (auto const* environment_settings_object = as_if<EnvironmentSettingsObject>(environment)) {
-        // 1. Let global be environment's global object.
-        auto const& global = environment_settings_object->global_object();
+        if (auto const* snapshot = as_if<EnvironmentSettingsSnapshot>(*environment_settings_object))
+            return snapshot->is_secure_context();
 
-        // 2. If global is a WorkerGlobalScope, then:
-        if (auto const* worker = as_if<WorkerGlobalScope>(global)) {
-            // 1. If global's owner set[0]'s relevant settings object is a secure context, then return true.
+        // 1. If environment is a worker environment settings object, then:
+        if (auto const* worker_settings = as_if<WorkerEnvironmentSettingsObject>(*environment_settings_object)) {
+            // 1. If environment's owner set[0]'s relevant settings object is a secure context, then return true.
             // NOTE: We only need to check the 0th item since they will necessarily all be consistent.
-            if (worker->owner_set().at(0).visit([](auto const& owner) { return owner.relevant_settings_object_is_secure_context; }))
+            VERIFY(!worker_settings->owner_set().is_empty());
+            if (worker_settings->owner_set().at(0).visit([](auto const& owner) { return owner.relevant_settings_object_is_secure_context; }))
                 return true;
 
             // 2. Return false.

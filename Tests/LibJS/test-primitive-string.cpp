@@ -19,8 +19,9 @@ namespace {
 struct TestVM {
     TestVM()
         : vm(VM::create())
-        , execution_context(MUST(Realm::initialize_host_defined_realm(*vm, nullptr, nullptr)))
+        , execution_context(Realm::initialize_host_defined_realm(*vm, [](ExecutionContext&) -> Realm::GlobalAndThisValue { return {}; }))
     {
+        vm->push_execution_context(*execution_context);
     }
 
     ~TestVM()

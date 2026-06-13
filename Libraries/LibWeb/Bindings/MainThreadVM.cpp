@@ -755,25 +755,18 @@ void queue_mutation_observer_microtask()
 }
 
 // https://html.spec.whatwg.org/multipage/webappapis.html#creating-a-new-javascript-realm
-NonnullOwnPtr<JS::ExecutionContext> create_a_new_javascript_realm(JS::VM& vm, Function<JS::Object*(JS::Realm&)> create_global_object, Function<JS::Object*(JS::Realm&)> create_global_this_value)
+NonnullOwnPtr<JS::ExecutionContext> create_a_new_javascript_realm(JS::VM& vm, Function<JS::Realm::GlobalAndThisValue(JS::ExecutionContext&)> customizations)
 {
-    // 1. Perform InitializeHostDefinedRealm() with the provided customizations for creating the global object and the global this binding.
-    // 2. Let realm execution context be the running JavaScript execution context.
-    auto realm_execution_context = MUST(JS::Realm::initialize_host_defined_realm(vm, move(create_global_object), move(create_global_this_value)));
+    // 1. Let realm execution context be the result of CreateRealm(customizations)
+    auto realm_execution_context = JS::Realm::initialize_host_defined_realm(vm, move(customizations));
 
-    // 3. Remove realm execution context from the JavaScript execution context stack.
-    auto* popped_execution_context = vm.pop_execution_context();
-    VERIFY(popped_execution_context == realm_execution_context.ptr());
-
-    // NO-OP: 4. Let realm be realm execution context's Realm component.
-    // NO-OP: 5. Set realm's agent to agent.
-
-    // FIXME: 6. If agent's agent cluster's cross-origin isolation mode is "none", then:
+    // FIXME: 2. Let realm be realm execution context's Realm component.
+    //        3. If agent's agent cluster's cross-origin isolation mode is "none", then:
     //          1. Let global be realm's global object.
     //          2. Let status be ! global.[[Delete]]("SharedArrayBuffer").
     //          3. Assert: status is true.
 
-    // 7. Return realm execution context.
+    // 3. Return realm execution context.
     return realm_execution_context;
 }
 

@@ -6,9 +6,12 @@
 
 #pragma once
 
+#include <AK/Vector.h>
 #include <LibURL/URL.h>
 #include <LibWeb/Export.h>
 #include <LibWeb/Forward.h>
+#include <LibWeb/HTML/Scripting/Environments.h>
+#include <LibWeb/HTML/Scripting/SerializedEnvironmentSettingsObject.h>
 
 namespace Web::HTML {
 
@@ -18,16 +21,20 @@ class WEB_API WorkerEnvironmentSettingsObject final
     GC_DECLARE_ALLOCATOR(WorkerEnvironmentSettingsObject);
 
 public:
-    WorkerEnvironmentSettingsObject(NonnullOwnPtr<JS::ExecutionContext> execution_context, GC::Ref<WorkerGlobalScope> global_scope, URL::Origin origin, bool outside_settings_has_cross_site_ancestor, HighResolutionTime::DOMHighResTimeStamp unsafe_worker_creation_time)
-        : EnvironmentSettingsObject(move(execution_context))
+    using Owner = Variant<SerializedDocument, SerializedWorkerGlobalScope>;
+
+    WorkerEnvironmentSettingsObject(JS::ExecutionContext& execution_context, URL::Origin origin, bool outside_settings_has_cross_site_ancestor, HighResolutionTime::DOMHighResTimeStamp unsafe_worker_creation_time)
+        : EnvironmentSettingsObject(execution_context)
         , m_origin(move(origin))
         , m_outside_settings_has_cross_site_ancestor(outside_settings_has_cross_site_ancestor)
-        , m_global_scope(global_scope)
         , m_unsafe_worker_creation_time(unsafe_worker_creation_time)
     {
     }
 
-    static GC::Ref<WorkerEnvironmentSettingsObject> setup(GC::Ref<Page> page, NonnullOwnPtr<JS::ExecutionContext> execution_context, SerializedEnvironmentSettingsObject const& outside_settings, HighResolutionTime::DOMHighResTimeStamp unsafe_worker_creation_time);
+    static GC::Ref<WorkerEnvironmentSettingsObject> setup(GC::Ref<Page> page, JS::Realm&, JS::ExecutionContext&, URL::URL const& worker_url, SerializedEnvironmentSettingsObject const& outside_settings, HighResolutionTime::DOMHighResTimeStamp unsafe_worker_creation_time);
+    void set_global_scope(WorkerGlobalScope&);
+    void append_owner(Owner owner) { m_owner_set.append(move(owner)); }
+    Vector<Owner> const& owner_set() const { return m_owner_set; }
 
     virtual ~WorkerEnvironmentSettingsObject() override = default;
 
@@ -45,7 +52,8 @@ private:
     URL::Origin m_origin;
     bool m_outside_settings_has_cross_site_ancestor;
 
-    GC::Ref<WorkerGlobalScope> m_global_scope;
+    GC::Ptr<WorkerGlobalScope> m_global_scope;
+    Vector<Owner> m_owner_set;
 
     HighResolutionTime::DOMHighResTimeStamp m_unsafe_worker_creation_time { 0 };
 };

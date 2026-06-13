@@ -40,14 +40,14 @@ WorkerHost::WorkerHost(URL::URL url, Web::Bindings::WorkerType type, String name
 WorkerHost::~WorkerHost() = default;
 
 // https://html.spec.whatwg.org/multipage/workers.html#relevant-owner-to-add
-static Web::HTML::WorkerGlobalScope::Owner relevant_owner_to_add(Web::HTML::SerializedEnvironmentSettingsObject const& outside_settings)
+static Web::HTML::WorkerEnvironmentSettingsObject::Owner relevant_owner_to_add(Web::HTML::SerializedEnvironmentSettingsObject const& outside_settings)
 {
     // Given an environment settings object o when creating or obtaining a worker, the relevant owner to add depends on the type of global object specified by o.
     return outside_settings.global.visit(
         // If o's global object is a WorkerGlobalScope object (i.e., if we are creating a nested dedicated worker), then the relevant owner is that global object.
-        [](Web::HTML::SerializedWorkerGlobalScope const& worker) -> Web::HTML::WorkerGlobalScope::Owner { return worker; },
+        [](Web::HTML::SerializedWorkerGlobalScope const& worker) -> Web::HTML::WorkerEnvironmentSettingsObject::Owner { return worker; },
         // Otherwise, o's global object is a Window object, and the relevant owner is that Window's associated Document.
-        [](Web::HTML::SerializedWindow const& window) -> Web::HTML::WorkerGlobalScope::Owner { return window.associated_document; });
+        [](Web::HTML::SerializedWindow const& window) -> Web::HTML::WorkerEnvironmentSettingsObject::Owner { return window.associated_document; });
 }
 
 // https://html.spec.whatwg.org/multipage/workers.html#run-a-worker
@@ -63,40 +63,42 @@ void WorkerHost::run(GC::Ref<Web::Page> page, Web::HTML::TransferDataEncoder mes
     auto unsafe_worker_creation_time = Web::HighResolutionTime::unsafe_shared_current_time();
 
     // 5. Let realm execution context be the result of creating a new realm given agent and the following customizations:
+    GC::Ptr<Web::HTML::WorkerEnvironmentSettingsObject> inside_settings;
+    GC::Ptr<Web::HTML::WorkerGlobalScope> worker_global_scope;
     auto realm_execution_context = Web::Bindings::create_a_new_javascript_realm(
         Web::Bindings::main_thread_vm(),
-        [page, is_shared](JS::Realm& realm) -> JS::Object* {
-            // For the global object, if is shared is true, create a new SharedWorkerGlobalScope object.
+        [this, page, is_shared, owner, &outside_settings_snapshot, unsafe_worker_creation_time, &inside_settings, &worker_global_scope](JS::ExecutionContext& execution_context) -> JS::Realm::GlobalAndThisValue {
+            auto& realm = *execution_context.realm;
+
+            // 1. Let inside settings be the result of setting up a worker environment settings object with realm,
+            //    execution context, workerURL, outside settings, and unsafeWorkerCreationTime.
+            inside_settings = Web::HTML::WorkerEnvironmentSettingsObject::setup(page, realm, execution_context, m_url, outside_settings_snapshot, unsafe_worker_creation_time);
+
+            // 2. Append owner to inside settings's owner set.
+            inside_settings->append_owner(owner);
+
+            // 3. For the global object, if is shared is true, create a new SharedWorkerGlobalScope object.
             if (is_shared)
-                return realm.heap().allocate<Web::HTML::SharedWorkerGlobalScope>(realm, page);
-            // Otherwise, create a new DedicatedWorkerGlobalScope object.
-            return realm.heap().allocate<Web::HTML::DedicatedWorkerGlobalScope>(realm, page);
-        },
-        nullptr);
+                worker_global_scope = realm.create<Web::HTML::SharedWorkerGlobalScope>(realm, page);
+            // 4. Otherwise, create a new DedicatedWorkerGlobalScope object.
+            else
+                worker_global_scope = realm.create<Web::HTML::DedicatedWorkerGlobalScope>(realm, page);
+
+            // 5. Set the global object's url to workerURL.
+            worker_global_scope->set_url(m_url);
+
+            // 6. Set inside settings's worker global scope to the global object.
+            inside_settings->set_global_scope(*worker_global_scope);
+
+            // 7. Return the global object and null.
+            return { worker_global_scope, nullptr };
+        });
+    inside_settings->take_realm_execution_context(move(realm_execution_context));
 
     // 6. Let worker global scope be the global object of realm execution context's Realm component.
     // NOTE: This is the DedicatedWorkerGlobalScope or SharedWorkerGlobalScope object created in the previous step.
-    GC::Ref<Web::HTML::WorkerGlobalScope> worker_global_scope = as<Web::HTML::WorkerGlobalScope>(realm_execution_context->realm->global_object());
-    m_worker_global_scope = worker_global_scope;
-
-    // AD-HOC: The spec assumes when setting up the worker environment settings object that the URL is already set on
-    //         the worker global scope. This is not the case. This URL is only known after performing the fetch, and in
-    //         particular after redirects. See spec issue: https://github.com/whatwg/html/issues/11340. The main part
-    //         which will need some rework to fix in a nice way is setting up a temporary environment for use in
-    //         performing the initial fetch.
-    //
-    //         As a workaround for now, set the URL here before setting up the environment settings object.
-    worker_global_scope->set_url(m_url);
-
-    // 9. Append owner to worker global scope's owner set.
-    // AD-HOC: We need to do this slightly out of order compared to the spec. We initialize
-    //         web interfaces as part of step 7, which checks SecureContext for interface
-    //         exposure which itself requires owner set to be populated.
-    worker_global_scope->owner_set().append(owner);
-
-    // 7. Set up a worker environment settings object with realm execution context, outside settings, and
-    //    unsafeWorkerCreationTime, and let inside settings be the result.
-    auto inside_settings = Web::HTML::WorkerEnvironmentSettingsObject::setup(page, move(realm_execution_context), outside_settings_snapshot, unsafe_worker_creation_time);
+    VERIFY(worker_global_scope);
+    m_worker_global_scope = *worker_global_scope;
     m_inside_settings = inside_settings;
 
     // AD-HOC: Create a console object for the worker.
@@ -174,7 +176,7 @@ void WorkerHost::run(GC::Ref<Web::Page> page, Web::HTML::TransferDataEncoder mes
 
             // 3. Initialize worker global scope's policy container given worker global scope, response, and inside
             //    settings.
-            worker_global_scope->initialize_policy_container(response, inside_settings);
+            worker_global_scope->initialize_policy_container(response, *inside_settings);
 
             // 4. If the Run CSP initialization for a global object algorithm returns "Blocked" when executed upon
             //    worker global scope, set response to a network error. [CSP]
@@ -298,7 +300,7 @@ void WorkerHost::run(GC::Ref<Web::Page> page, Web::HTML::TransferDataEncoder mes
         //        And use that to shutdown the WorkerHost
         // FIXME: 16. Clear the worker global scope's map of active timers.
         // FIXME: 17. Disentangle all the ports in the list of the worker's ports.
-        // FIXME: 18. Empty worker global scope's owner set.
+        // FIXME: 18. Empty inside settings's owner set.
     };
     auto on_complete = Web::HTML::create_on_fetch_script_complete(inside_settings->vm().heap(), move(on_complete_function));
 
@@ -307,7 +309,7 @@ void WorkerHost::run(GC::Ref<Web::Page> page, Web::HTML::TransferDataEncoder mes
         // -> "classic":
         //    Fetch a classic worker script given url, outside settings, destination, inside settings, and with
         //    onComplete and performFetch as defined below.
-        if (auto err = Web::HTML::fetch_classic_worker_script(m_url, outside_settings, destination, inside_settings, perform_fetch, on_complete); err.is_error()) {
+        if (auto err = Web::HTML::fetch_classic_worker_script(m_url, outside_settings, destination, *inside_settings, perform_fetch, on_complete); err.is_error()) {
             dbgln("Failed to run worker script");
             // FIXME: Abort the worker properly
             TODO();
@@ -318,7 +320,7 @@ void WorkerHost::run(GC::Ref<Web::Page> page, Web::HTML::TransferDataEncoder mes
         //    member of options, inside settings, and with onComplete and performFetch as defined below.
         VERIFY(m_type == Web::Bindings::WorkerType::Module);
         // FIXME: Pass credentials
-        if (auto err = Web::HTML::fetch_module_worker_script_graph(m_url, outside_settings, destination, inside_settings, perform_fetch, on_complete); err.is_error()) {
+        if (auto err = Web::HTML::fetch_module_worker_script_graph(m_url, outside_settings, destination, *inside_settings, perform_fetch, on_complete); err.is_error()) {
             dbgln("Failed to run worker script");
             // FIXME: Abort the worker properly
             TODO();
@@ -373,10 +375,10 @@ void WorkerHost::connect_shared_worker_impl(Web::HTML::TransferDataEncoder messa
         worker_global_scope->dispatch_event(message_event);
     }));
 
-    // 11.5.8. Append the relevant owner to add given outsideSettings to workerGlobalScope's owner set.
+    // 11.5.8. Append the relevant owner to add given outsideSettings to inside settings's owner set.
     if (should_append_owner == ShouldAppendOwner::Yes) {
         auto owner = relevant_owner_to_add(outside_settings);
-        m_worker_global_scope->owner_set().append(owner);
+        m_inside_settings->append_owner(owner);
     }
 }
 

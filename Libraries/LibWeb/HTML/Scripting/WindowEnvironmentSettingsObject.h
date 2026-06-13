@@ -16,7 +16,8 @@ class WindowEnvironmentSettingsObject final : public EnvironmentSettingsObject {
     GC_DECLARE_ALLOCATOR(WindowEnvironmentSettingsObject);
 
 public:
-    static void setup(Page&, URL::URL const& creation_url, NonnullOwnPtr<JS::ExecutionContext>, GC::Ptr<Environment>, URL::URL top_level_creation_url, URL::Origin top_level_origin);
+    static GC::Ref<WindowEnvironmentSettingsObject> setup(Page&, JS::Realm&, JS::ExecutionContext&, URL::URL const& creation_url, GC::Ptr<Environment>, URL::URL top_level_creation_url, URL::Origin top_level_origin);
+    void set_window(Window&);
 
     virtual ~WindowEnvironmentSettingsObject() override;
 
@@ -29,7 +30,7 @@ public:
     virtual double time_origin() const override;
 
 private:
-    WindowEnvironmentSettingsObject(Window&, NonnullOwnPtr<JS::ExecutionContext>);
+    explicit WindowEnvironmentSettingsObject(JS::ExecutionContext&);
 
     virtual void visit_edges(JS::Cell::Visitor&) override;
 

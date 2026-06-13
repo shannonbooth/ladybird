@@ -16,30 +16,26 @@
 #include <LibWeb/CSS/CSSStyleSheet.h>
 #include <LibWeb/CSS/Keyword.h>
 #include <LibWeb/CSS/Parser/Parser.h>
-#include <LibWeb/HTML/Window.h>
 
 namespace Web {
 
 GC::Ref<JS::Realm> internal_css_realm()
 {
     static auto& realm = *new GC::Root<JS::Realm>;
-    static auto& window = *new GC::Root<HTML::Window>;
     static auto& execution_context = *new OwnPtr<JS::ExecutionContext>;
     if (!realm) {
         execution_context = Bindings::create_a_new_javascript_realm(
             Bindings::main_thread_vm(),
-            [&](JS::Realm& realm) -> JS::Object* {
-                window = HTML::Window::create(realm);
-                return window;
-            },
-            [&](JS::Realm&) -> JS::Object* {
-                return window;
+            [&](JS::ExecutionContext& execution_context) -> JS::Realm::GlobalAndThisValue {
+                auto& realm = *execution_context.realm;
+                auto intrinsics = realm.create<Bindings::Intrinsics>(realm);
+                auto host_defined = make<Bindings::HostDefined>(intrinsics);
+                realm.set_host_defined(move(host_defined));
+
+                return {};
             });
 
         realm = *execution_context->realm;
-        auto intrinsics = realm->create<Bindings::Intrinsics>(*realm);
-        auto host_defined = make<Bindings::HostDefined>(intrinsics);
-        realm->set_host_defined(move(host_defined));
     }
     return *realm;
 }
