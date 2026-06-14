@@ -82,9 +82,16 @@ body:
         Log output and (if possible) backtrace
       description: |
         Copy and paste the full log output from Ladybird — including error messages — as well as any backtrace that Ladybird reported.
-        What you paste in will be formatted as a code block — so, no need to put code fence backticks around it.
-      value:
-      render: shell
+        Paste the backtrace inside the details block below, if Ladybird reported one.
+      value: |
+        <details>
+        <summary>Backtrace</summary>
+
+        ```shell
+
+        ```
+
+        </details>
     validations:
       required: true
   - type: textarea
