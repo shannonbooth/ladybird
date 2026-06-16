@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+    <head>
+        <title>Site Isolation</title>
+        <link rel="icon" type="image/png" href="resource://icons/48x48/app-browser.png" />
+        <style>
+            html {
+                color-scheme: light dark;
+                font-family: Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+                font-size: 10pt;
+            }
+
+            header {
+                display: flex;
+                align-items: center;
+                margin-bottom: 20px;
+            }
+
+            header img {
+                width: 48px;
+                height: 48px;
+                margin-right: 10px;
+            }
+
+            header h1 {
+                font-size: 20px;
+                margin: 0;
+            }
+
+            pre {
+                white-space: pre-wrap;
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <picture>
+                <source srcset="resource://icons/128x128/app-browser.png" media="(prefers-color-scheme: dark)" />
+                <img src="resource://icons/128x128/app-browser-dark.png" />
+            </picture>
+            <h1>Site Isolation</h1>
+        </header>
+
+        <pre id="site-isolation-state"></pre>
+
+        <script type="module">
+            const loadSiteIsolationState = state => {
+                document.getElementById("site-isolation-state").innerText = state;
+            };
+
+            document.addEventListener("WebUILoaded", () => {
+                setInterval(() => {
+                    ladybird.sendMessage("updateSiteIsolationState");
+                }, 1000);
+
+                ladybird.sendMessage("updateSiteIsolationState");
+            });
+
+            document.addEventListener("WebUIMessage", event => {
+                if (event.detail.name === "loadSiteIsolationState") {
+                    loadSiteIsolationState(event.detail.data);
+                }
+            });
+        </script>
+    </body>
+</html>

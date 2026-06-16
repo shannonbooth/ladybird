@@ -33,10 +33,19 @@
 #include <LibWeb/HTML/WebViewHints.h>
 #include <LibWeb/HTML/WorkerAgentTypes.h>
 #include <LibWeb/Page/EventResult.h>
+#include <LibWeb/Page/Page.h>
+#include <LibWeb/Page/ViewportIsFullscreen.h>
+#include <LibWeb/Painting/DisplayListResourceIds.h>
+#include <LibWeb/PixelUnits.h>
 #include <LibWeb/StorageAPI/StorageEndpoint.h>
 #include <LibWebView/Forward.h>
+#include <LibWebView/SiteIsolationManager.h>
 #include <WebContent/WebContentClientEndpoint.h>
 #include <WebContent/WebContentServerEndpoint.h>
+
+namespace Web {
+struct KeyEvent;
+}
 
 namespace WebView {
 
@@ -50,11 +59,16 @@ class WEBVIEW_API WebContentClient final
 public:
     using InitTransport = Messages::WebContentServer::InitTransport;
 
+    using ChildFrameOwner = SiteIsolationManager::ChildFrameOwner;
+    using PendingChildFrameNavigation = SiteIsolationManager::PendingChildFrameNavigation;
+    using ChildFrameHost = SiteIsolationManager::ChildFrameHost;
+
     template<CallableAs<IterationDecision, WebContentClient&> Callback>
     static void for_each_client(Callback callback);
 
     static size_t client_count() { return clients().size(); }
     static Optional<WebContentClient&> client_for_compositor_context_id(Web::Compositor::CompositorContextId);
+    static String site_isolation_process_tree_for_testing(Optional<u64> root_page_id = {});
 
     WebContentClient(NonnullOwnPtr<IPC::Transport>, u64 initial_page_id);
     ~WebContentClient();
@@ -81,15 +95,23 @@ public:
     bool send_async_scroll_to_compositor(u64 page_id, Gfx::FloatPoint position, Gfx::FloatPoint delta_in_device_pixels);
     bool handle_mouse_event_in_compositor(u64 page_id, Web::MouseEvent const&);
     bool handle_pinch_event_in_compositor(u64 page_id, Web::PinchEvent const&);
+    bool dispatch_key_event_to_web_content(u64 page_id, Web::KeyEvent const&);
     void dispatch_mouse_event_to_web_content(u64 page_id, Web::MouseEvent const&);
     void notify_presented_bitmap_ready_to_paint(u64 page_id, i32 bitmap_id);
     void did_present_backing_stores(u64 page_id, i32 front_bitmap_id, Gfx::SharedImage front_backing_store, i32 back_bitmap_id, Gfx::SharedImage back_backing_store);
     void did_present_bitmap(u64 page_id, Gfx::IntRect, i32 bitmap_id);
 
+    Optional<ChildFrameHost const&> child_frame(u64 page_id, StringView frame_id) const;
+
+    template<CallableAs<IterationDecision, String const&, ChildFrameHost const&> Callback>
+    void for_each_child_frame(u64 page_id, Callback callback) const;
+
     pid_t pid() const { return m_process_handle.pid; }
     void set_pid(pid_t pid) { m_process_handle.pid = pid; }
 
 private:
+    friend class SiteIsolationManager;
+
     void maybe_record_history_visit_for_current_load(u64 page_id, URL::URL const&, Optional<String> title, StringView reason);
     void close_server_if_unused();
     bool forget_compositor_context(Web::Compositor::CompositorContextId);
@@ -99,7 +121,23 @@ private:
 
     virtual Messages::WebContentClient::AllocateCompositorContextIdResponse allocate_compositor_context_id(u64 page_id, Web::Compositor::PagePresentationRegistration) override;
     virtual void did_destroy_compositor_context(Web::Compositor::CompositorContextId) override;
+    virtual Messages::WebContentClient::DecideNavigationProcessResponse decide_navigation_process(
+        u64 page_id,
+        Optional<String> frame_id,
+        URL::URL current_url,
+        URL::URL target_url,
+        Web::NavigationTarget) override;
     virtual void did_request_new_process_for_navigation(u64 page_id, URL::URL url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling) override;
+    virtual void did_request_new_process_for_child_frame_navigation(
+        u64 page_id,
+        String frame_id,
+        URL::URL url,
+        Variant<Empty, String, Web::HTML::POSTResource> document_resource,
+        Web::Bindings::NavigationHistoryBehavior history_handling) override;
+    virtual void did_create_child_frame(u64 page_id, String parent_frame_id, String frame_id) override;
+    virtual void did_update_child_frame_viewport(u64 page_id, String frame_id, Web::DevicePixelRect viewport_rect, double device_pixel_ratio) override;
+    virtual void did_commit_child_frame_navigation(u64 page_id, String frame_id, URL::URL url) override;
+    virtual void did_destroy_child_frame(u64 page_id, String frame_id) override;
     virtual void did_start_webdriver_navigation(u64 page_id, URL::URL url) override;
     virtual void did_finish_loading(u64 page_id, URL::URL) override;
     virtual void did_request_refresh(u64 page_id) override;
@@ -211,6 +249,7 @@ private:
     virtual void did_update_session_history(u64 page_id, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32>, size_t current_used_step_index) override;
     virtual Messages::WebContentClient::DidRequestUiProcessSessionHistoryForTestingResponse did_request_ui_process_session_history_for_testing(u64 page_id) override;
     virtual Messages::WebContentClient::DidUpdateSessionHistoryAndRequestUiProcessSessionHistoryForTestingResponse did_update_session_history_and_request_ui_process_session_history_for_testing(u64 page_id, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32>, size_t current_used_step_index) override;
+    virtual Messages::WebContentClient::DidRequestSiteIsolationProcessTreeForTestingResponse did_request_site_isolation_process_tree_for_testing(u64 page_id) override;
     virtual void did_set_top_level_session_history(u64 page_id, bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index) override;
     virtual void did_traverse_the_history_to_step(u64 page_id, i32 step, bool step_was_available, Web::HTML::HistoryStepResult) override;
     virtual void did_check_if_traverse_history_step_is_canceled(
@@ -222,8 +261,11 @@ private:
     Optional<ViewImplementation&> view_for_page_id(u64, SourceLocation = SourceLocation::current());
 
     void remember_compositor_context(Web::Compositor::CompositorContextId, Optional<u64> page_id);
+    void register_embedded_page(u64 page_id);
+    void unregister_embedded_page(u64 page_id);
 
     HashMap<u64, NonnullRawPtr<ViewImplementation>> m_views;
+    HashTable<u64> m_embedded_pages;
     HashTable<u64> m_detached_pages_pending_close;
     HashMap<Web::Compositor::CompositorContextId, Optional<u64>> m_compositor_contexts;
     HashMap<u64, String> m_history_recorded_urls_for_current_load;
@@ -245,6 +287,12 @@ void WebContentClient::for_each_client(Callback callback)
         if (callback(*it) == IterationDecision::Break)
             return;
     }
+}
+
+template<CallableAs<IterationDecision, String const&, WebContentClient::ChildFrameHost const&> Callback>
+void WebContentClient::for_each_child_frame(u64 page_id, Callback callback) const
+{
+    SiteIsolationManager::the().for_each_child_frame(page_id, move(callback));
 }
 
 }

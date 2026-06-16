@@ -177,6 +177,24 @@ static ErrorOr<void> skip_ui_process_session_history_tests_unless_enabled(Applic
     return {};
 }
 
+static ErrorOr<void> skip_iframe_site_isolation_tests_unless_enabled(Application const& app)
+{
+    if (WebView::Application::web_content_options().enable_iframe_site_isolation == WebView::EnableIFrameSiteIsolation::Yes)
+        return {};
+
+    static constexpr Array iframe_site_isolation_tests {
+        "Text/input/navigation/iframe-site-isolation-nested-process-tree.html"sv,
+        "Text/input/navigation/iframe-site-isolation-process-tree.html"sv,
+    };
+
+    for (auto const& test : iframe_site_isolation_tests) {
+        auto path = LexicalPath::join(app.test_root_path, test).string();
+        s_skipped_tests.append(TRY(real_path_for_test_input(path)));
+    }
+
+    return {};
+}
+
 static void log_active_test_views(StringView reason)
 {
     outln();
@@ -1024,6 +1042,7 @@ static ErrorOr<int> run_tests(Core::AnonymousBuffer const& theme, Web::DevicePix
     TRY(load_test_config(app.test_root_path));
     TRY(skip_async_scrolling_tests_unless_enabled(app));
     TRY(skip_ui_process_session_history_tests_unless_enabled(app));
+    TRY(skip_iframe_site_isolation_tests_unless_enabled(app));
 
     Vector<Test> tests;
 

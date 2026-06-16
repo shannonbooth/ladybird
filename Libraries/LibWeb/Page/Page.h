@@ -415,6 +415,16 @@ enum class HistoryTraversalPrecheck : u8 {
     SourceDocumentSandboxingAlreadyDone,
 };
 
+enum class NavigationTarget : u8 {
+    TopLevel,
+    IFrame,
+};
+
+enum class NavigationProcessDecision : u8 {
+    Local,
+    Remote,
+};
+
 class PageClient : public JS::Cell {
     GC_CELL(PageClient, JS::Cell);
 
@@ -425,8 +435,30 @@ public:
     virtual bool is_connection_open() const = 0;
     virtual bool has_focus() const { return true; }
     virtual bool has_active_devtools_client() const { return false; }
-    virtual bool is_url_suitable_for_same_process_navigation([[maybe_unused]] URL::URL const& current_url, [[maybe_unused]] URL::URL const& target_url) const { return true; }
+    virtual NavigationProcessDecision decide_navigation_process(
+        [[maybe_unused]] URL::URL const& current_url,
+        [[maybe_unused]] URL::URL const& target_url,
+        [[maybe_unused]] NavigationTarget = NavigationTarget::TopLevel,
+        [[maybe_unused]] Optional<String> frame_id = {}) const
+    {
+        return NavigationProcessDecision::Local;
+    }
     virtual void request_new_process_for_navigation(URL::URL const&, Variant<Empty, String, HTML::POSTResource>, Bindings::NavigationHistoryBehavior) { }
+    virtual void request_new_process_for_child_frame_navigation(
+        String const&,
+        URL::URL const&,
+        Variant<Empty, String, HTML::POSTResource>,
+        Bindings::NavigationHistoryBehavior)
+    {
+    }
+    virtual void page_did_create_child_frame(String const& parent_frame_id, String const& frame_id)
+    {
+        (void)parent_frame_id;
+        (void)frame_id;
+    }
+    virtual void page_did_update_child_frame_viewport(String const&, CSSPixelRect) { }
+    virtual void page_did_commit_child_frame_navigation(String const&, URL::URL const&) { }
+    virtual void page_did_destroy_child_frame(String const&) { }
     virtual Gfx::Palette palette() const = 0;
     virtual DevicePixelRect screen_rect() const = 0;
     virtual double zoom_level() const = 0;
@@ -519,6 +551,7 @@ public:
     virtual void page_did_update_session_history([[maybe_unused]] Vector<HTML::SessionHistoryEntryDescriptor> const& entries, [[maybe_unused]] Vector<i32> const& used_steps, [[maybe_unused]] size_t current_used_step_index) { }
     virtual String page_did_request_ui_process_session_history_for_testing() { return "{}"_string; }
     virtual String page_did_update_session_history_and_request_ui_process_session_history_for_testing([[maybe_unused]] Vector<HTML::SessionHistoryEntryDescriptor> const& entries, [[maybe_unused]] Vector<i32> const& used_steps, [[maybe_unused]] size_t current_used_step_index) { return "{}"_string; }
+    virtual String page_did_request_site_isolation_process_tree_for_testing() { return ""_string; }
     virtual bool page_did_request_traverse_the_history_by_delta([[maybe_unused]] int delta, [[maybe_unused]] HistoryTraversalPrecheck history_traversal_precheck) { return false; }
     virtual void page_did_change_needs_beforeunload_check([[maybe_unused]] bool needs_beforeunload_check) { }
 

@@ -140,6 +140,11 @@ enum class DisableSiteIsolation {
     Yes,
 };
 
+enum class EnableIFrameSiteIsolation {
+    No,
+    Yes,
+};
+
 enum class ExposeExperimentalInterfaces {
     No,
     Yes,
@@ -191,6 +196,7 @@ struct WebContentOptions {
     IsTestMode is_test_mode { IsTestMode::No };
     LogAllJSExceptions log_all_js_exceptions { LogAllJSExceptions::No };
     DisableSiteIsolation disable_site_isolation { DisableSiteIsolation::No };
+    EnableIFrameSiteIsolation enable_iframe_site_isolation { EnableIFrameSiteIsolation::No };
     EnableIDLTracing enable_idl_tracing { EnableIDLTracing::No };
     EnableMemoryHTTPCache enable_http_memory_cache { EnableMemoryHTTPCache::No };
     ExposeExperimentalInterfaces expose_experimental_interfaces { ExposeExperimentalInterfaces::No };

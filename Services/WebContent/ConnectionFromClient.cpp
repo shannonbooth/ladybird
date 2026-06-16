@@ -82,6 +82,8 @@
 
 namespace WebContent {
 
+static constexpr bool IFRAME_SITE_ISOLATION_DEBUG = false;
+
 ConnectionFromClient::ConnectionFromClient(NonnullOwnPtr<IPC::Transport> transport)
     : IPC::ConnectionFromClient<WebContentClientEndpoint, WebContentServerEndpoint>(*this, move(transport), 1)
     , m_page_host(PageHost::create(*this))
@@ -119,6 +121,29 @@ Messages::WebContentServer::InitTransportResponse ConnectionFromClient::init_tra
 void ConnectionFromClient::initialize(u64 initial_page_id)
 {
     m_page_host->initialize(initial_page_id);
+}
+
+void ConnectionFromClient::set_page_parent_context(u64 page_id, Optional<Web::Compositor::CompositorContextId> parent_context_id)
+{
+    if (parent_context_id.has_value()) {
+        dbgln_if(IFRAME_SITE_ISOLATION_DEBUG, "IFSO: WebContent set page parent context page={} parent_context={}",
+            page_id,
+            parent_context_id->value());
+    } else {
+        dbgln_if(IFRAME_SITE_ISOLATION_DEBUG, "IFSO: WebContent clear page parent context page={}",
+            page_id);
+    }
+
+    auto page = this->page(page_id);
+    if (!page.has_value()) {
+        dbgln_if(IFRAME_SITE_ISOLATION_DEBUG, "IFSO: WebContent missing page for parent context page={}", page_id);
+        return;
+    }
+
+    auto& compositor_context = page->page().top_level_traversable()->compositor_context();
+    if (parent_context_id.has_value())
+        compositor_context.stop_presenting_to_client();
+    compositor_context.set_parent_context(parent_context_id);
 }
 
 Optional<PageClient&> ConnectionFromClient::page(u64 index, SourceLocation location)
@@ -256,9 +281,13 @@ void ConnectionFromClient::load_url_with_document_resource(u64 page_id, URL::URL
     Variant<Empty, String, Web::HTML::POSTResource> document_resource,
     Web::Bindings::NavigationHistoryBehavior history_handling)
 {
+    dbgln_if(IFRAME_SITE_ISOLATION_DEBUG, "IFSO: WebContent load_url_with_document_resource page={} url={}", page_id, url);
+
     auto page = this->page(page_id);
-    if (!page.has_value())
+    if (!page.has_value()) {
+        dbgln_if(IFRAME_SITE_ISOLATION_DEBUG, "IFSO: WebContent missing page for load page={} url={}", page_id, url);
         return;
+    }
 
     page->page().load(url, move(document_resource), history_handling);
 }
@@ -273,6 +302,12 @@ void ConnectionFromClient::load_html_with_url(u64 page_id, ByteString html, URL:
 {
     if (auto page = this->page(page_id); page.has_value())
         page->page().load_html(html, url);
+}
+
+void ConnectionFromClient::run_iframe_load_event_steps(u64 page_id, String frame_id)
+{
+    if (auto page = this->page(page_id); page.has_value())
+        page->run_iframe_load_event_steps(frame_id);
 }
 
 void ConnectionFromClient::reload(u64 page_id)

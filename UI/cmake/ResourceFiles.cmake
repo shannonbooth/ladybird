@@ -36,6 +36,7 @@ set(ABOUT_PAGES
     newtab.html
     processes.html
     settings.html
+    site-isolation.html
     version.html
     webui.css
 )

@@ -176,6 +176,8 @@ JsonValue ProcessManager::serialize_json()
         JsonObject object;
         object.set("name"sv, move(process_name));
         object.set("pid"sv, process.pid);
+        if (auto parent_pid = process_handle.parent_pid(); parent_pid.has_value())
+            object.set("parentPid"sv, *parent_pid);
         object.set("cpu"sv, process.cpu_percent);
         object.set("memory"sv, process.memory_usage_bytes);
         serialized.must_append(move(object));

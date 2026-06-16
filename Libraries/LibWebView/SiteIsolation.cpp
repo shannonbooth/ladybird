@@ -12,15 +12,34 @@
 namespace WebView {
 
 static bool s_site_isolation_enabled = true;
+static bool s_iframe_site_isolation_enabled = false;
+
+void enable_site_isolation()
+{
+    s_site_isolation_enabled = true;
+}
 
 void disable_site_isolation()
 {
     s_site_isolation_enabled = false;
 }
 
-bool is_url_suitable_for_same_process_navigation(URL::URL const& current_url, URL::URL const& target_url)
+void enable_iframe_site_isolation()
+{
+    s_iframe_site_isolation_enabled = true;
+}
+
+void disable_iframe_site_isolation()
+{
+    s_iframe_site_isolation_enabled = false;
+}
+
+bool is_url_suitable_for_same_process_navigation(URL::URL const& current_url, URL::URL const& target_url, NavigationTarget target)
 {
     if (!s_site_isolation_enabled)
+        return true;
+
+    if (target == NavigationTarget::IFrame && !s_iframe_site_isolation_enabled)
         return true;
 
     // Allow navigating from about:blank to any site.

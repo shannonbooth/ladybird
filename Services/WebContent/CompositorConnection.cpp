@@ -6,6 +6,7 @@
 
 #include <WebContent/CompositorConnection.h>
 
+#include <AK/Debug.h>
 #include <LibCore/EventLoop.h>
 #include <LibGfx/Bitmap.h>
 #include <LibGfx/PaintingSurface.h>
@@ -13,6 +14,8 @@
 #include <WebContent/WebContentCompositorHost.h>
 
 namespace WebContent {
+
+static constexpr bool IFRAME_SITE_ISOLATION_DEBUG = false;
 
 CompositorConnection::CompositorConnection(NonnullOwnPtr<IPC::Transport> transport)
     : IPC::ConnectionToServer<CompositorWebContentClientEndpoint, CompositorWebContentServerEndpoint>(*this, move(transport))
@@ -26,15 +29,28 @@ void CompositorConnection::die()
 
 void CompositorConnection::set_parent_context(Web::Compositor::CompositorContextId context_id, Optional<Web::Compositor::CompositorContextId> parent_context_id)
 {
-    if (!can_send_message_to_compositor())
+    if (!can_send_message_to_compositor()) {
+        dbgln_if(IFRAME_SITE_ISOLATION_DEBUG, "IFSO: WebContent cannot send parent context to compositor context={}", context_id.value());
         return;
+    }
+    if (parent_context_id.has_value()) {
+        dbgln_if(IFRAME_SITE_ISOLATION_DEBUG, "IFSO: WebContent -> Compositor set parent context context={} parent_context={}",
+            context_id.value(),
+            parent_context_id->value());
+    } else {
+        dbgln_if(IFRAME_SITE_ISOLATION_DEBUG, "IFSO: WebContent -> Compositor clear parent context context={}",
+            context_id.value());
+    }
     async_set_parent_context(context_id, parent_context_id);
 }
 
 void CompositorConnection::stop_presenting_to_client(Web::Compositor::CompositorContextId context_id)
 {
-    if (!can_send_message_to_compositor())
+    if (!can_send_message_to_compositor()) {
+        dbgln_if(IFRAME_SITE_ISOLATION_DEBUG, "IFSO: WebContent cannot stop presenting to client context={}", context_id.value());
         return;
+    }
+    dbgln_if(IFRAME_SITE_ISOLATION_DEBUG, "IFSO: WebContent -> Compositor stop presenting to client context={}", context_id.value());
     async_stop_presenting_to_client(context_id);
 }
 

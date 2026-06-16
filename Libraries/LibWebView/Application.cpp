@@ -36,6 +36,7 @@
 #include <LibWebView/HistoryStore.h>
 #include <LibWebView/Menu.h>
 #include <LibWebView/ProcessType.h>
+#include <LibWebView/SiteIsolation.h>
 #include <LibWebView/URL.h>
 #include <LibWebView/UserAgent.h>
 #include <LibWebView/Utilities.h>
@@ -189,6 +190,7 @@ ErrorOr<void> Application::initialize(Main::Arguments const& arguments)
     bool validate_dnssec_locally = false;
     bool log_all_js_exceptions = false;
     bool disable_site_isolation = false;
+    bool enable_iframe_site_isolation = false;
     bool enable_idl_tracing = false;
     bool disable_http_memory_cache = false;
     bool disable_http_disk_cache = false;
@@ -265,6 +267,7 @@ ErrorOr<void> Application::initialize(Main::Arguments const& arguments)
     args_parser.add_option(enable_test_mode, "Enable test mode", "test-mode");
     args_parser.add_option(log_all_js_exceptions, "Log all JavaScript exceptions", "log-all-js-exceptions");
     args_parser.add_option(disable_site_isolation, "Disable site isolation", "disable-site-isolation");
+    args_parser.add_option(enable_iframe_site_isolation, "Enable site isolation for cross-site iframes", "enable-iframe-site-isolation");
     args_parser.add_option(enable_idl_tracing, "Enable IDL tracing", "enable-idl-tracing");
     args_parser.add_option(disable_http_memory_cache, "Disable HTTP memory cache", "disable-http-memory-cache");
     args_parser.add_option(disable_http_disk_cache, "Disable HTTP disk cache", "disable-http-disk-cache");
@@ -426,6 +429,7 @@ ErrorOr<void> Application::initialize(Main::Arguments const& arguments)
         .is_test_mode = enable_test_mode ? IsTestMode::Yes : IsTestMode::No,
         .log_all_js_exceptions = log_all_js_exceptions ? LogAllJSExceptions::Yes : LogAllJSExceptions::No,
         .disable_site_isolation = disable_site_isolation ? DisableSiteIsolation::Yes : DisableSiteIsolation::No,
+        .enable_iframe_site_isolation = enable_iframe_site_isolation ? EnableIFrameSiteIsolation::Yes : EnableIFrameSiteIsolation::No,
         .enable_idl_tracing = enable_idl_tracing ? EnableIDLTracing::Yes : EnableIDLTracing::No,
         .enable_http_memory_cache = disable_http_memory_cache ? EnableMemoryHTTPCache::No : EnableMemoryHTTPCache::Yes,
         .expose_experimental_interfaces = expose_experimental_interfaces ? ExposeExperimentalInterfaces::Yes : ExposeExperimentalInterfaces::No,
@@ -449,6 +453,16 @@ ErrorOr<void> Application::initialize(Main::Arguments const& arguments)
         m_web_content_options.expose_internals_object = ExposeInternalsObject::Yes;
         m_web_content_options.force_cpu_painting = ForceCPUPainting::Yes;
     }
+
+    if (m_web_content_options.disable_site_isolation == DisableSiteIsolation::Yes)
+        WebView::disable_site_isolation();
+    else
+        WebView::enable_site_isolation();
+
+    if (m_web_content_options.enable_iframe_site_isolation == EnableIFrameSiteIsolation::Yes)
+        WebView::enable_iframe_site_isolation();
+    else
+        WebView::disable_iframe_site_isolation();
 
     if (m_web_content_options.file_scheme_urls_have_tuple_origins == FileSchemeUrlsHaveTupleOrigins::Yes)
         URL::set_file_scheme_urls_have_tuple_origins();
@@ -700,6 +714,16 @@ ErrorOr<NonnullRefPtr<WebContentClient>> Application::launch_web_content_process
 
     launch_spare_web_content_process();
     return create_web_content_client(view, allocate_page_id());
+}
+
+ErrorOr<Application::ChildFrameWebContentProcess> Application::launch_child_frame_web_content_process()
+{
+    auto page_id = allocate_page_id();
+    auto client = TRY(create_web_content_client({}, page_id));
+    return ChildFrameWebContentProcess {
+        .client = move(client),
+        .page_id = page_id,
+    };
 }
 
 void Application::launch_spare_web_content_process()

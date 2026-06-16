@@ -1,0 +1,2 @@
+frame <id>: remote process=<process> pid=<pid> page=<page> url=http://127.0.0.1:<port>/static/Text/input/navigation/resources/iframe-site-isolation-nested-child.html?target=http%3A%2F%2F<parent-host>%3A<port>%2Fstatic%2FText%2Finput%2Fwpt-import%2Fcommon%2Fblank.html%3Fnested
+frame <id>: remote process=<process> pid=<pid> page=<page> url=http://<parent-host>:<port>/static/Text/input/wpt-import/common/blank.html?nested

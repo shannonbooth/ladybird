@@ -1,0 +1,61 @@
+<!doctype html>
+<script src="../include.js"></script>
+<iframe id="child" srcdoc="initial"></iframe>
+<script>
+    function normalizeFrameLine(line) {
+        const parentOrigin = `http://localhost:${internals.getEchoServerPort()}`;
+        return line.trimStart()
+            .replace(/frame [^:]+:/, "frame <id>:")
+            .replace(/process=\d+/g, "process=<process>")
+            .replace(/pid=\d+/g, "pid=<pid>")
+            .replace(/page=\d+/g, "page=<page>")
+            .replace(encodeURIComponent(parentOrigin), "http%3A%2F%2F<parent-host>%3A<port>")
+            .replace(parentOrigin, "http://<parent-host>:<port>")
+            .replace(`http://127.0.0.1:${internals.getEchoServerPort()}`, "http://127.0.0.1:<port>");
+    }
+
+    async function waitForFrameLine(childURL, expectedOwner) {
+        for (let i = 0; i < 50; ++i) {
+            const dump = internals.dumpSiteIsolationProcessTree();
+            const line = dump.split("\n").find(line =>
+                line.includes("frame ")
+                && line.includes(expectedOwner)
+                && line.includes(`url=${childURL}`)
+                && !line.includes("pending="));
+            if (line)
+                return line;
+            await timeout(100);
+        }
+        return null;
+    }
+
+    asyncTest(async done => {
+        const child = document.getElementById("child");
+        const parentOrigin = `http://localhost:${internals.getEchoServerPort()}`;
+        const nestedURL = `${parentOrigin}/static/Text/input/wpt-import/common/blank.html?nested`;
+        const remoteChildURL = `http://127.0.0.1:${internals.getEchoServerPort()}/static/Text/input/navigation/resources/iframe-site-isolation-nested-child.html?target=${encodeURIComponent(nestedURL)}`;
+
+        child.removeAttribute("srcdoc");
+        child.src = remoteChildURL;
+
+        const childLine = await waitForFrameLine(remoteChildURL, "remote process=");
+        if (!childLine) {
+            println(`FAIL: missing remote child frame line for ${normalizeFrameLine(remoteChildURL)}`);
+            println(internals.dumpSiteIsolationProcessTree());
+            done();
+            return;
+        }
+        println(normalizeFrameLine(childLine));
+
+        const nestedLine = await waitForFrameLine(nestedURL, "remote process=");
+        if (!nestedLine) {
+            println(`FAIL: missing remote nested frame line for ${normalizeFrameLine(nestedURL)}`);
+            println(internals.dumpSiteIsolationProcessTree());
+            done();
+            return;
+        }
+        println(normalizeFrameLine(nestedLine));
+
+        done();
+    });
+</script>

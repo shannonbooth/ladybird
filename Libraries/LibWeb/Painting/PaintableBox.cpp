@@ -685,12 +685,18 @@ void PaintableBox::scroll_into_view(CSSPixelRect rect)
 void PaintableBox::set_offset(CSSPixelPoint offset)
 {
     m_offset = offset;
+    m_absolute_rect.clear();
+    m_absolute_padding_box_rect.clear();
+    m_absolute_border_box_rect.clear();
 }
 
 void PaintableBox::set_content_size(CSSPixelSize size)
 {
     auto old_size = m_content_size;
     m_content_size = size;
+    m_absolute_rect.clear();
+    m_absolute_padding_box_rect.clear();
+    m_absolute_border_box_rect.clear();
     if (auto layout_box = as_if<Layout::Box>(layout_node()))
         layout_box->did_set_content_size();
     invalidate_descendant_styles_for_container_query_size_change(*this, old_size, size);

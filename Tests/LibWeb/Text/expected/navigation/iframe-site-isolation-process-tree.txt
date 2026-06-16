@@ -1,0 +1,6 @@
+frame <id>: remote process=<process> pid=<pid> page=<page> url=http://127.0.0.1:<port>/static/Text/input/wpt-import/common/blank.html?remote-1
+iframe load event: http://127.0.0.1:<port>/static/Text/input/wpt-import/common/blank.html?remote-1
+frame <id>: local process=<process> pid=<pid> page=<page> url=http://<parent-host>:<port>/static/Text/input/wpt-import/common/blank.html?local
+iframe load event: http://<parent-host>:<port>/static/Text/input/wpt-import/common/blank.html?local
+frame <id>: remote process=<process> pid=<pid> page=<page> url=http://127.0.0.1:<port>/static/Text/input/wpt-import/common/blank.html?remote-2
+iframe load event: http://127.0.0.1:<port>/static/Text/input/wpt-import/common/blank.html?remote-2

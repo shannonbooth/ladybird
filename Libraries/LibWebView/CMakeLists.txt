@@ -24,6 +24,7 @@ set(SOURCES
     SessionHistory.cpp
     Settings.cpp
     SiteIsolation.cpp
+    SiteIsolationManager.cpp
     SourceHighlighter.cpp
     StorageJar.cpp
     URL.cpp
@@ -38,6 +39,7 @@ set(SOURCES
     WebUI/HistoryUI.cpp
     WebUI/ProcessesUI.cpp
     WebUI/SettingsUI.cpp
+    WebUI/SiteIsolationUI.cpp
     WebUI/VersionUI.cpp
     CompositorClient.cpp
 )

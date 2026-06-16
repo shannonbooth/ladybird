@@ -11,7 +11,15 @@
 
 namespace WebView {
 
+enum class NavigationTarget {
+    TopLevel,
+    IFrame,
+};
+
+WEBVIEW_API void enable_site_isolation();
 WEBVIEW_API void disable_site_isolation();
-[[nodiscard]] WEBVIEW_API bool is_url_suitable_for_same_process_navigation(URL::URL const& current_url, URL::URL const& target_url);
+WEBVIEW_API void enable_iframe_site_isolation();
+WEBVIEW_API void disable_iframe_site_isolation();
+[[nodiscard]] WEBVIEW_API bool is_url_suitable_for_same_process_navigation(URL::URL const& current_url, URL::URL const& target_url, NavigationTarget = NavigationTarget::TopLevel);
 
 }

@@ -12,6 +12,7 @@
 #include <LibWebView/WebUI/HistoryUI.h>
 #include <LibWebView/WebUI/ProcessesUI.h>
 #include <LibWebView/WebUI/SettingsUI.h>
+#include <LibWebView/WebUI/SiteIsolationUI.h>
 #include <LibWebView/WebUI/VersionUI.h>
 
 namespace WebView {
@@ -42,6 +43,8 @@ ErrorOr<RefPtr<WebUI>> WebUI::create(WebContentClient& client, u64 page_id, Stri
         web_ui = TRY(create_web_ui<ProcessesUI>(client, page_id, move(host)));
     else if (host == "settings"sv)
         web_ui = TRY(create_web_ui<SettingsUI>(client, page_id, move(host)));
+    else if (host == "site-isolation"sv)
+        web_ui = TRY(create_web_ui<SiteIsolationUI>(client, page_id, move(host)));
     else if (host == "version"sv)
         web_ui = TRY(create_web_ui<VersionUI>(client, page_id, move(host)));
 

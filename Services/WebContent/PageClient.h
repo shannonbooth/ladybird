@@ -125,6 +125,7 @@ public:
     void send_current_needs_beforeunload_check();
     void wait_for_webdriver_navigation_completion(Optional<u64> page_load_timeout, Function<void(Web::WebDriver::Response)>);
     void did_complete_webdriver_navigation_completion(u64 request_id, Web::WebDriver::Response);
+    void run_iframe_load_event_steps(String const& frame_id);
     void clear_pending_dom_mutations();
     void did_delete_all_cookies(u64 request_id);
 
@@ -140,8 +141,21 @@ private:
 
     // ^PageClient
     virtual bool is_connection_open() const override;
-    virtual bool is_url_suitable_for_same_process_navigation(URL::URL const& current_url, URL::URL const& target_url) const override;
+    virtual Web::NavigationProcessDecision decide_navigation_process(
+        URL::URL const& current_url,
+        URL::URL const& target_url,
+        Web::NavigationTarget,
+        Optional<String> frame_id) const override;
     virtual void request_new_process_for_navigation(URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::Bindings::NavigationHistoryBehavior) override;
+    virtual void request_new_process_for_child_frame_navigation(
+        String const& frame_id,
+        URL::URL const&,
+        Variant<Empty, String, Web::HTML::POSTResource>,
+        Web::Bindings::NavigationHistoryBehavior) override;
+    virtual void page_did_create_child_frame(String const& parent_frame_id, String const& frame_id) override;
+    virtual void page_did_update_child_frame_viewport(String const& frame_id, Web::CSSPixelRect) override;
+    virtual void page_did_commit_child_frame_navigation(String const& frame_id, URL::URL const&) override;
+    virtual void page_did_destroy_child_frame(String const& frame_id) override;
     virtual Gfx::Palette palette() const override;
     virtual Web::DevicePixelRect screen_rect() const override { return m_all_screen_rects[m_main_screen_index]; }
     virtual size_t screen_count() const override { return m_all_screen_rects.size(); }
@@ -215,6 +229,7 @@ private:
     virtual void page_did_update_session_history(Vector<Web::HTML::SessionHistoryEntryDescriptor> const&, Vector<i32> const& used_steps, size_t current_used_step_index) override;
     virtual String page_did_request_ui_process_session_history_for_testing() override;
     virtual String page_did_update_session_history_and_request_ui_process_session_history_for_testing(Vector<Web::HTML::SessionHistoryEntryDescriptor> const&, Vector<i32> const& used_steps, size_t current_used_step_index) override;
+    virtual String page_did_request_site_isolation_process_tree_for_testing() override;
     virtual bool page_did_request_traverse_the_history_by_delta(int delta, Web::HistoryTraversalPrecheck) override;
     virtual void request_file(Web::FileRequest) override;
     virtual void page_did_request_color_picker(Color current_color) override;

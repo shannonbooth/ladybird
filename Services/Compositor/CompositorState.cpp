@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+#include <AK/Debug.h>
 #include <AK/Math.h>
 #include <AK/StdLibExtras.h>
 #include <Compositor/CompositorState.h>
@@ -11,6 +12,8 @@
 #include <LibCore/Timer.h>
 
 namespace Compositor {
+
+static constexpr bool IFRAME_SITE_ISOLATION_DEBUG = false;
 
 static constexpr int gpu_completion_check_interval_ms = 1;
 
@@ -99,6 +102,15 @@ void CompositorState::set_parent_context(Web::Compositor::CompositorContextId co
     VERIFY(context);
 
     if (parent_context_id.has_value()) {
+        dbgln_if(IFRAME_SITE_ISOLATION_DEBUG, "IFSO: Compositor set parent context context={} parent_context={}",
+            context_id.value(),
+            parent_context_id->value());
+    } else {
+        dbgln_if(IFRAME_SITE_ISOLATION_DEBUG, "IFSO: Compositor clear parent context context={}",
+            context_id.value());
+    }
+
+    if (parent_context_id.has_value()) {
         VERIFY(!context->presents_to_client());
         VERIFY(*parent_context_id != context_id);
         VERIFY(context_if_present(*parent_context_id));
@@ -124,6 +136,7 @@ void CompositorState::stop_presenting_to_client(Web::Compositor::CompositorConte
 {
     auto* context = context_if_present(context_id);
     VERIFY(context);
+    dbgln_if(IFRAME_SITE_ISOLATION_DEBUG, "IFSO: Compositor stop presenting to client context={}", context_id.value());
     context->stop_presenting_to_client();
 }
 

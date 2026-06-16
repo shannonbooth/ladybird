@@ -1,0 +1,87 @@
+<!doctype html>
+<script src="../include.js"></script>
+<iframe id="child" srcdoc="initial"></iframe>
+<script>
+    function normalizeFrameLine(line) {
+        return line.trimStart()
+            .replace(/frame [^:]+:/, "frame <id>:")
+            .replace(/process=\d+/g, "process=<process>")
+            .replace(/pid=\d+/g, "pid=<pid>")
+            .replace(/page=\d+/g, "page=<page>")
+            .replace(location.origin, "http://<parent-host>:<port>")
+            .replace(`http://127.0.0.1:${internals.getEchoServerPort()}`, "http://127.0.0.1:<port>");
+    }
+
+    async function waitForFrameLine(childURL, expectedOwner) {
+        for (let i = 0; i < 50; ++i) {
+            const dump = internals.dumpSiteIsolationProcessTree();
+            const line = dump.split("\n").find(line =>
+                line.includes("frame ")
+                && line.includes(expectedOwner)
+                && line.includes(`url=${childURL}`)
+                && !line.includes("pending="));
+            if (line)
+                return line;
+            await timeout(100);
+        }
+        return null;
+    }
+
+    async function navigateAndPrint(child, url, expectedOwner) {
+        let loadedURL = null;
+        const loadPromise = new Promise(resolve => {
+            child.addEventListener("load", () => {
+                loadedURL = child.src;
+                resolve(true);
+            }, { once: true });
+        });
+
+        child.src = url;
+
+        const frameLine = await waitForFrameLine(url, expectedOwner);
+        if (!frameLine) {
+            println(`FAIL: missing ${expectedOwner} frame line for ${normalizeFrameLine(url)}`);
+            println(internals.dumpSiteIsolationProcessTree());
+            return false;
+        }
+
+        println(normalizeFrameLine(frameLine));
+
+        const didLoad = await Promise.race([
+            loadPromise,
+            timeout(5000).then(() => false),
+        ]);
+        if (!didLoad) {
+            println(`FAIL: missing iframe load event for ${normalizeFrameLine(url)}`);
+            return false;
+        }
+
+        println(`iframe load event: ${normalizeFrameLine(loadedURL)}`);
+        return true;
+    }
+
+    asyncTest(async done => {
+        const remoteURL1 = `http://127.0.0.1:${internals.getEchoServerPort()}/static/Text/input/wpt-import/common/blank.html?remote-1`;
+        const localURL = `${location.origin}/static/Text/input/wpt-import/common/blank.html?local`;
+        const remoteURL2 = `http://127.0.0.1:${internals.getEchoServerPort()}/static/Text/input/wpt-import/common/blank.html?remote-2`;
+        const child = document.getElementById("child");
+        child.removeAttribute("srcdoc");
+
+        if (!await navigateAndPrint(child, remoteURL1, "remote process=")) {
+            done();
+            return;
+        }
+
+        if (!await navigateAndPrint(child, localURL, "local process=")) {
+            done();
+            return;
+        }
+
+        if (!await navigateAndPrint(child, remoteURL2, "remote process=")) {
+            done();
+            return;
+        }
+
+        done();
+    });
+</script>

@@ -40,6 +40,8 @@ public:
 
     Optional<Utf16String> const& title() const { return m_title; }
     void set_title(Optional<Utf16String> title) { m_title = move(title); }
+    Optional<pid_t> parent_pid() const { return m_parent_pid; }
+    void set_parent_pid(Optional<pid_t> parent_pid) { m_parent_pid = parent_pid; }
 
     template<typename ConnectionFromClient>
     Optional<ConnectionFromClient&> client()
@@ -73,6 +75,7 @@ private:
     Core::Process m_process;
     ProcessType m_type;
     Optional<Utf16String> m_title;
+    Optional<pid_t> m_parent_pid;
     WeakPtr<IPC::ConnectionBase> m_connection;
     ProcessOutputCapture m_output_capture;
 };

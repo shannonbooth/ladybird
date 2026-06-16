@@ -5951,8 +5951,11 @@ void Document::make_active()
     // 2. Set document's browsing context's WindowProxy's [[Window]] internal slot value to window.
     m_browsing_context->window_proxy()->set_window(window);
 
-    if (m_browsing_context->is_top_level()) {
+    auto current_navigable = this->navigable();
+    if (current_navigable && current_navigable->is_top_level_traversable()) {
         page().client().page_did_change_active_document_in_top_level_browsing_context(*this);
+    } else if (current_navigable) {
+        page().client().page_did_commit_child_frame_navigation(current_navigable->id(), url());
     }
 
     // 3. Set window's relevant settings object's execution ready flag.

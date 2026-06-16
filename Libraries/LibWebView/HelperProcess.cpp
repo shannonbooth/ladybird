@@ -102,6 +102,8 @@ ErrorOr<NonnullRefPtr<WebView::WebContentClient>> launch_web_content_process(u64
         arguments.append("--log-all-js-exceptions"sv);
     if (web_content_options.disable_site_isolation == WebView::DisableSiteIsolation::Yes)
         arguments.append("--disable-site-isolation"sv);
+    if (web_content_options.enable_iframe_site_isolation == WebView::EnableIFrameSiteIsolation::Yes)
+        arguments.append("--enable-iframe-site-isolation"sv);
     if (web_content_options.enable_idl_tracing == WebView::EnableIDLTracing::Yes)
         arguments.append("--enable-idl-tracing"sv);
     if (web_content_options.enable_http_memory_cache == WebView::EnableMemoryHTTPCache::Yes)

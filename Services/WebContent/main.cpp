@@ -142,6 +142,7 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
     bool wait_for_debugger = false;
     bool log_all_js_exceptions = false;
     bool disable_site_isolation = false;
+    bool enable_iframe_site_isolation = false;
     bool enable_idl_tracing = false;
     bool enable_http_memory_cache = false;
     bool force_fontconfig = false;
@@ -166,6 +167,7 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
     args_parser.add_option(mach_server_name, "Mach server name", "mach-server-name", 0, "mach_server_name");
     args_parser.add_option(log_all_js_exceptions, "Log all JavaScript exceptions", "log-all-js-exceptions");
     args_parser.add_option(disable_site_isolation, "Disable site isolation", "disable-site-isolation");
+    args_parser.add_option(enable_iframe_site_isolation, "Enable site isolation for cross-site iframes", "enable-iframe-site-isolation");
     args_parser.add_option(enable_idl_tracing, "Enable IDL tracing", "enable-idl-tracing");
     args_parser.add_option(enable_http_memory_cache, "Enable HTTP cache", "enable-http-memory-cache");
     args_parser.add_option(force_fontconfig, "Force using fontconfig for font loading", "force-fontconfig");
@@ -211,6 +213,8 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
 
     if (disable_site_isolation)
         WebView::disable_site_isolation();
+    if (enable_iframe_site_isolation)
+        WebView::enable_iframe_site_isolation();
 
     if (enable_http_memory_cache)
         Web::Fetch::Fetching::set_http_memory_cache_enabled(true);

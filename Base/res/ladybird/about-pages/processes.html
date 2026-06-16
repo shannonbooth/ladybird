@@ -81,6 +81,10 @@
             tbody tr:hover {
                 background-color: var(--table-row-hover);
             }
+
+            .child-process-name {
+                padding-left: 24px;
+            }
         </style>
     </head>
     <body>
@@ -140,7 +144,7 @@
 
                 const multiplier = window.sortDirection === Direction.ascending ? 1 : -1;
 
-                window.processes.sort((lhs, rhs) => {
+                const compareProcesses = (lhs, rhs) => {
                     const lhsValue = lhs[window.sortKey];
                     const rhsValue = rhs[window.sortKey];
 
@@ -149,6 +153,32 @@
                     }
 
                     return multiplier * (lhsValue - rhsValue);
+                };
+
+                const processesByPid = new Map();
+                window.processes.forEach(process => {
+                    processesByPid.set(process.pid, process);
+                });
+
+                const parentProcesses = [];
+                const childProcessesByParentPid = new Map();
+                window.processes.forEach(process => {
+                    if (process.parentPid !== undefined && processesByPid.has(process.parentPid)) {
+                        let childProcesses = childProcessesByParentPid.get(process.parentPid);
+                        if (childProcesses === undefined) {
+                            childProcesses = [];
+                            childProcessesByParentPid.set(process.parentPid, childProcesses);
+                        }
+                        childProcesses.push(process);
+                        return;
+                    }
+
+                    parentProcesses.push(process);
+                });
+
+                parentProcesses.sort(compareProcesses);
+                childProcessesByParentPid.forEach(childProcesses => {
+                    childProcesses.sort(compareProcesses);
                 });
 
                 let oldTable = document.getElementById("process-table");
@@ -156,17 +186,35 @@
                 let newTable = document.createElement("tbody");
                 newTable.setAttribute("id", "process-table");
 
-                const insertColumn = (row, value) => {
+                const insertColumn = (row, value, className) => {
                     let column = row.insertCell();
                     column.innerText = value;
+                    if (className !== undefined) {
+                        column.classList.add(className);
+                    }
                 };
 
-                window.processes.forEach(process => {
+                const insertProcess = (process, isChildProcess) => {
                     let row = newTable.insertRow();
-                    insertColumn(row, process.name);
+                    insertColumn(
+                        row,
+                        isChildProcess ? `- ${process.name}` : process.name,
+                        isChildProcess ? "child-process-name" : undefined
+                    );
                     insertColumn(row, process.pid);
                     insertColumn(row, cpuFormatter.format(process.cpu));
                     insertColumn(row, memoryFormatter.formatBytes(process.memory));
+                };
+
+                parentProcesses.forEach(process => {
+                    insertProcess(process, false);
+                    let childProcesses = childProcessesByParentPid.get(process.pid);
+                    if (childProcesses === undefined) {
+                        return;
+                    }
+                    childProcesses.forEach(childProcess => {
+                        insertProcess(childProcess, true);
+                    });
                 });
 
                 oldTable.parentNode.replaceChild(newTable, oldTable);

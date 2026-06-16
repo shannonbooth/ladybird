@@ -1,0 +1,8 @@
+<!doctype html>
+<iframe id="nested" srcdoc="initial"></iframe>
+<script>
+    const target = new URL(location.href).searchParams.get("target");
+    const nested = document.getElementById("nested");
+    nested.removeAttribute("srcdoc");
+    nested.src = target;
+</script>

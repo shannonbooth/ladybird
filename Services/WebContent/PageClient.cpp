@@ -31,6 +31,7 @@
 #include <LibWeb/DOM/NodeList.h>
 #include <LibWeb/HTML/BrowsingContext.h>
 #include <LibWeb/HTML/EventLoop/EventLoop.h>
+#include <LibWeb/HTML/HTMLIFrameElement.h>
 #include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/Scripting/ClassicScript.h>
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
@@ -175,9 +176,19 @@ bool PageClient::is_connection_open() const
     return client().is_open();
 }
 
-bool PageClient::is_url_suitable_for_same_process_navigation(URL::URL const& current_url, URL::URL const& target_url) const
+Web::NavigationProcessDecision PageClient::decide_navigation_process(
+    URL::URL const& current_url,
+    URL::URL const& target_url,
+    Web::NavigationTarget target,
+    Optional<String> frame_id) const
 {
-    return WebView::is_url_suitable_for_same_process_navigation(current_url, target_url);
+    if (target == Web::NavigationTarget::TopLevel) {
+        return WebView::is_url_suitable_for_same_process_navigation(current_url, target_url, WebView::NavigationTarget::TopLevel)
+            ? Web::NavigationProcessDecision::Local
+            : Web::NavigationProcessDecision::Remote;
+    }
+
+    return client().decide_navigation_process(m_id, move(frame_id), current_url, target_url, target);
 }
 
 void PageClient::request_new_process_for_navigation(URL::URL const& url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling)
@@ -186,6 +197,35 @@ void PageClient::request_new_process_for_navigation(URL::URL const& url, Variant
         m_webdriver->page_did_start_window_replacement({}, page().top_level_traversable()->window_handle());
 
     client().async_did_request_new_process_for_navigation(m_id, url, move(document_resource), history_handling);
+}
+
+void PageClient::request_new_process_for_child_frame_navigation(
+    String const& frame_id,
+    URL::URL const& url,
+    Variant<Empty, String, Web::HTML::POSTResource> document_resource,
+    Web::Bindings::NavigationHistoryBehavior history_handling)
+{
+    client().async_did_request_new_process_for_child_frame_navigation(m_id, frame_id, url, move(document_resource), history_handling);
+}
+
+void PageClient::page_did_create_child_frame(String const& parent_frame_id, String const& frame_id)
+{
+    client().async_did_create_child_frame(m_id, parent_frame_id, frame_id);
+}
+
+void PageClient::page_did_update_child_frame_viewport(String const& frame_id, Web::CSSPixelRect viewport_rect)
+{
+    client().async_did_update_child_frame_viewport(m_id, frame_id, page().css_to_device_rect(viewport_rect), page().client().device_pixel_ratio());
+}
+
+void PageClient::page_did_commit_child_frame_navigation(String const& frame_id, URL::URL const& url)
+{
+    client().async_did_commit_child_frame_navigation(m_id, frame_id, url);
+}
+
+void PageClient::page_did_destroy_child_frame(String const& frame_id)
+{
+    client().async_did_destroy_child_frame(m_id, frame_id);
 }
 
 Gfx::Palette PageClient::palette() const
@@ -448,6 +488,28 @@ void PageClient::page_did_change_active_document_in_top_level_browsing_context(W
 void PageClient::page_did_finish_loading(URL::URL const& url)
 {
     client().async_did_finish_loading(m_id, url);
+}
+
+void PageClient::run_iframe_load_event_steps(String const& frame_id)
+{
+    auto active_document = page().top_level_traversable()->active_document();
+    if (!active_document)
+        return;
+
+    for (auto const& navigable : active_document->inclusive_descendant_navigables()) {
+        if (navigable->id() != frame_id)
+            continue;
+
+        auto container = GC::make_root(navigable->container());
+        if (!container || !is<Web::HTML::HTMLIFrameElement>(*container))
+            return;
+
+        container->queue_an_element_task(Web::HTML::Task::Source::DOMManipulation, [container] {
+            Web::HTML::run_iframe_load_event_steps(as<Web::HTML::HTMLIFrameElement>(*container));
+        });
+        container->document().schedule_html_parser_end_check();
+        return;
+    }
 }
 
 void PageClient::wait_for_webdriver_navigation_completion(Optional<u64> page_load_timeout, Function<void(Web::WebDriver::Response)> on_complete)
@@ -871,6 +933,11 @@ String PageClient::page_did_request_ui_process_session_history_for_testing()
 String PageClient::page_did_update_session_history_and_request_ui_process_session_history_for_testing(Vector<Web::HTML::SessionHistoryEntryDescriptor> const& entries, Vector<i32> const& used_steps, size_t current_used_step_index)
 {
     return client().did_update_session_history_and_request_ui_process_session_history_for_testing(m_id, entries, used_steps, current_used_step_index);
+}
+
+String PageClient::page_did_request_site_isolation_process_tree_for_testing()
+{
+    return client().did_request_site_isolation_process_tree_for_testing(m_id);
 }
 
 bool PageClient::page_did_request_traverse_the_history_by_delta(int delta, Web::HistoryTraversalPrecheck history_traversal_precheck)

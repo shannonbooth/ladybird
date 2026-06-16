@@ -622,6 +622,8 @@ void ViewImplementation::enqueue_input_event(Web::InputEvent event)
 
     m_pending_input_events.tail().visit(
         [this](Web::KeyEvent const& event) {
+            if (client().dispatch_key_event_to_web_content(m_client_state.page_index, event))
+                return;
             client().async_key_event(m_client_state.page_index, event.clone_without_browser_data());
         },
         [this](Web::MouseEvent const& event) {
