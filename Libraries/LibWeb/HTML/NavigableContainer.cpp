@@ -17,6 +17,7 @@
 #include <LibWeb/HTML/DocumentState.h>
 #include <LibWeb/HTML/HTMLIFrameElement.h>
 #include <LibWeb/HTML/LocalNavigable.h>
+#include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/NavigableContainer.h>
 #include <LibWeb/HTML/NavigationParams.h>
 #include <LibWeb/HTML/Scripting/WindowEnvironmentSettingsObject.h>
@@ -189,7 +190,7 @@ HTML::WindowProxy* NavigableContainer::content_window()
 {
     if (!m_content_navigable)
         return nullptr;
-    return m_content_navigable->active_window_proxy();
+    return static_cast<Navigable&>(*m_content_navigable).active_window_proxy();
 }
 
 // https://html.spec.whatwg.org/multipage/iframe-embed-object.html#shared-attribute-processing-steps-for-iframe-and-frame-elements

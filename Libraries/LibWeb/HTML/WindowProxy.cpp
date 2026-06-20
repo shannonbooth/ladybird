@@ -15,6 +15,7 @@
 #include <LibWeb/HTML/CrossOrigin/AbstractOperations.h>
 #include <LibWeb/HTML/CrossOrigin/Reporting.h>
 #include <LibWeb/HTML/LocalNavigable.h>
+#include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/Scripting/Environments.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HTML/WindowProxy.h>
@@ -88,7 +89,7 @@ JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> WindowProxy::internal_ge
             // NOTE: children are coming sorted in required order from document_tree_child_navigables()
 
             // 2. Set value to children[index]'s active WindowProxy.
-            value = children[index]->active_window_proxy();
+            value = static_cast<Navigable&>(*children[index]).active_window_proxy();
         }
 
         // 5. If value is undefined, then:
@@ -123,7 +124,7 @@ JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> WindowProxy::internal_ge
 
     if (auto navigable = navigable_property_set.get(property_key_string); navigable.has_value()) {
         // 1. Let value be the active WindowProxy of the named object of W with the name P.
-        auto value = navigable.value()->active_window_proxy();
+        auto value = static_cast<Navigable&>(*navigable.value()).active_window_proxy();
 
         // 2. Return PropertyDescriptor { [[Value]]: value, [[Enumerable]]: false, [[Writable]]: false, [[Configurable]]: true }.
         // NOTE: The reason the property descriptors are non-enumerable, despite this mismatching the same-origin behavior, is for compatibility with existing web content. See issue #3183 for details.

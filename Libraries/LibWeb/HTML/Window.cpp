@@ -56,6 +56,7 @@
 #include <LibWeb/HTML/MessageEvent.h>
 #include <LibWeb/HTML/MessagePort.h>
 #include <LibWeb/HTML/Navigation.h>
+#include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/Navigator.h>
 #include <LibWeb/HTML/PageTransitionEvent.h>
 #include <LibWeb/HTML/Parser/HTMLParser.h>
@@ -1070,13 +1071,19 @@ u32 Window::length()
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-top
 GC::Ptr<WindowProxy const> Window::top() const
 {
-    // 1. If this's navigable is null, then return null.
-    auto navigable = this->navigable();
+    // 1. Let navigable be this's navigable.
+    GC::Ptr<Navigable> navigable = this->navigable();
+
+    // 2. If navigable is null, then return null.
     if (!navigable)
         return {};
 
-    // 2. Return this's navigable's top-level traversable's active WindowProxy.
-    return navigable->top_level_traversable()->active_window_proxy();
+    // 3. While navigable's parent is not null, set navigable to navigable's parent.
+    while (auto parent = navigable->parent())
+        navigable = parent;
+
+    // 4. Return navigable's active WindowProxy.
+    return navigable->active_window_proxy();
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-opener
@@ -1118,7 +1125,7 @@ WebIDL::ExceptionOr<void> Window::set_opener(JS::Value value)
 GC::Ptr<WindowProxy const> Window::parent() const
 {
     // 1. Let navigable be this's navigable.
-    auto navigable = this->navigable();
+    GC::Ptr<Navigable> navigable = this->navigable();
 
     // 2. If navigable is null, then return null.
     if (!navigable)
