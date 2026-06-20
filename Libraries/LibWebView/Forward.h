@@ -39,6 +39,8 @@ struct ConsoleOutput;
 struct CookieStorageKey;
 struct DOMNodeProperties;
 struct Mutation;
+struct NavigationTreeSnapshot;
+struct NavigationTreeSnapshotNode;
 struct ProcessHandle;
 struct SearchEngine;
 struct WebContentOptions;

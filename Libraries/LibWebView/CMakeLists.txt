@@ -15,6 +15,7 @@ set(SOURCES
     HSTSStore.cpp
     Menu.cpp
     Mutation.cpp
+    NavigationTree.cpp
     Plugins/ImageCodecPlugin.cpp
     Process.cpp
     ProcessHandle.cpp
