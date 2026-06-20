@@ -18,7 +18,7 @@
 #include <LibWeb/HTML/BrowsingContext.h>
 #include <LibWeb/HTML/CrossOrigin/AbstractOperations.h>
 #include <LibWeb/HTML/Location.h>
-#include <LibWeb/HTML/Navigable.h>
+#include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/Navigation.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/WebIDL/DOMException.h>

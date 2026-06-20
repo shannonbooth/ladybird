@@ -818,7 +818,7 @@ class MessagePort;
 class MimeType;
 class MimeTypeArray;
 class ModuleMap;
-class Navigable;
+class LocalNavigable;
 class NavigableContainer;
 class NavigateEvent;
 class Navigation;
