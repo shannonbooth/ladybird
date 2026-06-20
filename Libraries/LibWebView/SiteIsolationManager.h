@@ -35,8 +35,8 @@ public:
         Optional<u64> remote_page_id;
     };
 
-    struct ChildFrameHost {
-        String parent_frame_id;
+    struct NavigableRecord {
+        String parent_navigable_id;
         Optional<URL::URL> last_committed_url;
         Optional<PendingChildFrameNavigation> pending_navigation;
         Optional<Web::DevicePixelRect> viewport_rect;
@@ -50,6 +50,7 @@ public:
             return owner == ChildFrameOwner::Remote && remote_client && remote_page_id != 0;
         }
     };
+    using ChildFrameHost = NavigableRecord;
 
     struct RemoteChildFrameInputTarget {
         RefPtr<WebContentClient> remote_client;
@@ -59,7 +60,7 @@ public:
 
     Web::NavigationProcessDecision decide_navigation_process(WebContentClient&, u64 page_id, Optional<String> frame_id, URL::URL current_url, URL::URL target_url, Web::NavigationTarget);
 
-    void did_create_child_frame(u64 page_id, String parent_frame_id, String frame_id);
+    void did_create_child_frame(u64 page_id, String parent_navigable_id, String frame_id);
     void did_update_child_frame_viewport(u64 page_id, String frame_id, Web::DevicePixelRect viewport_rect, double device_pixel_ratio);
     bool did_commit_child_frame_navigation(WebContentClient&, u64 page_id, StringView frame_id, URL::URL const& url);
     void did_destroy_child_frame(WebContentClient&, u64 page_id, StringView frame_id);
@@ -92,26 +93,29 @@ private:
         WebContentClient* parent_client { nullptr };
         u64 page_id { 0 };
         String frame_id;
-        ChildFrameHost* child_frame { nullptr };
+        NavigableRecord* child_frame { nullptr };
     };
 
     static bool client_owns_page(WebContentClient const&, u64 page_id);
+    void ensure_top_level_navigable_record(u64 page_id, StringView navigable_id);
     Optional<ParentFrame> parent_frame_for_remote_page(WebContentClient&, u64 page_id);
     URL::URL document_url_for_page(WebContentClient&, u64 page_id, URL::URL const& fallback_url);
-    Optional<URL::URL> document_url_for_child_frame(ChildFrameHost const&);
-    URL::URL embedding_page_url_for_child_frame_navigation(WebContentClient&, u64 page_id, ChildFrameHost const&, URL::URL const&);
+    Optional<URL::URL> document_url_for_child_frame(NavigableRecord const&);
+    URL::URL embedding_page_url_for_child_frame_navigation(WebContentClient&, u64 page_id, NavigableRecord const&, URL::URL const&);
 
-    HashMap<u64, HashMap<String, ChildFrameHost>> m_child_frames;
+    HashMap<u64, HashMap<String, NavigableRecord>> m_navigation_trees;
 };
 
 template<CallableAs<IterationDecision, String const&, SiteIsolationManager::ChildFrameHost const&> Callback>
 void SiteIsolationManager::for_each_child_frame(u64 page_id, Callback callback) const
 {
-    auto child_frames = m_child_frames.get(page_id);
-    if (!child_frames.has_value())
+    auto navigation_tree = m_navigation_trees.get(page_id);
+    if (!navigation_tree.has_value())
         return;
 
-    for (auto const& entry : *child_frames) {
+    for (auto const& entry : *navigation_tree) {
+        if (entry.value.parent_navigable_id.is_empty())
+            continue;
         if (callback(entry.key, entry.value) == IterationDecision::Break)
             return;
     }
