@@ -332,14 +332,24 @@ recreate_missing_nested_history_for_live_child_navigable(TraversableNavigable& t
 Vector<GC::Root<LocalNavigable>> LocalNavigable::child_navigables() const
 {
     Vector<GC::Root<LocalNavigable>> results;
-    for (auto& entry : all_local_navigables()) {
-        if (entry->current_session_history_entry()->step() == SessionHistoryEntry::Pending::Tag)
+    for (auto& child : Navigable::child_navigables()) {
+        auto local_child = child->local_navigable();
+        if (!local_child)
             continue;
-        if (entry->parent() == this)
-            results.append(entry);
+        if (local_child->current_session_history_entry()->step() == SessionHistoryEntry::Pending::Tag)
+            continue;
+        results.append(*local_child);
     }
 
     return results;
+}
+
+GC::Ptr<LocalNavigable> LocalNavigable::parent() const
+{
+    auto parent = Navigable::parent();
+    if (!parent)
+        return nullptr;
+    return parent->local_navigable();
 }
 
 bool LocalNavigable::is_ancestor_of(GC::Ref<LocalNavigable> other) const
@@ -355,7 +365,8 @@ LocalNavigable::LocalNavigable(
     GC::Ref<Page> page,
     bool is_svg_page,
     Compositor::PagePresentationRegistration page_presentation_registration)
-    : m_page(page)
+    : Navigable()
+    , m_page(page)
     , m_event_handler({}, *this)
     , m_is_svg_page(is_svg_page)
 {
@@ -385,6 +396,7 @@ void LocalNavigable::remove_from_all_local_navigables()
     cancel_hover_update_after_async_scroll();
     destroy_compositor_context();
     resolve_all_pending_async_scroll_operations();
+    Navigable::set_parent(nullptr);
 
     if (m_active_document)
         m_active_document->set_navigable(nullptr);
@@ -395,6 +407,7 @@ void LocalNavigable::finalize()
 {
     cancel_hover_update_after_async_scroll();
     destroy_compositor_context();
+    Navigable::set_parent(nullptr);
     all_local_navigables().remove(*this);
     Base::finalize();
 }
@@ -403,7 +416,6 @@ void LocalNavigable::visit_edges(Cell::Visitor& visitor)
 {
     Base::visit_edges(visitor);
     visitor.visit(m_page);
-    visitor.visit(m_parent);
     visitor.visit(m_active_document);
     visitor.visit(m_input_method_composition_node);
     visitor.visit(m_container);
@@ -472,6 +484,7 @@ RefPtr<SessionHistoryEntry> LocalNavigable::active_session_history_entry() const
 void LocalNavigable::set_active_session_history_entry(RefPtr<SessionHistoryEntry> entry)
 {
     m_active_session_history_entry = move(entry);
+    update_active_document_metadata();
 }
 
 RefPtr<SessionHistoryEntry> LocalNavigable::current_session_history_entry() const
@@ -488,7 +501,7 @@ void LocalNavigable::set_current_session_history_entry(RefPtr<SessionHistoryEntr
 void LocalNavigable::initialize_navigable(NonnullRefPtr<DocumentState> document_state, GC::Ptr<LocalNavigable> parent, GC::Ref<DOM::Document> document)
 {
     static int next_id = 0;
-    m_id = String::number(next_id++);
+    set_id(String::number(next_id++));
 
     // 1. Assert: documentState's document is non-null.
     // NOTE: DocumentState no longer owns the document; it is passed separately and owned by the LocalNavigable.
@@ -502,15 +515,14 @@ void LocalNavigable::initialize_navigable(NonnullRefPtr<DocumentState> document_
     document_state->set_document_id(document->unique_id());
 
     // 3. Set navigable's current session history entry to entry.
-    m_current_session_history_entry = entry;
+    set_current_session_history_entry(entry);
 
     // 4. Set navigable's active session history entry to entry.
-    m_active_session_history_entry = entry;
-    m_active_document = document;
-    document->set_navigable(this);
+    set_active_session_history_entry(entry);
+    set_active_document(document);
 
     // 5. Set navigable's parent to parent.
-    m_parent = parent;
+    Navigable::set_parent(parent);
     if (parent) {
         m_should_show_line_box_borders = parent->m_should_show_line_box_borders;
         m_should_show_caret_hit_test_debug_overlay = parent->m_should_show_caret_hit_test_debug_overlay;
@@ -584,15 +596,8 @@ void LocalNavigable::activate_history_entry(RefPtr<SessionHistoryEntry> entry, G
     VERIFY(!new_document->is_initial_about_blank());
 
     // 4. Set navigable's active session history entry to entry.
-    m_active_session_history_entry = entry;
-    if (m_active_document && m_active_document != new_document) {
-        // The pending post-scroll hover refresh belongs to the outgoing document; drop it.
-        cancel_hover_update_after_async_scroll();
-        m_active_document->set_navigable(nullptr);
-    }
-    m_active_document = new_document;
-    new_document->set_navigable(this);
-    set_needs_to_record_display_list();
+    set_active_session_history_entry(entry);
+    set_active_document(new_document);
 
     // 5. Make active newDocument.
     new_document->make_active();
@@ -699,6 +704,32 @@ void LocalNavigable::set_active_document(GC::Ptr<DOM::Document> document)
     if (document)
         document_id = document->unique_id();
     m_active_session_history_entry->document_state()->set_document_id(document_id);
+    update_active_document_metadata();
+}
+
+void LocalNavigable::update_active_document_metadata()
+{
+    Navigable::ActiveDocumentMetadata metadata;
+
+    if (m_active_session_history_entry) {
+        metadata.url = m_active_session_history_entry->url();
+        if (auto origin = m_active_session_history_entry->document_state()->origin(); origin.has_value())
+            metadata.origin = *origin;
+        set_target_name(m_active_session_history_entry->document_state()->navigable_target_name());
+    }
+
+    if (m_active_document) {
+        metadata.url = m_active_document->url();
+        metadata.origin = m_active_document->origin();
+        if (auto browsing_context = m_active_document->browsing_context())
+            set_active_window_proxy(browsing_context->window_proxy());
+        else
+            set_active_window_proxy(nullptr);
+    } else {
+        set_active_window_proxy(nullptr);
+    }
+
+    set_active_document_metadata(move(metadata));
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-bc

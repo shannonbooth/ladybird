@@ -23,6 +23,7 @@
 #include <LibWeb/HTML/DocumentState.h>
 #include <LibWeb/HTML/HistoryHandlingBehavior.h>
 #include <LibWeb/HTML/InitialInsertion.h>
+#include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/NavigationObserver.h>
 #include <LibWeb/HTML/NavigationParams.h>
 #include <LibWeb/HTML/POSTResource.h>
@@ -60,8 +61,8 @@ struct TargetSnapshotParams {
 };
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#navigable
-class WEB_API LocalNavigable : public JS::Cell {
-    GC_CELL(LocalNavigable, JS::Cell);
+class WEB_API LocalNavigable : public Navigable {
+    GC_CELL(LocalNavigable, Navigable);
     GC_DECLARE_ALLOCATOR(LocalNavigable);
 
 public:
@@ -81,9 +82,10 @@ public:
 
     virtual bool is_traversable() const { return false; }
 
-    String const& id() const { return m_id; }
-    GC::Ptr<LocalNavigable> parent() const { return m_parent; }
+    GC::Ptr<LocalNavigable> parent() const;
     bool is_ancestor_of(GC::Ref<LocalNavigable>) const;
+    virtual GC::Ptr<LocalNavigable> local_navigable() override { return this; }
+    virtual GC::Ptr<LocalNavigable const> local_navigable() const override { return this; }
 
     bool is_closing() const { return m_closing; }
     void set_closing(bool value) { m_closing = value; }
@@ -330,12 +332,7 @@ private:
     void schedule_hover_update_after_async_scroll();
     void update_hover_after_async_scroll_stops();
     void cancel_hover_update_after_async_scroll();
-
-    // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-id
-    String m_id;
-
-    // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-parent
-    GC::Ptr<LocalNavigable> m_parent;
+    void update_active_document_metadata();
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-current-history-entry
     RefPtr<SessionHistoryEntry> m_current_session_history_entry;
