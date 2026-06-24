@@ -342,6 +342,11 @@ Vector<GC::Root<LocalNavigable>> LocalNavigable::child_navigables() const
     return results;
 }
 
+GC::Ptr<Navigable> LocalNavigable::parent_navigable() const
+{
+    return m_parent;
+}
+
 bool LocalNavigable::is_ancestor_of(GC::Ref<LocalNavigable> other) const
 {
     for (auto ancestor = other->parent(); ancestor; ancestor = ancestor->parent()) {

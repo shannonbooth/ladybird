@@ -664,6 +664,7 @@ set(SOURCES
     HTML/PreloadEntry.cpp
     HTML/PromiseRejectionEvent.cpp
     HTML/RadioNodeList.cpp
+    HTML/RemoteNavigable.cpp
     HTML/SandboxingFlagSet.cpp
     HTML/Scripting/Agent.cpp
     HTML/Scripting/ClassicScript.cpp
