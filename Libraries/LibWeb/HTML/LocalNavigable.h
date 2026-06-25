@@ -81,9 +81,8 @@ public:
 
     virtual bool is_traversable() const { return false; }
 
-    String const& id() const { return m_id; }
-    GC::Ptr<LocalNavigable> parent() const { return m_parent; }
-    virtual GC::Ptr<Navigable> parent_navigable() const override;
+    virtual String const& id() const override { return m_id; }
+    virtual GC::Ptr<Navigable> parent() const override { return m_parent; }
     bool is_ancestor_of(GC::Ref<LocalNavigable>) const;
 
     bool is_closing() const { return m_closing; }
@@ -121,7 +120,7 @@ public:
     void restore_persisted_state_from_session_history_entry(SessionHistoryEntry const&);
     void restore_scroll_position_data(SessionHistoryEntry const&);
 
-    String target_name() const;
+    virtual String target_name() const override;
 
     GC::Ptr<NavigableContainer> container() const;
     GC::Ptr<DOM::Document> container_document() const;
@@ -336,7 +335,7 @@ private:
     String m_id;
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-parent
-    GC::Ptr<LocalNavigable> m_parent;
+    GC::Ptr<Navigable> m_parent;
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-current-history-entry
     RefPtr<SessionHistoryEntry> m_current_session_history_entry;

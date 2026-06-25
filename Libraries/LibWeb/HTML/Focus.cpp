@@ -15,6 +15,7 @@
 #include <LibWeb/HTML/BrowsingContext.h>
 #include <LibWeb/HTML/Focus.h>
 #include <LibWeb/HTML/HTMLInputElement.h>
+#include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/NavigableContainer.h>
 #include <LibWeb/HTML/Navigation.h>
 #include <LibWeb/HTML/TraversableNavigable.h>
@@ -311,7 +312,7 @@ static DOM::Node* get_focusable_area(DOM::Node& focus_target, FocusTrigger focus
     if (auto* navigable_container = as_if<NavigableContainer>(&focus_target)) {
         if (!is_inert_for_focus(*navigable_container) && navigable_container->meets_focusable_area_rendering_requirements()) {
             if (auto content_navigable = navigable_container->content_navigable())
-                return content_navigable->active_document();
+                return as<LocalNavigable>(*content_navigable).active_document();
         }
     }
 
@@ -368,7 +369,7 @@ void run_focusing_steps(DOM::Node* new_focus_target, DOM::Node* fallback_target,
     // 3. If new focus target is a navigable container with non-null content navigable, then set new focus target to the content navigable's active document.
     if (auto* navigable_container = as_if<NavigableContainer>(*new_focus_target)) {
         if (auto content_navigable = navigable_container->content_navigable())
-            new_focus_target = content_navigable->active_document();
+            new_focus_target = as<LocalNavigable>(*content_navigable).active_document();
     }
 
     // 4. If new focus target is a focusable area and its DOM anchor is inert, then return.

@@ -44,9 +44,10 @@ void NavigableContainerViewport::did_set_content_size()
     ReplacedBox::did_set_content_size();
 
     if (auto content_navigable = dom_node().content_navigable()) {
+        auto& local_content_navigable = as<HTML::LocalNavigable>(*content_navigable);
         auto content_size = paintable_box()->content_size();
-        content_navigable->set_viewport_size(content_size);
-        document().page().client().page_did_update_child_frame_viewport(content_navigable->id(), paintable_box()->absolute_rect());
+        local_content_navigable.set_viewport_size(content_size);
+        document().page().client().page_did_update_child_frame_viewport(local_content_navigable.id(), paintable_box()->absolute_rect());
     }
 }
 

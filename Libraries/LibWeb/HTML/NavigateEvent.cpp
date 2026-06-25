@@ -188,10 +188,9 @@ void NavigateEvent::process_scroll_behavior()
     // 3. If event's navigationType was initialized to "traverse" or "reload", then restore scroll position data
     //    given event's relevant global object's navigable's active session history entry.
     if (m_navigation_type == Bindings::NavigationType::Traverse || m_navigation_type == Bindings::NavigationType::Reload) {
-        auto navigable = as<Window>(HTML::relevant_global_object(*this)).navigable();
-        VERIFY(navigable);
-        if (auto active_entry = navigable->active_session_history_entry())
-            navigable->restore_scroll_position_data(*active_entry);
+        auto& navigable = as<LocalNavigable>(*as<Window>(HTML::relevant_global_object(*this)).navigable());
+        if (auto active_entry = navigable.active_session_history_entry())
+            navigable.restore_scroll_position_data(*active_entry);
     }
 
     // 4. Otherwise:

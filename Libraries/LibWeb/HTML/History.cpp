@@ -9,6 +9,7 @@
 #include <LibWeb/Bindings/Intrinsics.h>
 #include <LibWeb/DOM/Document.h>
 #include <LibWeb/HTML/History.h>
+#include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/Navigation.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/StructuredSerialize.h>
@@ -240,7 +241,7 @@ WebIDL::ExceptionOr<Bindings::ScrollRestoration> History::scroll_restoration() c
         return WebIDL::SecurityError::create(realm(), "Cannot obtain scroll restoration mode for a document that isn't fully active."_utf16);
 
     // 2. Return this's relevant global object's navigable's active session history entry's scroll restoration mode.
-    auto scroll_restoration_mode = this_relevant_global_object.navigable()->active_session_history_entry()->scroll_restoration_mode();
+    auto scroll_restoration_mode = as<LocalNavigable>(*this_relevant_global_object.navigable()).active_session_history_entry()->scroll_restoration_mode();
     switch (scroll_restoration_mode) {
     case ScrollRestorationMode::Auto:
         return Bindings::ScrollRestoration::Auto;
@@ -259,7 +260,7 @@ WebIDL::ExceptionOr<void> History::set_scroll_restoration(Bindings::ScrollRestor
         return WebIDL::SecurityError::create(realm(), "Cannot set scroll restoration mode for a document that isn't fully active."_utf16);
 
     // 2. Set this's relevant global object's navigable's active session history entry's scroll restoration mode to the given value.
-    auto active_session_history_entry = this_relevant_global_object.navigable()->active_session_history_entry();
+    auto active_session_history_entry = as<LocalNavigable>(*this_relevant_global_object.navigable()).active_session_history_entry();
     switch (scroll_restoration) {
     case Bindings::ScrollRestoration::Auto:
         active_session_history_entry->set_scroll_restoration_mode(ScrollRestorationMode::Auto);

@@ -86,7 +86,7 @@ WebIDL::ExceptionOr<GC::Ref<WebIDL::Promise>> OfflineAudioContext::start_renderi
 
     // AD-HOC: Not in spec explicitly, but this should account for detached iframes too. See /the-offlineaudiocontext-interface/startrendering-after-discard.html WPT.
     auto navigable = window.navigable();
-    if (navigable && navigable->has_been_destroyed()) {
+    if (navigable && as<HTML::LocalNavigable>(*navigable).has_been_destroyed()) {
         auto error = WebIDL::InvalidStateError::create(realm, "The iframe has been detached"_utf16);
         return WebIDL::create_rejected_promise_from_exception(realm, error);
     }

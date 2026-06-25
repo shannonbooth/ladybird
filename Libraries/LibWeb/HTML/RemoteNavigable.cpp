@@ -10,8 +10,10 @@ namespace Web::HTML {
 
 GC_DEFINE_ALLOCATOR(RemoteNavigable);
 
-RemoteNavigable::RemoteNavigable(GC::Ptr<Navigable> parent)
-    : m_parent(parent)
+RemoteNavigable::RemoteNavigable(String id, GC::Ptr<Navigable> parent, String target_name)
+    : m_id(move(id))
+    , m_target_name(move(target_name))
+    , m_parent(parent)
 {
 }
 

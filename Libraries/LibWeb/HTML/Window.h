@@ -106,7 +106,7 @@ public:
     BrowsingContext const* browsing_context() const;
     BrowsingContext* browsing_context();
 
-    GC::Ptr<LocalNavigable> navigable() const;
+    GC::Ptr<Navigable> navigable() const;
 
     void append_resolved_module(SpecifierResolution resolution) { m_resolved_module_set.append(move(resolution)); }
     Vector<SpecifierResolution> const& resolved_module_set() const { return m_resolved_module_set; }

@@ -316,6 +316,7 @@ recreate_missing_nested_history_for_live_child_navigable(TraversableNavigable& t
     auto parent = navigable.parent();
     if (!parent)
         return nullptr;
+    auto& local_parent = as<LocalNavigable>(*parent);
 
     auto container = navigable.container();
     if (!container || container->content_navigable() != &navigable)
@@ -325,7 +326,7 @@ recreate_missing_nested_history_for_live_child_navigable(TraversableNavigable& t
     if (!history_entry)
         return nullptr;
 
-    return append_nested_history_for_child_navigable(*parent, navigable, *history_entry);
+    return append_nested_history_for_child_navigable(local_parent, navigable, *history_entry);
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#child-navigable
@@ -340,11 +341,6 @@ Vector<GC::Root<LocalNavigable>> LocalNavigable::child_navigables() const
     }
 
     return results;
-}
-
-GC::Ptr<Navigable> LocalNavigable::parent_navigable() const
-{
-    return m_parent;
 }
 
 bool LocalNavigable::is_ancestor_of(GC::Ref<LocalNavigable> other) const
@@ -765,28 +761,28 @@ GC::Ptr<DOM::Document> LocalNavigable::container_document() const
 GC::Ptr<TraversableNavigable> LocalNavigable::traversable_navigable() const
 {
     // 1. Let navigable be inputNavigable.
-    auto navigable = const_cast<LocalNavigable*>(this);
+    GC::Ptr<Navigable> navigable = const_cast<LocalNavigable*>(this);
 
     // 2. While navigable is not a traversable navigable, set navigable to navigable's parent.
     while (navigable && !is<TraversableNavigable>(*navigable))
         navigable = navigable->parent();
 
     // 3. Return navigable.
-    return static_cast<TraversableNavigable*>(navigable);
+    return as_if<TraversableNavigable>(navigable.ptr());
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-top
 GC::Ptr<TraversableNavigable> LocalNavigable::top_level_traversable()
 {
     // 1. Let navigable be inputNavigable.
-    auto navigable = this;
+    GC::Ptr<Navigable> navigable = this;
 
     // 2. While navigable's parent is not null, set navigable to navigable's parent.
     while (navigable->parent())
         navigable = navigable->parent();
 
     // 3. Return navigable.
-    return as<TraversableNavigable>(navigable);
+    return as<TraversableNavigable>(*navigable);
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#set-the-ongoing-navigation
@@ -852,7 +848,7 @@ LocalNavigable::ChosenNavigable LocalNavigable::choose_a_navigable(StringView na
     //    set chosen to currentNavigable's parent, if any, and currentNavigable otherwise.
     else if (name.equals_ignoring_ascii_case("_parent"sv)) {
         if (auto parent = this->parent())
-            chosen = parent;
+            chosen = as<LocalNavigable>(*parent);
         else
             chosen = this;
     }
@@ -1276,9 +1272,11 @@ static void perform_navigation_params_fetch(JS::Realm& realm, GC::Ref<Navigation
         // 3. If navigable is not a top-level traversable, then:
         if (!state_holder->navigable->is_top_level_traversable()) {
             // 1. Let parentEnvironment be navigable's parent's active document's relevant settings object.
-            auto parent = state_holder->navigable->parent();
-            auto parent_document = parent ? parent->active_document() : nullptr;
-            if (!parent || parent->has_been_destroyed() || !parent_document || parent_document->has_been_destroyed()) {
+            auto parent_navigable = state_holder->navigable->parent();
+            VERIFY(parent_navigable);
+            auto& parent = as<LocalNavigable>(*parent_navigable);
+            auto parent_document = parent.active_document();
+            if (parent.has_been_destroyed() || !parent_document || parent_document->has_been_destroyed()) {
                 // AD-HOC: A queued child navigation can resume after its parent document has been destroyed. The
                 //         specification assumes the parent environment is still available here, but browser engines
                 //         abandon this stale detached frame navigation instead of continuing it against a discarded
@@ -2343,9 +2341,11 @@ void LocalNavigable::begin_navigation(NavigateParams params)
                     return;
                 }
                 if (!is_top_level_navigation) {
-                    if (auto parent = this->parent();
-                        parent && has_compositor_context() && parent->has_compositor_context())
-                        compositor_context().set_parent_context(parent->compositor_context().id());
+                    auto parent_navigable = this->parent();
+                    VERIFY(parent_navigable);
+                    auto& parent = as<LocalNavigable>(*parent_navigable);
+                    if (has_compositor_context() && parent.has_compositor_context())
+                        compositor_context().set_parent_context(parent.compositor_context().id());
                 }
 
                 // AD-HOC: Tell the UI that we started loading.
@@ -3221,7 +3221,7 @@ CSSPixelRect LocalNavigable::to_top_level_rect(CSSPixelRect const& a_rect)
 CSSPixelPoint LocalNavigable::to_top_level_position(CSSPixelPoint a_position)
 {
     auto position = a_position;
-    for (auto ancestor = this; ancestor; ancestor = ancestor->parent()) {
+    for (GC::Ptr<LocalNavigable> ancestor = this; ancestor; ancestor = as<LocalNavigable>(*ancestor->parent())) {
         if (is<TraversableNavigable>(*ancestor))
             break;
         if (!ancestor->container())
@@ -3804,9 +3804,10 @@ void LocalNavigable::repaint_after_compositor_process_reconnect()
     resolve_all_pending_async_scroll_operations();
 
     if (has_compositor_context()) {
-        if (auto parent = this->parent();
-            parent && parent->has_compositor_context()) {
-            compositor_context().set_parent_context(parent->compositor_context().id());
+        if (auto parent_navigable = this->parent()) {
+            auto& parent = as<LocalNavigable>(*parent_navigable);
+            if (parent.has_compositor_context())
+                compositor_context().set_parent_context(parent.compositor_context().id());
         }
         compositor_context().viewport_size_updated(
             page().css_to_device_rect(viewport_rect()).size().to_type<int>(),
@@ -3919,7 +3920,10 @@ void LocalNavigable::paint_next_frame()
         paint_config.canvas_fill_rect = Gfx::IntRect { {}, viewport_rect.size() };
     } else {
         // Nested navigables paint transparent bitmaps for their parent compositor context.
-        if (!parent() || !parent()->has_compositor_context())
+        auto parent_navigable = this->parent();
+        VERIFY(parent_navigable);
+        auto& parent = as<LocalNavigable>(*parent_navigable);
+        if (!parent.has_compositor_context())
             return;
     }
 

@@ -20,6 +20,7 @@
 #include <LibWeb/HTML/BrowsingContextGroup.h>
 #include <LibWeb/HTML/DocumentState.h>
 #include <LibWeb/HTML/History.h>
+#include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/NavigableContainer.h>
 #include <LibWeb/HTML/Navigation.h>
 #include <LibWeb/HTML/NavigationParams.h>
@@ -2618,7 +2619,8 @@ GC::Ptr<DOM::Node> TraversableNavigable::currently_focused_area()
     while (candidate->focused_area()
         && is<NavigableContainer>(candidate->focused_area().ptr())
         && as<NavigableContainer>(*candidate->focused_area()).content_navigable()) {
-        candidate = as<NavigableContainer>(*candidate->focused_area()).content_navigable()->active_document();
+        auto content_navigable = as<NavigableContainer>(*candidate->focused_area()).content_navigable();
+        candidate = as<LocalNavigable>(*content_navigable).active_document();
     }
 
     // 4. If candidate's focused area is non-null, set candidate to candidate's focused area.

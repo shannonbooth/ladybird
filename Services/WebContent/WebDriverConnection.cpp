@@ -54,6 +54,7 @@
 #include <LibWeb/HTML/HTMLOptionElement.h>
 #include <LibWeb/HTML/HTMLSelectElement.h>
 #include <LibWeb/HTML/HTMLTextAreaElement.h>
+#include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/NavigationObserver.h>
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
 #include <LibWeb/HTML/SelectedFile.h>
@@ -848,7 +849,7 @@ Messages::WebDriverClient::SwitchToFrameResponse WebDriverConnection::switch_to_
 
             // 5. Set the current browsing context with session and element's content navigable's active browsing context.
             auto& navigable_container = static_cast<Web::HTML::NavigableContainer&>(*element);
-            set_current_browsing_context(*navigable_container.content_navigable()->active_browsing_context());
+            set_current_browsing_context(*as<Web::HTML::LocalNavigable>(*navigable_container.content_navigable()).active_browsing_context());
 
             async_driver_execution_complete(JsonValue {});
         });
@@ -2724,10 +2725,12 @@ void WebDriverConnection::set_current_browsing_context(Web::HTML::BrowsingContex
 
     // 2. Set the session's current parent browsing context to the parent browsing context of context, if that context
     //    exists, or null otherwise.
-    if (auto navigable = browsing_context.active_document()->navigable(); navigable && navigable->parent())
-        m_current_parent_browsing_context = navigable->parent()->active_browsing_context();
-    else
+    if (auto navigable = browsing_context.active_document()->navigable(); navigable && navigable->parent()) {
+        auto parent_navigable = navigable->parent();
+        m_current_parent_browsing_context = as<Web::HTML::LocalNavigable>(*parent_navigable).active_browsing_context();
+    } else {
         m_current_parent_browsing_context = nullptr;
+    }
 }
 
 // https://w3c.github.io/webdriver/#dfn-set-the-current-browsing-context

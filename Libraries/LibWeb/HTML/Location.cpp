@@ -97,7 +97,7 @@ GC::Ptr<DOM::Document> Location::relevant_document() const
 WebIDL::ExceptionOr<void> Location::navigate(URL::URL url, Bindings::NavigationHistoryBehavior history_handling)
 {
     // 1. Let navigable be location's relevant global object's navigable.
-    auto navigable = as<HTML::Window>(HTML::relevant_global_object(*this)).navigable();
+    auto& navigable = as<LocalNavigable>(*as<HTML::Window>(HTML::relevant_global_object(*this)).navigable());
 
     // 2. Let sourceDocument be the incumbent global object's associated Document.
     auto& source_document = as<HTML::Window>(incumbent_global_object()).associated_document();
@@ -108,7 +108,7 @@ WebIDL::ExceptionOr<void> Location::navigate(URL::URL url, Bindings::NavigationH
     }
 
     // 4. Navigate navigable to url using sourceDocument, with exceptionsEnabled set to true and historyHandling set to historyHandling.
-    TRY(navigable->navigate({ .url = move(url),
+    TRY(navigable.navigate({ .url = move(url),
         .source_document = source_document,
         .exceptions_enabled = true,
         .history_handling = history_handling }));

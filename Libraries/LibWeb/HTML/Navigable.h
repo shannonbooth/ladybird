@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <AK/String.h>
 #include <LibGC/Ptr.h>
 #include <LibJS/Heap/Cell.h>
 #include <LibWeb/Export.h>
@@ -17,7 +18,9 @@ class WEB_API Navigable : public JS::Cell {
     GC_CELL(Navigable, JS::Cell);
 
 public:
-    virtual GC::Ptr<Navigable> parent_navigable() const = 0;
+    virtual String const& id() const = 0;
+    virtual String target_name() const = 0;
+    virtual GC::Ptr<Navigable> parent() const = 0;
     virtual GC::Ptr<WindowProxy> active_window_proxy() = 0;
 };
 

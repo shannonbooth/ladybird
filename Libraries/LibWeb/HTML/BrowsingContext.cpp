@@ -16,6 +16,7 @@
 #include <LibWeb/HTML/HTMLDocument.h>
 #include <LibWeb/HTML/HTMLIFrameElement.h>
 #include <LibWeb/HTML/HTMLInputElement.h>
+#include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/SandboxingFlagSet.h>
 #include <LibWeb/HTML/Scripting/WindowEnvironmentSettingsObject.h>
 #include <LibWeb/HTML/TraversableNavigable.h>
@@ -350,7 +351,7 @@ GC::Ptr<BrowsingContext> BrowsingContext::top_level_browsing_context() const
 
     // 3. While navigable's parent is not null, set navigable to navigable's parent.
     while (navigable->parent()) {
-        navigable = navigable->parent();
+        navigable = as<LocalNavigable>(*navigable->parent());
     }
 
     // 4. Return navigable's active browsing context.

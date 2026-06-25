@@ -16,6 +16,7 @@
 #include <LibWeb/HTML/ErrorEvent.h>
 #include <LibWeb/HTML/ErrorInformation.h>
 #include <LibWeb/HTML/History.h>
+#include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/NavigateEvent.h>
 #include <LibWeb/HTML/Navigation.h>
 #include <LibWeb/HTML/NavigationCurrentEntryChangeEvent.h>
@@ -1105,7 +1106,7 @@ bool Navigation::inner_navigate_event_firing_algorithm(
 
     // 7. Let navigable be navigation's relevant global object's navigable.
     auto& relevant_global_object = as<HTML::Window>(Web::HTML::relevant_global_object(*this));
-    auto navigable = relevant_global_object.navigable();
+    auto navigable = GC::Ref { as<LocalNavigable>(*relevant_global_object.navigable()) };
 
     // 8. Let document be navigation's relevant global object's associated Document.
     auto& document = relevant_global_object.associated_document();

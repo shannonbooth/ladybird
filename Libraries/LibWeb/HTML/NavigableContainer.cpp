@@ -53,7 +53,7 @@ void NavigableContainer::visit_edges(Cell::Visitor& visitor)
     visitor.visit(m_content_navigable);
 }
 
-GC::Ptr<NavigableContainer> NavigableContainer::navigable_container_with_content_navigable(GC::Ref<LocalNavigable> navigable)
+GC::Ptr<NavigableContainer> NavigableContainer::navigable_container_with_content_navigable(GC::Ref<Navigable> navigable)
 {
     for (auto* navigable_container : all_instances()) {
         if (navigable_container->content_navigable() == navigable)
@@ -149,7 +149,7 @@ DOM::Document const* NavigableContainer::content_document() const
         return nullptr;
 
     // 2. Let document be container's content navigable's active document.
-    auto document = m_content_navigable->active_document();
+    auto document = as<LocalNavigable>(*m_content_navigable).active_document();
 
     // AD-HOC: The active document can be null during navigation, after the old document
     //         has been destroyed but before the new document has been set.
@@ -169,7 +169,7 @@ DOM::Document const* NavigableContainer::content_document_without_origin_check()
     if (!m_content_navigable)
         return nullptr;
 
-    return m_content_navigable->active_document();
+    return as<LocalNavigable>(*m_content_navigable).active_document();
 }
 
 // https://html.spec.whatwg.org/multipage/embedded-content-other.html#dom-media-getsvgdocument
@@ -202,6 +202,7 @@ Optional<URL::URL> NavigableContainer::shared_attribute_processing_steps_for_ifr
     //         src attribute any further.
     if (!m_content_navigable)
         return {};
+    auto& content_navigable = as<LocalNavigable>(*m_content_navigable);
 
     // 1. Let url be the URL record about:blank.
     auto url = URL::about_blank();
@@ -231,14 +232,14 @@ Optional<URL::URL> NavigableContainer::shared_attribute_processing_steps_for_ifr
     //         callback checks ongoing_navigation != navigation_id. Non-blank src navigations must still be processed
     //         here, and will be queued by LocalNavigable::navigate() until the child navigable is ready for navigation.
     if (url_matches_about_blank(url) && initial_insertion == InitialInsertion::Yes
-        && (m_content_navigable->has_pending_navigations()
-            || !m_content_navigable->ongoing_navigation().has<Empty>())) {
+        && (content_navigable.has_pending_navigations()
+            || !content_navigable.ongoing_navigation().has<Empty>())) {
         return {};
     }
 
     // 4. If url matches about:blank and initialInsertion is true, then perform the URL and history update steps given element's content navigable's active document and url.
     if (url_matches_about_blank(url) && initial_insertion == InitialInsertion::Yes) {
-        auto& document = *m_content_navigable->active_document();
+        auto& document = *content_navigable.active_document();
         perform_url_and_history_update_steps(document, url);
     }
 
@@ -249,6 +250,8 @@ Optional<URL::URL> NavigableContainer::shared_attribute_processing_steps_for_ifr
 // https://html.spec.whatwg.org/multipage/iframe-embed-object.html#navigate-an-iframe-or-frame
 void NavigableContainer::navigate_an_iframe_or_frame(URL::URL url, ReferrerPolicy::ReferrerPolicy referrer_policy, Optional<String> srcdoc_string, InitialInsertion initial_insertion)
 {
+    auto& content_navigable = as<LocalNavigable>(*m_content_navigable);
+
     // 1. Let historyHandling be "auto".
     auto history_handling = Bindings::NavigationHistoryBehavior::Auto;
 
@@ -256,7 +259,7 @@ void NavigableContainer::navigate_an_iframe_or_frame(URL::URL url, ReferrerPolic
     // AD-HOC: Only apply this check during initial insertion. For subsequent attribute-driven navigations,
     //         the previous document may have parsed and run scripts but not yet fired its load event;
     //         forcing "replace" in that case would incorrectly discard the history entry.
-    if (initial_insertion == InitialInsertion::Yes && m_content_navigable->active_document() && !m_content_navigable->active_document()->is_completely_loaded()) {
+    if (initial_insertion == InitialInsertion::Yes && content_navigable.active_document() && !content_navigable.active_document()->is_completely_loaded()) {
         history_handling = Bindings::NavigationHistoryBehavior::Replace;
     }
 
@@ -277,7 +280,7 @@ void NavigableContainer::navigate_an_iframe_or_frame(URL::URL url, ReferrerPolic
     if (srcdoc_string.has_value())
         document_resource = srcdoc_string.value();
 
-    MUST(m_content_navigable->navigate({
+    MUST(content_navigable.navigate({
         .url = move(url),
         .source_document = document(),
         .document_resource = document_resource,
@@ -291,11 +294,12 @@ void NavigableContainer::navigate_an_iframe_or_frame(URL::URL url, ReferrerPolic
 void NavigableContainer::destroy_the_child_navigable()
 {
     // 1. Let navigable be container's content navigable.
-    auto navigable = content_navigable();
+    auto content_navigable = this->content_navigable();
 
     // 2. If navigable is null, then return.
-    if (!navigable)
+    if (!content_navigable)
         return;
+    GC::Ref<LocalNavigable> navigable = as<LocalNavigable>(*content_navigable);
 
     // Not in the spec:
     // Setting container's content navigable makes document *not* be "fully active".
@@ -377,17 +381,18 @@ bool NavigableContainer::currently_delays_the_load_event() const
     // and any of the following are true:
     if (!m_content_navigable)
         return false;
+    auto& content_navigable = as<LocalNavigable>(*m_content_navigable);
 
     // - element's content navigable's active document is not ready for post-load tasks;
-    if (!m_content_navigable->active_document()->ready_for_post_load_tasks())
+    if (!content_navigable.active_document()->ready_for_post_load_tasks())
         return true;
 
     // - element's content navigable's is delaying load events is true; or
-    if (m_content_navigable->is_delaying_load_events())
+    if (content_navigable.is_delaying_load_events())
         return true;
 
     // - anything is delaying the load event of element's content navigable's active document.
-    if (m_content_navigable->active_document()->anything_is_delaying_the_load_event())
+    if (content_navigable.active_document()->anything_is_delaying_the_load_event())
         return true;
 
     return false;
@@ -397,7 +402,7 @@ bool NavigableContainer::content_navigable_has_session_history_entry_and_ready_f
 {
     if (!content_navigable())
         return false;
-    return m_content_navigable->has_session_history_entry_and_ready_for_navigation();
+    return as<LocalNavigable>(*m_content_navigable).has_session_history_entry_and_ready_for_navigation();
 }
 
 void NavigableContainer::set_potentially_delays_the_load_event(bool value)
@@ -411,7 +416,7 @@ void NavigableContainer::set_content_navigable_has_session_history_entry_and_rea
 {
     if (!content_navigable())
         return;
-    content_navigable()->set_has_session_history_entry_and_ready_for_navigation();
+    as<LocalNavigable>(*content_navigable()).set_has_session_history_entry_and_ready_for_navigation();
     document().schedule_html_parser_end_check();
 }
 

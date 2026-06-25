@@ -52,6 +52,7 @@
 #include <LibWeb/HTML/HTMLFormElement.h>
 #include <LibWeb/HTML/HTMLImageElement.h>
 #include <LibWeb/HTML/HTMLObjectElement.h>
+#include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/Location.h>
 #include <LibWeb/HTML/MessageEvent.h>
 #include <LibWeb/HTML/MessagePort.h>
@@ -604,9 +605,10 @@ void Window::consume_history_action_user_activation()
     // 1. If W's navigable is null, then return.
     if (navigable == nullptr)
         return;
+    auto local_navigable = GC::Ref { as<LocalNavigable>(*navigable) };
 
     // 2. Let top be W's navigable's top-level traversable.
-    auto top = navigable->top_level_traversable();
+    auto top = local_navigable->top_level_traversable();
 
     // 3. Let navigables be the inclusive descendant navigables of top's active document.
     auto navigables = top->active_document()->inclusive_descendant_navigables();
@@ -629,9 +631,10 @@ void Window::consume_user_activation()
     // 1. If W's navigable is null, then return.
     if (navigable == nullptr)
         return;
+    auto local_navigable = GC::Ref { as<LocalNavigable>(*navigable) };
 
     // 2. Let top be W's navigable's top-level traversable.
-    auto top = navigable->top_level_traversable();
+    auto top = local_navigable->top_level_traversable();
 
     // 3. Let navigables be the inclusive descendant navigables of top's active document.
     auto navigables = top->active_document()->inclusive_descendant_navigables();
@@ -725,7 +728,7 @@ BrowsingContext* Window::browsing_context()
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#window-navigable
-GC::Ptr<LocalNavigable> Window::navigable() const
+GC::Ptr<Navigable> Window::navigable() const
 {
     // A Window's navigable is the navigable whose active document is the Window's associated Document's, or null if there is no such navigable.
     return m_associated_document->navigable();
@@ -860,11 +863,13 @@ String Window::name() const
 void Window::set_name(String const& name)
 {
     // 1. If this's navigable is null, then return.
-    if (!navigable())
+    auto navigable = this->navigable();
+    if (!navigable)
         return;
+    auto local_navigable = GC::Ref { as<LocalNavigable>(*navigable) };
 
     // 2. Set this's navigable's active session history entry's document state's navigable target name to the given value.
-    navigable()->active_session_history_entry()->document_state()->set_navigable_target_name(name);
+    local_navigable->active_session_history_entry()->document_state()->set_navigable_target_name(name);
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-window-status
@@ -878,10 +883,13 @@ String Window::status() const
 void Window::close()
 {
     // 1. Let thisTraversable be this's navigable.
-    auto traversable = navigable();
+    auto navigable = this->navigable();
 
     // 2. If thisTraversable is not a top-level traversable, then return.
-    if (!traversable || !traversable->is_top_level_traversable())
+    if (!navigable)
+        return;
+    auto traversable = GC::Ref { as<LocalNavigable>(*navigable) };
+    if (!traversable->is_top_level_traversable())
         return;
 
     // 3. If thisTraversable's is closing is true, then return.
@@ -905,7 +913,7 @@ void Window::close()
         && incumbent_global_object.browsing_context()->is_familiar_with(*browsing_context)
 
         // the incumbent global object's navigable is allowed by sandboxing to navigate thisTraversable, given sourceSnapshotParams,
-        && incumbent_global_object.navigable()->allowed_by_sandboxing_to_navigate(*traversable, source_snapshot_params))
+        && as<LocalNavigable>(*incumbent_global_object.navigable()).allowed_by_sandboxing_to_navigate(*traversable, source_snapshot_params))
     // then:
     {
         // 1. Set thisTraversable's is closing to true.
@@ -927,7 +935,10 @@ bool Window::closed() const
         return true;
 
     // FIXME: The spec seems a bit out of date. The `is closing` flag is on the navigable, not the browsing context.
-    if (auto navigable = this->navigable(); !navigable || navigable->is_closing())
+    auto navigable = this->navigable();
+    if (!navigable)
+        return true;
+    if (as<LocalNavigable>(*navigable).is_closing())
         return true;
 
     return false;
@@ -965,9 +976,10 @@ void Window::stop()
     auto navigable = this->navigable();
     if (!navigable)
         return;
+    auto local_navigable = GC::Ref { as<LocalNavigable>(*navigable) };
 
     // 2. Stop loading this's navigable.
-    navigable->stop_loading();
+    local_navigable->stop_loading();
 }
 
 // https://html.spec.whatwg.org/multipage/interaction.html#dom-window-focus
@@ -979,6 +991,7 @@ void Window::focus()
     // 2. If current is null, then return.
     if (!current)
         return;
+    auto local_current = GC::Ref { as<LocalNavigable>(*current) };
 
     // 3. If the allow focus steps given current's active document return false, then return.
     if (!document()->allow_focus())
@@ -987,7 +1000,7 @@ void Window::focus()
     // 4. Run the focusing steps with current.
     // FIXME: We should pass in the browsing context itself instead of the active document, however the focusing steps don't currently accept browsing contexts.
     //        Passing in a browsing context always makes it resolve to its active document for focus, so this is fine for now.
-    run_focusing_steps(current->active_document());
+    run_focusing_steps(local_current->active_document());
 
     // FIXME: 5. If current is a top-level traversable, user agents are encouraged to trigger some sort of notification to
     //           indicate to the user that the page is attempting to gain focus.
@@ -1074,9 +1087,10 @@ GC::Ptr<WindowProxy const> Window::top() const
     auto navigable = this->navigable();
     if (!navigable)
         return {};
+    auto local_navigable = GC::Ref { as<LocalNavigable>(*navigable) };
 
     // 2. Return this's navigable's top-level traversable's active WindowProxy.
-    return navigable->top_level_traversable()->active_window_proxy();
+    return local_navigable->top_level_traversable()->active_window_proxy();
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-opener
@@ -1141,9 +1155,10 @@ GC::Ptr<DOM::Element const> Window::frame_element() const
     // 2. If current is null, then return null.
     if (!current)
         return {};
+    auto local_current = GC::Ref { as<LocalNavigable>(*current) };
 
     // 3. Let container be current's container.
-    auto container = current->container();
+    auto container = local_current->container();
 
     // 4. If container is null, then return null.
     if (!container)
@@ -1956,9 +1971,10 @@ JS::Value Window::named_item_value(FlyString const& name) const
         // 1. Let container be the first navigable container in window's associated Document's descendants whose content navigable is in objects.
         GC::Ptr<NavigableContainer> container = nullptr;
         mutable_this.associated_document().for_each_in_subtree_of_type<HTML::NavigableContainer>([&](HTML::NavigableContainer& navigable_container) {
-            if (!navigable_container.content_navigable())
+            auto content_navigable = navigable_container.content_navigable();
+            if (!content_navigable)
                 return TraversalDecision::Continue;
-            if (objects.navigables.contains_slow(GC::Ref { *navigable_container.content_navigable() })) {
+            if (objects.navigables.contains_slow(GC::Ref { as<LocalNavigable>(*content_navigable) })) {
                 container = navigable_container;
                 return TraversalDecision::Break;
             }

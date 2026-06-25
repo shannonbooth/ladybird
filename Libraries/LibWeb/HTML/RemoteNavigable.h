@@ -20,16 +20,21 @@ class WEB_API RemoteNavigable final : public Navigable {
     GC_DECLARE_ALLOCATOR(RemoteNavigable);
 
 public:
-    explicit RemoteNavigable(GC::Ptr<Navigable> parent = nullptr);
+    explicit RemoteNavigable(String id, GC::Ptr<Navigable> parent = nullptr, String target_name = {});
 
-    virtual GC::Ptr<Navigable> parent_navigable() const override { return m_parent; }
+    virtual String const& id() const override { return m_id; }
+    virtual String target_name() const override { return m_target_name; }
+    virtual GC::Ptr<Navigable> parent() const override { return m_parent; }
     void set_parent(GC::Ptr<Navigable> parent) { m_parent = parent; }
+    void set_target_name(String target_name) { m_target_name = move(target_name); }
 
     virtual GC::Ptr<WindowProxy> active_window_proxy() override { return nullptr; }
 
 private:
     virtual void visit_edges(Visitor&) override;
 
+    String m_id;
+    String m_target_name;
     GC::Ptr<Navigable> m_parent;
 };
 

@@ -13,6 +13,7 @@
 #include <LibWeb/Geolocation/Geolocation.h>
 #include <LibWeb/Geolocation/GeolocationPosition.h>
 #include <LibWeb/HTML/EventLoop/Task.h>
+#include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/Scripting/Environments.h>
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
 #include <LibWeb/HTML/TraversableNavigable.h>
@@ -276,7 +277,7 @@ EmulatedPositionData Geolocation::get_emulated_position_data() const
         return Empty {};
 
     // 3. Let traversable be navigable’s top-level traversable.
-    auto traversable = navigable->top_level_traversable();
+    auto traversable = as<HTML::LocalNavigable>(*navigable).top_level_traversable();
 
     // 4. If traversable is null, return null.
     if (!traversable)

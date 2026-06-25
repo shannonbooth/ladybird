@@ -376,8 +376,8 @@ void populate_request_from_client(JS::Realm const& realm, Infrastructure::Reques
             // 2. If global is a Window object and global’s navigable is not null, then set request’s traversable for
             //    user prompts to global’s navigable’s traversable navigable.
             if (auto const* window = as_if<HTML::Window>(global)) {
-                if (window->navigable())
-                    request.set_traversable_for_user_prompts(window->navigable()->traversable_navigable());
+                if (auto navigable = window->navigable())
+                    request.set_traversable_for_user_prompts(as<HTML::LocalNavigable>(*navigable).traversable_navigable());
             }
         }
     }
