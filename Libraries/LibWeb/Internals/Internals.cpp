@@ -791,7 +791,7 @@ void Internals::perform_per_test_cleanup()
     m_gamepads.clear();
 
     // Clear any input state
-    page().top_level_traversable()->event_handler().clear_per_test_input_state({});
+    page().local_root_traversable()->event_handler().clear_per_test_input_state({});
 }
 
 void Internals::set_highlighted_node(GC::Ptr<DOM::Node> node)

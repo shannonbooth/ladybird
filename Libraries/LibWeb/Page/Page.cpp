@@ -81,7 +81,7 @@ Compositor::CompositorHost const& Page::compositor_host() const
 void Page::visit_edges(JS::Cell::Visitor& visitor)
 {
     Base::visit_edges(visitor);
-    visitor.visit(m_top_level_traversable);
+    visitor.visit(m_local_root_traversable);
     visitor.visit(m_client);
     visitor.visit(m_window_rect_observer);
     visitor.visit(m_on_pending_dialog_closed);
@@ -102,7 +102,7 @@ HTML::LocalNavigable& Page::focused_navigable()
 {
     if (m_focused_navigable)
         return *m_focused_navigable;
-    return top_level_traversable();
+    return local_root_traversable();
 }
 
 void Page::set_focused_navigable(Badge<EventHandler>, HTML::LocalNavigable& navigable)
@@ -118,15 +118,15 @@ void Page::navigable_document_destroyed(Badge<DOM::Document>, HTML::LocalNavigab
 
 void Page::load(URL::URL const& url, Bindings::NavigationHistoryBehavior history_handling)
 {
-    (void)top_level_traversable()->navigate({ .url = url, .source_document = *top_level_traversable()->active_document(), .history_handling = history_handling, .user_involvement = HTML::UserNavigationInvolvement::BrowserUI });
+    (void)local_root_traversable()->navigate({ .url = url, .source_document = *local_root_traversable()->active_document(), .history_handling = history_handling, .user_involvement = HTML::UserNavigationInvolvement::BrowserUI });
 }
 
 void Page::load(URL::URL const& url, Variant<Empty, String, HTML::POSTResource> document_resource,
     Bindings::NavigationHistoryBehavior history_handling)
 {
-    (void)top_level_traversable()->navigate({
+    (void)local_root_traversable()->navigate({
         .url = url,
-        .source_document = *top_level_traversable()->active_document(),
+        .source_document = *local_root_traversable()->active_document(),
         .document_resource = move(document_resource),
         .history_handling = history_handling,
         .user_involvement = HTML::UserNavigationInvolvement::BrowserUI,
@@ -138,8 +138,8 @@ void Page::load_html(StringView html)
     // FIXME: #23909 Figure out why GC threshold does not stay low when repeatedly loading html from the WebView
     heap().collect_garbage();
 
-    (void)top_level_traversable()->navigate({ .url = URL::about_srcdoc(),
-        .source_document = *top_level_traversable()->active_document(),
+    (void)local_root_traversable()->navigate({ .url = URL::about_srcdoc(),
+        .source_document = *local_root_traversable()->active_document(),
         .document_resource = String::from_utf8(html).release_value_but_fixme_should_propagate_errors(),
         .user_involvement = HTML::UserNavigationInvolvement::BrowserUI });
 }
@@ -149,7 +149,7 @@ void Page::load_html(StringView html, URL::URL const& url)
     // FIXME: #23909 Figure out why GC threshold does not stay low when repeatedly loading html from the WebView
     heap().collect_garbage();
 
-    auto document = top_level_traversable()->active_document();
+    auto document = local_root_traversable()->active_document();
     auto& realm = document->realm();
     auto html_string = String::from_utf8(html).release_value_but_fixme_should_propagate_errors();
 
@@ -166,12 +166,12 @@ void Page::load_html(StringView html, URL::URL const& url)
     if (url == URL::about_srcdoc())
         params.document_resource = move(html_string);
 
-    (void)top_level_traversable()->navigate(move(params));
+    (void)local_root_traversable()->navigate(move(params));
 }
 
 void Page::reload()
 {
-    top_level_traversable()->reload();
+    local_root_traversable()->reload();
 }
 
 void Page::traverse_the_history_by_delta(int delta)
@@ -184,7 +184,7 @@ void Page::traverse_the_history_by_delta(int delta)
 
 void Page::traverse_the_history_by_delta_from_ui_process(int delta)
 {
-    top_level_traversable()->traverse_the_history_by_delta(delta);
+    local_root_traversable()->traverse_the_history_by_delta(delta);
 }
 
 Gfx::Palette Page::palette() const
@@ -329,27 +329,27 @@ ChromeMetrics Page::chrome_metrics() const
 
 EventResult Page::handle_mouseup(DevicePixelPoint position, DevicePixelPoint screen_position, unsigned button, unsigned buttons, unsigned modifiers)
 {
-    return top_level_traversable()->event_handler().handle_mouseup(device_to_css_point(position), device_to_css_point(screen_position), button, buttons, modifiers);
+    return local_root_traversable()->event_handler().handle_mouseup(device_to_css_point(position), device_to_css_point(screen_position), button, buttons, modifiers);
 }
 
 EventResult Page::handle_mousedown(DevicePixelPoint position, DevicePixelPoint screen_position, unsigned button, unsigned buttons, unsigned modifiers, int click_count)
 {
-    return top_level_traversable()->event_handler().handle_mousedown(device_to_css_point(position), device_to_css_point(screen_position), button, buttons, modifiers, click_count);
+    return local_root_traversable()->event_handler().handle_mousedown(device_to_css_point(position), device_to_css_point(screen_position), button, buttons, modifiers, click_count);
 }
 
 EventResult Page::handle_mousemove(DevicePixelPoint position, DevicePixelPoint screen_position, unsigned buttons, unsigned modifiers)
 {
-    return top_level_traversable()->event_handler().handle_mousemove(device_to_css_point(position), device_to_css_point(screen_position), buttons, modifiers);
+    return local_root_traversable()->event_handler().handle_mousemove(device_to_css_point(position), device_to_css_point(screen_position), buttons, modifiers);
 }
 
 EventResult Page::handle_mouseleave()
 {
-    return top_level_traversable()->event_handler().handle_mouseleave();
+    return local_root_traversable()->event_handler().handle_mouseleave();
 }
 
 UniqueNodeID Page::node_id_at_position(DevicePixelPoint position)
 {
-    auto node = top_level_traversable()->event_handler().target_node_for_mouse_position(device_to_css_point(position));
+    auto node = local_root_traversable()->event_handler().target_node_for_mouse_position(device_to_css_point(position));
     if (!node)
         return 0;
 
@@ -358,17 +358,17 @@ UniqueNodeID Page::node_id_at_position(DevicePixelPoint position)
 
 EventResult Page::handle_mousewheel(DevicePixelPoint position, DevicePixelPoint screen_position, unsigned button, unsigned buttons, unsigned modifiers, double wheel_delta_x, double wheel_delta_y, bool async_scroll_performed_default_action, Optional<AsyncScrollOperation>* async_scroll_operation)
 {
-    return top_level_traversable()->event_handler().handle_mousewheel(device_to_css_point(position), device_to_css_point(screen_position), button, buttons, modifiers, wheel_delta_x, wheel_delta_y, async_scroll_performed_default_action, async_scroll_operation);
+    return local_root_traversable()->event_handler().handle_mousewheel(device_to_css_point(position), device_to_css_point(screen_position), button, buttons, modifiers, wheel_delta_x, wheel_delta_y, async_scroll_performed_default_action, async_scroll_operation);
 }
 
 EventResult Page::handle_drag_and_drop_event(DragEvent::Type type, DevicePixelPoint position, DevicePixelPoint screen_position, unsigned button, unsigned buttons, unsigned modifiers, Vector<HTML::SelectedFile> files)
 {
-    return top_level_traversable()->event_handler().handle_drag_and_drop_event(type, device_to_css_point(position), device_to_css_point(screen_position), button, buttons, modifiers, move(files));
+    return local_root_traversable()->event_handler().handle_drag_and_drop_event(type, device_to_css_point(position), device_to_css_point(screen_position), button, buttons, modifiers, move(files));
 }
 
 EventResult Page::handle_pinch_event(DevicePixelPoint position, unsigned modifiers, double scale)
 {
-    return top_level_traversable()->event_handler().handle_pinch_event(device_to_css_point(position), modifiers, scale);
+    return local_root_traversable()->event_handler().handle_pinch_event(device_to_css_point(position), modifiers, scale);
 }
 
 EventResult Page::handle_keydown(UIEvents::KeyCode key, unsigned modifiers, u32 code_point, bool repeat, bool should_insert_text)
@@ -383,26 +383,26 @@ EventResult Page::handle_keyup(UIEvents::KeyCode key, unsigned modifiers, u32 co
 
 void Page::handle_sdl_input_events()
 {
-    top_level_traversable()->event_handler().handle_sdl_input_events();
+    local_root_traversable()->event_handler().handle_sdl_input_events();
 }
 
 void Page::invalidate_compositor_wheel_event_listener_state()
 {
     ++m_wheel_event_listener_state_generation;
 
-    if (!m_async_scrolling_enabled || !top_level_traversable_is_initialized() || !top_level_traversable()->has_compositor_context())
+    if (!m_async_scrolling_enabled || !local_root_traversable_is_initialized() || !local_root_traversable()->has_compositor_context())
         return;
 
-    top_level_traversable()->compositor_context().invalidate_wheel_event_listener_state(m_wheel_event_listener_state_generation);
+    local_root_traversable()->compositor_context().invalidate_wheel_event_listener_state(m_wheel_event_listener_state_generation);
 }
 
 void Page::update_needs_beforeunload_check()
 {
     auto needs_beforeunload_check = [&] {
-        if (!top_level_traversable_is_initialized())
+        if (!local_root_traversable_is_initialized())
             return true;
 
-        auto top_level_traversable = this->top_level_traversable();
+        auto top_level_traversable = this->local_root_traversable();
         auto active_document = top_level_traversable->active_document();
         if (!active_document)
             return true;
@@ -427,32 +427,47 @@ void Page::update_needs_beforeunload_check()
     client().page_did_change_needs_beforeunload_check(m_needs_beforeunload_check);
 }
 
+void Page::set_local_root_traversable(GC::Ref<HTML::TraversableNavigable> navigable)
+{
+    VERIFY(!m_local_root_traversable); // Replacement is not allowed!
+    VERIFY(&navigable->page() == this);
+    m_local_root_traversable = navigable;
+    update_needs_beforeunload_check();
+}
+
 void Page::set_top_level_traversable(GC::Ref<HTML::TraversableNavigable> navigable)
 {
-    VERIFY(!m_top_level_traversable); // Replacement is not allowed!
-    VERIFY(&navigable->page() == this);
-    m_top_level_traversable = navigable;
-    update_needs_beforeunload_check();
+    set_local_root_traversable(navigable);
+}
+
+bool Page::local_root_traversable_is_initialized() const
+{
+    return m_local_root_traversable;
 }
 
 bool Page::top_level_traversable_is_initialized() const
 {
-    return m_top_level_traversable;
+    return local_root_traversable_is_initialized();
 }
 
 HTML::BrowsingContext& Page::top_level_browsing_context()
 {
-    return *m_top_level_traversable->active_browsing_context();
+    return *m_local_root_traversable->active_browsing_context();
 }
 
 HTML::BrowsingContext const& Page::top_level_browsing_context() const
 {
-    return *m_top_level_traversable->active_browsing_context();
+    return *m_local_root_traversable->active_browsing_context();
+}
+
+GC::Ref<HTML::TraversableNavigable> Page::local_root_traversable() const
+{
+    return *m_local_root_traversable;
 }
 
 GC::Ref<HTML::TraversableNavigable> Page::top_level_traversable() const
 {
-    return *m_top_level_traversable;
+    return local_root_traversable();
 }
 
 void Page::did_update_window_rect()
@@ -855,7 +870,7 @@ void Page::set_content_blocking_enabled(bool enabled)
 
 void Page::invalidate_user_style()
 {
-    if (!top_level_traversable_is_initialized() || !top_level_traversable()->active_document())
+    if (!local_root_traversable_is_initialized() || !local_root_traversable()->active_document())
         return;
 
     auto invalidate_document = [](DOM::Document& document) {
@@ -867,7 +882,7 @@ void Page::invalidate_user_style()
         document.invalidate_style(DOM::StyleInvalidationReason::StyleSheetReplace);
     };
 
-    auto& active_document = *top_level_traversable()->active_document();
+    auto& active_document = *local_root_traversable()->active_document();
     invalidate_document(active_document);
 
     for (auto& navigable : active_document.descendant_navigables()) {
@@ -880,11 +895,11 @@ void Page::invalidate_user_style()
 
 Vector<GC::Root<DOM::Document>> Page::documents_in_active_window() const
 {
-    if (!top_level_traversable_is_initialized())
+    if (!local_root_traversable_is_initialized())
         return {};
 
     auto documents = HTML::main_thread_event_loop().documents_in_this_event_loop_matching([&](auto& document) {
-        return document.window() == top_level_traversable()->active_window();
+        return document.window() == local_root_traversable()->active_window();
     });
 
     return documents;
@@ -903,7 +918,7 @@ void Page::clear_selection()
 
 Page::FindInPageResult Page::perform_find_in_page_query(FindInPageQuery const& query, Optional<SearchDirection> direction)
 {
-    VERIFY(top_level_traversable_is_initialized());
+    VERIFY(local_root_traversable_is_initialized());
 
     Vector<GC::Root<DOM::Range>> all_matches;
 
@@ -932,7 +947,7 @@ Page::FindInPageResult Page::perform_find_in_page_query(FindInPageQuery const& q
     auto should_update_match_index = false;
     for (auto const& document : documents_in_active_window()) {
         auto matches = document->find_matching_text(query.string, query.case_sensitivity);
-        if (document == top_level_traversable()->active_document()) {
+        if (document == local_root_traversable()->active_document()) {
             if (auto range = active_range(*document)) {
                 auto new_match_index = find_current_match_index(*range, matches);
                 should_update_match_index = true;
@@ -945,9 +960,9 @@ Page::FindInPageResult Page::perform_find_in_page_query(FindInPageQuery const& q
         all_matches.extend(move(matches));
     }
 
-    if (auto active_document = top_level_traversable()->active_document()) {
+    if (auto active_document = local_root_traversable()->active_document()) {
         if (m_last_find_in_page_url.serialize(URL::ExcludeFragment::Yes) != active_document->url().serialize(URL::ExcludeFragment::Yes)) {
-            m_last_find_in_page_url = top_level_traversable()->active_document()->url();
+            m_last_find_in_page_url = local_root_traversable()->active_document()->url();
             m_find_in_page_match_index = 0;
         }
     }
@@ -982,7 +997,7 @@ Page::FindInPageResult Page::perform_find_in_page_query(FindInPageQuery const& q
 
 Page::FindInPageResult Page::find_in_page(FindInPageQuery const& query)
 {
-    if (!top_level_traversable_is_initialized())
+    if (!local_root_traversable_is_initialized())
         return {};
 
     if (query.string.is_empty()) {
@@ -994,14 +1009,14 @@ Page::FindInPageResult Page::find_in_page(FindInPageQuery const& query)
     auto result = perform_find_in_page_query(query);
 
     m_last_find_in_page_query = query;
-    m_last_find_in_page_url = top_level_traversable()->active_document()->url();
+    m_last_find_in_page_url = local_root_traversable()->active_document()->url();
 
     return result;
 }
 
 Page::FindInPageResult Page::find_in_page_next_match()
 {
-    if (!(m_last_find_in_page_query.has_value() && top_level_traversable_is_initialized()))
+    if (!(m_last_find_in_page_query.has_value() && local_root_traversable_is_initialized()))
         return {};
 
     auto result = perform_find_in_page_query(*m_last_find_in_page_query, SearchDirection::Forward);
@@ -1010,7 +1025,7 @@ Page::FindInPageResult Page::find_in_page_next_match()
 
 Page::FindInPageResult Page::find_in_page_previous_match()
 {
-    if (!(m_last_find_in_page_query.has_value() && top_level_traversable_is_initialized()))
+    if (!(m_last_find_in_page_query.has_value() && local_root_traversable_is_initialized()))
         return {};
 
     auto result = perform_find_in_page_query(*m_last_find_in_page_query, SearchDirection::Backward);

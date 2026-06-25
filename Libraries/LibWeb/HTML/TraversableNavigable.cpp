@@ -149,7 +149,7 @@ GC::Ref<TraversableNavigable> TraversableNavigable::create_a_fresh_top_level_tra
 {
     // 1. Let traversable be the result of creating a new top-level traversable given null and the empty string.
     auto traversable = create_a_new_top_level_traversable(page, nullptr, {});
-    page->set_top_level_traversable(traversable);
+    page->set_local_root_traversable(traversable);
 
     // AD-HOC: Set the default top-level emulated position data for the traversable, which points to Market St. SF.
     // FIXME: We should not emulate by default, but ask the user what to do. E.g. disable Geolocation, set an emulated

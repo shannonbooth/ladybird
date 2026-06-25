@@ -258,7 +258,7 @@ ErrorOr<NonnullRefPtr<WebDriverConnection>> WebDriverConnection::connect(Web::Pa
     auto transport = TRY(IPC::Transport::from_socket(move(socket)));
 #endif
     auto connection = TRY(adopt_nonnull_ref_or_enomem(new (nothrow) WebDriverConnection(move(transport), page_client)));
-    connection->async_did_set_window_handle(page_client.page().top_level_traversable()->window_handle());
+    connection->async_did_set_window_handle(page_client.page().local_root_traversable()->window_handle());
     return connection;
 }
 
@@ -468,7 +468,7 @@ Messages::WebDriverClient::BackResponse WebDriverConnection::back()
             metadata->will_replace_web_content_process = traversal_result.will_replace_web_content_process;
             metadata->wait_for_navigation_completion = true;
             if (metadata->will_replace_web_content_process)
-                async_did_start_window_replacement(current_top_level_browsing_context()->page().top_level_traversable()->window_handle());
+                async_did_start_window_replacement(current_top_level_browsing_context()->page().local_root_traversable()->window_handle());
             if (metadata->sync_response_returned)
                 async_driver_execution_complete(JsonValue {});
             else
@@ -500,7 +500,7 @@ Messages::WebDriverClient::ForwardResponse WebDriverConnection::forward()
             metadata->will_replace_web_content_process = traversal_result.will_replace_web_content_process;
             metadata->wait_for_navigation_completion = true;
             if (metadata->will_replace_web_content_process)
-                async_did_start_window_replacement(current_top_level_browsing_context()->page().top_level_traversable()->window_handle());
+                async_did_start_window_replacement(current_top_level_browsing_context()->page().local_root_traversable()->window_handle());
             if (metadata->sync_response_returned)
                 async_driver_execution_complete(JsonValue {});
             else
@@ -597,7 +597,7 @@ Messages::WebDriverClient::TraverseHistoryFromUiResponse WebDriverConnection::tr
         }
 
         if (traversal_result.will_replace_web_content_process)
-            async_did_start_window_replacement(current_top_level_browsing_context()->page().top_level_traversable()->window_handle());
+            async_did_start_window_replacement(current_top_level_browsing_context()->page().local_root_traversable()->window_handle());
 
         JsonObject result;
         result.set("willReplaceWebContentProcess"sv, traversal_result.will_replace_web_content_process);

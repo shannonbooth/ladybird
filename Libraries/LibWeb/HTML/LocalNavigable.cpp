@@ -355,7 +355,7 @@ bool LocalNavigable::is_ancestor_of(GC::Ref<LocalNavigable> other) const
 
 bool LocalNavigable::is_page_top_level_traversable() const
 {
-    return this == page().top_level_traversable().ptr();
+    return this == page().local_root_traversable().ptr();
 }
 
 LocalNavigable::LocalNavigable(
@@ -943,7 +943,7 @@ LocalNavigable::ChosenNavigable LocalNavigable::choose_a_navigable(StringView na
                 auto hints = WebViewHints::from_tokenised_features(window_features.value_or({}), traversable_navigable()->page());
                 auto [page, window_handle] = traversable_navigable()->page().client().page_did_request_new_web_view(activate_tab, hints, no_opener);
                 auto traversable = TraversableNavigable::create_a_new_top_level_traversable(*page, opener, target_name);
-                page->set_top_level_traversable(traversable);
+                page->set_local_root_traversable(traversable);
                 traversable->set_window_handle(window_handle);
                 return traversable;
             };
