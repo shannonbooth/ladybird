@@ -80,6 +80,7 @@ public:
     Vector<GC::Root<LocalNavigable>> child_navigables() const;
 
     virtual bool is_traversable() const override { return false; }
+    bool is_page_top_level_traversable() const;
 
     bool is_ancestor_of(GC::Ref<LocalNavigable>) const;
 
@@ -297,6 +298,9 @@ protected:
 
     virtual String local_target_name() const override;
     virtual GC::Ptr<WindowProxy> local_active_window_proxy() override;
+    virtual Optional<URL::Origin> local_active_document_origin() const override;
+    virtual Optional<URL::URL> local_active_document_top_level_creation_url() const override;
+    virtual Optional<URL::Origin> local_active_document_top_level_origin() const override;
 
     // https://html.spec.whatwg.org/multipage/browsing-the-web.html#ongoing-navigation
     Variant<Empty, Traversal, String> m_ongoing_navigation;

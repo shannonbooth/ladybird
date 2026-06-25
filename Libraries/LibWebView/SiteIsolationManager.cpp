@@ -6,6 +6,7 @@
 
 #include <LibWebView/SiteIsolationManager.h>
 
+#include <AK/Debug.h>
 #include <AK/QuickSort.h>
 #include <AK/StringBuilder.h>
 #include <LibWeb/Page/ViewportIsFullscreen.h>
@@ -33,9 +34,14 @@ void SiteIsolationManager::did_create_child_frame(u64 page_id, String parent_fra
 
 Web::NavigationProcessDecision SiteIsolationManager::decide_navigation_process(WebContentClient& parent_client, u64 page_id, Optional<String> frame_id, URL::URL current_url, URL::URL target_url, Web::NavigationTarget target)
 {
+    dbgln("SI_TRACE decide_navigation_process page={} frame={} target={}", page_id, frame_id.value_or("<none>"_string), static_cast<int>(target));
     if (target == Web::NavigationTarget::IFrame && frame_id.has_value()) {
-        if (auto child_frame = this->child_frame(page_id, *frame_id); child_frame.has_value())
+        if (auto child_frame = this->child_frame(page_id, *frame_id); child_frame.has_value()) {
+            dbgln("SI_TRACE decide found child frame={}", *frame_id);
             current_url = embedding_page_url_for_child_frame_navigation(parent_client, page_id, *child_frame, current_url);
+        } else {
+            dbgln("SI_TRACE decide missing child frame={}", *frame_id);
+        }
     }
 
     auto decision = WebView::is_url_suitable_for_same_process_navigation(current_url, target_url, target)
@@ -46,6 +52,7 @@ Web::NavigationProcessDecision SiteIsolationManager::decide_navigation_process(W
         auto target_owner = decision == Web::NavigationProcessDecision::Local
             ? ChildFrameOwner::Local
             : ChildFrameOwner::Remote;
+        dbgln("SI_TRACE decide record pending frame={} owner={}", *frame_id, static_cast<int>(target_owner));
         record_pending_child_frame_navigation(page_id, *frame_id, target_url, target_owner);
 
         if (target_owner == ChildFrameOwner::Local)
@@ -124,9 +131,12 @@ Optional<SiteIsolationManager::RemoteChildFrameInputTarget> SiteIsolationManager
 
 bool SiteIsolationManager::remote_child_frame_did_finish_loading(WebContentClient& remote_client, u64 remote_page_id, URL::URL const& url)
 {
+    dbgln("SI_TRACE remote child finish remote_page={} url={}", remote_page_id, url);
     auto parent_frame = parent_frame_for_remote_page(remote_client, remote_page_id);
-    if (!parent_frame.has_value())
+    if (!parent_frame.has_value()) {
+        dbgln("SI_TRACE remote child finish missing parent frame");
         return false;
+    }
 
     parent_frame->child_frame->last_committed_url = url;
     parent_frame->child_frame->pending_navigation.clear();
@@ -136,9 +146,12 @@ bool SiteIsolationManager::remote_child_frame_did_finish_loading(WebContentClien
 
 bool SiteIsolationManager::remote_child_frame_did_commit_navigation(WebContentClient& remote_client, u64 remote_page_id, URL::URL const& url)
 {
+    dbgln("SI_TRACE remote child commit remote_page={} url={}", remote_page_id, url);
     auto parent_frame = parent_frame_for_remote_page(remote_client, remote_page_id);
-    if (!parent_frame.has_value())
+    if (!parent_frame.has_value()) {
+        dbgln("SI_TRACE remote child commit missing parent frame");
         return false;
+    }
 
     parent_frame->child_frame->last_committed_url = url;
     parent_frame->child_frame->pending_navigation.clear();
@@ -153,6 +166,25 @@ bool SiteIsolationManager::remote_child_frame_did_finish_handling_input_event(We
 
     parent_frame->parent_client->did_finish_handling_input_event(parent_frame->page_id, event_result);
     return true;
+}
+
+bool SiteIsolationManager::did_post_message_to_remote_navigable(WebContentClient& source_client, u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord message, Variant<String, URL::Origin> target_origin, URL::Origin source_origin)
+{
+    dbgln("SI_TRACE manager remote message page={} target={} source={}", page_id, target_navigable_id, source_navigable_id);
+    if (auto parent_frame = parent_frame_for_remote_page(source_client, page_id); parent_frame.has_value()) {
+        dbgln("SI_TRACE route message upward to parent page={}", parent_frame->page_id);
+        parent_frame->parent_client->async_dispatch_message_event_from_remote_navigable(parent_frame->page_id, move(target_navigable_id), move(source_navigable_id), move(message), move(target_origin), move(source_origin));
+        return true;
+    }
+
+    if (auto target_child_frame = child_frame(page_id, target_navigable_id); target_child_frame.has_value() && target_child_frame->is_remote()) {
+        dbgln("SI_TRACE route message downward to remote page={}", target_child_frame->remote_page_id);
+        target_child_frame->remote_client->async_dispatch_message_event_from_remote_navigable(target_child_frame->remote_page_id, move(target_navigable_id), move(source_navigable_id), move(message), move(target_origin), move(source_origin));
+        return true;
+    }
+
+    dbgln("SI_TRACE no route for remote message");
+    return false;
 }
 
 void SiteIsolationManager::remove_page(u64 page_id)
@@ -266,19 +298,30 @@ HashMap<pid_t, pid_t> SiteIsolationManager::remote_frame_process_embedders() con
 bool SiteIsolationManager::has_matching_pending_child_frame_navigation(u64 page_id, StringView frame_id, URL::URL const& url, ChildFrameOwner target_owner) const
 {
     auto child_frame = this->child_frame(page_id, frame_id);
-    if (!child_frame.has_value() || !child_frame->pending_navigation.has_value())
+    if (!child_frame.has_value()) {
+        dbgln("SI_TRACE pending check missing child frame={}", frame_id);
         return false;
+    }
+    if (!child_frame->pending_navigation.has_value()) {
+        dbgln("SI_TRACE pending check no pending frame={}", frame_id);
+        return false;
+    }
 
-    return child_frame->pending_navigation->target_owner == target_owner
+    auto matches = child_frame->pending_navigation->target_owner == target_owner
         && child_frame->pending_navigation->target_url == url;
+    dbgln("SI_TRACE pending check frame={} matches={} wanted_owner={} actual_owner={} url_matches={}", frame_id, matches, static_cast<int>(target_owner), static_cast<int>(child_frame->pending_navigation->target_owner), child_frame->pending_navigation->target_url == url);
+    return matches;
 }
 
 void SiteIsolationManager::record_pending_child_frame_navigation(u64 page_id, StringView frame_id, URL::URL const& url, ChildFrameOwner target_owner, Optional<u64> remote_page_id)
 {
     auto child_frame = this->child_frame(page_id, frame_id);
-    if (!child_frame.has_value())
+    if (!child_frame.has_value()) {
+        dbgln("SI_TRACE record pending missing child frame={}", frame_id);
         return;
+    }
 
+    dbgln("SI_TRACE record pending frame={} owner={} remote_page={}", frame_id, static_cast<int>(target_owner), remote_page_id.value_or(0));
     child_frame->pending_navigation = PendingChildFrameNavigation {
         .target_url = url,
         .target_owner = target_owner,

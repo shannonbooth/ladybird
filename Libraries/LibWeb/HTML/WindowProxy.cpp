@@ -5,24 +5,162 @@
  */
 
 #include <AK/Optional.h>
+#include <AK/Debug.h>
 #include <LibGC/RootVector.h>
 #include <LibJS/Runtime/Completion.h>
 #include <LibJS/Runtime/GlobalObject.h>
+#include <LibJS/Runtime/Iterator.h>
+#include <LibJS/Runtime/NativeFunction.h>
 #include <LibJS/Runtime/PropertyDescriptor.h>
 #include <LibJS/Runtime/PropertyKey.h>
+#include <LibJS/Runtime/ValueInlines.h>
+#include <LibWeb/Bindings/ExceptionOrUtils.h>
+#include <LibWeb/Bindings/Window.h>
 #include <LibWeb/DOM/Document.h>
 #include <LibWeb/DOM/EventTarget.h>
+#include <LibWeb/DOMURL/DOMURL.h>
 #include <LibWeb/HTML/CrossOrigin/AbstractOperations.h>
 #include <LibWeb/HTML/CrossOrigin/Reporting.h>
 #include <LibWeb/HTML/LocalNavigable.h>
+#include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/Scripting/Environments.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HTML/WindowProxy.h>
+#include <LibWeb/WebIDL/AbstractOperations.h>
 #include <LibWeb/WebIDL/DOMException.h>
 
 namespace Web::HTML {
 
 GC_DEFINE_ALLOCATOR(WindowProxy);
+
+static JS::ThrowCompletionOr<GC::RootVector<GC::Ref<JS::Object>>> convert_transfer_argument(JS::VM& vm, JS::Value value)
+{
+    GC::RootVector<GC::Ref<JS::Object>> transfer;
+    if (value.is_undefined())
+        return transfer;
+
+    if (!value.is_object())
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObject, value);
+
+    auto iterator_method = TRY(value.get_method(vm, vm.well_known_symbol_iterator()));
+    if (!iterator_method)
+        return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotIterable, value);
+
+    auto iterator = TRY(JS::get_iterator_from_method(vm, value, *iterator_method));
+    for (;;) {
+        auto next = TRY(JS::iterator_step_value(vm, iterator));
+        if (!next.has_value())
+            break;
+
+        auto next_value = next.release_value();
+        if (!next_value.is_object())
+            return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObject, next_value);
+
+        transfer.append(next_value.as_object());
+    }
+
+    return transfer;
+}
+
+static GC::Ref<JS::NativeFunction> create_remote_window_post_message_method(JS::Realm& realm, GC::Ref<Navigable> remote_navigable)
+{
+    return JS::NativeFunction::create(
+        realm, [remote_navigable](JS::VM& vm) -> JS::ThrowCompletionOr<JS::Value> {
+            auto message = vm.argument(0);
+            auto& source_window = as<Window>(current_global_object());
+            if (auto source_navigable = source_window.navigable())
+                dbgln("SI_TRACE remote postMessage target={} source={}", remote_navigable->id(), source_navigable->id());
+            else
+                dbgln("SI_TRACE remote postMessage target={} source=<null>", remote_navigable->id());
+
+            if (vm.argument_count() >= 3) {
+                auto target_origin = TRY(WebIDL::to_usv_string(vm, vm.argument(1)));
+                auto transfer = TRY(convert_transfer_argument(vm, vm.argument(2)));
+                TRY(Bindings::throw_dom_exception_if_needed(vm, [&] {
+                    return source_window.post_message_to_remote_navigable(remote_navigable, message, target_origin, transfer);
+                }));
+                return JS::js_undefined();
+            }
+
+            auto second_argument = vm.argument(1);
+            if (vm.argument_count() == 2 && !second_argument.is_undefined() && !second_argument.is_object()) {
+                auto target_origin = TRY(WebIDL::to_usv_string(vm, second_argument));
+                GC::RootVector<GC::Ref<JS::Object>> transfer;
+                TRY(Bindings::throw_dom_exception_if_needed(vm, [&] {
+                    return source_window.post_message_to_remote_navigable(remote_navigable, message, target_origin, transfer);
+                }));
+                return JS::js_undefined();
+            }
+
+            Bindings::WindowPostMessageOptions options {};
+            if (vm.argument_count() >= 2 && !second_argument.is_undefined())
+                options = TRY(Bindings::convert_to_idl_value_for_window_post_message_options(vm, second_argument));
+            TRY(Bindings::throw_dom_exception_if_needed(vm, [&] {
+                return source_window.post_message_to_remote_navigable(remote_navigable, message, options);
+            }));
+            return JS::js_undefined();
+        },
+        1, "postMessage"_utf16_fly_string);
+}
+
+static bool is_remote_window_proxy_property(StringView property)
+{
+    return property == "window"sv
+        || property == "self"sv
+        || property == "frames"sv
+        || property == "parent"sv
+        || property == "top"sv
+        || property == "length"sv
+        || property == "closed"sv
+        || property == "postMessage"sv;
+}
+
+static JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> remote_window_proxy_get_own_property(WindowProxy const& window_proxy, JS::PropertyKey const& property_key)
+{
+    auto remote_navigable = window_proxy.remote_navigable();
+    VERIFY(remote_navigable);
+
+    if (property_key.is_number())
+        return Optional<JS::PropertyDescriptor> {};
+
+    auto property = property_key.to_utf16_string().to_utf8_but_should_be_ported_to_utf16();
+    if (!is_remote_window_proxy_property(property))
+        return Optional<JS::PropertyDescriptor> {};
+
+    JS::Value value;
+    if (property == "postMessage"sv) {
+        value = JS::Value(create_remote_window_post_message_method(window_proxy.realm(), *remote_navigable).ptr());
+    } else if (property == "window"sv || property == "self"sv || property == "frames"sv) {
+        value = JS::Value(&const_cast<WindowProxy&>(window_proxy));
+    } else if (property == "parent"sv) {
+        dbgln("SI_TRACE remote WindowProxy parent get for {}", remote_navigable->id());
+        if (auto parent = remote_navigable->parent()) {
+            dbgln("SI_TRACE remote WindowProxy parent is {}", parent->id());
+            auto parent_window_proxy = parent->active_window_proxy();
+            value = parent_window_proxy ? JS::Value(parent_window_proxy.ptr()) : JS::js_null();
+        } else {
+            value = JS::Value(&const_cast<WindowProxy&>(window_proxy));
+        }
+    } else if (property == "top"sv) {
+        auto top_window_proxy = remote_navigable->top_level_traversable()->active_window_proxy();
+        value = top_window_proxy ? JS::Value(top_window_proxy.ptr()) : JS::js_null();
+    } else if (property == "length"sv) {
+        value = JS::Value(0);
+    } else if (property == "closed"sv) {
+        value = JS::Value(false);
+    } else {
+        VERIFY_NOT_REACHED();
+    }
+
+    return JS::PropertyDescriptor { .value = value, .writable = false, .enumerable = false, .configurable = true };
+}
+
+GC::Ref<WindowProxy> WindowProxy::create_remote(JS::Realm& realm, GC::Ref<Navigable> navigable)
+{
+    auto window_proxy = realm.create<WindowProxy>(realm);
+    window_proxy->m_remote_navigable = navigable;
+    return window_proxy;
+}
 
 // 7.4 The WindowProxy exotic object, https://html.spec.whatwg.org/multipage/window-object.html#the-windowproxy-exotic-object
 WindowProxy::WindowProxy(JS::Realm& realm)
@@ -33,6 +171,9 @@ WindowProxy::WindowProxy(JS::Realm& realm)
 // 7.4.1 [[GetPrototypeOf]] ( ), https://html.spec.whatwg.org/multipage/window-object.html#windowproxy-getprototypeof
 JS::ThrowCompletionOr<JS::Object*> WindowProxy::internal_get_prototype_of() const
 {
+    if (m_remote_navigable)
+        return nullptr;
+
     // 1. Let W be the value of the [[Window]] internal slot of this.
 
     // 2. If IsPlatformObjectSameOrigin(W) is true, then return ! OrdinaryGetPrototypeOf(W).
@@ -68,6 +209,9 @@ JS::ThrowCompletionOr<bool> WindowProxy::internal_prevent_extensions()
 JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> WindowProxy::internal_get_own_property(JS::PropertyKey const& property_key) const
 {
     auto& vm = this->vm();
+
+    if (m_remote_navigable)
+        return remote_window_proxy_get_own_property(*this, property_key);
 
     // 1. Let W be the value of the [[Window]] internal slot of this.
 
@@ -137,6 +281,9 @@ JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> WindowProxy::internal_ge
 // 7.4.6 [[DefineOwnProperty]] ( P, Desc ), https://html.spec.whatwg.org/multipage/window-object.html#windowproxy-defineownproperty
 JS::ThrowCompletionOr<bool> WindowProxy::internal_define_own_property(JS::PropertyKey const& property_key, JS::PropertyDescriptor& descriptor, Optional<JS::PropertyDescriptor>*)
 {
+    if (m_remote_navigable)
+        return false;
+
     // 1. Let W be the value of the [[Window]] internal slot of this.
 
     // 2. If IsPlatformObjectSameOrigin(W) is true, then:
@@ -160,6 +307,15 @@ JS::ThrowCompletionOr<JS::Value> WindowProxy::internal_get(JS::PropertyKey const
 {
     auto& vm = this->vm();
 
+    if (m_remote_navigable) {
+        auto descriptor = TRY(internal_get_own_property(property_key));
+        if (!descriptor.has_value())
+            return JS::js_undefined();
+        if (descriptor->value.has_value())
+            return *descriptor->value;
+        return JS::js_undefined();
+    }
+
     // 1. Let W be the value of the [[Window]] internal slot of this.
 
     // 2. Check if an access between two browsing contexts should be reported, given the current global object's browsing context, W's browsing context, P, and the current settings object.
@@ -180,6 +336,9 @@ JS::ThrowCompletionOr<JS::Value> WindowProxy::internal_get(JS::PropertyKey const
 JS::ThrowCompletionOr<bool> WindowProxy::internal_set(JS::PropertyKey const& property_key, JS::Value value, JS::Value receiver, JS::CacheableSetPropertyMetadata*, PropertyLookupPhase)
 {
     auto& vm = this->vm();
+
+    if (m_remote_navigable)
+        return false;
 
     // 1. Let W be the value of the [[Window]] internal slot of this.
 
@@ -204,6 +363,9 @@ JS::ThrowCompletionOr<bool> WindowProxy::internal_set(JS::PropertyKey const& pro
 // 7.4.9 [[Delete]] ( P ), https://html.spec.whatwg.org/multipage/window-object.html#windowproxy-delete
 JS::ThrowCompletionOr<bool> WindowProxy::internal_delete(JS::PropertyKey const& property_key)
 {
+    if (m_remote_navigable)
+        return false;
+
     // 1. Let W be the value of the [[Window]] internal slot of this.
 
     // 2. If IsPlatformObjectSameOrigin(W) is true, then:
@@ -234,6 +396,19 @@ JS::ThrowCompletionOr<GC::RootVector<JS::Value>> WindowProxy::internal_own_prope
 {
     auto& event_loop = main_thread_event_loop();
     auto& vm = event_loop.vm();
+
+    if (m_remote_navigable) {
+        GC::RootVector<JS::Value> keys;
+        keys.append(JS::PrimitiveString::create(vm, "window"_utf16_fly_string));
+        keys.append(JS::PrimitiveString::create(vm, "self"_utf16_fly_string));
+        keys.append(JS::PrimitiveString::create(vm, "frames"_utf16_fly_string));
+        keys.append(JS::PrimitiveString::create(vm, "parent"_utf16_fly_string));
+        keys.append(JS::PrimitiveString::create(vm, "top"_utf16_fly_string));
+        keys.append(JS::PrimitiveString::create(vm, "length"_utf16_fly_string));
+        keys.append(JS::PrimitiveString::create(vm, "closed"_utf16_fly_string));
+        keys.append(JS::PrimitiveString::create(vm, "postMessage"_utf16_fly_string));
+        return keys;
+    }
 
     // 1. Let W be the value of the [[Window]] internal slot of this.
 
@@ -267,6 +442,7 @@ void WindowProxy::visit_edges(JS::Cell::Visitor& visitor)
 {
     Base::visit_edges(visitor);
     visitor.visit(m_window);
+    visitor.visit(m_remote_navigable);
 }
 
 void WindowProxy::set_window(GC::Ref<Window> window)
@@ -276,6 +452,7 @@ void WindowProxy::set_window(GC::Ref<Window> window)
 
 GC::Ref<BrowsingContext> WindowProxy::associated_browsing_context() const
 {
+    VERIFY(!m_remote_navigable);
     return *m_window->associated_document().browsing_context();
 }
 

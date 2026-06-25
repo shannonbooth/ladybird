@@ -14,8 +14,10 @@
 #include <LibWeb/CSS/StyleSheetIdentifier.h>
 #include <LibWeb/HTML/AudioPlayState.h>
 #include <LibWeb/HTML/FileFilter.h>
+#include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/Scripting/ScriptRegistry.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
+#include <LibWeb/HTML/StructuredSerialize.h>
 #include <LibWeb/Page/Page.h>
 #include <LibWeb/PixelUnits.h>
 #include <LibWeb/StorageAPI/StorageEndpoint.h>
@@ -130,6 +132,8 @@ public:
     void did_complete_webdriver_navigation_completion(u64 request_id, Web::WebDriver::Response);
     void run_iframe_load_event_steps(String const& frame_id);
     void set_remote_child_frame_compositor_context(String, Optional<Web::Compositor::CompositorContextId>);
+    void set_remote_navigable_ancestors(String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor>);
+    void dispatch_message_event_from_remote_navigable(String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord, Variant<String, URL::Origin>, URL::Origin);
     void clear_pending_dom_mutations();
     void did_delete_all_cookies(u64 request_id);
 
@@ -256,6 +260,7 @@ private:
     virtual void page_did_finish_network_request(u64 request_id, u64 body_size, Requests::RequestTimingInfo const&, Optional<Requests::NetworkError> const&) override;
     virtual void page_did_register_javascript_source(Web::DOM::Document&, Web::HTML::ScriptRegistry::Description const&) override;
     virtual void page_did_post_broadcast_channel_message(Web::HTML::BroadcastChannelMessage const&) override;
+    virtual void page_did_post_message_to_remote_navigable(String const& target_navigable_id, String const& source_navigable_id, Web::HTML::SerializedTransferRecord, Variant<String, URL::Origin>, URL::Origin) override;
 
     void setup_palette();
     ConnectionFromClient& client() const;

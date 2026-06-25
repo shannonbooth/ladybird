@@ -119,6 +119,7 @@ Messages::WebContentServer::InitTransportResponse ConnectionFromClient::init_tra
 
 void ConnectionFromClient::initialize(u64 initial_page_id)
 {
+    dbgln("SI_TRACE server initialize page={}", initial_page_id);
     m_page_host->initialize(initial_page_id);
 }
 
@@ -134,10 +135,23 @@ void ConnectionFromClient::set_page_parent_context(u64 page_id, Optional<Web::Co
     compositor_context.set_parent_context(parent_context_id);
 }
 
+void ConnectionFromClient::set_remote_navigable_ancestors(u64 page_id, String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors)
+{
+    dbgln("SI_TRACE server set_remote_navigable_ancestors page={} local={} count={} page_exists={}", page_id, local_navigable_id, ancestors.size(), this->page(page_id).has_value());
+    if (auto page = this->page(page_id); page.has_value())
+        page->set_remote_navigable_ancestors(move(local_navigable_id), move(ancestors));
+}
+
 void ConnectionFromClient::set_remote_child_frame_compositor_context(u64 page_id, String frame_id, Optional<Web::Compositor::CompositorContextId> context_id)
 {
     if (auto page = this->page(page_id); page.has_value())
         page->set_remote_child_frame_compositor_context(move(frame_id), context_id);
+}
+
+void ConnectionFromClient::dispatch_message_event_from_remote_navigable(u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord message, Variant<String, URL::Origin> target_origin, URL::Origin source_origin)
+{
+    if (auto page = this->page(page_id); page.has_value())
+        page->dispatch_message_event_from_remote_navigable(move(target_navigable_id), move(source_navigable_id), move(message), move(target_origin), move(source_origin));
 }
 
 void ConnectionFromClient::run_iframe_load_event_steps(u64 page_id, String frame_id)
@@ -270,6 +284,7 @@ void ConnectionFromClient::update_screen_rects(u64 page_id, Vector<Web::DevicePi
 
 void ConnectionFromClient::load_url(u64 page_id, URL::URL url, Web::Bindings::NavigationHistoryBehavior history_handling)
 {
+    dbgln("SI_TRACE server load_url page={} page_exists={}", page_id, this->page(page_id).has_value());
     auto page = this->page(page_id);
     if (!page.has_value())
         return;
@@ -281,6 +296,7 @@ void ConnectionFromClient::load_url_with_document_resource(u64 page_id, URL::URL
     Variant<Empty, String, Web::HTML::POSTResource> document_resource,
     Web::Bindings::NavigationHistoryBehavior history_handling)
 {
+    dbgln("SI_TRACE server load_url_with_document_resource page={} page_exists={}", page_id, this->page(page_id).has_value());
     auto page = this->page(page_id);
     if (!page.has_value())
         return;

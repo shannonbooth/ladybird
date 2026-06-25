@@ -25,7 +25,9 @@
 #include <LibWeb/Compositor/Types.h>
 #include <LibWeb/Forward.h>
 #include <LibWeb/HTML/AutoplayPolicy.h>
+#include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
+#include <LibWeb/HTML/StructuredSerialize.h>
 #include <LibWeb/HTML/WorkerAgentTypes.h>
 #include <LibWeb/Loader/FileRequest.h>
 #include <LibWeb/Page/EventResult.h>
@@ -92,7 +94,9 @@ private:
     virtual void reload(u64 page_id) override;
     virtual void run_iframe_load_event_steps(u64 page_id, String frame_id) override;
     virtual void set_page_parent_context(u64 page_id, Optional<Web::Compositor::CompositorContextId>) override;
+    virtual void set_remote_navigable_ancestors(u64 page_id, String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor>) override;
     virtual void set_remote_child_frame_compositor_context(u64 page_id, String frame_id, Optional<Web::Compositor::CompositorContextId>) override;
+    virtual void dispatch_message_event_from_remote_navigable(u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord, Variant<String, URL::Origin>, URL::Origin) override;
     virtual void traverse_the_history_by_delta(u64 page_id, i32 delta) override;
     virtual void traverse_the_history_to_step(u64 page_id, i32 step) override;
     virtual void check_if_traverse_history_step_is_canceled(u64 page_id, u64 request_id, i32 step) override;

@@ -23,6 +23,8 @@ class WEB_API WindowProxy final : public DOM::EventTarget {
 public:
     virtual ~WindowProxy() override = default;
 
+    static GC::Ref<WindowProxy> create_remote(JS::Realm&, GC::Ref<Navigable>);
+
     virtual JS::ThrowCompletionOr<JS::Object*> internal_get_prototype_of() const override;
     virtual JS::ThrowCompletionOr<bool> internal_set_prototype_of(Object* prototype) override;
     virtual JS::ThrowCompletionOr<bool> internal_is_extensible() const override;
@@ -36,6 +38,7 @@ public:
 
     GC::Ptr<Window> window() const { return m_window; }
     void set_window(GC::Ref<Window>);
+    GC::Ptr<Navigable> remote_navigable() const { return m_remote_navigable; }
 
     GC::Ref<BrowsingContext> associated_browsing_context() const;
 
@@ -49,6 +52,7 @@ private:
 
     // [[Window]], https://html.spec.whatwg.org/multipage/window-object.html#concept-windowproxy-window
     GC::Ptr<Window> m_window;
+    GC::Ptr<Navigable> m_remote_navigable;
 };
 
 }

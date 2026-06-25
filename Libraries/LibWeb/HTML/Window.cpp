@@ -6,6 +6,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+#include <AK/Debug.h>
 #include <AK/NeverDestroyed.h>
 #include <AK/Utf8View.h>
 #include <LibGC/WeakHashSet.h>
@@ -609,9 +610,11 @@ void Window::consume_history_action_user_activation()
 
     // 2. Let top be W's navigable's top-level traversable.
     auto top = local_navigable->top_level_traversable();
+    if (!top->has_local_state())
+        return;
 
     // 3. Let navigables be the inclusive descendant navigables of top's active document.
-    auto navigables = top->active_document()->inclusive_descendant_navigables();
+    auto navigables = as<LocalNavigable>(*top).active_document()->inclusive_descendant_navigables();
 
     // 4. Let windows be the list of Window objects constructed by taking the active window of each item in navigables.
     GC::RootVector<GC::Ptr<Window>> windows;
@@ -639,9 +642,11 @@ void Window::consume_user_activation()
 
     // 2. Let top be W's navigable's top-level traversable.
     auto top = local_navigable->top_level_traversable();
+    if (!top->has_local_state())
+        return;
 
     // 3. Let navigables be the inclusive descendant navigables of top's active document.
-    auto navigables = top->active_document()->inclusive_descendant_navigables();
+    auto navigables = as<LocalNavigable>(*top).active_document()->inclusive_descendant_navigables();
 
     // 4. Let windows be the list of Window objects constructed by taking the active window of each item in navigables.
     GC::RootVector<GC::Ptr<Window>> windows;
@@ -1344,6 +1349,38 @@ WebIDL::ExceptionOr<void> Window::window_post_message_steps(JS::Value message, B
     }));
 
     return {};
+}
+
+WebIDL::ExceptionOr<void> Window::post_message_to_remote_navigable(GC::Ref<Navigable> target_navigable, JS::Value message, Bindings::WindowPostMessageOptions const& options)
+{
+    dbgln("SI_TRACE Window::post_message_to_remote_navigable target={}", target_navigable->id());
+    auto& target_realm = this->realm();
+    auto& incumbent_settings = incumbent_settings_object();
+
+    Variant<String, URL::Origin> target_origin = options.target_origin;
+
+    if (options.target_origin == "/"sv) {
+        target_origin = incumbent_settings.origin();
+    } else if (options.target_origin != "*"sv) {
+        auto parsed_url = DOMURL::parse(options.target_origin);
+        if (!parsed_url.has_value())
+            return WebIDL::SyntaxError::create(target_realm, Utf16String::formatted("Invalid URL for targetOrigin: '{}'", options.target_origin));
+
+        target_origin = parsed_url->origin();
+    }
+
+    auto serialize_with_transfer_result = TRY(structured_serialize_with_transfer(target_realm.vm(), message, options.transfer));
+
+    auto source_navigable = this->navigable();
+    auto source_navigable_id = source_navigable ? source_navigable->id() : String {};
+    dbgln("SI_TRACE sending remote message target={} source={}", target_navigable->id(), source_navigable_id);
+    page().client().page_did_post_message_to_remote_navigable(target_navigable->id(), source_navigable_id, move(serialize_with_transfer_result), move(target_origin), incumbent_settings.origin());
+    return {};
+}
+
+WebIDL::ExceptionOr<void> Window::post_message_to_remote_navigable(GC::Ref<Navigable> target_navigable, JS::Value message, String const& target_origin, GC::RootVector<GC::Ref<JS::Object>> const& transfer)
+{
+    return post_message_to_remote_navigable(target_navigable, message, Bindings::WindowPostMessageOptions { { .transfer = transfer }, target_origin });
 }
 
 // https://html.spec.whatwg.org/multipage/web-messaging.html#dom-window-postmessage-options

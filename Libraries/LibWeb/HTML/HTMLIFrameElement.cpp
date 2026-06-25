@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+#include <AK/Debug.h>
 #include <LibWeb/Bindings/HTMLIFrameElement.h>
 #include <LibWeb/CSS/ComputedProperties.h>
 #include <LibWeb/CSS/Invalidation/EmbeddedContentInvalidator.h>
@@ -216,6 +217,7 @@ void HTMLIFrameElement::removed_from(IsSubtreeRoot is_subtree_root, DOM::Node* o
 // https://html.spec.whatwg.org/multipage/iframe-embed-object.html#iframe-load-event-steps
 void run_iframe_load_event_steps(HTMLIFrameElement& element)
 {
+    dbgln("SI_TRACE HTML run_iframe_load_event_steps start local={}", element.content_navigable() ? element.content_navigable()->has_local_state() : false);
     // FIXME: 1. Assert: element's content navigable is not null.
     if (!element.content_navigable()) {
         // FIXME: For some reason, we sometimes end up here in the middle of SunSpider.
@@ -227,8 +229,10 @@ void run_iframe_load_event_steps(HTMLIFrameElement& element)
 
     // 2. Let childDocument be element's content navigable's active document.
     [[maybe_unused]] GC::Ptr<DOM::Document> child_document;
-    if (content_navigable->has_local_state())
+    if (content_navigable->has_local_state()) {
+        dbgln("SI_TRACE HTML iframe load active_document local path");
         child_document = as<LocalNavigable>(*content_navigable).active_document();
+    }
 
     // FIXME: 3. If childDocument has its mute iframe load flag set, then return.
 
@@ -268,6 +272,7 @@ void run_iframe_load_event_steps(HTMLIFrameElement& element)
     // FIXME: 5. Set childDocument's iframe load in progress flag.
 
     // 6. Fire an event named load at element.
+    dbgln("SI_TRACE HTML iframe dispatch load");
     element.dispatch_event(DOM::Event::create(element.realm(), HTML::EventNames::load));
 
     // FIXME: 7. Unset childDocument's iframe load in progress flag.

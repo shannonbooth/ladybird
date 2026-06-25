@@ -3,6 +3,7 @@
 #include <LibHTTP/Cookie/Cookie.h>
 #include <LibIPC/File.h>
 #include <LibIPC/TransportHandle.h>
+#include <LibURL/Origin.h>
 #include <LibURL/URL.h>
 #include <LibWeb/Bindings/Navigation.h>
 #include <LibWeb/Clipboard/SystemClipboard.h>
@@ -16,7 +17,9 @@
 #include <LibWeb/HTML/ColorPickerUpdateState.h>
 #include <LibWeb/HTML/BroadcastChannelMessage.h>
 #include <LibWeb/HTML/SelectedFile.h>
+#include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
+#include <LibWeb/HTML/StructuredSerialize.h>
 #include <LibWeb/HTML/VisibilityState.h>
 #include <LibWeb/HTML/WorkerAgentTypes.h>
 #include <LibWeb/Page/InputEvent.h>
@@ -61,7 +64,9 @@ endpoint WebContentServer
     reload(u64 page_id) =|
     run_iframe_load_event_steps(u64 page_id, String frame_id) =|
     set_page_parent_context(u64 page_id, Optional<Web::Compositor::CompositorContextId> parent_context_id) =|
+    set_remote_navigable_ancestors(u64 page_id, String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors) =|
     set_remote_child_frame_compositor_context(u64 page_id, String frame_id, Optional<Web::Compositor::CompositorContextId> context_id) =|
+    dispatch_message_event_from_remote_navigable(u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord message, Variant<String, URL::Origin> target_origin, URL::Origin source_origin) =|
     traverse_the_history_by_delta(u64 page_id, i32 delta) =|
     traverse_the_history_to_step(u64 page_id, i32 step) =|
     check_if_traverse_history_step_is_canceled(u64 page_id, u64 request_id, i32 step) =|

@@ -398,8 +398,9 @@ Messages::WebContentClient::DecideNavigationProcessResponse WebContentClient::de
     return SiteIsolationManager::the().decide_navigation_process(*this, page_id, move(frame_id), move(current_url), move(target_url), target);
 }
 
-void WebContentClient::did_request_new_process_for_child_frame_navigation(u64 page_id, String frame_id, URL::URL url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling)
+void WebContentClient::did_request_new_process_for_child_frame_navigation(u64 page_id, String frame_id, URL::URL url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling, Vector<Web::HTML::RemoteNavigableDescriptor> ancestor_navigables)
 {
+    dbgln("SI_TRACE UI did_request_new_process_for_child_frame_navigation page={} frame={} ancestors={}", page_id, frame_id, ancestor_navigables.size());
     auto& site_isolation_manager = SiteIsolationManager::the();
     auto child_frame = site_isolation_manager.child_frame(page_id, frame_id);
     if (!child_frame.has_value())
@@ -419,7 +420,10 @@ void WebContentClient::did_request_new_process_for_child_frame_navigation(u64 pa
     auto remote_client = move(remote_process.client);
     site_isolation_manager.record_pending_child_frame_navigation(page_id, frame_id, url, ChildFrameOwner::Remote, remote_page_id);
     remote_client->register_embedded_page(remote_page_id);
+    site_isolation_manager.transition_child_frame_to_remote(*this, page_id, frame_id, remote_client, remote_page_id);
+    dbgln("SI_TRACE UI sending child setup/load remote_page={} frame={}", remote_page_id, frame_id);
     remote_client->async_set_page_parent_context(remote_page_id, Web::Compositor::compositor_context_id_for_page(page_id));
+    remote_client->async_set_remote_navigable_ancestors(remote_page_id, frame_id, move(ancestor_navigables));
     if (child_frame->viewport_rect.has_value()) {
         remote_client->async_set_viewport(
             remote_page_id,
@@ -429,8 +433,6 @@ void WebContentClient::did_request_new_process_for_child_frame_navigation(u64 pa
     }
     remote_client->async_set_system_visibility_state(remote_page_id, Web::HTML::VisibilityState::Visible);
     remote_client->async_load_url_with_document_resource(remote_page_id, url, move(document_resource), history_handling);
-
-    site_isolation_manager.transition_child_frame_to_remote(*this, page_id, frame_id, move(remote_client), remote_page_id);
 }
 
 void WebContentClient::did_create_child_frame(u64 page_id, String parent_frame_id, String frame_id)
@@ -445,6 +447,7 @@ void WebContentClient::did_update_child_frame_viewport(u64 page_id, String frame
 
 void WebContentClient::did_commit_child_frame_navigation(u64 page_id, String frame_id, URL::URL url)
 {
+    dbgln("SI_TRACE UI did_commit_child_frame_navigation page={} frame={} url={}", page_id, frame_id, url);
     SiteIsolationManager::the().did_commit_child_frame_navigation(*this, page_id, frame_id, url);
 }
 
@@ -517,6 +520,7 @@ void WebContentClient::did_cancel_loading(u64 page_id, URL::URL url)
 
 void WebContentClient::did_finish_loading(u64 page_id, URL::URL url)
 {
+    dbgln("SI_TRACE UI did_finish_loading page={} url={} has_view={}", page_id, url, view_for_page_id(page_id).has_value());
     if (url.scheme() == "about"sv && url.paths().size() == 1) {
         if (auto web_ui = WebUI::create(*this, page_id, url.paths().first()); web_ui.is_error())
             warnln("Could not create WebUI for {}: {}", url, web_ui.error());
@@ -644,6 +648,7 @@ void WebContentClient::did_change_title(u64 page_id, Utf16String title)
 
 void WebContentClient::did_change_url(u64 page_id, URL::URL url)
 {
+    dbgln("SI_TRACE UI did_change_url page={} url={} has_view={}", page_id, url, view_for_page_id(page_id).has_value());
     if (auto view = view_for_page_id(page_id); view.has_value()) {
         // Some navigations report the same URL more than once. Keep those
         // duplicate updates inside LibWebView so frontends do not reset
@@ -1238,6 +1243,12 @@ void WebContentClient::did_post_broadcast_channel_message(u64, Web::HTML::Broadc
         return IterationDecision::Continue;
     });
     WorkerProcessManager::the().broadcast_channel_message_from_web_content(message);
+}
+
+void WebContentClient::did_post_message_to_remote_navigable(u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord message, Variant<String, URL::Origin> target_origin, URL::Origin source_origin)
+{
+    dbgln("SI_TRACE UI did_post_message page={} target={} source={}", page_id, target_navigable_id, source_navigable_id);
+    SiteIsolationManager::the().did_post_message_to_remote_navigable(*this, page_id, move(target_navigable_id), move(source_navigable_id), move(message), move(target_origin), move(source_origin));
 }
 
 Messages::WebContentClient::DidRequestNewWebViewResponse WebContentClient::did_request_new_web_view(u64 page_id, Web::HTML::ActivateTab activate_tab, Web::HTML::WebViewHints hints)

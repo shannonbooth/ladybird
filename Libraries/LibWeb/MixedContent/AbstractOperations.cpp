@@ -7,7 +7,7 @@
 #include <LibWeb/DOM/Document.h>
 #include <LibWeb/Fetch/Response.h>
 #include <LibWeb/HTML/BrowsingContext.h>
-#include <LibWeb/HTML/LocalNavigable.h>
+#include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/MixedContent/AbstractOperations.h>
 #include <LibWeb/SecureContexts/AbstractOperations.h>
@@ -58,12 +58,9 @@ ProhibitsMixedSecurityContexts does_settings_prohibit_mixed_security_contexts(GC
 
         // 2. For each navigable navigable in document’s ancestor navigables:
         for (auto const& navigable : document->ancestor_navigables()) {
-            if (!navigable->has_local_state())
-                continue;
-
             // 1. If navigable’s active document's origin is a potentially trustworthy origin, then return "Prohibits Mixed Security Contexts".
-            auto active_document = as<HTML::LocalNavigable>(*navigable).active_document();
-            if (active_document && SecureContexts::is_origin_potentially_trustworthy(active_document->origin()) == SecureContexts::Trustworthiness::PotentiallyTrustworthy)
+            auto active_document_origin = navigable->active_document_origin();
+            if (active_document_origin.has_value() && SecureContexts::is_origin_potentially_trustworthy(*active_document_origin) == SecureContexts::Trustworthiness::PotentiallyTrustworthy)
                 return ProhibitsMixedSecurityContexts::ProhibitsMixedSecurityContexts;
         }
     }

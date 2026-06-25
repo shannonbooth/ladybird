@@ -280,11 +280,11 @@ EmulatedPositionData Geolocation::get_emulated_position_data() const
     auto traversable = as<HTML::LocalNavigable>(*navigable).top_level_traversable();
 
     // 4. If traversable is null, return null.
-    if (!traversable)
+    if (!traversable || !traversable->has_local_state())
         return Empty {};
 
     // 5. Return traversable's associated emulated position data.
-    return traversable->emulated_position_data();
+    return as<HTML::TraversableNavigable>(*traversable).emulated_position_data();
 }
 
 // https://w3c.github.io/geolocation/#dfn-request-a-position

@@ -402,6 +402,16 @@ WebIDL::ExceptionOr<GC::Ref<Document>> Document::create_and_initialize(Type type
             // 3. Set topLevelOrigin to parentEnvironment's top-level origin.
             top_level_origin = parent_environment.top_level_origin.value();
         }
+        // AD-HOC: In a site-isolated child process, the iframe container lives in
+        // another process. Use the mirrored parent navigable's active document
+        // environment data to preserve the same spec inputs.
+        else if (auto parent_navigable = navigation_params.navigable->parent()) {
+            if (auto parent_top_level_creation_url = parent_navigable->active_document_top_level_creation_url(); parent_top_level_creation_url.has_value())
+                top_level_creation_url = parent_top_level_creation_url.release_value();
+
+            if (auto parent_top_level_origin = parent_navigable->active_document_top_level_origin(); parent_top_level_origin.has_value())
+                top_level_origin = parent_top_level_origin.release_value();
+        }
 
         // 10. Set up a window environment settings object with creationURL, realm execution context,
         //    navigationParams's reserved environment, topLevelCreationURL, and topLevelOrigin.
@@ -8236,7 +8246,12 @@ GC::Ref<WebIDL::Promise> Document::exit_fullscreen()
     auto docs = collect_documents_to_unfullscreen();
 
     // 5. Let topLevelDoc be doc’s node navigable’s top-level traversable’s active document.
-    auto top_level_doc = navigable()->top_level_traversable()->active_document();
+    auto top_level_traversable = navigable()->top_level_traversable();
+    if (!top_level_traversable || !top_level_traversable->has_local_state()) {
+        WebIDL::reject_promise(realm, promise, JS::TypeError::create(realm, "Document has no local top-level traversable."_utf16));
+        return promise;
+    }
+    auto top_level_doc = as<HTML::LocalNavigable>(*top_level_traversable).active_document();
 
     // 6. If topLevelDoc is in docs, and it is a simple fullscreen document, then set doc to topLevelDoc and resize to true.
     GC::Ref<Document> doc { *this };

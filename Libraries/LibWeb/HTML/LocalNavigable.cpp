@@ -50,6 +50,7 @@
 #include <LibWeb/HTML/PolicyContainers.h>
 #include <LibWeb/HTML/SandboxingFlagSet.h>
 #include <LibWeb/HTML/Scripting/ClassicScript.h>
+#include <LibWeb/HTML/Scripting/Environments.h>
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/StructuredSerialize.h>
@@ -352,6 +353,11 @@ bool LocalNavigable::is_ancestor_of(GC::Ref<LocalNavigable> other) const
     return false;
 }
 
+bool LocalNavigable::is_page_top_level_traversable() const
+{
+    return this == page().top_level_traversable().ptr();
+}
+
 LocalNavigable::LocalNavigable(
     GC::Ref<Page> page,
     bool is_svg_page,
@@ -383,14 +389,20 @@ void LocalNavigable::set_has_been_destroyed()
 
 void LocalNavigable::detach_local_state_for_remote_navigation()
 {
+    dbgln("SI_TRACE detach local state start id={}", id());
     if (m_has_been_destroyed)
         return;
 
     m_has_been_destroyed = true;
+    dbgln("SI_TRACE detach after destroyed id={}", id());
     set_delaying_load_events(false);
+    dbgln("SI_TRACE detach after load events id={}", id());
     clear_navigation_load_event_guard();
+    dbgln("SI_TRACE detach after guard id={}", id());
     inform_the_navigation_api_about_child_navigable_destruction();
+    dbgln("SI_TRACE detach after navigation api id={}", id());
     remove_from_all_local_navigables();
+    dbgln("SI_TRACE detach done id={}", id());
 }
 
 void LocalNavigable::remove_from_all_local_navigables()
@@ -738,6 +750,30 @@ GC::Ptr<HTML::WindowProxy> LocalNavigable::local_active_window_proxy()
     if (auto browsing_context = active_browsing_context())
         return browsing_context->window_proxy();
     return nullptr;
+}
+
+Optional<URL::Origin> LocalNavigable::local_active_document_origin() const
+{
+    VERIFY(has_local_state());
+    if (auto document = active_document())
+        return document->origin();
+    return {};
+}
+
+Optional<URL::URL> LocalNavigable::local_active_document_top_level_creation_url() const
+{
+    VERIFY(has_local_state());
+    if (auto document = active_document())
+        return document->relevant_settings_object().top_level_creation_url;
+    return {};
+}
+
+Optional<URL::Origin> LocalNavigable::local_active_document_top_level_origin() const
+{
+    VERIFY(has_local_state());
+    if (auto document = active_document())
+        return document->relevant_settings_object().top_level_origin;
+    return {};
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-window
@@ -1273,24 +1309,37 @@ static void perform_navigation_params_fetch(JS::Realm& realm, GC::Ref<Navigation
             // 1. Let parentEnvironment be navigable's parent's active document's relevant settings object.
             auto parent_navigable = state_holder->navigable->parent();
             VERIFY(parent_navigable);
-            auto& parent = as<LocalNavigable>(*parent_navigable);
-            auto parent_document = parent.active_document();
-            if (parent.has_been_destroyed() || !parent_document || parent_document->has_been_destroyed()) {
+            if (parent_navigable->has_local_state()) {
+                auto& parent = as<LocalNavigable>(*parent_navigable);
+                auto parent_document = parent.active_document();
+                if (parent.has_been_destroyed() || !parent_document || parent_document->has_been_destroyed()) {
+                    // AD-HOC: A queued child navigation can resume after its parent document has been destroyed. The
+                    //         specification assumes the parent environment is still available here, but browser engines
+                    //         abandon this stale detached frame navigation instead of continuing it against a discarded
+                    //         parent.
+                    state_holder->response = Fetch::Infrastructure::Response::network_error(realm.vm(), "Parent document is no longer active"_string);
+                    fetch_completion_steps->function()();
+                    return;
+                }
+            }
+
+            auto parent_top_level_creation_url = parent_navigable->active_document_top_level_creation_url();
+            auto parent_top_level_origin = parent_navigable->active_document_top_level_origin();
+            if (!parent_top_level_creation_url.has_value() || !parent_top_level_origin.has_value()) {
                 // AD-HOC: A queued child navigation can resume after its parent document has been destroyed. The
                 //         specification assumes the parent environment is still available here, but browser engines
                 //         abandon this stale detached frame navigation instead of continuing it against a discarded
                 //         parent.
-                state_holder->response = Fetch::Infrastructure::Response::network_error(realm.vm(), "Parent document is no longer active"_string);
+                state_holder->response = Fetch::Infrastructure::Response::network_error(realm.vm(), "Parent document environment is not available"_string);
                 fetch_completion_steps->function()();
                 return;
             }
-            auto& parent_environment = parent_document->relevant_settings_object();
 
             // 2. Set topLevelCreationURL to parentEnvironment's top-level creation URL.
-            top_level_creation_url = parent_environment.top_level_creation_url;
+            top_level_creation_url = move(parent_top_level_creation_url);
 
             // 3. Set topLevelOrigin to parentEnvironment's top-level origin.
-            top_level_origin = parent_environment.top_level_origin;
+            top_level_origin = move(parent_top_level_origin);
         }
 
         // 4. Set request's reserved client to a new environment whose id is a unique opaque string,
@@ -2290,7 +2339,7 @@ void LocalNavigable::begin_navigation(NavigateParams params)
                 // 2. If unloadPromptCanceled is not "continue", or navigable's ongoing navigation is no longer navigationId:
                 if (unload_prompt_canceled != TraversableNavigable::CheckIfUnloadingIsCanceledResult::Continue) {
                     // FIXME: 1. Invoke WebDriver BiDi navigation failed with navigable and a new WebDriver BiDi navigation status whose id is navigationId, status is "canceled", and url is url.
-                    if (is_top_level_traversable())
+                    if (is_page_top_level_traversable())
                         active_browsing_context()->page().client().page_did_cancel_loading(url);
 
                     // 2. Abort these steps.
@@ -2323,7 +2372,7 @@ void LocalNavigable::begin_navigation(NavigateParams params)
 
                 // AD-HOC: If we are not able to continue in this process, request a new process from the UI.
                 auto& page_client = active_browsing_context()->page().client();
-                auto is_top_level_navigation = is_top_level_traversable();
+                auto is_top_level_navigation = is_page_top_level_traversable();
                 auto target = is_top_level_navigation ? NavigationTarget::TopLevel : NavigationTarget::IFrame;
                 auto frame_id = is_top_level_navigation ? Optional<String> {} : Optional<String> { id() };
                 auto process_decision = page_client.decide_navigation_process(this->active_document()->url(), url, target, move(frame_id));
@@ -2348,7 +2397,7 @@ void LocalNavigable::begin_navigation(NavigateParams params)
                 }
 
                 // AD-HOC: Tell the UI that we started loading.
-                if (is_top_level_traversable()) {
+                if (is_page_top_level_traversable()) {
                     active_browsing_context()->page().client().page_did_start_loading(url, document_resource, false, history_handling);
                 }
 
@@ -3915,7 +3964,7 @@ void LocalNavigable::paint_next_frame()
 
     auto viewport_rect = page().css_to_device_rect(this->viewport_rect()).to_type<int>();
     PaintConfig paint_config { .paint_overlay = true, .should_show_line_box_borders = m_should_show_line_box_borders, .should_show_caret_hit_test_debug_overlay = m_should_show_caret_hit_test_debug_overlay };
-    if (is_top_level_traversable()) {
+    if (is_page_top_level_traversable()) {
         paint_config.canvas_fill_rect = Gfx::IntRect { {}, viewport_rect.size() };
     } else {
         // Nested navigables paint transparent bitmaps for their parent compositor context.

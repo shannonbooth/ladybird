@@ -327,7 +327,12 @@ GC::Ref<TraversableNavigable> BrowsingContext::top_level_traversable() const
     auto traversable = active_document()->navigable()->top_level_traversable();
     VERIFY(traversable);
     VERIFY(traversable->is_top_level_traversable());
-    return *traversable;
+    if (traversable->has_local_state())
+        return as<TraversableNavigable>(*traversable);
+
+    auto local_traversable = active_document()->navigable()->traversable_navigable();
+    VERIFY(local_traversable);
+    return *local_traversable;
 }
 
 // https://html.spec.whatwg.org/multipage/browsers.html#top-level-browsing-context
@@ -351,7 +356,10 @@ GC::Ptr<BrowsingContext> BrowsingContext::top_level_browsing_context() const
 
     // 3. While navigable's parent is not null, set navigable to navigable's parent.
     while (navigable->parent()) {
-        navigable = as<LocalNavigable>(*navigable->parent());
+        auto parent = navigable->parent();
+        if (!parent->has_local_state())
+            return nullptr;
+        navigable = as<LocalNavigable>(*parent);
     }
 
     // 4. Return navigable's active browsing context.
@@ -506,11 +514,8 @@ bool BrowsingContext::is_familiar_with(BrowsingContext const& other) const
         return false;
 
     for (auto const& ancestor : B.active_document()->ancestor_navigables()) {
-        if (!ancestor->has_local_state())
-            continue;
-
-        auto active_document = as<LocalNavigable>(*ancestor).active_document();
-        if (active_document && active_document->origin().is_same_origin(A.active_document()->origin()))
+        auto active_document_origin = ancestor->active_document_origin();
+        if (active_document_origin.has_value() && active_document_origin->is_same_origin(A.active_document()->origin()))
             return true;
     }
 

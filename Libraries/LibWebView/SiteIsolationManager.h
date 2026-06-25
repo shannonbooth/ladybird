@@ -11,7 +11,10 @@
 #include <AK/RefPtr.h>
 #include <AK/String.h>
 #include <AK/StringView.h>
+#include <LibURL/Origin.h>
 #include <LibURL/URL.h>
+#include <LibWeb/HTML/Navigable.h>
+#include <LibWeb/HTML/StructuredSerialize.h>
 #include <LibWeb/Page/EventResult.h>
 #include <LibWeb/Page/InputEvent.h>
 #include <LibWeb/Page/Page.h>
@@ -67,6 +70,7 @@ public:
     bool remote_child_frame_did_commit_navigation(WebContentClient& remote_client, u64 remote_page_id, URL::URL const&);
     bool remote_child_frame_did_finish_loading(WebContentClient& remote_client, u64 remote_page_id, URL::URL const&);
     bool remote_child_frame_did_finish_handling_input_event(WebContentClient& remote_client, u64 remote_page_id, Web::EventResult);
+    bool did_post_message_to_remote_navigable(WebContentClient&, u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord, Variant<String, URL::Origin>, URL::Origin);
     void remove_page(u64 page_id);
     void remove_all_pages_for_client(WebContentClient&);
     String dump_process_tree(WebContentClient&, u64 page_id) const;
