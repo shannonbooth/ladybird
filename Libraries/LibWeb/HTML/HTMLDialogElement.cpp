@@ -17,7 +17,7 @@
 #include <LibWeb/HTML/Focus.h>
 #include <LibWeb/HTML/HTMLDialogElement.h>
 #include <LibWeb/HTML/ToggleEvent.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/UIEvents/EventNames.h>
 #include <LibWeb/UIEvents/PointerEvent.h>
 
@@ -503,9 +503,9 @@ void HTMLDialogElement::run_dialog_focusing_steps()
 
     // 7. Let topDocument be control's node navigable's top-level traversable's active document.
     auto top_level_traversable = control->navigable()->top_level_traversable();
-    if (!top_level_traversable || !top_level_traversable->has_local_state())
+    if (!top_level_traversable || !top_level_traversable->navigable().has_local_state())
         return;
-    auto top_document = as<LocalNavigable>(*top_level_traversable).active_document();
+    auto top_document = top_level_traversable->local().active_document();
 
     // 8. If control's node document's origin is not the same as the origin of topDocument, then return.
     if (!control->document().origin().is_same_origin(top_document->origin()))

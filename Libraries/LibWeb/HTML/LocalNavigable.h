@@ -80,6 +80,8 @@ public:
     Vector<GC::Root<LocalNavigable>> child_navigables() const;
 
     virtual bool is_traversable() const override { return false; }
+    LocalTraversableNavigable& local_traversable_navigable();
+    LocalTraversableNavigable& local_traversable_navigable() const;
     bool is_page_top_level_traversable() const;
 
     bool is_ancestor_of(GC::Ref<LocalNavigable>) const;

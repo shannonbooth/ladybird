@@ -12,7 +12,7 @@
 #include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/PolicyContainers.h>
 #include <LibWeb/HTML/SandboxingFlagSet.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/MathML/MathMLElement.h>
 #include <LibWeb/SVG/SVGElement.h>
 
@@ -137,9 +137,9 @@ void HTMLOrSVGOrMathMLElement<ElementBase>::inserted()
 
         // 6. Let topDocument be target's node navigable's top-level traversable's active document.
         auto top_level_traversable = target.navigable()->top_level_traversable();
-        if (!top_level_traversable || !top_level_traversable->has_local_state())
+        if (!top_level_traversable || !top_level_traversable->navigable().has_local_state())
             return;
-        auto top_document = as<LocalNavigable>(*top_level_traversable).active_document();
+        auto top_document = top_level_traversable->local().active_document();
 
         // 7. If topDocument's autofocus processed flag is false, then remove the element from topDocument's autofocus
         //    candidates, and append the element to topDocument's autofocus candidates.

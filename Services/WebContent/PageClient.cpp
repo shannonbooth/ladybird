@@ -43,7 +43,7 @@
 #include <LibWeb/HTML/Scripting/ClassicScript.h>
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
 #include <LibWeb/HTML/StructuredSerialize.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HTML/WindowProxy.h>
 #include <LibWeb/HighResolutionTime/TimeOrigin.h>
@@ -148,7 +148,7 @@ void PageClient::set_has_focus(bool has_focus)
 
     m_has_focus = has_focus;
 
-    if (auto document = page().local_root_traversable()->active_document()) {
+    if (auto document = page().local_root_navigable()->active_document()) {
         if (has_focus)
             document->reset_cursor_blink_cycle();
         document->set_cursor_position_needs_repaint();
@@ -157,10 +157,10 @@ void PageClient::set_has_focus(bool has_focus)
 
 void PageClient::set_window_handle(String window_handle)
 {
-    page().local_root_traversable()->set_window_handle(move(window_handle));
+    page().local_root_navigable()->local_traversable_navigable().set_window_handle(move(window_handle));
 
     if (m_webdriver)
-        m_webdriver->page_did_set_window_handle({}, page().local_root_traversable()->window_handle());
+        m_webdriver->page_did_set_window_handle({}, page().local_root_navigable()->local_traversable_navigable().window_handle());
 }
 
 void PageClient::did_start_webdriver_navigation(URL::URL const& url)
@@ -200,7 +200,7 @@ static Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigable_ancestors_f
 void PageClient::request_new_process_for_navigation(URL::URL const& url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling)
 {
     if (m_webdriver)
-        m_webdriver->page_did_start_window_replacement({}, page().local_root_traversable()->window_handle());
+        m_webdriver->page_did_start_window_replacement({}, page().local_root_navigable()->local_traversable_navigable().window_handle());
 
     client().async_did_request_new_process_for_navigation(m_id, url, move(document_resource), history_handling);
 }
@@ -208,7 +208,7 @@ void PageClient::request_new_process_for_navigation(URL::URL const& url, Variant
 void PageClient::request_new_process_for_child_frame_navigation(String const& frame_id, URL::URL const& url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling)
 {
     Vector<Web::HTML::RemoteNavigableDescriptor> ancestor_navigables;
-    if (auto active_document = page().local_root_traversable()->active_document())
+    if (auto active_document = page().local_root_navigable()->active_document())
         ancestor_navigables = remote_navigable_ancestors_for_child_frame(*active_document, frame_id);
     dbgln("SI_TRACE request remote child frame={} ancestors={}", frame_id, ancestor_navigables.size());
     for (auto const& ancestor : ancestor_navigables)
@@ -268,7 +268,7 @@ static Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigable_ancestors_f
 
 void PageClient::set_remote_child_frame_compositor_context(String frame_id, Optional<Web::Compositor::CompositorContextId> context_id)
 {
-    auto active_document = page().local_root_traversable()->active_document();
+    auto active_document = page().local_root_navigable()->active_document();
     auto child_navigable = active_document ? find_navigable_by_id(*active_document, frame_id) : nullptr;
 
     if (context_id.has_value()) {
@@ -305,7 +305,7 @@ void PageClient::set_remote_child_frame_compositor_context(String frame_id, Opti
 void PageClient::set_remote_navigable_ancestors(String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors)
 {
     dbgln("SI_TRACE set remote ancestors local={} count={}", local_navigable_id, ancestors.size());
-    auto local_navigable = page().local_root_traversable();
+    auto local_navigable = page().local_root_navigable();
     local_navigable->set_id(move(local_navigable_id));
 
     auto active_document = local_navigable->active_document();
@@ -327,7 +327,7 @@ void PageClient::set_remote_navigable_ancestors(String local_navigable_id, Vecto
 void PageClient::dispatch_message_event_from_remote_navigable(String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord message, Variant<String, URL::Origin> target_origin, URL::Origin source_origin)
 {
     dbgln("SI_TRACE dispatch remote message target={} source={}", target_navigable_id, source_navigable_id);
-    auto active_document = page().local_root_traversable()->active_document();
+    auto active_document = page().local_root_navigable()->active_document();
     if (!active_document)
         return;
 
@@ -393,7 +393,7 @@ Optional<Web::Compositor::CompositorContextId> PageClient::compositor_context_id
 void PageClient::run_iframe_load_event_steps(String const& frame_id)
 {
     dbgln("SI_TRACE PageClient run_iframe_load_event_steps frame={}", frame_id);
-    auto active_document = page().local_root_traversable()->active_document();
+    auto active_document = page().local_root_navigable()->active_document();
     if (!active_document)
         return;
 
@@ -479,7 +479,7 @@ void PageClient::compositor_process_lost()
 
 void PageClient::compositor_process_reconnected()
 {
-    page().local_root_traversable()->repaint_after_compositor_process_reconnect();
+    page().local_root_navigable()->repaint_after_compositor_process_reconnect();
     page().notify_all_canvas_elements_of_lost_backing_storage();
     page().prepare_canvas_contexts_for_compositing();
     page().update_all_media_element_video_sinks();
@@ -510,13 +510,13 @@ void PageClient::set_viewport(Web::DevicePixelSize const& size, double device_pi
     m_viewport_size = size;
     m_device_pixel_ratio = device_pixel_ratio;
 
-    page().local_root_traversable()->set_viewport_size(page().device_to_css_size(size), invalidate);
+    page().local_root_navigable()->set_viewport_size(page().device_to_css_size(size), invalidate);
 }
 
 void PageClient::set_zoom_level(double zoom_level)
 {
     m_zoom_level = zoom_level;
-    page().local_root_traversable()->set_viewport_size(page().device_to_css_size(m_viewport_size), Web::InvalidateDisplayList::Yes);
+    page().local_root_navigable()->set_viewport_size(page().device_to_css_size(m_viewport_size), Web::InvalidateDisplayList::Yes);
 }
 
 void PageClient::request_frame()
@@ -710,7 +710,7 @@ void PageClient::page_did_receive_reference_test_metadata(JsonValue metadata)
 
 void PageClient::page_did_set_browser_zoom(double factor)
 {
-    auto traversable = page().local_root_traversable();
+    auto traversable = page().local_root_navigable();
     traversable->set_pending_set_browser_zoom_request(true);
     client().async_did_set_browser_zoom(m_id, factor);
     auto& event_loop = Web::HTML::main_thread_event_loop();
@@ -1058,10 +1058,10 @@ void PageClient::page_did_request_activate_tab()
 
 void PageClient::page_did_close_top_level_traversable()
 {
-    page().local_root_traversable()->compositor_context().stop_presenting_to_client();
+    page().local_root_navigable()->compositor_context().stop_presenting_to_client();
 
     if (m_webdriver)
-        m_webdriver->page_did_close_window({}, page().local_root_traversable()->window_handle());
+        m_webdriver->page_did_close_window({}, page().local_root_navigable()->local_traversable_navigable().window_handle());
 
     // FIXME: Rename this IPC call
     client().async_did_close_browsing_context(m_id);
@@ -1549,7 +1549,7 @@ Web::Compositor::CompositorHost const* PageClient::compositor_host() const
 
 void PageClient::queue_screenshot_task(Optional<Web::UniqueNodeID> node_id)
 {
-    page().local_root_traversable()->queue_screenshot_task(node_id);
+    page().local_root_navigable()->local_traversable_navigable().queue_screenshot_task(node_id);
 }
 
 }

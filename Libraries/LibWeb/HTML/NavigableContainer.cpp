@@ -20,7 +20,7 @@
 #include <LibWeb/HTML/NavigableContainer.h>
 #include <LibWeb/HTML/NavigationParams.h>
 #include <LibWeb/HTML/Scripting/WindowEnvironmentSettingsObject.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HighResolutionTime/TimeOrigin.h>
 #include <LibWeb/Page/Page.h>
@@ -123,7 +123,7 @@ void NavigableContainer::create_new_child_navigable()
     auto history_entry = navigable->active_session_history_entry();
 
     // 11. Let traversable be parentNavigable's traversable navigable.
-    auto traversable = parent_navigable->traversable_navigable();
+    auto traversable = GC::Ptr<LocalTraversableNavigable> { parent_navigable->local_traversable_navigable() };
 
     // 12. Append the following session history traversal steps to traversable:
     traversable->append_session_history_traversal_steps(GC::create_function(heap(), [this, navigable, parent_navigable, history_entry, traversable](NonnullRefPtr<Core::Promise<Empty>> signal) mutable {
@@ -377,7 +377,7 @@ void NavigableContainer::destroy_the_child_navigable()
         });
 
         // 8. Let traversable be container's node navigable's traversable navigable.
-        auto traversable = this->navigable()->traversable_navigable();
+        auto traversable = GC::Ptr<LocalTraversableNavigable> { this->navigable()->local_traversable_navigable() };
 
         // 9. Append the following session history traversal steps to traversable:
         traversable->append_session_history_traversal_steps(GC::create_function(heap(), [traversable](NonnullRefPtr<Core::Promise<Empty>> signal) {

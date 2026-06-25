@@ -173,7 +173,7 @@
 #include <LibWeb/HTML/Storage.h>
 #include <LibWeb/HTML/StorageEvent.h>
 #include <LibWeb/HTML/StructuredSerialize.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HTML/WindowProxy.h>
 #include <LibWeb/HighResolutionTime/Performance.h>
@@ -3707,7 +3707,8 @@ void Document::flush_autofocus_candidates()
         // 4. If doc's node navigable's top-level traversable is not the same as topDocument's node navigable, then
         //    remove element from candidates, and continue.
         auto doc_navigable = doc.navigable();
-        if (!doc_navigable || doc_navigable->top_level_traversable() != navigable()) {
+        auto top_level_traversable = doc_navigable ? doc_navigable->top_level_traversable() : nullptr;
+        if (!top_level_traversable || &top_level_traversable->navigable() != navigable()) {
             candidates.take_first();
             continue;
         }
@@ -4226,7 +4227,7 @@ void Document::update_readiness(HTML::DocumentReadyState readiness_value)
             if (!is_decoded_svg()) {
                 HTML::HTMLLinkElement::load_fallback_favicon_if_needed(*this);
             }
-            navigable->traversable_navigable()->page().client().page_did_finish_loading(url());
+            page().client().page_did_finish_loading(url());
         } else {
             m_needs_to_call_page_did_load = true;
         }
@@ -4531,7 +4532,7 @@ bool Document::is_fully_active() const
         return false;
 
     auto traversable = navigable->traversable_navigable();
-    if (navigable == traversable && traversable->is_top_level_traversable())
+    if (traversable && &traversable->navigable() == navigable.ptr() && traversable->is_top_level_traversable())
         return true;
 
     auto container_document = navigable->container_document();
@@ -4767,12 +4768,12 @@ bool Document::has_focus() const
     if (!navigable)
         return false;
 
-    auto traversable = navigable->traversable_navigable();
-    if (!traversable || !traversable->is_focused())
+    auto traversable = navigable->top_level_traversable();
+    if (!traversable || !traversable->navigable().has_local_state() || !traversable->local().is_focused())
         return false;
 
     // 2. Let candidate be target's node navigable's top-level traversable's active document.
-    auto candidate = traversable->active_document();
+    auto candidate = traversable->local().active_document();
 
     // 3. While true:
     while (candidate) {
@@ -5047,7 +5048,7 @@ void Document::check_favicon_after_loading_link_resource()
 
     if (largest_icon) {
         if (auto navigable = this->navigable(); navigable && navigable->is_traversable())
-            navigable->traversable_navigable()->page().client().page_did_change_favicon(*largest_icon);
+            page().client().page_did_change_favicon(*largest_icon);
     } else {
         dbgln_if(SPAM_DEBUG, "No favicon found to be used");
     }
@@ -5990,7 +5991,7 @@ void Document::make_active()
     HTML::relevant_settings_object(window).execution_ready = true;
 
     if (m_needs_to_call_page_did_load) {
-        navigable()->traversable_navigable()->page().client().page_did_finish_loading(url());
+        page().client().page_did_finish_loading(url());
         m_needs_to_call_page_did_load = false;
     }
 
@@ -8247,11 +8248,11 @@ GC::Ref<WebIDL::Promise> Document::exit_fullscreen()
 
     // 5. Let topLevelDoc be doc’s node navigable’s top-level traversable’s active document.
     auto top_level_traversable = navigable()->top_level_traversable();
-    if (!top_level_traversable || !top_level_traversable->has_local_state()) {
+    if (!top_level_traversable || !top_level_traversable->navigable().has_local_state()) {
         WebIDL::reject_promise(realm, promise, JS::TypeError::create(realm, "Document has no local top-level traversable."_utf16));
         return promise;
     }
-    auto top_level_doc = as<HTML::LocalNavigable>(*top_level_traversable).active_document();
+    auto top_level_doc = top_level_traversable->local().active_document();
 
     // 6. If topLevelDoc is in docs, and it is a simple fullscreen document, then set doc to topLevelDoc and resize to true.
     GC::Ref<Document> doc { *this };
@@ -8553,11 +8554,11 @@ void Document::set_navigable(GC::Ptr<HTML::LocalNavigable> navigable)
     HTML::main_thread_event_loop().document_navigable_did_change({});
 
     if (previous_traversable)
-        previous_traversable->page().update_needs_beforeunload_check();
+        previous_traversable->local().page().update_needs_beforeunload_check();
     if (navigable) {
         auto new_traversable = navigable->traversable_navigable();
         if (new_traversable && new_traversable != previous_traversable)
-            new_traversable->page().update_needs_beforeunload_check();
+            new_traversable->local().page().update_needs_beforeunload_check();
     }
 }
 

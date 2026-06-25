@@ -29,17 +29,52 @@
 namespace Web::HTML {
 
 class ApplyHistoryStepState;
+class LocalTraversableNavigable;
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#traversable-navigable
-class WEB_API TraversableNavigable final : public LocalNavigable {
-    GC_CELL(TraversableNavigable, LocalNavigable);
+class WEB_API TraversableNavigable final : public JS::Cell {
+    GC_CELL(TraversableNavigable, JS::Cell);
     GC_DECLARE_ALLOCATOR(TraversableNavigable);
 
 public:
-    static GC::Ref<TraversableNavigable> create_a_new_top_level_traversable(GC::Ref<Page>, GC::Ptr<BrowsingContext> opener, String target_name);
-    static GC::Ref<TraversableNavigable> create_a_fresh_top_level_traversable(GC::Ref<Page>, URL::URL const& initial_navigation_url, Variant<Empty, String, POSTResource> = Empty {});
+    static GC::Ref<TraversableNavigable> create(GC::Ref<Navigable>);
 
     virtual ~TraversableNavigable() override;
+
+    Navigable& navigable() { return m_navigable; }
+    Navigable const& navigable() const { return m_navigable; }
+
+    GC::Ptr<WindowProxy> active_window_proxy();
+    bool is_top_level_traversable() const;
+
+    LocalTraversableNavigable& local();
+    LocalTraversableNavigable const& local() const;
+
+    // https://w3c.github.io/geolocation/#dfn-emulated-position-data
+    Geolocation::EmulatedPositionData const& emulated_position_data() const { return m_emulated_position_data; }
+    void set_emulated_position_data(Geolocation::EmulatedPositionData data) { m_emulated_position_data = move(data); }
+
+private:
+    explicit TraversableNavigable(GC::Ref<Navigable>);
+
+    virtual void visit_edges(Cell::Visitor&) override;
+
+    GC::Ref<Navigable> m_navigable;
+
+    // https://w3c.github.io/geolocation/#dfn-emulated-position-data
+    Geolocation::EmulatedPositionData m_emulated_position_data;
+};
+
+// Local implementation state for a traversable navigable.
+class WEB_API LocalTraversableNavigable final : public LocalNavigable {
+    GC_CELL(LocalTraversableNavigable, LocalNavigable);
+    GC_DECLARE_ALLOCATOR(LocalTraversableNavigable);
+
+public:
+    static GC::Ref<LocalTraversableNavigable> create_a_new_top_level_traversable(GC::Ref<Page>, GC::Ptr<BrowsingContext> opener, String target_name);
+    static GC::Ref<LocalTraversableNavigable> create_a_fresh_top_level_traversable(GC::Ref<Page>, URL::URL const& initial_navigation_url, Variant<Empty, String, POSTResource> = Empty {});
+
+    virtual ~LocalTraversableNavigable() override;
 
     virtual bool is_top_level_traversable() const override;
 
@@ -130,10 +165,6 @@ public:
     StorageAPI::StorageShed& storage_shed() { return m_storage_shed; }
     StorageAPI::StorageShed const& storage_shed() const { return m_storage_shed; }
 
-    // https://w3c.github.io/geolocation/#dfn-emulated-position-data
-    Geolocation::EmulatedPositionData const& emulated_position_data() const;
-    void set_emulated_position_data(Geolocation::EmulatedPositionData data);
-
     void process_screenshot_requests();
     void queue_screenshot_task(Optional<UniqueNodeID> node_id)
     {
@@ -145,7 +176,7 @@ public:
 private:
     friend class ApplyHistoryStepState;
 
-    TraversableNavigable(GC::Ref<Page>);
+    LocalTraversableNavigable(GC::Ref<Page>);
 
     virtual bool is_traversable() const override { return true; }
 
@@ -190,8 +221,8 @@ private:
         LocalNavigable::NavigationAPIAbortBehavior,
         GC::Ref<OnHistoryStepPrechecksComplete>);
 
-    void check_if_unloading_is_canceled(Vector<GC::Root<LocalNavigable>> navigables_that_need_before_unload, GC::Ptr<TraversableNavigable> traversable, Optional<int> target_step, Optional<UserNavigationInvolvement> user_involvement_for_navigate_events, GC::Ref<GC::Function<void(CheckIfUnloadingIsCanceledResult)>> callback);
-    void check_if_unloading_is_canceled(Vector<GC::Root<Navigable>> navigables_that_need_before_unload, GC::Ptr<TraversableNavigable> traversable, Optional<int> target_step, Optional<UserNavigationInvolvement> user_involvement_for_navigate_events, GC::Ref<GC::Function<void(CheckIfUnloadingIsCanceledResult)>> callback);
+    void check_if_unloading_is_canceled(Vector<GC::Root<LocalNavigable>> navigables_that_need_before_unload, GC::Ptr<LocalTraversableNavigable> traversable, Optional<int> target_step, Optional<UserNavigationInvolvement> user_involvement_for_navigate_events, GC::Ref<GC::Function<void(CheckIfUnloadingIsCanceledResult)>> callback);
+    void check_if_unloading_is_canceled(Vector<GC::Root<Navigable>> navigables_that_need_before_unload, GC::Ptr<LocalTraversableNavigable> traversable, Optional<int> target_step, Optional<UserNavigationInvolvement> user_involvement_for_navigate_events, GC::Ref<GC::Function<void(CheckIfUnloadingIsCanceledResult)>> callback);
 
     Vector<NonnullRefPtr<SessionHistoryEntry>> get_session_history_entries_for_the_navigation_api(GC::Ref<LocalNavigable>, int);
 
@@ -247,9 +278,6 @@ private:
 
     String m_window_handle;
 
-    // https://w3c.github.io/geolocation/#dfn-emulated-position-data
-    Geolocation::EmulatedPositionData m_emulated_position_data;
-
     struct ScreenshotTask {
         Optional<Web::UniqueNodeID> node_id;
     };
@@ -262,9 +290,9 @@ struct BrowsingContextAndDocument {
 };
 
 BrowsingContextAndDocument create_a_new_top_level_browsing_context_and_document(GC::Ref<Page> page);
-void finalize_a_same_document_navigation(GC::Ref<TraversableNavigable> traversable, GC::Ref<LocalNavigable> target_navigable, NonnullRefPtr<SessionHistoryEntry> target_entry, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior, UserNavigationInvolvement, GC::Ref<OnApplyHistoryStepComplete> on_complete);
+void finalize_a_same_document_navigation(GC::Ref<LocalTraversableNavigable> traversable, GC::Ref<LocalNavigable> target_navigable, NonnullRefPtr<SessionHistoryEntry> target_entry, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior, UserNavigationInvolvement, GC::Ref<OnApplyHistoryStepComplete> on_complete);
 
 template<>
-inline bool LocalNavigable::fast_is<TraversableNavigable>() const { return is_traversable(); }
+inline bool LocalNavigable::fast_is<LocalTraversableNavigable>() const { return is_traversable(); }
 
 }

@@ -36,7 +36,7 @@
 #include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/Navigator.h>
 #include <LibWeb/HTML/PaintConfig.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/Layout/Viewport.h>
 #include <LibWeb/Page/AutoScrollHandler.h>
 #include <LibWeb/Page/DragAndDropEventHandler.h>
@@ -935,8 +935,8 @@ EventResult EventHandler::handle_keydown(UIEvents::KeyCode key, u32 modifiers, u
         if (document->fullscreen()) {
             // 1. Fully exit fullscreen given document's node navigable's top-level traversable's active document.
             auto top_level_traversable = m_navigable->top_level_traversable();
-            if (top_level_traversable && top_level_traversable->has_local_state())
-                as<HTML::LocalNavigable>(*top_level_traversable).active_document()->fully_exit_fullscreen();
+            if (top_level_traversable && top_level_traversable->navigable().has_local_state())
+                top_level_traversable->local().active_document()->fully_exit_fullscreen();
             // 2. Return.
             return EventResult::Handled;
         }

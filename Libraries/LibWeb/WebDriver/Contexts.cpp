@@ -7,7 +7,7 @@
 #include <AK/JsonObject.h>
 #include <LibWeb/DOM/Document.h>
 #include <LibWeb/HTML/BrowsingContext.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/WindowProxy.h>
 #include <LibWeb/WebDriver/Contexts.h>
 
@@ -39,7 +39,7 @@ JsonObject window_proxy_reference_object(HTML::WindowProxy const& window)
 
     // identifier
     //    Associated window handle of the window’s browsing context.
-    object.set(MUST(identifier.as_string().view().to_utf8()), navigable->traversable_navigable()->window_handle());
+    object.set(MUST(identifier.as_string().view().to_utf8()), navigable->local_traversable_navigable().window_handle());
 
     return object;
 }
@@ -50,7 +50,7 @@ static GC::Ptr<HTML::LocalNavigable> find_navigable_with_handle(StringView handl
         if (navigable->is_top_level_traversable() != should_be_top_level)
             continue;
 
-        if (navigable->traversable_navigable()->window_handle() == handle)
+        if (navigable->local_traversable_navigable().window_handle() == handle)
             return navigable;
     }
 

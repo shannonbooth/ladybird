@@ -46,7 +46,7 @@
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/SharedResourceRequest.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/Internals/InternalGamepad.h>
 #include <LibWeb/Internals/Internals.h>
@@ -678,9 +678,9 @@ String Internals::dump_session_history()
     if (!navigable)
         return "(no navigable)"_string;
 
-    auto traversable = navigable->traversable_navigable();
-    if (!traversable)
+    if (!navigable->traversable_navigable())
         return "(no traversable)"_string;
+    auto traversable = GC::Ptr<HTML::LocalTraversableNavigable> { navigable->local_traversable_navigable() };
 
     auto const& entries = navigable->get_session_history_entries();
     auto current_step = traversable->current_session_history_step();
@@ -716,8 +716,8 @@ String Internals::dump_ui_process_session_history()
 {
     auto& document = window().associated_document();
     if (auto navigable = document.navigable()) {
-        if (auto traversable = navigable->traversable_navigable();
-            traversable && document.page().client().should_report_session_history_updates()) {
+        if (navigable->traversable_navigable() && document.page().client().should_report_session_history_updates()) {
+            auto traversable = GC::Ptr<HTML::LocalTraversableNavigable> { navigable->local_traversable_navigable() };
             auto session_history_snapshot = traversable->create_session_history_snapshot();
             return document.page().client().page_did_update_session_history_and_request_ui_process_session_history_for_testing(
                 session_history_snapshot.top_level_session_history_entries,
@@ -745,11 +745,11 @@ GC::Ref<WebIDL::Promise> Internals::flush_session_history_traversal_queue()
         return promise;
     }
 
-    auto traversable = navigable->traversable_navigable();
-    if (!traversable) {
+    if (!navigable->traversable_navigable()) {
         WebIDL::resolve_promise(realm, promise);
         return promise;
     }
+    auto traversable = GC::Ptr<HTML::LocalTraversableNavigable> { navigable->local_traversable_navigable() };
 
     traversable->append_session_history_traversal_steps(GC::create_function(heap(), [&realm, promise](NonnullRefPtr<Core::Promise<Empty>> signal) {
         HTML::TemporaryExecutionContext execution_context { realm };
@@ -791,7 +791,7 @@ void Internals::perform_per_test_cleanup()
     m_gamepads.clear();
 
     // Clear any input state
-    page().local_root_traversable()->event_handler().clear_per_test_input_state({});
+    page().local_root_navigable()->event_handler().clear_per_test_input_state({});
 }
 
 void Internals::set_highlighted_node(GC::Ptr<DOM::Node> node)

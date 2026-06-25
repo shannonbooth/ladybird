@@ -27,7 +27,7 @@
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/StructuredSerialize.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/WebIDL/AbstractOperations.h>
 #include <LibWeb/XHR/FormData.h>
@@ -45,7 +45,7 @@ static void report_session_history_update_for_navigation_api_state_change(DOM::D
     if (!navigable)
         return;
 
-    auto traversable = navigable->traversable_navigable();
+    auto traversable = GC::Ptr<LocalTraversableNavigable> { navigable->local_traversable_navigable() };
     if (!traversable->page().client().should_report_session_history_updates())
         return;
 
@@ -682,7 +682,7 @@ WebIDL::ExceptionOr<Bindings::NavigationResult> Navigation::perform_a_navigation
     auto navigable = document.navigable();
 
     // 10. Let traversable be navigable's traversable navigable.
-    auto traversable = navigable->traversable_navigable();
+    auto traversable = GC::Ptr<LocalTraversableNavigable> { navigable->local_traversable_navigable() };
 
     // 11. Let sourceSnapshotParams be the result of snapshotting source snapshot params given document.
     auto source_snapshot_params = document.snapshot_source_snapshot_params();
@@ -1290,7 +1290,7 @@ bool Navigation::inner_navigate_event_firing_algorithm(
             auto destination_entry = event->destination()->navigation_history_entry();
             VERIFY(destination_entry);
             auto target_step = destination_entry->session_history_entry().step().get<int>();
-            auto traversable = navigable->traversable_navigable();
+            auto traversable = GC::Ptr<LocalTraversableNavigable> { navigable->local_traversable_navigable() };
             traversable->append_session_history_traversal_steps(GC::create_function(heap(), [this, event, traversable, target_step, user_involvement_for_resume](NonnullRefPtr<Core::Promise<Empty>> signal) {
                 // NB: This appended step can run after a later navigation has aborted the intercepted
                 //     traverse. In that case, the aborted traverse must not be resumed.

@@ -21,7 +21,7 @@
 #include <LibWeb/HTML/Scripting/Agent.h>
 #include <LibWeb/HTML/Scripting/Environments.h>
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HighResolutionTime/Performance.h>
 #include <LibWeb/HighResolutionTime/TimeOrigin.h>
@@ -543,10 +543,8 @@ void EventLoop::update_the_rendering()
         if (auto document = navigable->active_document())
             document->update_layout(DOM::UpdateLayoutReason::HTMLEventLoopRenderingUpdate);
         navigable->paint_next_frame();
-        if (navigable->is_traversable()) {
-            auto traversable = navigable->traversable_navigable();
-            traversable->process_screenshot_requests();
-        }
+        if (navigable->is_traversable())
+            navigable->local_traversable_navigable().process_screenshot_requests();
     }
 
     // 23. For each doc of docs, process top layer removals given doc.

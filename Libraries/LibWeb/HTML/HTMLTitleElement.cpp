@@ -7,7 +7,7 @@
 #include <LibWeb/Bindings/HTMLTitleElement.h>
 #include <LibWeb/DOM/Document.h>
 #include <LibWeb/HTML/HTMLTitleElement.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/Page/Page.h>
 
 namespace Web::HTML {
@@ -32,7 +32,7 @@ void HTMLTitleElement::children_changed(ChildrenChangedMetadata const& metadata)
     HTMLElement::children_changed(metadata);
     auto navigable = this->navigable();
     if (navigable && navigable->is_traversable()) {
-        navigable->traversable_navigable()->page().client().page_did_change_title(document().title());
+        document().page().client().page_did_change_title(document().title());
     }
 }
 

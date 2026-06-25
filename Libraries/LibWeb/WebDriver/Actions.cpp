@@ -18,7 +18,7 @@
 #include <LibWeb/HTML/BrowsingContext.h>
 #include <LibWeb/HTML/EventLoop/EventLoop.h>
 #include <LibWeb/HTML/LocalNavigable.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/Page/Page.h>
 #include <LibWeb/Painting/PaintableBox.h>
 #include <LibWeb/WebDriver/Actions.h>
@@ -1252,7 +1252,7 @@ static ErrorOr<void, WebDriver::Error> perform_pointer_move(ActionObject::Pointe
 // https://w3c.github.io/webdriver/#dfn-dispatch-a-pointermove-action
 static ErrorOr<void, WebDriver::Error> dispatch_pointer_move_action(ActionObject::PointerMoveFields const& action_object, PointerInputSource& source, GlobalKeyState const& global_key_state, AK::Duration tick_duration, HTML::BrowsingContext& browsing_context, ActionsOptions const& actions_options)
 {
-    auto viewport = browsing_context.page().local_root_traversable()->viewport_rect();
+    auto viewport = browsing_context.page().local_root_navigable()->viewport_rect();
 
     // 1. Let x offset be equal to the x property of action object.
     // 2. Let y offset be equal to the y property of action object.

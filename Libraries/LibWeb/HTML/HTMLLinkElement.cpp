@@ -34,7 +34,7 @@
 #include <LibWeb/HTML/EventNames.h>
 #include <LibWeb/HTML/HTMLLinkElement.h>
 #include <LibWeb/HTML/PotentialCORSRequest.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/Infra/CharacterTypes.h>
 #include <LibWeb/Loader/ResourceLoader.h>
 #include <LibWeb/Page/Page.h>
@@ -1047,7 +1047,7 @@ void HTMLLinkElement::load_fallback_favicon_if_needed(GC::Ref<DOM::Document> doc
             decode_favicon(body, request->url(), document)
                 ->when_resolved(GC::weak_callback(*document, [](DOM::Document& document, NonnullRefPtr<Gfx::Bitmap const>& favicon) {
                     if (auto navigable = document.navigable(); navigable && navigable->is_traversable())
-                        navigable->traversable_navigable()->page().client().page_did_change_favicon(*favicon);
+                        document.page().client().page_did_change_favicon(*favicon);
                 }));
         });
         auto process_body_error = GC::create_function(realm.heap(), [](JS::Value) {

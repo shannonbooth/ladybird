@@ -19,7 +19,7 @@
 #include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/SandboxingFlagSet.h>
 #include <LibWeb/HTML/Scripting/WindowEnvironmentSettingsObject.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HTML/WindowProxy.h>
 #include <LibWeb/HighResolutionTime/TimeOrigin.h>
@@ -321,18 +321,13 @@ void BrowsingContext::visit_edges(Cell::Visitor& visitor)
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#bc-traversable
-GC::Ref<TraversableNavigable> BrowsingContext::top_level_traversable() const
+GC::Ref<LocalTraversableNavigable> BrowsingContext::top_level_traversable() const
 {
     // A browsing context's top-level traversable is its active document's node navigable's top-level traversable.
     auto traversable = active_document()->navigable()->top_level_traversable();
     VERIFY(traversable);
     VERIFY(traversable->is_top_level_traversable());
-    if (traversable->has_local_state())
-        return as<TraversableNavigable>(*traversable);
-
-    auto local_traversable = active_document()->navigable()->traversable_navigable();
-    VERIFY(local_traversable);
-    return *local_traversable;
+    return traversable->local();
 }
 
 // https://html.spec.whatwg.org/multipage/browsers.html#top-level-browsing-context

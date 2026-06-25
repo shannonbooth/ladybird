@@ -18,7 +18,7 @@
 #include <LibWeb/HTML/HTMLBodyElement.h>
 #include <LibWeb/HTML/HTMLInputElement.h>
 #include <LibWeb/HTML/HTMLTextAreaElement.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/Page/Page.h>
 #include <LibWeb/Painting/PaintableBox.h>
 #include <LibWeb/WebDriver/ElementReference.h>
@@ -270,7 +270,7 @@ bool is_element_pointer_interactable(Web::HTML::BrowsingContext const& browsing_
     if (!paint_root)
         return false;
 
-    auto viewport = browsing_context.page().local_root_traversable()->viewport_rect();
+    auto viewport = browsing_context.page().local_root_navigable()->viewport_rect();
     auto center_point_or_error = in_view_center_point(element, viewport);
     if (center_point_or_error.is_error())
         return false;
@@ -409,7 +409,7 @@ GC::RootVector<GC::Ref<Web::DOM::Element>> pointer_interactable_tree(Web::HTML::
         return GC::RootVector<GC::Ref<Web::DOM::Element>> {};
 
     // 4. Let center point be the in-view center point of the first indexed element in rectangles.
-    auto viewport = browsing_context.page().local_root_traversable()->viewport_rect();
+    auto viewport = browsing_context.page().local_root_navigable()->viewport_rect();
     auto center_point_or_error = Web::WebDriver::in_view_center_point(element, viewport);
     if (center_point_or_error.is_error())
         return GC::RootVector<GC::Ref<Web::DOM::Element>> {};

@@ -63,12 +63,16 @@ public:
     Optional<URL::Origin> active_document_top_level_origin() const;
     RemoteNavigableDescriptor remote_descriptor() const;
 
+    LocalNavigable& local();
+    LocalNavigable const& local() const;
+
     void set_remote_state(RemoteNavigableState);
     void set_local_state();
     bool has_local_state() const { return m_state.has<LocalNavigableState>(); }
 
     GC::Ptr<TraversableNavigable> traversable_navigable() const;
-    GC::Ptr<Navigable> top_level_traversable();
+    GC::Ptr<TraversableNavigable> top_level_traversable();
+    void set_traversable_navigable(GC::Ptr<TraversableNavigable> traversable) { m_traversable = traversable; }
 
     virtual bool is_traversable() const;
     virtual bool is_top_level_traversable() const;
@@ -90,6 +94,7 @@ private:
     String m_id;
     GC::Ptr<Navigable> m_parent;
     GC::Ptr<NavigableContainer> m_container;
+    GC::Ptr<TraversableNavigable> m_traversable;
     Variant<LocalNavigableState, RemoteNavigableState> m_state { LocalNavigableState {} };
 
     friend class NavigableContainer;

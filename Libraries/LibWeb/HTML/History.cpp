@@ -13,7 +13,7 @@
 #include <LibWeb/HTML/Navigation.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/StructuredSerialize.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/Window.h>
 
 namespace Web::HTML {
@@ -104,7 +104,7 @@ WebIDL::ExceptionOr<void> History::delta_traverse(WebIDL::Long delta)
 
     // 4. Traverse the history by a delta given document's node navigable's traversable navigable, delta, and with
     //    sourceDocument set to document.
-    document.navigable()->traversable_navigable()->traverse_the_history_by_delta(delta, document);
+    document.navigable()->local_traversable_navigable().traverse_the_history_by_delta(delta, document);
 
     return {};
 }

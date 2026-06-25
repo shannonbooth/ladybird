@@ -58,7 +58,7 @@
 #include <LibWeb/HTML/NavigationObserver.h>
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
 #include <LibWeb/HTML/SelectedFile.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/WindowProxy.h>
 #include <LibWeb/HTML/XMLSerializer.h>
 #include <LibWeb/Loader/FileRequest.h>
@@ -142,7 +142,7 @@ static Gfx::IntRect compute_window_rect(Web::Page const& page)
     };
 }
 
-static Optional<size_t> current_top_level_entry_index(Web::HTML::TraversableNavigable::SessionHistorySnapshot const& session_history_snapshot)
+static Optional<size_t> current_top_level_entry_index(Web::HTML::LocalTraversableNavigable::SessionHistorySnapshot const& session_history_snapshot)
 {
     VERIFY(session_history_snapshot.current_used_step_index < session_history_snapshot.used_session_history_steps.size());
     auto current_step = session_history_snapshot.used_session_history_steps[session_history_snapshot.current_used_step_index];
@@ -156,7 +156,7 @@ static Optional<size_t> current_top_level_entry_index(Web::HTML::TraversableNavi
     return result;
 }
 
-static JsonObject serialize_session_history_snapshot_for_webdriver(Web::HTML::TraversableNavigable::SessionHistorySnapshot const& session_history_snapshot)
+static JsonObject serialize_session_history_snapshot_for_webdriver(Web::HTML::LocalTraversableNavigable::SessionHistorySnapshot const& session_history_snapshot)
 {
     JsonObject serialized;
     serialized.set("currentUsedStepIndex"sv, session_history_snapshot.current_used_step_index);
@@ -258,7 +258,7 @@ ErrorOr<NonnullRefPtr<WebDriverConnection>> WebDriverConnection::connect(Web::Pa
     auto transport = TRY(IPC::Transport::from_socket(move(socket)));
 #endif
     auto connection = TRY(adopt_nonnull_ref_or_enomem(new (nothrow) WebDriverConnection(move(transport), page_client)));
-    connection->async_did_set_window_handle(page_client.page().local_root_traversable()->window_handle());
+    connection->async_did_set_window_handle(page_client.page().local_root_navigable()->local_traversable_navigable().window_handle());
     return connection;
 }
 
@@ -324,7 +324,7 @@ void WebDriverConnection::close_session()
     // 5. Optionally, close all top-level browsing contexts, without prompting to unload.
     for (auto navigable : Web::HTML::all_local_navigables()) {
         if (navigable->is_top_level_traversable())
-            as<Web::HTML::TraversableNavigable>(*navigable).close_top_level_traversable();
+            as<Web::HTML::LocalTraversableNavigable>(*navigable).close_top_level_traversable();
     }
 }
 
@@ -468,7 +468,7 @@ Messages::WebDriverClient::BackResponse WebDriverConnection::back()
             metadata->will_replace_web_content_process = traversal_result.will_replace_web_content_process;
             metadata->wait_for_navigation_completion = true;
             if (metadata->will_replace_web_content_process)
-                async_did_start_window_replacement(current_top_level_browsing_context()->page().local_root_traversable()->window_handle());
+                async_did_start_window_replacement(current_top_level_browsing_context()->page().local_root_navigable()->local_traversable_navigable().window_handle());
             if (metadata->sync_response_returned)
                 async_driver_execution_complete(JsonValue {});
             else
@@ -500,7 +500,7 @@ Messages::WebDriverClient::ForwardResponse WebDriverConnection::forward()
             metadata->will_replace_web_content_process = traversal_result.will_replace_web_content_process;
             metadata->wait_for_navigation_completion = true;
             if (metadata->will_replace_web_content_process)
-                async_did_start_window_replacement(current_top_level_browsing_context()->page().local_root_traversable()->window_handle());
+                async_did_start_window_replacement(current_top_level_browsing_context()->page().local_root_navigable()->local_traversable_navigable().window_handle());
             if (metadata->sync_response_returned)
                 async_driver_execution_complete(JsonValue {});
             else
@@ -597,7 +597,7 @@ Messages::WebDriverClient::TraverseHistoryFromUiResponse WebDriverConnection::tr
         }
 
         if (traversal_result.will_replace_web_content_process)
-            async_did_start_window_replacement(current_top_level_browsing_context()->page().local_root_traversable()->window_handle());
+            async_did_start_window_replacement(current_top_level_browsing_context()->page().local_root_navigable()->local_traversable_navigable().window_handle());
 
         JsonObject result;
         result.set("willReplaceWebContentProcess"sv, traversal_result.will_replace_web_content_process);
@@ -689,10 +689,10 @@ Messages::WebDriverClient::SwitchToWindowResponse WebDriverConnection::switch_to
 
     for (auto navigable : Web::HTML::all_local_navigables()) {
         auto traversable = navigable->top_level_traversable();
-        if (!traversable || !traversable->has_local_state())
+        if (!traversable || !traversable->navigable().has_local_state())
             continue;
 
-        auto& local_traversable = as<Web::HTML::TraversableNavigable>(*traversable);
+        auto& local_traversable = traversable->local();
         if (!local_traversable.active_browsing_context())
             continue;
 
@@ -751,7 +751,7 @@ Messages::WebDriverClient::NewWindowResponse WebDriverConnection::new_window(Jso
         auto [target_navigable, no_opener, window_type] = MUST(active_window->window_open_steps_internal("about:blank"sv, ""sv, "noopener"sv));
 
         // 6. Let handle be the associated window handle of the newly created window.
-        auto handle = target_navigable->traversable_navigable()->window_handle();
+        auto handle = target_navigable->local_traversable_navigable().window_handle();
 
         // 7. Let type be "tab" if the newly created window shares an OS-level window with the current browsing context, or "window" otherwise.
         auto type = "tab"sv;

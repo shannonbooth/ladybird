@@ -30,6 +30,8 @@ GC::Ref<Navigable> Navigable::create_remote(JS::Realm& realm, RemoteNavigableDes
         .active_window_proxy = nullptr,
     });
     navigable->m_state.get<RemoteNavigableState>().active_window_proxy = WindowProxy::create_remote(realm, navigable);
+    if (descriptor.is_traversable)
+        navigable->set_traversable_navigable(TraversableNavigable::create(navigable));
     return navigable;
 }
 
@@ -81,6 +83,18 @@ RemoteNavigableDescriptor Navigable::remote_descriptor() const
     };
 }
 
+LocalNavigable& Navigable::local()
+{
+    VERIFY(has_local_state());
+    return as<LocalNavigable>(*this);
+}
+
+LocalNavigable const& Navigable::local() const
+{
+    VERIFY(has_local_state());
+    return as<LocalNavigable>(*this);
+}
+
 void Navigable::set_remote_state(RemoteNavigableState state)
 {
     m_state = move(state);
@@ -118,11 +132,11 @@ GC::Ptr<TraversableNavigable> Navigable::traversable_navigable() const
     // 3. Return navigable.
     if (!navigable)
         return nullptr;
-    return as<TraversableNavigable>(*navigable);
+    return navigable->m_traversable;
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-top
-GC::Ptr<Navigable> Navigable::top_level_traversable()
+GC::Ptr<TraversableNavigable> Navigable::top_level_traversable()
 {
     // 1. Let navigable be inputNavigable.
     GC::Ptr<Navigable> navigable = this;
@@ -132,7 +146,7 @@ GC::Ptr<Navigable> Navigable::top_level_traversable()
         navigable = navigable->parent();
 
     // 3. Return navigable.
-    return navigable;
+    return navigable->m_traversable;
 }
 
 void Navigable::visit_edges(Visitor& visitor)
@@ -140,6 +154,7 @@ void Navigable::visit_edges(Visitor& visitor)
     Base::visit_edges(visitor);
     visitor.visit(m_parent);
     visitor.visit(m_container);
+    visitor.visit(m_traversable);
     m_state.visit(
         [](LocalNavigableState&) {},
         [&](RemoteNavigableState& remote_state) {

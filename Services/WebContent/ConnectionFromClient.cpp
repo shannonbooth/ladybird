@@ -56,7 +56,7 @@
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
 #include <LibWeb/HTML/SelectedFile.h>
 #include <LibWeb/HTML/Storage.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HTML/WorkerAgentParent.h>
 #include <LibWeb/Infra/Strings.h>
@@ -129,7 +129,7 @@ void ConnectionFromClient::set_page_parent_context(u64 page_id, Optional<Web::Co
     if (!page.has_value())
         return;
 
-    auto& compositor_context = page->page().local_root_traversable()->compositor_context();
+    auto& compositor_context = page->page().local_root_navigable()->compositor_context();
     if (parent_context_id.has_value())
         compositor_context.stop_presenting_to_client();
     compositor_context.set_parent_context(parent_context_id);
@@ -186,7 +186,7 @@ void ConnectionFromClient::close_server()
 Messages::WebContentServer::GetWindowHandleResponse ConnectionFromClient::get_window_handle(u64 page_id)
 {
     if (auto page = this->page(page_id); page.has_value())
-        return page->page().local_root_traversable()->window_handle();
+        return page->page().local_root_navigable()->local_traversable_navigable().window_handle();
     return String {};
 }
 
@@ -336,7 +336,7 @@ void ConnectionFromClient::traverse_the_history_to_step(u64 page_id, i32 step)
         return;
     }
 
-    page->page().local_root_traversable()->traverse_the_history_to_step(step,
+    page->page().local_root_navigable()->local_traversable_navigable().traverse_the_history_to_step(step,
         GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, page_id, step](bool step_was_available, Web::HTML::HistoryStepResult result) {
             async_did_traverse_the_history_to_step(page_id, step, step_was_available, result);
         }));
@@ -351,7 +351,7 @@ void ConnectionFromClient::check_if_traverse_history_step_is_canceled(u64 page_i
     }
 
     auto& heap = Web::HTML::main_thread_event_loop().heap();
-    page->page().local_root_traversable()->check_if_traverse_history_step_is_canceled(step,
+    page->page().local_root_navigable()->local_traversable_navigable().check_if_traverse_history_step_is_canceled(step,
         GC::create_function(heap, [this, page_id, request_id, step](Web::HTML::HistoryStepResult result) {
             async_did_check_if_traverse_history_step_is_canceled(
                 page_id, request_id, step, result != Web::HTML::HistoryStepResult::Applied);
@@ -361,8 +361,8 @@ void ConnectionFromClient::check_if_traverse_history_step_is_canceled(u64 page_i
 void ConnectionFromClient::set_top_level_session_history(u64 page_id, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, size_t current_top_level_entry_index, bool allow_reconstructing_current_entry)
 {
     if (auto page = this->page(page_id); page.has_value()) {
-        auto accepted = page->page().local_root_traversable()->replace_top_level_session_history_entries_from_ui_process(move(entries), current_top_level_entry_index, allow_reconstructing_current_entry);
-        auto session_history_snapshot = page->page().local_root_traversable()->create_session_history_snapshot();
+        auto accepted = page->page().local_root_navigable()->local_traversable_navigable().replace_top_level_session_history_entries_from_ui_process(move(entries), current_top_level_entry_index, allow_reconstructing_current_entry);
+        auto session_history_snapshot = page->page().local_root_navigable()->local_traversable_navigable().create_session_history_snapshot();
         async_did_set_top_level_session_history(page_id, accepted, move(session_history_snapshot.top_level_session_history_entries), move(session_history_snapshot.used_session_history_steps), session_history_snapshot.current_used_step_index);
     } else {
         async_did_set_top_level_session_history(page_id, false, {}, {}, 0);
@@ -373,7 +373,7 @@ void ConnectionFromClient::reset_session_history_for_testing(u64 page_id)
 {
     if (auto page = this->page(page_id); page.has_value()) {
         auto& event_loop = Web::HTML::main_thread_event_loop();
-        page->page().local_root_traversable()->reset_session_history_for_testing(
+        page->page().local_root_navigable()->local_traversable_navigable().reset_session_history_for_testing(
             GC::create_function(event_loop.heap(), [this, page_id] {
                 async_did_reset_session_history_for_testing(page_id);
             }));
@@ -494,8 +494,8 @@ void ConnectionFromClient::debug_request(u64 page_id, ByteString request, ByteSt
         return;
 
     if (request == "dump-session-history") {
-        auto const& traversable = page->page().local_root_traversable();
-        Web::dump_tree(*traversable);
+        auto& traversable = page->page().local_root_navigable()->local_traversable_navigable();
+        Web::dump_tree(traversable);
         return;
     }
 
@@ -625,14 +625,14 @@ void ConnectionFromClient::debug_request(u64 page_id, ByteString request, ByteSt
 
     if (request == "set-line-box-borders") {
         bool state = argument == "on";
-        auto traversable = page->page().local_root_traversable();
+        auto traversable = page->page().local_root_navigable();
         traversable->set_should_show_line_box_borders(state);
         return;
     }
 
     if (request == "set-caret-hit-test-debug-overlay") {
         bool state = argument == "on";
-        auto traversable = page->page().local_root_traversable();
+        auto traversable = page->page().local_root_navigable();
         traversable->set_should_show_caret_hit_test_debug_overlay(state);
         return;
     }
@@ -2274,13 +2274,13 @@ void ConnectionFromClient::request_file(u64 page_id, Web::FileRequest file_reque
 void ConnectionFromClient::set_system_visibility_state(u64 page_id, Web::HTML::VisibilityState visibility_state)
 {
     if (auto page = this->page(page_id); page.has_value())
-        page->page().local_root_traversable()->set_system_visibility_state(visibility_state);
+        page->page().local_root_navigable()->local_traversable_navigable().set_system_visibility_state(visibility_state);
 }
 
 void ConnectionFromClient::reset_zoom(u64 page_id)
 {
     if (auto page = this->page(page_id); page.has_value())
-        page->page().local_root_traversable()->reset_zoom();
+        page->page().local_root_navigable()->reset_zoom();
 }
 
 void ConnectionFromClient::js_console_input(u64 page_id, String js_source)
@@ -2409,7 +2409,7 @@ void ConnectionFromClient::set_document_cookie_version_index(u64 page_id, i64 do
 void ConnectionFromClient::cookies_changed(u64 page_id, Vector<HTTP::Cookie::Cookie> cookies)
 {
     if (auto page = this->page(page_id); page.has_value()) {
-        auto window = page->page().local_root_traversable()->active_window();
+        auto window = page->page().local_root_navigable()->active_window();
         if (!window)
             return;
 
@@ -2448,7 +2448,7 @@ void ConnectionFromClient::request_close(u64 page_id)
     // Browser user agents should offer users the ability to arbitrarily close any top-level traversable in their top-level traversable set.
     // For example, by clicking a "close tab" button.
     if (auto page = this->page(page_id); page.has_value())
-        page->page().local_root_traversable()->close_top_level_traversable();
+        page->page().local_root_navigable()->local_traversable_navigable().close_top_level_traversable();
 }
 
 void ConnectionFromClient::exit_fullscreen(u64 page_id)

@@ -40,7 +40,7 @@
 #include <LibWeb/HTML/HTMLTemplateElement.h>
 #include <LibWeb/HTML/ImageRequest.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/Layout/BlockContainer.h>
 #include <LibWeb/Layout/FormattingContext.h>
 #include <LibWeb/Layout/InlineNode.h>
@@ -72,7 +72,7 @@ static void dump_session_history_entry(StringBuilder& builder, HTML::SessionHist
     }
 }
 
-void dump_tree(HTML::TraversableNavigable& traversable)
+void dump_tree(HTML::LocalTraversableNavigable& traversable)
 {
     StringBuilder builder;
     for (auto const& she : traversable.session_history_entries()) {

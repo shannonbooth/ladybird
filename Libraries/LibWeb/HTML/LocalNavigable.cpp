@@ -54,7 +54,7 @@
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/StructuredSerialize.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HTML/WindowProxy.h>
 #include <LibWeb/Infra/Strings.h>
@@ -258,7 +258,7 @@ HashTable<GC::RawRef<LocalNavigable>>& all_local_navigables()
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-session-history-entries
-static Vector<NonnullRefPtr<SessionHistoryEntry>>* get_session_history_entries_if_present(TraversableNavigable& traversable, LocalNavigable const& navigable)
+static Vector<NonnullRefPtr<SessionHistoryEntry>>* get_session_history_entries_if_present(LocalTraversableNavigable& traversable, LocalNavigable const& navigable)
 {
     // 4. Let docStates be an empty ordered set of document states.
     Vector<RefPtr<DocumentState>> doc_states;
@@ -310,7 +310,7 @@ Vector<NonnullRefPtr<SessionHistoryEntry>>* append_nested_history_for_child_navi
 }
 
 static Vector<NonnullRefPtr<SessionHistoryEntry>>*
-recreate_missing_nested_history_for_live_child_navigable(TraversableNavigable& traversable, LocalNavigable& navigable)
+recreate_missing_nested_history_for_live_child_navigable(LocalTraversableNavigable& traversable, LocalNavigable& navigable)
 {
     VERIFY(&navigable != &traversable);
 
@@ -355,7 +355,21 @@ bool LocalNavigable::is_ancestor_of(GC::Ref<LocalNavigable> other) const
 
 bool LocalNavigable::is_page_top_level_traversable() const
 {
-    return this == page().local_root_traversable().ptr();
+    return this == page().local_root_navigable().ptr();
+}
+
+LocalTraversableNavigable& LocalNavigable::local_traversable_navigable()
+{
+    auto traversable = Navigable::traversable_navigable();
+    VERIFY(traversable);
+    return traversable->local();
+}
+
+LocalTraversableNavigable& LocalNavigable::local_traversable_navigable() const
+{
+    auto traversable = Navigable::traversable_navigable();
+    VERIFY(traversable);
+    return traversable->local();
 }
 
 LocalNavigable::LocalNavigable(
@@ -462,7 +476,7 @@ bool LocalNavigable::is_script_closable()
     if (!is_top_level_traversable())
         return false;
 
-    return as<TraversableNavigable>(this)->is_created_by_web_content()
+    return as<LocalTraversableNavigable>(this)->is_created_by_web_content()
         || get_session_history_entries().size() == 1;
 }
 
@@ -546,7 +560,7 @@ void LocalNavigable::initialize_navigable(NonnullRefPtr<DocumentState> document_
     }
 
     // 6. Set the initial visibility state of documentState's document to navigable's traversable navigable's system visibility state.
-    document->set_initial_visibility_state(traversable_navigable()->system_visibility_state());
+    document->set_initial_visibility_state(local_traversable_navigable().system_visibility_state());
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-the-target-history-entry
@@ -579,7 +593,7 @@ RefPtr<SessionHistoryEntry> LocalNavigable::get_the_target_history_entry(int tar
 
 RefPtr<SessionHistoryEntry> LocalNavigable::get_the_target_history_entry_if_present(int target_step) const
 {
-    auto traversable = traversable_navigable();
+    auto traversable = GC::Ptr<LocalTraversableNavigable> { local_traversable_navigable() };
     Vector<NonnullRefPtr<SessionHistoryEntry>>* entries = nullptr;
     if (this == traversable.ptr())
         entries = &traversable->session_history_entries();
@@ -624,7 +638,7 @@ void LocalNavigable::activate_history_entry(RefPtr<SessionHistoryEntry> entry, G
     new_document->make_active();
 
     // 6. Set the initial visibility state of newDocument to navigable's traversable navigable's system visibility state.
-    new_document->set_initial_visibility_state(traversable_navigable()->system_visibility_state());
+    new_document->set_initial_visibility_state(local_traversable_navigable().system_visibility_state());
 
     // AD-HOC: In the async state machine, documents created during populate may have completed
     //         their loading lifecycle before being activated (when they had no navigable).
@@ -878,7 +892,7 @@ LocalNavigable::ChosenNavigable LocalNavigable::choose_a_navigable(StringView na
     // 6. Otherwise, if name is an ASCII case-insensitive match for "_top",
     //    set chosen to currentNavigable's traversable navigable.
     else if (name.equals_ignoring_ascii_case("_top"sv)) {
-        chosen = traversable_navigable();
+        chosen = &local_traversable_navigable();
     }
 
     // 7. Otherwise, if name is not an ASCII case-insensitive match for "_blank" and noopener is false, then set chosen
@@ -893,7 +907,7 @@ LocalNavigable::ChosenNavigable LocalNavigable::choose_a_navigable(StringView na
     if (!chosen) {
         // --> If currentNavigable's active window does not have transient activation and the user agent has been configured to
         //     not show popups (i.e., the user agent has a "popup blocker" enabled)
-        if (active_window() && !active_window()->has_transient_activation() && traversable_navigable()->page().should_block_pop_ups()) {
+        if (active_window() && !active_window()->has_transient_activation() && local_traversable_navigable().page().should_block_pop_ups()) {
             // FIXME: The user agent may inform the user that a popup has been blocked.
             dbgln("Pop-up blocked!");
         }
@@ -940,10 +954,10 @@ LocalNavigable::ChosenNavigable LocalNavigable::choose_a_navigable(StringView na
                 target_name = MUST(String::from_utf8(name));
 
             auto create_new_traversable_closure = [this, no_opener, target_name, activate_tab, window_features](GC::Ptr<BrowsingContext> opener) -> GC::Ref<LocalNavigable> {
-                auto hints = WebViewHints::from_tokenised_features(window_features.value_or({}), traversable_navigable()->page());
-                auto [page, window_handle] = traversable_navigable()->page().client().page_did_request_new_web_view(activate_tab, hints, no_opener);
-                auto traversable = TraversableNavigable::create_a_new_top_level_traversable(*page, opener, target_name);
-                page->set_local_root_traversable(traversable);
+                auto hints = WebViewHints::from_tokenised_features(window_features.value_or({}), local_traversable_navigable().page());
+                auto [page, window_handle] = local_traversable_navigable().page().client().page_did_request_new_web_view(activate_tab, hints, no_opener);
+                auto traversable = LocalTraversableNavigable::create_a_new_top_level_traversable(*page, opener, target_name);
+                page->set_local_root_navigable(traversable);
                 traversable->set_window_handle(window_handle);
                 return traversable;
             };
@@ -972,7 +986,7 @@ LocalNavigable::ChosenNavigable LocalNavigable::choose_a_navigable(StringView na
                 chosen->active_browsing_context()->set_popup_sandboxing_flag_set(chosen->active_browsing_context()->popup_sandboxing_flag_set() | sandboxing_flag_set);
 
             // 10. Set chosen's is created by web content to true.
-            as<TraversableNavigable>(*chosen).set_is_created_by_web_content(true);
+            as<LocalTraversableNavigable>(*chosen).set_is_created_by_web_content(true);
         }
 
         // --> If the user agent has been configured such that in this instance it will choose currentNavigable
@@ -1075,12 +1089,12 @@ GC::Ptr<LocalNavigable> LocalNavigable::find_a_navigable_by_target_name(StringVi
 Vector<NonnullRefPtr<SessionHistoryEntry>>& LocalNavigable::get_session_history_entries() const
 {
     // 1. Let traversable be navigable's traversable navigable.
-    auto traversable = traversable_navigable();
+    auto traversable = GC::Ptr<LocalTraversableNavigable> { local_traversable_navigable() };
 
     // FIXME: 2. Assert: this is running within traversable's session history traversal queue.
 
     // 3. If navigable is traversable, return traversable's session history entries.
-    if (this == traversable)
+    if (this == traversable.ptr())
         return traversable->session_history_entries();
 
     if (auto* entries = get_session_history_entries_if_present(*traversable, *this))
@@ -2334,10 +2348,10 @@ void LocalNavigable::begin_navigation(NavigateParams params)
         }
 
         // 1. Let unloadPromptCanceled be the result of checking if unloading is user-canceled for navigable's active document's inclusive descendant navigables.
-        traversable_navigable()->check_if_unloading_is_canceled(this->active_document()->inclusive_descendant_navigables(),
-            GC::create_function(heap(), [this, source_snapshot_params, target_snapshot_params, csp_navigation_type, document_resource, url, navigation_id, referrer_policy, initiator_origin_snapshot, response, history_handling, initiator_base_url_snapshot, user_involvement, params = move(params)](TraversableNavigable::CheckIfUnloadingIsCanceledResult unload_prompt_canceled) mutable {
+        local_traversable_navigable().check_if_unloading_is_canceled(this->active_document()->inclusive_descendant_navigables(),
+            GC::create_function(heap(), [this, source_snapshot_params, target_snapshot_params, csp_navigation_type, document_resource, url, navigation_id, referrer_policy, initiator_origin_snapshot, response, history_handling, initiator_base_url_snapshot, user_involvement, params = move(params)](LocalTraversableNavigable::CheckIfUnloadingIsCanceledResult unload_prompt_canceled) mutable {
                 // 2. If unloadPromptCanceled is not "continue", or navigable's ongoing navigation is no longer navigationId:
-                if (unload_prompt_canceled != TraversableNavigable::CheckIfUnloadingIsCanceledResult::Continue) {
+                if (unload_prompt_canceled != LocalTraversableNavigable::CheckIfUnloadingIsCanceledResult::Continue) {
                     // FIXME: 1. Invoke WebDriver BiDi navigation failed with navigable and a new WebDriver BiDi navigation status whose id is navigationId, status is "canceled", and url is url.
                     if (is_page_top_level_traversable())
                         active_browsing_context()->page().client().page_did_cancel_loading(url);
@@ -2545,7 +2559,7 @@ void LocalNavigable::begin_navigation(NavigateParams params)
                             output->apply_to(*history_entry);
                         auto pending_document = output ? output->document : GC::Ptr<DOM::Document> {};
                         // 1. Append session history traversal steps to navigable's traversable to finalize a cross-document navigation given navigable, historyHandling, userInvolvement, and historyEntry.
-                        traversable_navigable()->append_session_history_traversal_steps(GC::create_function(heap(), [this, history_entry, history_handling, navigation_id, user_involvement, pending_document](NonnullRefPtr<Core::Promise<Empty>> signal) {
+                        local_traversable_navigable().append_session_history_traversal_steps(GC::create_function(heap(), [this, history_entry, history_handling, navigation_id, user_involvement, pending_document](NonnullRefPtr<Core::Promise<Empty>> signal) {
                             if (this->has_been_destroyed()) {
                                 // AD-HOC: This check is not in the spec but we should not continue navigation if navigable has been destroyed.
                                 set_delaying_load_events(false);
@@ -2643,7 +2657,7 @@ void LocalNavigable::navigate_to_a_fragment(URL::URL const& url, HistoryHandling
     active_document()->scroll_to_the_fragment();
 
     // 16. Let traversable be navigable's traversable navigable.
-    auto traversable = traversable_navigable();
+    auto traversable = GC::Ptr<LocalTraversableNavigable> { local_traversable_navigable() };
 
     // AD-HOC: Browser engines commit same-document navigations synchronously when no traversal state is active. Keep
     //         the spec's queued synchronous-navigation steps as the fallback for reentrant traversal work and child
@@ -2866,7 +2880,7 @@ void LocalNavigable::navigate_to_a_javascript_url(URL::URL const& url, HistoryHa
     history_entry->set_document_state(document_state);
 
     // 14. Append session history traversal steps to targetNavigable's traversable to finalize a cross-document navigation with targetNavigable, historyHandling, userInvolvement, and historyEntry.
-    traversable_navigable()->append_session_history_traversal_steps(GC::create_function(heap(), [this, new_document, history_entry, history_handling, user_involvement](NonnullRefPtr<Core::Promise<Empty>> signal) {
+    local_traversable_navigable().append_session_history_traversal_steps(GC::create_function(heap(), [this, new_document, history_entry, history_handling, user_involvement](NonnullRefPtr<Core::Promise<Empty>> signal) {
         finalize_a_cross_document_navigation(*this, history_handling, user_involvement, history_entry, new_document, {}, GC::create_function(heap(), [signal](HistoryStepResult) {
             signal->resolve({});
         }));
@@ -2910,7 +2924,7 @@ void LocalNavigable::reload(Optional<SerializationRecord> navigation_api_state, 
     active_session_history_entry()->document_state()->set_reload_pending(true);
 
     // 3. Let traversable be navigable's traversable navigable.
-    auto traversable = traversable_navigable();
+    auto traversable = GC::Ptr<LocalTraversableNavigable> { local_traversable_navigable() };
 
     // AD-HOC: Report the reload-pending document state to the UI process before the reload history step finishes,
     //         so the UI-owned session history mirror remains synchronized during an in-flight reload.
@@ -3054,7 +3068,7 @@ void finalize_a_cross_document_navigation(GC::Ref<LocalNavigable> navigable, His
     auto entry_to_replace = history_handling == HistoryHandlingBehavior::Replace ? navigable->active_session_history_entry() : nullptr;
 
     // 6. Let traversable be navigable's traversable navigable.
-    auto traversable = navigable->traversable_navigable();
+    auto traversable = GC::Ptr<LocalTraversableNavigable> { navigable->local_traversable_navigable() };
 
     // 7. Let targetStep be null.
     int target_step;
@@ -3150,7 +3164,7 @@ void finalize_a_cross_document_navigation(GC::Ref<LocalNavigable> navigable, His
     }
 
     // 10. Apply the push/replace history step targetStep to traversable given historyHandling and userInvolvement.
-    traversable->apply_the_push_or_replace_history_step(target_step, history_handling, user_involvement, TraversableNavigable::SynchronousNavigation::No, pending_document, navigable, move(expected_ongoing_navigation_id),
+    traversable->apply_the_push_or_replace_history_step(target_step, history_handling, user_involvement, LocalTraversableNavigable::SynchronousNavigation::No, pending_document, navigable, move(expected_ongoing_navigation_id),
         GC::create_function(navigable->heap(), [on_complete, navigable](HistoryStepResult result) {
             // AD-HOC: Trigger a relayout in the container document for size negotiation with SVG documents.
             if (auto container = navigable->container())
@@ -3218,7 +3232,7 @@ void perform_url_and_history_update_steps(DOM::Document& document, URL::URL new_
     relevant_global_object.navigation()->update_the_navigation_api_entries_for_a_same_document_navigation(new_entry, navigation_type);
 
     // 12. Let traversable be navigable's traversable navigable.
-    auto traversable = navigable->traversable_navigable();
+    auto traversable = GC::Ptr<LocalTraversableNavigable> { navigable->local_traversable_navigable() };
 
     // AD-HOC: Browser engines commit same-document navigations synchronously when no traversal state is active. Keep
     //         the spec's queued synchronous-navigation steps as the fallback for reentrant traversal work and child
@@ -3270,7 +3284,7 @@ CSSPixelPoint LocalNavigable::to_top_level_position(CSSPixelPoint a_position)
 {
     auto position = a_position;
     for (GC::Ptr<LocalNavigable> ancestor = this; ancestor; ancestor = as<LocalNavigable>(*ancestor->parent())) {
-        if (is<TraversableNavigable>(*ancestor))
+        if (is<LocalTraversableNavigable>(*ancestor))
             break;
         if (!ancestor->container())
             return {};

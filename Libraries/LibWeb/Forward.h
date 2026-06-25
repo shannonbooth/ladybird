@@ -860,6 +860,7 @@ class ToggleEvent;
 class TrackEvent;
 class TransferDataDecoder;
 class TransferDataEncoder;
+class LocalTraversableNavigable;
 class TraversableNavigable;
 class UserActivation;
 class ValidityState;

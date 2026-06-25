@@ -53,6 +53,7 @@
 #include <LibWeb/FileAPI/BlobURLStore.h>
 #include <LibWeb/HTML/EventLoop/EventLoop.h>
 #include <LibWeb/HTML/LocalNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/PreloadEntry.h>
 #include <LibWeb/HTML/Scripting/Environments.h>
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
@@ -377,7 +378,7 @@ void populate_request_from_client(JS::Realm const& realm, Infrastructure::Reques
             //    user prompts to global’s navigable’s traversable navigable.
             if (auto const* window = as_if<HTML::Window>(global)) {
                 if (auto navigable = window->navigable())
-                    request.set_traversable_for_user_prompts(as<HTML::LocalNavigable>(*navigable).traversable_navigable());
+                    request.set_traversable_for_user_prompts(GC::Ptr<HTML::LocalTraversableNavigable> { as<HTML::LocalNavigable>(*navigable).local_traversable_navigable() });
             }
         }
     }
@@ -2007,7 +2008,7 @@ GC::Ref<PendingResponse> http_network_or_cache_fetch(JS::Realm& realm, Infrastru
         if (response->status() == 401
             && http_request->response_tainting() != Infrastructure::Request::ResponseTainting::CORS
             && include_credentials == HTTP::Cookie::IncludeCredentials::Yes
-            && request->traversable_for_user_prompts().has<GC::Ptr<HTML::TraversableNavigable>>()
+            && request->traversable_for_user_prompts().has<GC::Ptr<HTML::LocalTraversableNavigable>>()
             && www_authenticate_has_credential_based_scheme()) {
             // 1. Needs testing: multiple `WWW-Authenticate` headers, missing, parsing issues.
             // (Red box in the spec, no-op)

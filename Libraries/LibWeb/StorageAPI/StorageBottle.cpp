@@ -7,7 +7,7 @@
 
 #include <LibWeb/DOM/Document.h>
 #include <LibWeb/HTML/Scripting/Environments.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/StorageAPI/StorageBottle.h>
 #include <LibWeb/StorageAPI/StorageEndpoint.h>
@@ -61,7 +61,7 @@ GC::Ptr<StorageBottle> obtain_a_storage_bottle_map(StorageType type, HTML::Envir
         VERIFY(type == StorageType::Session);
 
         // 2. Set shed to environment’s global object’s associated Document’s node navigable’s traversable navigable’s storage shed.
-        shed = &as<HTML::Window>(environment.global_object()).associated_document().navigable()->traversable_navigable()->storage_shed();
+        shed = &as<HTML::Window>(environment.global_object()).associated_document().navigable()->local_traversable_navigable().storage_shed();
     }
 
     // 4. Let shelf be the result of running obtain a storage shelf, with shed, environment, and type.

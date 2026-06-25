@@ -18,7 +18,7 @@
 #include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/NavigableContainer.h>
 #include <LibWeb/HTML/Navigation.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/WindowProxy.h>
 #include <LibWeb/UIEvents/FocusEvent.h>
 
@@ -465,7 +465,7 @@ void run_unfocusing_steps(DOM::Node* old_focus_target)
     auto& top_document = as<DOM::Document>(*old_chain.last());
 
     // 8. If topDocument's node navigable has system focus, then run the focusing steps for topDocument's viewport.
-    if (top_document.navigable()->traversable_navigable()->is_focused()) {
+    if (top_document.navigable()->top_level_traversable()->local().is_focused()) {
 
         // AD-HOC: Remove top_document from old_chain so step 1 in run_focus_update_steps doesn't cancel the blur.
         auto without_viewport_surrogate = old_chain;

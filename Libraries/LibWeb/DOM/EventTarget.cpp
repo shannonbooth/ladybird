@@ -40,7 +40,7 @@
 #include <LibWeb/HTML/HTMLFormElement.h>
 #include <LibWeb/HTML/HTMLFrameSetElement.h>
 #include <LibWeb/HTML/LocalNavigable.h>
-#include <LibWeb/HTML/TraversableNavigable.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HighResolutionTime/TimeOrigin.h>
 #include <LibWeb/Page/Page.h>
@@ -229,7 +229,7 @@ static void update_needs_beforeunload_check(EventTarget& event_target, DOMEventL
         return;
 
     if (auto traversable = navigable->traversable_navigable())
-        traversable->page().update_needs_beforeunload_check();
+        traversable->local().page().update_needs_beforeunload_check();
 }
 
 // https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
