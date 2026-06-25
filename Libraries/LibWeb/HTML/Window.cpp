@@ -1087,10 +1087,9 @@ GC::Ptr<WindowProxy const> Window::top() const
     auto navigable = this->navigable();
     if (!navigable)
         return {};
-    auto local_navigable = GC::Ref { as<LocalNavigable>(*navigable) };
 
     // 2. Return this's navigable's top-level traversable's active WindowProxy.
-    return local_navigable->top_level_traversable()->active_window_proxy();
+    return navigable->top_level_traversable()->active_window_proxy();
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-opener
@@ -1880,7 +1879,7 @@ GC::Ref<CustomElementRegistry> Window::custom_elements()
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#document-tree-child-navigable-target-name-property-set
-OrderedHashMap<FlyString, GC::Ref<LocalNavigable>> Window::document_tree_child_navigable_target_name_property_set()
+OrderedHashMap<FlyString, GC::Ref<Navigable>> Window::document_tree_child_navigable_target_name_property_set()
 {
     // The document-tree child navigable target name property set of a Window object window is the return value of running these steps:
 
@@ -1888,7 +1887,7 @@ OrderedHashMap<FlyString, GC::Ref<LocalNavigable>> Window::document_tree_child_n
     auto children = associated_document().document_tree_child_navigables();
 
     // 2. Let firstNamedChildren be an empty ordered set.
-    OrderedHashMap<FlyString, GC::Ref<LocalNavigable>> first_named_children;
+    OrderedHashMap<FlyString, GC::Ref<Navigable>> first_named_children;
 
     // 3. For each navigable of children:
     for (auto const& navigable : children) {
@@ -1908,14 +1907,16 @@ OrderedHashMap<FlyString, GC::Ref<LocalNavigable>> Window::document_tree_child_n
     }
 
     // 4. Let names be an empty ordered set.
-    OrderedHashMap<FlyString, GC::Ref<LocalNavigable>> names;
+    OrderedHashMap<FlyString, GC::Ref<Navigable>> names;
 
     // 5. For each navigable of firstNamedChildren:
     for (auto const& [name, navigable] : first_named_children) {
         // 1. Let name be navigable's target name.
         // 2. If navigable's active document's origin is same origin with window's relevant settings object's origin, then append name to names.
-        auto document = navigable->active_document();
-        if (document && document->origin().is_same_origin(relevant_settings_object(*this).origin()))
+        auto window_proxy = navigable->active_window_proxy();
+        auto window = window_proxy ? window_proxy->window() : nullptr;
+        auto document = window ? &window->associated_document() : nullptr;
+        if (!document || document->origin().is_same_origin(relevant_settings_object(*this).origin()))
             names.set(name, *navigable);
     }
 
@@ -1974,7 +1975,7 @@ JS::Value Window::named_item_value(FlyString const& name) const
             auto content_navigable = navigable_container.content_navigable();
             if (!content_navigable)
                 return TraversalDecision::Continue;
-            if (objects.navigables.contains_slow(GC::Ref { as<LocalNavigable>(*content_navigable) })) {
+            if (objects.navigables.contains_slow(GC::Ref { *content_navigable })) {
                 container = navigable_container;
                 return TraversalDecision::Break;
             }

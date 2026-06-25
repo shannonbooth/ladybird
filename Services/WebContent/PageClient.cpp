@@ -34,6 +34,7 @@
 #include <LibWeb/HTML/EventLoop/EventLoop.h>
 #include <LibWeb/HTML/HTMLIFrameElement.h>
 #include <LibWeb/HTML/LocalNavigable.h>
+#include <LibWeb/HTML/NavigableContainer.h>
 #include <LibWeb/HTML/Scripting/ClassicScript.h>
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
 #include <LibWeb/HTML/TraversableNavigable.h>
@@ -221,12 +222,38 @@ void PageClient::page_did_destroy_child_frame(String const& frame_id)
     client().async_did_destroy_child_frame(m_id, frame_id);
 }
 
+static GC::Ptr<Web::HTML::Navigable> find_child_navigable_by_id(Web::DOM::Document& document, String const& frame_id)
+{
+    GC::Ptr<Web::HTML::Navigable> result;
+    document.for_each_in_subtree_of_type<Web::HTML::NavigableContainer>([&](Web::HTML::NavigableContainer& navigable_container) {
+        auto content_navigable = navigable_container.content_navigable();
+        if (!content_navigable || content_navigable->id() != frame_id)
+            return Web::TraversalDecision::Continue;
+
+        result = content_navigable;
+        return Web::TraversalDecision::Break;
+    });
+    return result;
+}
+
 void PageClient::set_remote_child_frame_compositor_context(String frame_id, Optional<Web::Compositor::CompositorContextId> context_id)
 {
-    if (context_id.has_value())
-        m_remote_child_frame_compositor_contexts.set(move(frame_id), *context_id);
-    else
+    auto active_document = page().top_level_traversable()->active_document();
+    auto child_navigable = active_document ? find_child_navigable_by_id(*active_document, frame_id) : nullptr;
+
+    if (context_id.has_value()) {
+        m_remote_child_frame_compositor_contexts.set(frame_id, *context_id);
+
+        if (child_navigable) {
+            auto target_name = child_navigable->target_name();
+            as<Web::HTML::LocalNavigable>(*child_navigable).detach_local_state_for_remote_navigation();
+            child_navigable->set_remote_state({ .target_name = move(target_name), .active_window_proxy = nullptr });
+        }
+    } else {
         m_remote_child_frame_compositor_contexts.remove(frame_id);
+        if (child_navigable)
+            child_navigable->set_local_state();
+    }
     request_frame();
 }
 

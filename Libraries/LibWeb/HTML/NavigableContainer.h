@@ -26,6 +26,7 @@ public:
 
     GC::Ptr<Navigable> content_navigable() { return m_content_navigable; }
     GC::Ptr<Navigable const> content_navigable() const { return m_content_navigable.ptr(); }
+    void set_content_navigable(GC::Ptr<Navigable>);
 
     DOM::Document const* content_document() const;
     DOM::Document const* content_document_without_origin_check() const;

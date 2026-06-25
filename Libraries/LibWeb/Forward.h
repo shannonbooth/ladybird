@@ -819,7 +819,6 @@ class MimeType;
 class MimeTypeArray;
 class ModuleMap;
 class LocalNavigable;
-class RemoteNavigable;
 class Navigable;
 class NavigableContainer;
 class NavigateEvent;

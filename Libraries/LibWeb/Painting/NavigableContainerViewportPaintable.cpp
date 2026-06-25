@@ -41,12 +41,13 @@ void NavigableContainerViewportPaintable::paint(DisplayListRecordingContext& con
         auto const& navigable_container = this->navigable_container();
         auto content_navigable = navigable_container.content_navigable();
         VERIFY(content_navigable);
-        auto& local_content_navigable = as<HTML::LocalNavigable>(*content_navigable);
-        if (local_content_navigable.has_been_destroyed())
-            return;
 
-        auto context_id = document().page().client().compositor_context_id_for_remote_child_frame(local_content_navigable.id());
+        auto context_id = document().page().client().compositor_context_id_for_remote_child_frame(content_navigable->id());
         if (!context_id.has_value()) {
+            auto& local_content_navigable = as<HTML::LocalNavigable>(*content_navigable);
+            if (local_content_navigable.has_been_destroyed())
+                return;
+
             if (!local_content_navigable.has_compositor_context())
                 return;
 
@@ -66,7 +67,7 @@ void NavigableContainerViewportPaintable::paint(DisplayListRecordingContext& con
         context.display_list_recorder().restore();
 
         if constexpr (HIGHLIGHT_FOCUSED_FRAME_DEBUG) {
-            if (local_content_navigable.is_focused()) {
+            if (content_navigable->has_local_state() && as<HTML::LocalNavigable>(*content_navigable).is_focused()) {
                 context.display_list_recorder().draw_rect(clip_rect.to_type<int>(), Color::Cyan);
             }
         }

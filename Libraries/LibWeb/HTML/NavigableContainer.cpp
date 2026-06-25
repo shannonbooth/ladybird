@@ -62,6 +62,17 @@ GC::Ptr<NavigableContainer> NavigableContainer::navigable_container_with_content
     return nullptr;
 }
 
+void NavigableContainer::set_content_navigable(GC::Ptr<Navigable> navigable)
+{
+    if (m_content_navigable)
+        m_content_navigable->set_container(nullptr);
+
+    m_content_navigable = navigable;
+
+    if (m_content_navigable)
+        m_content_navigable->set_container(this);
+}
+
 // https://html.spec.whatwg.org/multipage/document-sequences.html#create-a-new-child-navigable
 void NavigableContainer::create_new_child_navigable()
 {
@@ -104,7 +115,7 @@ void NavigableContainer::create_new_child_navigable()
     navigable->initialize_navigable(document_state, parent_navigable, *document);
 
     // 9. Set element's content navigable to navigable.
-    m_content_navigable = navigable;
+    set_content_navigable(navigable);
 
     page.client().page_did_create_child_frame(parent_navigable->id(), navigable->id());
 
@@ -149,6 +160,8 @@ DOM::Document const* NavigableContainer::content_document() const
         return nullptr;
 
     // 2. Let document be container's content navigable's active document.
+    if (!m_content_navigable->has_local_state())
+        return nullptr;
     auto document = as<LocalNavigable>(*m_content_navigable).active_document();
 
     // AD-HOC: The active document can be null during navigation, after the old document
@@ -167,6 +180,9 @@ DOM::Document const* NavigableContainer::content_document() const
 DOM::Document const* NavigableContainer::content_document_without_origin_check() const
 {
     if (!m_content_navigable)
+        return nullptr;
+
+    if (!m_content_navigable->has_local_state())
         return nullptr;
 
     return as<LocalNavigable>(*m_content_navigable).active_document();
@@ -201,6 +217,8 @@ Optional<URL::URL> NavigableContainer::shared_attribute_processing_steps_for_ifr
     // AD-HOC: If the element was added and immediately removed, the content navigable will be null. Don't process the
     //         src attribute any further.
     if (!m_content_navigable)
+        return {};
+    if (!m_content_navigable->has_local_state())
         return {};
     auto& content_navigable = as<LocalNavigable>(*m_content_navigable);
 
@@ -250,6 +268,11 @@ Optional<URL::URL> NavigableContainer::shared_attribute_processing_steps_for_ifr
 // https://html.spec.whatwg.org/multipage/iframe-embed-object.html#navigate-an-iframe-or-frame
 void NavigableContainer::navigate_an_iframe_or_frame(URL::URL url, ReferrerPolicy::ReferrerPolicy referrer_policy, Optional<String> srcdoc_string, InitialInsertion initial_insertion)
 {
+    if (!m_content_navigable || !m_content_navigable->has_local_state()) {
+        // FIXME: Navigate the remote child frame through the browser process.
+        return;
+    }
+
     auto& content_navigable = as<LocalNavigable>(*m_content_navigable);
 
     // 1. Let historyHandling be "auto".
@@ -299,6 +322,14 @@ void NavigableContainer::destroy_the_child_navigable()
     // 2. If navigable is null, then return.
     if (!content_navigable)
         return;
+
+    if (!content_navigable->has_local_state()) {
+        document().page().client().page_did_destroy_child_frame(content_navigable->id());
+        set_content_navigable(nullptr);
+        document().schedule_html_parser_end_check();
+        return;
+    }
+
     GC::Ref<LocalNavigable> navigable = as<LocalNavigable>(*content_navigable);
 
     // Not in the spec:
@@ -328,7 +359,7 @@ void NavigableContainer::destroy_the_child_navigable()
 
     auto after_document_destruction = GC::create_function(heap(), [this, navigable] {
         // 3. Set container's content navigable to null.
-        m_content_navigable = nullptr;
+        set_content_navigable(nullptr);
         document().schedule_html_parser_end_check();
 
         // Not in the spec:
@@ -381,6 +412,8 @@ bool NavigableContainer::currently_delays_the_load_event() const
     // and any of the following are true:
     if (!m_content_navigable)
         return false;
+    if (!m_content_navigable->has_local_state())
+        return false;
     auto& content_navigable = as<LocalNavigable>(*m_content_navigable);
 
     // - element's content navigable's active document is not ready for post-load tasks;
@@ -402,6 +435,8 @@ bool NavigableContainer::content_navigable_has_session_history_entry_and_ready_f
 {
     if (!content_navigable())
         return false;
+    if (!m_content_navigable->has_local_state())
+        return true;
     return as<LocalNavigable>(*m_content_navigable).has_session_history_entry_and_ready_for_navigation();
 }
 
@@ -415,6 +450,8 @@ void NavigableContainer::set_potentially_delays_the_load_event(bool value)
 void NavigableContainer::set_content_navigable_has_session_history_entry_and_ready_for_navigation()
 {
     if (!content_navigable())
+        return;
+    if (!content_navigable()->has_local_state())
         return;
     as<LocalNavigable>(*content_navigable()).set_has_session_history_entry_and_ready_for_navigation();
     document().schedule_html_parser_end_check();

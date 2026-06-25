@@ -381,6 +381,18 @@ void LocalNavigable::set_has_been_destroyed()
     resolve_all_pending_async_scroll_operations();
 }
 
+void LocalNavigable::detach_local_state_for_remote_navigation()
+{
+    if (m_has_been_destroyed)
+        return;
+
+    m_has_been_destroyed = true;
+    set_delaying_load_events(false);
+    clear_navigation_load_event_guard();
+    inform_the_navigation_api_about_child_navigable_destruction();
+    remove_from_all_local_navigables();
+}
+
 void LocalNavigable::remove_from_all_local_navigables()
 {
     cancel_hover_update_after_async_scroll();
@@ -404,10 +416,8 @@ void LocalNavigable::visit_edges(Cell::Visitor& visitor)
 {
     Base::visit_edges(visitor);
     visitor.visit(m_page);
-    visitor.visit(m_parent);
     visitor.visit(m_active_document);
     visitor.visit(m_input_method_composition_node);
-    visitor.visit(m_container);
     m_event_handler.visit_edges(visitor);
 
     for (auto& navigation_params : m_pending_navigations) {
@@ -486,10 +496,13 @@ void LocalNavigable::set_current_session_history_entry(RefPtr<SessionHistoryEntr
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#initialize-the-navigable
-void LocalNavigable::initialize_navigable(NonnullRefPtr<DocumentState> document_state, GC::Ptr<LocalNavigable> parent, GC::Ref<DOM::Document> document)
+void LocalNavigable::initialize_navigable(NonnullRefPtr<DocumentState> document_state, GC::Ptr<LocalNavigable> parent, GC::Ref<DOM::Document> document, Optional<String> navigable_id)
 {
     static int next_id = 0;
-    m_id = String::number(next_id++);
+    if (navigable_id.has_value())
+        set_id(navigable_id.release_value());
+    else
+        set_id(String::number(next_id++));
 
     // 1. Assert: documentState's document is non-null.
     // NOTE: DocumentState no longer owns the document; it is passed separately and owned by the LocalNavigable.
@@ -511,7 +524,7 @@ void LocalNavigable::initialize_navigable(NonnullRefPtr<DocumentState> document_
     document->set_navigable(this);
 
     // 5. Set navigable's parent to parent.
-    m_parent = parent;
+    set_parent(parent);
     if (parent) {
         m_should_show_line_box_borders = parent->m_should_show_line_box_borders;
         m_should_show_caret_hit_test_debug_overlay = parent->m_should_show_caret_hit_test_debug_overlay;
@@ -672,6 +685,8 @@ void LocalNavigable::restore_scroll_position_data(SessionHistoryEntry const& ent
 // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document
 GC::Ptr<DOM::Document> LocalNavigable::active_document() const
 {
+    VERIFY(has_local_state());
+
     // A navigable's active document is its active session history entry's document.
     return m_active_document;
 }
@@ -685,6 +700,8 @@ Optional<UniqueNodeID> LocalNavigable::active_document_id() const
 
 void LocalNavigable::set_active_document(GC::Ptr<DOM::Document> document)
 {
+    VERIFY(has_local_state());
+
     if (m_active_document && m_active_document != document) {
         // The pending post-scroll hover refresh belongs to the outgoing document; drop it.
         cancel_hover_update_after_async_scroll();
@@ -705,6 +722,8 @@ void LocalNavigable::set_active_document(GC::Ptr<DOM::Document> document)
 // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-bc
 GC::Ptr<BrowsingContext> LocalNavigable::active_browsing_context()
 {
+    VERIFY(has_local_state());
+
     // A navigable's active browsing context is its active document's browsing context.
     // If this navigable is a traversable navigable, then its active browsing context will be a top-level browsing context.
     if (auto document = active_document())
@@ -713,7 +732,7 @@ GC::Ptr<BrowsingContext> LocalNavigable::active_browsing_context()
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-wp
-GC::Ptr<HTML::WindowProxy> LocalNavigable::active_window_proxy()
+GC::Ptr<HTML::WindowProxy> LocalNavigable::local_active_window_proxy()
 {
     // A navigable's active WindowProxy is its active browsing context's associated WindowProxy.
     if (auto browsing_context = active_browsing_context())
@@ -731,17 +750,12 @@ GC::Ptr<HTML::Window> LocalNavigable::active_window()
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-target
-String LocalNavigable::target_name() const
+String LocalNavigable::local_target_name() const
 {
+    VERIFY(has_local_state());
+
     // A navigable's target name is its active session history entry's document state's navigable target name.
     return active_session_history_entry()->document_state()->navigable_target_name();
-}
-
-// https://html.spec.whatwg.org/multipage/document-sequences.html#nav-container
-GC::Ptr<NavigableContainer> LocalNavigable::container() const
-{
-    // The container of a navigable navigable is the navigable container whose nested navigable is navigable, or null if there is no such element.
-    return NavigableContainer::navigable_container_with_content_navigable(const_cast<LocalNavigable&>(*this));
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-container-document
@@ -755,34 +769,6 @@ GC::Ptr<DOM::Document> LocalNavigable::container_document() const
 
     // 2. Return navigable's container's node document.
     return container->document();
-}
-
-// https://html.spec.whatwg.org/multipage/document-sequences.html#nav-traversable
-GC::Ptr<TraversableNavigable> LocalNavigable::traversable_navigable() const
-{
-    // 1. Let navigable be inputNavigable.
-    GC::Ptr<Navigable> navigable = const_cast<LocalNavigable*>(this);
-
-    // 2. While navigable is not a traversable navigable, set navigable to navigable's parent.
-    while (navigable && !is<TraversableNavigable>(*navigable))
-        navigable = navigable->parent();
-
-    // 3. Return navigable.
-    return as_if<TraversableNavigable>(navigable.ptr());
-}
-
-// https://html.spec.whatwg.org/multipage/document-sequences.html#nav-top
-GC::Ptr<TraversableNavigable> LocalNavigable::top_level_traversable()
-{
-    // 1. Let navigable be inputNavigable.
-    GC::Ptr<Navigable> navigable = this;
-
-    // 2. While navigable's parent is not null, set navigable to navigable's parent.
-    while (navigable->parent())
-        navigable = navigable->parent();
-
-    // 3. Return navigable.
-    return as<TraversableNavigable>(*navigable);
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#set-the-ongoing-navigation
@@ -2159,7 +2145,7 @@ void LocalNavigable::begin_navigation(NavigateParams params)
     }
 
     // 10. Let container be navigable's container.
-    auto& container = m_container;
+    auto container = this->container();
 
     // 11. If container is an iframe element and will lazy load element steps given container returns true,
     //     then stop intersection-observing a lazy loading element container and set container's lazy load resumption steps to null.

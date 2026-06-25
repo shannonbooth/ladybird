@@ -72,17 +72,15 @@ public:
     using NullOrError = Optional<String>;
     using NavigationParamsVariant = Variant<NullOrError, GC::Ref<NavigationParams>, GC::Ref<NonFetchSchemeNavigationParams>>;
 
-    void initialize_navigable(NonnullRefPtr<DocumentState> document_state, GC::Ptr<LocalNavigable> parent, GC::Ref<DOM::Document> document);
+    void initialize_navigable(NonnullRefPtr<DocumentState> document_state, GC::Ptr<LocalNavigable> parent, GC::Ref<DOM::Document> document, Optional<String> navigable_id = {});
 
     void register_navigation_observer(Badge<NavigationObserver>, NavigationObserver&);
     void unregister_navigation_observer(Badge<NavigationObserver>, NavigationObserver&);
 
     Vector<GC::Root<LocalNavigable>> child_navigables() const;
 
-    virtual bool is_traversable() const { return false; }
+    virtual bool is_traversable() const override { return false; }
 
-    virtual String const& id() const override { return m_id; }
-    virtual GC::Ptr<Navigable> parent() const override { return m_parent; }
     bool is_ancestor_of(GC::Ref<LocalNavigable>) const;
 
     bool is_closing() const { return m_closing; }
@@ -110,7 +108,6 @@ public:
     Optional<UniqueNodeID> active_document_id() const;
     void set_active_document(GC::Ptr<DOM::Document>);
     GC::Ptr<BrowsingContext> active_browsing_context();
-    virtual GC::Ptr<WindowProxy> active_window_proxy() override;
     GC::Ptr<Window> active_window();
 
     RefPtr<SessionHistoryEntry> get_the_target_history_entry(int target_step) const;
@@ -120,15 +117,9 @@ public:
     void restore_persisted_state_from_session_history_entry(SessionHistoryEntry const&);
     void restore_scroll_position_data(SessionHistoryEntry const&);
 
-    virtual String target_name() const override;
-
-    GC::Ptr<NavigableContainer> container() const;
     GC::Ptr<DOM::Document> container_document() const;
 
-    GC::Ptr<TraversableNavigable> traversable_navigable() const;
-    GC::Ptr<TraversableNavigable> top_level_traversable();
-
-    virtual bool is_top_level_traversable() const { return false; }
+    virtual bool is_top_level_traversable() const override { return false; }
 
     [[nodiscard]] bool is_focused() const;
 
@@ -207,6 +198,7 @@ public:
     // https://github.com/whatwg/html/issues/9690
     [[nodiscard]] bool has_been_destroyed() const { return m_has_been_destroyed; }
     void set_has_been_destroyed();
+    void detach_local_state_for_remote_navigation();
     void remove_from_all_local_navigables();
 
     CSSPixelPoint to_top_level_position(CSSPixelPoint);
@@ -303,6 +295,9 @@ protected:
     virtual void visit_edges(Cell::Visitor&) override;
     virtual void finalize() override;
 
+    virtual String local_target_name() const override;
+    virtual GC::Ptr<WindowProxy> local_active_window_proxy() override;
+
     // https://html.spec.whatwg.org/multipage/browsing-the-web.html#ongoing-navigation
     Variant<Empty, Traversal, String> m_ongoing_navigation;
 
@@ -331,12 +326,6 @@ private:
     void update_hover_after_async_scroll_stops();
     void cancel_hover_update_after_async_scroll();
 
-    // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-id
-    String m_id;
-
-    // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-parent
-    GC::Ptr<Navigable> m_parent;
-
     // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-current-history-entry
     RefPtr<SessionHistoryEntry> m_current_session_history_entry;
 
@@ -362,9 +351,6 @@ private:
 
     // AD-HOC: Guards the parent document's load event delay count during cross-document navigation.
     Optional<DOM::DocumentLoadEventDelayer> m_navigation_load_event_guard;
-
-    // Implied link between navigable and its container.
-    GC::Ptr<NavigableContainer> m_container;
 
     GC::Ref<Page> m_page;
 
