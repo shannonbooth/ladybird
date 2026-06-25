@@ -239,8 +239,11 @@ Optional<URL::URL> NavigableContainer::shared_attribute_processing_steps_for_ifr
     // 3. If the inclusive ancestor navigables of element's node navigable contains a navigable
     //    whose active document's URL equals url with exclude fragments set to true, then return null.
     for (auto const& navigable : document().inclusive_ancestor_navigables()) {
-        VERIFY(navigable->active_document());
-        if (navigable->active_document()->url().equals(url, URL::ExcludeFragment::Yes))
+        if (!navigable->has_local_state())
+            continue;
+        auto active_document = as<LocalNavigable>(*navigable).active_document();
+        VERIFY(active_document);
+        if (active_document->url().equals(url, URL::ExcludeFragment::Yes))
             return {};
     }
 

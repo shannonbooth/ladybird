@@ -5218,10 +5218,10 @@ GC::Ref<HTML::SourceSnapshotParams> Document::snapshot_source_snapshot_params() 
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#descendant-navigables
-Vector<GC::Root<HTML::LocalNavigable>> Document::descendant_navigables()
+Vector<GC::Root<HTML::Navigable>> Document::descendant_navigables()
 {
     // 1. Let navigables be new list.
-    Vector<GC::Root<HTML::LocalNavigable>> navigables;
+    Vector<GC::Root<HTML::Navigable>> navigables;
 
     // 2. Let navigableContainers be a list of all shadow-including descendants of document that are navigable containers, in shadow-including tree order.
     // 3. For each navigableContainer of navigableContainers:
@@ -5229,15 +5229,20 @@ Vector<GC::Root<HTML::LocalNavigable>> Document::descendant_navigables()
         if (is<HTML::NavigableContainer>(node)) {
             auto& navigable_container = static_cast<HTML::NavigableContainer&>(node);
             // 1. If navigableContainer's content navigable is null, then continue.
-            if (!navigable_container.content_navigable())
+            auto content_navigable = navigable_container.content_navigable();
+            if (!content_navigable)
                 return TraversalDecision::Continue;
 
             // 2. Extend navigables with navigableContainer's content navigable's active document's inclusive descendant navigables.
-            auto document = as<HTML::LocalNavigable>(*navigable_container.content_navigable()).active_document();
+            navigables.append(*content_navigable);
+            if (!content_navigable->has_local_state())
+                return TraversalDecision::Continue;
+
+            auto document = as<HTML::LocalNavigable>(*content_navigable).active_document();
             // AD-HOC: If the descendant navigable doesn't have an active document, just skip over it.
             if (!document)
                 return TraversalDecision::Continue;
-            navigables.extend(document->inclusive_descendant_navigables());
+            navigables.extend(document->descendant_navigables());
         }
         return TraversalDecision::Continue;
     });
@@ -5246,13 +5251,13 @@ Vector<GC::Root<HTML::LocalNavigable>> Document::descendant_navigables()
     return navigables;
 }
 
-Vector<GC::Root<HTML::LocalNavigable>> const Document::descendant_navigables() const
+Vector<GC::Root<HTML::Navigable>> const Document::descendant_navigables() const
 {
     return const_cast<Document&>(*this).descendant_navigables();
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#inclusive-descendant-navigables
-Vector<GC::Root<HTML::LocalNavigable>> Document::inclusive_descendant_navigables()
+Vector<GC::Root<HTML::Navigable>> Document::inclusive_descendant_navigables()
 {
     // FIXME: The document's node navigable should not be null here. But we currently do not implement the "unload a
     //        document and its descendants" steps correctly, and the navigable becomes null during unloading. We are
@@ -5263,7 +5268,7 @@ Vector<GC::Root<HTML::LocalNavigable>> Document::inclusive_descendant_navigables
         return {};
 
     // 1. Let navigables be « document's node navigable ».
-    Vector<GC::Root<HTML::LocalNavigable>> navigables;
+    Vector<GC::Root<HTML::Navigable>> navigables;
     navigables.append(*document_node_navigable);
 
     // 2. Extend navigables with document's descendant navigables.
@@ -5274,7 +5279,7 @@ Vector<GC::Root<HTML::LocalNavigable>> Document::inclusive_descendant_navigables
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#ancestor-navigables
-Vector<GC::Root<HTML::LocalNavigable>> Document::ancestor_navigables()
+Vector<GC::Root<HTML::Navigable>> Document::ancestor_navigables()
 {
     // FIXME: The document's node navigable should not be null here. But we currently do not implement the "unload a
     //        document and its descendants" steps correctly, and the navigable becomes null during unloading. We are
@@ -5288,12 +5293,12 @@ Vector<GC::Root<HTML::LocalNavigable>> Document::ancestor_navigables()
     auto navigable = document_node_navigable->parent();
 
     // 2. Let ancestors be an empty list.
-    Vector<GC::Root<HTML::LocalNavigable>> ancestors;
+    Vector<GC::Root<HTML::Navigable>> ancestors;
 
     // 3. While navigable is not null:
     while (navigable) {
         // 1. Prepend navigable to ancestors.
-        ancestors.prepend(as<HTML::LocalNavigable>(*navigable));
+        ancestors.prepend(*navigable);
 
         // 2. Set navigable to navigable's parent.
         navigable = navigable->parent();
@@ -5303,13 +5308,13 @@ Vector<GC::Root<HTML::LocalNavigable>> Document::ancestor_navigables()
     return ancestors;
 }
 
-Vector<GC::Root<HTML::LocalNavigable>> const Document::ancestor_navigables() const
+Vector<GC::Root<HTML::Navigable>> const Document::ancestor_navigables() const
 {
     return const_cast<Document&>(*this).ancestor_navigables();
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#inclusive-ancestor-navigables
-Vector<GC::Root<HTML::LocalNavigable>> Document::inclusive_ancestor_navigables()
+Vector<GC::Root<HTML::Navigable>> Document::inclusive_ancestor_navigables()
 {
     // FIXME: The document's node navigable should not be null here. But we currently do not implement the "unload a
     //        document and its descendants" steps correctly, and the navigable becomes null during unloading. We are
@@ -5617,16 +5622,28 @@ void Document::abort_a_document_and_its_descendants()
 
     // 3. For each descendantNavigable of descendantNavigables, queue a global task on the navigation and traversal task source given descendantNavigable's active window to perform the following steps:
     for (auto& descendant_navigable : descendant_navigables) {
-        HTML::queue_global_task(HTML::Task::Source::NavigationAndTraversal, *descendant_navigable->active_window(), GC::create_function(heap(), [this, descendant_navigable = descendant_navigable.ptr()] {
+        if (!descendant_navigable->has_local_state())
+            continue;
+
+        auto& local_descendant_navigable = as<HTML::LocalNavigable>(*descendant_navigable);
+        auto active_window = local_descendant_navigable.active_window();
+        if (!active_window)
+            continue;
+
+        auto descendant_navigable_to_abort = GC::Ref { local_descendant_navigable };
+        HTML::queue_global_task(HTML::Task::Source::NavigationAndTraversal, *active_window, GC::create_function(heap(), [this, descendant_navigable = descendant_navigable_to_abort] {
             // NOTE: This is not in the spec but we need to abort ongoing navigations in all descendant navigables.
             //       See https://github.com/whatwg/html/issues/9711
             descendant_navigable->set_ongoing_navigation({});
 
             // 1. Abort descendantNavigable's active document.
-            descendant_navigable->active_document()->abort();
+            auto active_document = descendant_navigable->active_document();
+            if (!active_document)
+                return;
+            active_document->abort();
 
             // 2. If descendantNavigable's active document's salvageable is false, then set document's salvageable to false.
-            if (!descendant_navigable->active_document()->m_salvageable)
+            if (!active_document->m_salvageable)
                 m_salvageable = false;
         }));
     }

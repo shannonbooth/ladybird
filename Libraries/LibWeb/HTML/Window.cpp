@@ -615,8 +615,12 @@ void Window::consume_history_action_user_activation()
 
     // 4. Let windows be the list of Window objects constructed by taking the active window of each item in navigables.
     GC::RootVector<GC::Ptr<Window>> windows;
-    for (auto& n : navigables)
-        windows.append(n->active_window());
+    for (auto& n : navigables) {
+        if (!n->has_local_state())
+            continue;
+        if (auto window = as<LocalNavigable>(*n).active_window())
+            windows.append(window);
+    }
 
     // 5. For each window in windows, set window's last history-action activation timestamp to window's last activation timestamp.
     for (auto& window : windows)
@@ -641,8 +645,12 @@ void Window::consume_user_activation()
 
     // 4. Let windows be the list of Window objects constructed by taking the active window of each item in navigables.
     GC::RootVector<GC::Ptr<Window>> windows;
-    for (auto& n : navigables)
-        windows.append(n->active_window());
+    for (auto& n : navigables) {
+        if (!n->has_local_state())
+            continue;
+        if (auto window = as<LocalNavigable>(*n).active_window())
+            windows.append(window);
+    }
 
     // 5. For each window in windows, if window's last activation timestamp is not positive infinity, then set window's last activation timestamp to negative infinity.
     for (auto& window : windows) {

@@ -44,8 +44,11 @@ void check_if_access_between_two_browsing_contexts_should_be_reported(
     accessor_inclusive_ancestor_origins.ensure_capacity(accessor_inclusive_ancestors.size());
     for (auto const& ancestor : accessor_inclusive_ancestors) {
         VERIFY(ancestor != nullptr);
-        VERIFY(ancestor->active_document() != nullptr);
-        accessor_inclusive_ancestor_origins.append(ancestor->active_document()->origin());
+        if (!ancestor->has_local_state())
+            continue;
+        auto active_document = as<LocalNavigable>(*ancestor).active_document();
+        VERIFY(active_document);
+        accessor_inclusive_ancestor_origins.append(active_document->origin());
     }
 
     // 5. Let accessedTopDocument be accessed's top-level browsing context's active document.
@@ -58,8 +61,11 @@ void check_if_access_between_two_browsing_contexts_should_be_reported(
     accessed_inclusive_ancestor_origins.ensure_capacity(accessed_inclusive_ancestors.size());
     for (auto const& ancestor : accessed_inclusive_ancestors) {
         VERIFY(ancestor != nullptr);
-        VERIFY(ancestor->active_document() != nullptr);
-        accessed_inclusive_ancestor_origins.append(ancestor->active_document()->origin());
+        if (!ancestor->has_local_state())
+            continue;
+        auto active_document = as<LocalNavigable>(*ancestor).active_document();
+        VERIFY(active_document);
+        accessed_inclusive_ancestor_origins.append(active_document->origin());
     }
 
     // 7. If any of accessorInclusiveAncestorOrigins are not same origin with accessorTopDocument's origin, or if any of accessedInclusiveAncestorOrigins are not same origin with accessedTopDocument's origin, then return.

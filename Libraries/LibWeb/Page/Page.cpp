@@ -410,7 +410,9 @@ void Page::update_needs_beforeunload_check()
             return true;
 
         for (auto const& navigable : active_document->inclusive_descendant_navigables()) {
-            auto window = navigable->active_window();
+            if (!navigable->has_local_state())
+                continue;
+            auto window = as<HTML::LocalNavigable>(*navigable).active_window();
             if (window && window->has_event_listener(HTML::EventNames::beforeunload))
                 return true;
         }
@@ -869,7 +871,9 @@ void Page::invalidate_user_style()
     invalidate_document(active_document);
 
     for (auto& navigable : active_document.descendant_navigables()) {
-        if (auto document = navigable->active_document())
+        if (!navigable->has_local_state())
+            continue;
+        if (auto document = as<HTML::LocalNavigable>(*navigable).active_document())
             invalidate_document(*document);
     }
 }
@@ -1198,8 +1202,11 @@ void Page::process_pending_fullscreen_operations()
                 //     whose fullscreen element is non-null, if any, in tree order.
                 auto descendant_docs = realm.heap().allocate<GC::HeapVector<GC::Ref<DOM::Document>>>();
                 for (auto& descendant : exit.doc->descendant_navigables()) {
-                    if (descendant->active_document()->fullscreen_element())
-                        descendant_docs->elements().append(*descendant->active_document());
+                    if (!descendant->has_local_state())
+                        continue;
+                    auto active_document = as<HTML::LocalNavigable>(*descendant).active_document();
+                    if (active_document && active_document->fullscreen_element())
+                        descendant_docs->elements().append(*active_document);
                 }
 
                 // 14. For each exitDoc in exitDocs:

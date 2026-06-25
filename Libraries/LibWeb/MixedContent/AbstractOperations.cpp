@@ -58,8 +58,12 @@ ProhibitsMixedSecurityContexts does_settings_prohibit_mixed_security_contexts(GC
 
         // 2. For each navigable navigable in document’s ancestor navigables:
         for (auto const& navigable : document->ancestor_navigables()) {
+            if (!navigable->has_local_state())
+                continue;
+
             // 1. If navigable’s active document's origin is a potentially trustworthy origin, then return "Prohibits Mixed Security Contexts".
-            if (SecureContexts::is_origin_potentially_trustworthy(navigable->active_document()->origin()) == SecureContexts::Trustworthiness::PotentiallyTrustworthy)
+            auto active_document = as<HTML::LocalNavigable>(*navigable).active_document();
+            if (active_document && SecureContexts::is_origin_potentially_trustworthy(active_document->origin()) == SecureContexts::Trustworthiness::PotentiallyTrustworthy)
                 return ProhibitsMixedSecurityContexts::ProhibitsMixedSecurityContexts;
         }
     }

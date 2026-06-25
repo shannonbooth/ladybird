@@ -972,18 +972,27 @@ GC::Ptr<LocalNavigable> LocalNavigable::find_a_navigable_by_target_name(StringVi
 
     // 4. For each subtreeToSearch of subtreesToSearch, in reverse order:
     for (auto const& subtree_to_search : subtrees_to_search.in_reverse()) {
+        if (!subtree_to_search->has_local_state())
+            continue;
+
         // 1. Let documentToSearch be subtreeToSearch's active document.
-        auto& document_to_search = *subtree_to_search->active_document();
+        auto document_to_search = as<LocalNavigable>(*subtree_to_search).active_document();
+        if (!document_to_search)
+            continue;
 
         // 2. For each navigable of the inclusive descendant navigables of documentToSearch:
-        for (auto const& navigable : document_to_search.inclusive_descendant_navigables()) {
+        for (auto const& navigable : document_to_search->inclusive_descendant_navigables()) {
+            if (!navigable->has_local_state())
+                continue;
+            auto& local_navigable = as<LocalNavigable>(*navigable);
+
             // 1. If currentNavigable is not allowed by sandboxing to navigate navigable given sourceSnapshotParams, then optionally continue.
-            if (!allowed_by_sandboxing_to_navigate(*navigable, source_snapshot_params))
+            if (!allowed_by_sandboxing_to_navigate(local_navigable, source_snapshot_params))
                 continue;
 
             // 2. If navigable's target name is name, then return navigable.
-            if (navigable->target_name() == name)
-                return *navigable;
+            if (local_navigable.target_name() == name)
+                return local_navigable;
         }
     }
 
@@ -1004,17 +1013,21 @@ GC::Ptr<LocalNavigable> LocalNavigable::find_a_navigable_by_target_name(StringVi
 
         // 3. For each navigable of the inclusive descendant navigables of documentToSearch:
         for (auto const& navigable : document_to_search->inclusive_descendant_navigables()) {
+            if (!navigable->has_local_state())
+                continue;
+            auto& local_navigable = as<LocalNavigable>(*navigable);
+
             // 1. If currentNavigable's active browsing context is not familiar with navigable's active browsing context, then continue.
-            if (!active_browsing_context()->is_familiar_with(*navigable->active_browsing_context()))
+            if (!active_browsing_context()->is_familiar_with(*local_navigable.active_browsing_context()))
                 continue;
 
             // 2. If currentNavigable is not allowed by sandboxing to navigate navigable given sourceSnapshotParams, then optionally continue.
-            if (!allowed_by_sandboxing_to_navigate(*navigable, source_snapshot_params))
+            if (!allowed_by_sandboxing_to_navigate(local_navigable, source_snapshot_params))
                 continue;
 
             // 3. If navigable's target name is name, then return navigable.
-            if (navigable->target_name() == name)
-                return *navigable;
+            if (local_navigable.target_name() == name)
+                return local_navigable;
         }
     }
 

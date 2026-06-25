@@ -1994,6 +1994,18 @@ private:
 
 GC_DEFINE_ALLOCATOR(CheckUnloadingCanceledState);
 
+static Vector<GC::Root<LocalNavigable>> local_navigables_from(Vector<GC::Root<Navigable>> const& navigables)
+{
+    Vector<GC::Root<LocalNavigable>> local_navigables;
+    local_navigables.ensure_capacity(navigables.size());
+    for (auto const& navigable : navigables) {
+        if (!navigable->has_local_state())
+            continue;
+        local_navigables.append(as<LocalNavigable>(*navigable));
+    }
+    return local_navigables;
+}
+
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#checking-if-unloading-is-canceled
 void TraversableNavigable::check_if_unloading_is_canceled(
     Vector<GC::Root<LocalNavigable>> navigables_that_need_before_unload,
@@ -2009,9 +2021,24 @@ void TraversableNavigable::check_if_unloading_is_canceled(
     state->start(navigables_that_need_before_unload, target_step);
 }
 
+void TraversableNavigable::check_if_unloading_is_canceled(
+    Vector<GC::Root<Navigable>> navigables_that_need_before_unload,
+    GC::Ptr<TraversableNavigable> traversable,
+    Optional<int> target_step,
+    Optional<UserNavigationInvolvement> user_involvement_for_navigate_events,
+    GC::Ref<GC::Function<void(CheckIfUnloadingIsCanceledResult)>> callback)
+{
+    check_if_unloading_is_canceled(local_navigables_from(navigables_that_need_before_unload), traversable, target_step, user_involvement_for_navigate_events, callback);
+}
+
 void TraversableNavigable::check_if_unloading_is_canceled(Vector<GC::Root<LocalNavigable>> navigables_that_need_before_unload, GC::Ref<GC::Function<void(CheckIfUnloadingIsCanceledResult)>> callback)
 {
     check_if_unloading_is_canceled(move(navigables_that_need_before_unload), {}, {}, {}, callback);
+}
+
+void TraversableNavigable::check_if_unloading_is_canceled(Vector<GC::Root<Navigable>> navigables_that_need_before_unload, GC::Ref<GC::Function<void(CheckIfUnloadingIsCanceledResult)>> callback)
+{
+    check_if_unloading_is_canceled(local_navigables_from(navigables_that_need_before_unload), callback);
 }
 
 Vector<NonnullRefPtr<SessionHistoryEntry>> TraversableNavigable::get_session_history_entries_for_the_navigation_api(GC::Ref<LocalNavigable> navigable, int target_step)
@@ -2441,10 +2468,13 @@ bool TraversableNavigable::try_to_synchronously_commit_same_document_navigation(
     auto history_object_length_and_index = get_the_history_object_length_and_index(m_current_session_history_step);
     if (auto active_document = this->active_document()) {
         for (auto const& navigable : active_document->inclusive_descendant_navigables()) {
-            if (navigable->has_been_destroyed() || !navigable->active_window() || !navigable->active_document()->is_fully_active())
+            if (!navigable->has_local_state())
+                continue;
+            auto& local_navigable = as<LocalNavigable>(*navigable);
+            auto document = local_navigable.active_document();
+            if (local_navigable.has_been_destroyed() || !local_navigable.active_window() || !document || !document->is_fully_active())
                 continue;
 
-            auto document = navigable->active_document();
             document->history()->m_index = history_object_length_and_index.script_history_index;
             document->history()->m_length = history_object_length_and_index.script_history_length;
         }
@@ -2592,9 +2622,13 @@ void TraversableNavigable::set_system_visibility_state(VisibilityState visibilit
 
     // 2. For each navigable of navigables:
     for (auto& navigable : navigables) {
+        if (!navigable->has_local_state())
+            continue;
+
         // 1. Let document be navigable's active document.
-        auto document = navigable->active_document();
-        VERIFY(document);
+        auto document = as<LocalNavigable>(*navigable).active_document();
+        if (!document)
+            continue;
 
         // 2. Queue a global task on the user interaction task source given document's relevant global object
         //    to update the visibility state of document with newState.

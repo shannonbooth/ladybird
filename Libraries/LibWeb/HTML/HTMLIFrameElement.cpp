@@ -223,8 +223,12 @@ void run_iframe_load_event_steps(HTMLIFrameElement& element)
         return;
     }
 
+    auto content_navigable = element.content_navigable();
+
     // 2. Let childDocument be element's content navigable's active document.
-    [[maybe_unused]] auto child_document = as<LocalNavigable>(*element.content_navigable()).active_document();
+    [[maybe_unused]] GC::Ptr<DOM::Document> child_document;
+    if (content_navigable->has_local_state())
+        child_document = as<LocalNavigable>(*content_navigable).active_document();
 
     // FIXME: 3. If childDocument has its mute iframe load flag set, then return.
 

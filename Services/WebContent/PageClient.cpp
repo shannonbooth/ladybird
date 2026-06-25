@@ -1357,7 +1357,9 @@ static void append_devtools_sources_for_document(Vector<Web::HTML::ScriptRegistr
     }
 
     for (auto const& navigable : document.descendant_navigables()) {
-        auto content_document = navigable->active_document();
+        if (!navigable->has_local_state())
+            continue;
+        auto content_document = as<Web::HTML::LocalNavigable>(*navigable).active_document();
         if (!content_document)
             continue;
         append_devtools_sources_for_document(results, *content_document);
