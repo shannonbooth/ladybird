@@ -30,7 +30,6 @@ struct RemoteNavigableState {
     bool active_document_is_fully_active { false };
     bool is_traversable { false };
     bool is_top_level_traversable { false };
-    GC::Ptr<WindowProxy> active_window_proxy;
     GC::Ptr<BrowsingContext> active_browsing_context;
 };
 
@@ -68,6 +67,8 @@ public:
     bool active_document_is_fully_active() const;
     RemoteNavigableDescriptor remote_descriptor() const;
     void update_remote_descriptor(RemoteNavigableDescriptor);
+    void set_active_window_proxy(GC::Ptr<WindowProxy>);
+    GC::Ref<WindowProxy> ensure_remote_active_window_proxy(JS::Realm&);
 
     LocalNavigable& local();
     LocalNavigable const& local() const;
@@ -103,6 +104,7 @@ private:
     GC::Ptr<Navigable> m_parent;
     GC::Ptr<NavigableContainer> m_container;
     GC::Ptr<TraversableNavigable> m_traversable;
+    GC::Ptr<WindowProxy> m_active_window_proxy;
     Variant<LocalNavigableState, RemoteNavigableState> m_state { LocalNavigableState {} };
 
     friend class NavigableContainer;

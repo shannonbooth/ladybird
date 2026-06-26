@@ -39,16 +39,68 @@ GC_DEFINE_ALLOCATOR(WindowProxy);
 GC::Ref<WindowProxy> WindowProxy::create_remote(JS::Realm& realm, GC::Ref<Navigable> navigable)
 {
     auto window_proxy = realm.create<WindowProxy>(realm);
-    window_proxy->m_remote_navigable = navigable;
+    window_proxy->set_remote_navigable(navigable);
     return window_proxy;
+}
+
+LocalWindowProxyTarget* WindowProxy::local_target()
+{
+    return m_target.get_pointer<LocalWindowProxyTarget>();
+}
+
+LocalWindowProxyTarget const* WindowProxy::local_target() const
+{
+    return m_target.get_pointer<LocalWindowProxyTarget>();
+}
+
+RemoteWindowProxyTarget* WindowProxy::remote_target()
+{
+    return m_target.get_pointer<RemoteWindowProxyTarget>();
+}
+
+RemoteWindowProxyTarget const* WindowProxy::remote_target() const
+{
+    return m_target.get_pointer<RemoteWindowProxyTarget>();
+}
+
+Window& WindowProxy::local_window() const
+{
+    auto window = this->window();
+    VERIFY(window);
+    return *window;
+}
+
+Navigable& WindowProxy::remote_navigable_ref() const
+{
+    auto navigable = remote_navigable();
+    VERIFY(navigable);
+    return *navigable;
+}
+
+GC::Ptr<Window> WindowProxy::window() const
+{
+    auto const* target = local_target();
+    if (!target)
+        return nullptr;
+    return target->window;
+}
+
+GC::Ptr<Navigable> WindowProxy::remote_navigable() const
+{
+    auto const* target = remote_target();
+    if (!target)
+        return nullptr;
+    return target->navigable;
 }
 
 Optional<URL::Origin> WindowProxy::extract_an_origin() const
 {
-    if (!m_remote_navigable)
-        return m_window ? m_window->extract_an_origin() : Optional<URL::Origin> {};
+    if (!remote_target()) {
+        auto window = this->window();
+        return window ? window->extract_an_origin() : Optional<URL::Origin> {};
+    }
 
-    auto origin = m_remote_navigable->active_document_origin();
+    auto origin = remote_navigable_ref().active_document_origin();
     if (!origin.has_value())
         return {};
 
@@ -60,9 +112,9 @@ Optional<URL::Origin> WindowProxy::extract_an_origin() const
 
 bool WindowProxy::is_remote_same_origin_domain() const
 {
-    VERIFY(m_remote_navigable);
+    VERIFY(remote_target());
 
-    auto origin = m_remote_navigable->active_document_origin();
+    auto origin = remote_navigable_ref().active_document_origin();
     if (!origin.has_value())
         return false;
 
@@ -78,14 +130,15 @@ WindowProxy::WindowProxy(JS::Realm& realm)
 // 7.4.1 [[GetPrototypeOf]] ( ), https://html.spec.whatwg.org/multipage/window-object.html#windowproxy-getprototypeof
 JS::ThrowCompletionOr<JS::Object*> WindowProxy::internal_get_prototype_of() const
 {
-    if (m_remote_navigable)
+    if (remote_target())
         return nullptr;
 
     // 1. Let W be the value of the [[Window]] internal slot of this.
 
     // 2. If IsPlatformObjectSameOrigin(W) is true, then return ! OrdinaryGetPrototypeOf(W).
-    if (is_platform_object_same_origin(*m_window))
-        return MUST(m_window->internal_get_prototype_of());
+    auto& window = local_window();
+    if (is_platform_object_same_origin(window))
+        return MUST(window.internal_get_prototype_of());
 
     // 3. Return null.
     return nullptr;
@@ -117,7 +170,7 @@ JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> WindowProxy::internal_ge
 {
     auto& vm = this->vm();
 
-    if (m_remote_navigable) {
+    if (remote_target()) {
         auto property = cross_origin_get_own_property_helper(*this, property_key);
         if (property.has_value())
             return property;
@@ -127,12 +180,13 @@ JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> WindowProxy::internal_ge
     // 1. Let W be the value of the [[Window]] internal slot of this.
 
     // 2. If P is an array index property name, then:
+    auto& window = local_window();
     if (property_key.is_number()) {
         // 1. Let index be ! ToUint32(P).
         auto index = property_key.as_number();
 
         // 2. Let children be the document-tree child navigables of W's associated Document.
-        auto children = m_window->associated_document().document_tree_child_navigables();
+        auto children = window.associated_document().document_tree_child_navigables();
 
         // 3. Let value be undefined.
         Optional<JS::Value> value;
@@ -149,11 +203,11 @@ JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> WindowProxy::internal_ge
         // 5. If value is undefined, then:
         if (!value.has_value()) {
             // 1. If IsPlatformObjectSameOrigin(W) is true, then return undefined.
-            if (is_platform_object_same_origin(*m_window))
+            if (is_platform_object_same_origin(window))
                 return Optional<JS::PropertyDescriptor> {};
 
             // 2. Throw a "SecurityError" DOMException.
-            return throw_completion(WebIDL::SecurityError::create(m_window->realm(), Utf16String::formatted("Can't access property '{}' on cross-origin object", property_key)));
+            return throw_completion(WebIDL::SecurityError::create(window.realm(), Utf16String::formatted("Can't access property '{}' on cross-origin object", property_key)));
         }
 
         // 6. Return PropertyDescriptor { [[Value]]: value, [[Writable]]: false, [[Enumerable]]: true, [[Configurable]]: true }.
@@ -162,18 +216,18 @@ JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> WindowProxy::internal_ge
 
     // 3. If IsPlatformObjectSameOrigin(W) is true, then return ! OrdinaryGetOwnProperty(W, P).
     // NOTE: This is a willful violation of the JavaScript specification's invariants of the essential internal methods to maintain compatibility with existing web content. See tc39/ecma262 issue #672 for more information.
-    if (is_platform_object_same_origin(*m_window))
-        return m_window->internal_get_own_property(property_key);
+    if (is_platform_object_same_origin(window))
+        return window.internal_get_own_property(property_key);
 
     // 4. Let property be CrossOriginGetOwnPropertyHelper(W, P).
-    auto property = cross_origin_get_own_property_helper(const_cast<Window*>(m_window.ptr()), property_key);
+    auto property = cross_origin_get_own_property_helper(&window, property_key);
 
     // 5. If property is not undefined, then return property.
     if (property.has_value())
         return property;
 
     // 6. If property is undefined and P is in W's document-tree child navigable target name property set, then:
-    auto navigable_property_set = m_window->document_tree_child_navigable_target_name_property_set();
+    auto navigable_property_set = window.document_tree_child_navigable_target_name_property_set();
     auto property_key_string = property_key.to_utf16_string().to_utf8_but_should_be_ported_to_utf16();
 
     if (auto navigable = navigable_property_set.get(property_key_string); navigable.has_value()) {
@@ -192,24 +246,25 @@ JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> WindowProxy::internal_ge
 // 7.4.6 [[DefineOwnProperty]] ( P, Desc ), https://html.spec.whatwg.org/multipage/window-object.html#windowproxy-defineownproperty
 JS::ThrowCompletionOr<bool> WindowProxy::internal_define_own_property(JS::PropertyKey const& property_key, JS::PropertyDescriptor& descriptor, Optional<JS::PropertyDescriptor>*)
 {
-    if (m_remote_navigable)
+    if (remote_target())
         return false;
 
     // 1. Let W be the value of the [[Window]] internal slot of this.
 
     // 2. If IsPlatformObjectSameOrigin(W) is true, then:
-    if (is_platform_object_same_origin(*m_window)) {
+    auto& window = local_window();
+    if (is_platform_object_same_origin(window)) {
         // 1. If P is an array index property name, return false.
         if (property_key.is_number())
             return false;
 
         // 2. Return ? OrdinaryDefineOwnProperty(W, P, Desc).
         // NOTE: This is a willful violation of the JavaScript specification's invariants of the essential internal methods to maintain compatibility with existing web content. See tc39/ecma262 issue #672 for more information.
-        return m_window->internal_define_own_property(property_key, descriptor);
+        return window.internal_define_own_property(property_key, descriptor);
     }
 
     // 3. Throw a "SecurityError" DOMException.
-    return throw_completion(WebIDL::SecurityError::create(m_window->realm(), Utf16String::formatted("Can't define property '{}' on cross-origin object", property_key)));
+    return throw_completion(WebIDL::SecurityError::create(window.realm(), Utf16String::formatted("Can't define property '{}' on cross-origin object", property_key)));
 }
 
 // 7.4.7 [[Get]] ( P, Receiver ), https://html.spec.whatwg.org/multipage/nav-history-apis.html#windowproxy-get
@@ -218,7 +273,7 @@ JS::ThrowCompletionOr<JS::Value> WindowProxy::internal_get(JS::PropertyKey const
 {
     auto& vm = this->vm();
 
-    if (m_remote_navigable) {
+    if (remote_target()) {
         if (is_remote_same_origin_domain()) {
             // The actual Window lives in another process, but same-origin code can
             // still observe the WindowProxy object's ordinary conversion branding.
@@ -237,13 +292,14 @@ JS::ThrowCompletionOr<JS::Value> WindowProxy::internal_get(JS::PropertyKey const
     }
 
     // 1. Let W be the value of the [[Window]] internal slot of this.
+    auto& window = local_window();
 
     // 2. Check if an access between two browsing contexts should be reported, given the current global object's browsing context, W's browsing context, P, and the current settings object.
-    check_if_access_between_two_browsing_contexts_should_be_reported(as<Window>(current_global_object()).browsing_context(), m_window->browsing_context(), property_key, current_settings_object());
+    check_if_access_between_two_browsing_contexts_should_be_reported(as<Window>(current_global_object()).browsing_context(), window.browsing_context(), property_key, current_settings_object());
 
     // 3. If IsPlatformObjectSameOrigin(W) is true, then return ? OrdinaryGet(this, P, Receiver).
     // NOTE: this is passed rather than W as OrdinaryGet and CrossOriginGet will invoke the [[GetOwnProperty]] internal method.
-    if (is_platform_object_same_origin(*m_window))
+    if (is_platform_object_same_origin(window))
         return JS::Object::internal_get(property_key, receiver);
 
     // 4. Return ? CrossOriginGet(this, P, Receiver).
@@ -257,22 +313,23 @@ JS::ThrowCompletionOr<bool> WindowProxy::internal_set(JS::PropertyKey const& pro
 {
     auto& vm = this->vm();
 
-    if (m_remote_navigable)
+    if (remote_target())
         return cross_origin_set(vm, *this, property_key, value, receiver);
 
     // 1. Let W be the value of the [[Window]] internal slot of this.
+    auto& window = local_window();
 
     // 2. Check if an access between two browsing contexts should be reported, given the current global object's browsing context, W's browsing context, P, and the current settings object.
-    check_if_access_between_two_browsing_contexts_should_be_reported(as<Window>(current_global_object()).browsing_context(), m_window->browsing_context(), property_key, current_settings_object());
+    check_if_access_between_two_browsing_contexts_should_be_reported(as<Window>(current_global_object()).browsing_context(), window.browsing_context(), property_key, current_settings_object());
 
     // 3. If IsPlatformObjectSameOrigin(W) is true, then:
-    if (is_platform_object_same_origin(*m_window)) {
+    if (is_platform_object_same_origin(window)) {
         // 1. If P is an array index property name, then return false.
         if (property_key.is_number())
             return false;
 
         // 2. Return ? OrdinarySet(W, P, V, Receiver).
-        return m_window->internal_set(property_key, value, receiver);
+        return window.internal_set(property_key, value, receiver);
     }
 
     // 4. Return ? CrossOriginSet(this, P, V, Receiver).
@@ -283,13 +340,14 @@ JS::ThrowCompletionOr<bool> WindowProxy::internal_set(JS::PropertyKey const& pro
 // 7.4.9 [[Delete]] ( P ), https://html.spec.whatwg.org/multipage/window-object.html#windowproxy-delete
 JS::ThrowCompletionOr<bool> WindowProxy::internal_delete(JS::PropertyKey const& property_key)
 {
-    if (m_remote_navigable)
+    if (remote_target())
         return false;
 
     // 1. Let W be the value of the [[Window]] internal slot of this.
+    auto& window = local_window();
 
     // 2. If IsPlatformObjectSameOrigin(W) is true, then:
-    if (is_platform_object_same_origin(*m_window)) {
+    if (is_platform_object_same_origin(window)) {
         // 1. If P is an array index property name, then:
         if (property_key.is_number()) {
             // 2. Let desc be ! this.[[GetOwnProperty]](P).
@@ -304,11 +362,11 @@ JS::ThrowCompletionOr<bool> WindowProxy::internal_delete(JS::PropertyKey const& 
         }
 
         // 2. Return ? OrdinaryDelete(W, P).
-        return m_window->internal_delete(property_key);
+        return window.internal_delete(property_key);
     }
 
     // 3. Throw a "SecurityError" DOMException.
-    return throw_completion(WebIDL::SecurityError::create(m_window->realm(), Utf16String::formatted("Can't delete property '{}' on cross-origin object", property_key)));
+    return throw_completion(WebIDL::SecurityError::create(window.realm(), Utf16String::formatted("Can't delete property '{}' on cross-origin object", property_key)));
 }
 
 // 7.4.10 [[OwnPropertyKeys]] ( ), https://html.spec.whatwg.org/multipage/window-object.html#windowproxy-ownpropertykeys
@@ -317,16 +375,17 @@ JS::ThrowCompletionOr<GC::RootVector<JS::Value>> WindowProxy::internal_own_prope
     auto& event_loop = main_thread_event_loop();
     auto& vm = event_loop.vm();
 
-    if (m_remote_navigable)
+    if (remote_target())
         return cross_origin_own_property_keys(*this);
 
     // 1. Let W be the value of the [[Window]] internal slot of this.
+    auto& window = local_window();
 
     // 2. Let keys be a new empty List.
     GC::RootVector<JS::Value> keys;
 
     // 3. Let maxProperties be W's associated Document's document-tree child navigables's size.
-    auto max_properties = m_window->associated_document().document_tree_child_navigables().size();
+    auto max_properties = window.associated_document().document_tree_child_navigables().size();
 
     // 4. Let index be 0.
     // 5. Repeat while index < maxProperties,
@@ -338,57 +397,62 @@ JS::ThrowCompletionOr<GC::RootVector<JS::Value>> WindowProxy::internal_own_prope
     }
 
     // 6. If IsPlatformObjectSameOrigin(W) is true, then return the concatenation of keys and OrdinaryOwnPropertyKeys(W).
-    if (is_platform_object_same_origin(*m_window)) {
-        keys.extend(MUST(m_window->internal_own_property_keys()));
+    if (is_platform_object_same_origin(window)) {
+        keys.extend(MUST(window.internal_own_property_keys()));
         return keys;
     }
 
     // 7. Return the concatenation of keys and ! CrossOriginOwnPropertyKeys(W).
-    keys.extend(cross_origin_own_property_keys(m_window.ptr()));
+    keys.extend(cross_origin_own_property_keys(&window));
     return keys;
 }
 
 void WindowProxy::visit_edges(JS::Cell::Visitor& visitor)
 {
     Base::visit_edges(visitor);
-    visitor.visit(m_window);
-    visitor.visit(m_remote_navigable);
-    visitor.visit(m_remote_location);
+    m_target.visit(
+        [](Empty&) {},
+        [&](LocalWindowProxyTarget& target) {
+            visitor.visit(target.window);
+        },
+        [&](RemoteWindowProxyTarget& target) {
+            visitor.visit(target.navigable);
+            visitor.visit(target.location);
+        });
     for (auto& descriptor : m_cross_origin_property_descriptor_map)
         descriptor.value.visit_edges(visitor);
 }
 
 void WindowProxy::set_window(GC::Ref<Window> window)
 {
-    m_remote_navigable = nullptr;
-    m_remote_location = nullptr;
     m_cross_origin_property_descriptor_map.clear();
-    m_window = move(window);
+    m_target = LocalWindowProxyTarget { move(window) };
 }
 
 void WindowProxy::set_remote_navigable(GC::Ref<Navigable> navigable)
 {
-    m_remote_navigable = navigable;
-    m_remote_location = nullptr;
     m_cross_origin_property_descriptor_map.clear();
+    m_target = RemoteWindowProxyTarget { navigable, nullptr };
 }
 
 GC::Ref<JS::Object> WindowProxy::remote_location_object()
 {
-    VERIFY(m_remote_navigable);
+    auto* target = remote_target();
+    VERIFY(target);
+    VERIFY(target->navigable);
 
-    if (m_remote_location)
-        return *m_remote_location;
+    if (target->location)
+        return *target->location;
 
-    auto remote_location = create_remote_location_object(realm(), *m_remote_navigable);
-    m_remote_location = remote_location;
+    auto remote_location = create_remote_location_object(realm(), *target->navigable);
+    target->location = remote_location;
     return remote_location;
 }
 
 GC::Ref<BrowsingContext> WindowProxy::associated_browsing_context() const
 {
-    VERIFY(!m_remote_navigable);
-    return *m_window->associated_document().browsing_context();
+    VERIFY(local_target());
+    return *local_window().associated_document().browsing_context();
 }
 
 }

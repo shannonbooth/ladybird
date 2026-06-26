@@ -653,6 +653,8 @@ void LocalNavigable::initialize_navigable(NonnullRefPtr<DocumentState> document_
     m_active_session_history_entry = entry;
     m_active_document = document;
     document->set_navigable(this);
+    if (auto browsing_context = document->browsing_context())
+        set_active_window_proxy(browsing_context->window_proxy());
 
     // 5. Set navigable's parent to parent.
     set_parent(parent);
@@ -737,6 +739,8 @@ void LocalNavigable::activate_history_entry(RefPtr<SessionHistoryEntry> entry, G
     }
     m_active_document = new_document;
     new_document->set_navigable(this);
+    if (auto browsing_context = new_document->browsing_context())
+        set_active_window_proxy(browsing_context->window_proxy());
     set_needs_to_record_display_list();
 
     // 5. Make active newDocument.
@@ -839,8 +843,13 @@ void LocalNavigable::set_active_document(GC::Ptr<DOM::Document> document)
         m_active_document->set_navigable(nullptr);
     }
     m_active_document = document;
-    if (document)
+    if (document) {
         document->set_navigable(this);
+        if (auto browsing_context = document->browsing_context())
+            set_active_window_proxy(browsing_context->window_proxy());
+    } else {
+        set_active_window_proxy(nullptr);
+    }
     set_needs_to_record_display_list();
 
     VERIFY(m_active_session_history_entry);

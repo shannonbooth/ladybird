@@ -295,10 +295,7 @@ void PageClient::set_remote_child_frame_compositor_context(String frame_id, Opti
         if (child_navigable) {
             dbgln("SI_TRACE set remote child start frame={} local={}", frame_id, child_navigable->has_local_state());
             auto descriptor = child_navigable->remote_descriptor();
-            auto active_window_proxy = child_navigable->active_window_proxy();
-            if (!active_window_proxy)
-                active_window_proxy = Web::HTML::WindowProxy::create_remote(active_document->realm(), *child_navigable);
-            active_window_proxy->set_remote_navigable(*child_navigable);
+            auto had_active_window_proxy = child_navigable->active_window_proxy();
             auto remote_browsing_context = Web::HTML::BrowsingContext::create_remote(GC::Ref { page() }, descriptor, child_navigable->parent() ? child_navigable->parent()->active_browsing_context() : nullptr);
             dbgln("SI_TRACE set remote child before detach frame={}", frame_id);
             as<Web::HTML::LocalNavigable>(*child_navigable).detach_local_state_for_remote_navigation();
@@ -311,9 +308,10 @@ void PageClient::set_remote_child_frame_compositor_context(String frame_id, Opti
                 .active_document_is_fully_active = descriptor.active_document_is_fully_active,
                 .is_traversable = descriptor.is_traversable,
                 .is_top_level_traversable = descriptor.is_top_level_traversable,
-                .active_window_proxy = active_window_proxy,
                 .active_browsing_context = remote_browsing_context,
             });
+            if (!had_active_window_proxy)
+                child_navigable->ensure_remote_active_window_proxy(active_document->realm());
             if (auto container = child_navigable->container())
                 container->document().schedule_html_parser_end_check();
             dbgln("SI_TRACE set remote child done frame={}", frame_id);

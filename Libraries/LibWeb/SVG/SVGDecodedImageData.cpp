@@ -71,6 +71,7 @@ ErrorOr<GC::Ref<SVGDecodedImageData>> SVGDecodedImageData::create(JS::Realm& rea
     navigable->set_active_document(document);
     auto& window = as<HTML::Window>(HTML::relevant_global_object(document));
     document->browsing_context()->window_proxy()->set_window(window);
+    navigable->set_active_window_proxy(document->browsing_context()->window_proxy());
 
     XML::Parser parser(data, { .resolve_named_html_entity = resolve_named_html_entity });
     XMLDocumentBuilder builder { document, XMLScriptingSupport::Disabled };

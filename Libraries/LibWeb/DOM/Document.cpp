@@ -5994,6 +5994,9 @@ void Document::make_active()
     m_browsing_context->window_proxy()->set_window(window);
 
     auto current_navigable = this->navigable();
+    if (current_navigable)
+        current_navigable->set_active_window_proxy(m_browsing_context->window_proxy());
+
     if (current_navigable && current_navigable->is_top_level_traversable()) {
         page().client().page_did_change_active_document_in_top_level_browsing_context(*this);
     } else if (current_navigable && current_navigable->has_local_state() && as<HTML::LocalNavigable>(*current_navigable).is_page_local_root_navigable() && !current_navigable->parent()) {

@@ -31,10 +31,9 @@ GC::Ref<Navigable> Navigable::create_remote(JS::Realm& realm, RemoteNavigableDes
         .active_document_is_fully_active = descriptor.active_document_is_fully_active,
         .is_traversable = descriptor.is_traversable,
         .is_top_level_traversable = descriptor.is_top_level_traversable,
-        .active_window_proxy = nullptr,
         .active_browsing_context = remote_browsing_context,
     });
-    navigable->m_state.get<RemoteNavigableState>().active_window_proxy = WindowProxy::create_remote(realm, navigable);
+    navigable->ensure_remote_active_window_proxy(realm);
     if (descriptor.is_traversable)
         navigable->set_traversable_navigable(TraversableNavigable::create_remote(navigable));
     return navigable;
@@ -49,9 +48,9 @@ String Navigable::target_name() const
 
 GC::Ptr<WindowProxy> Navigable::active_window_proxy()
 {
-    if (auto const* remote_state = m_state.get_pointer<RemoteNavigableState>())
-        return remote_state->active_window_proxy;
-    return local_active_window_proxy();
+    if (!m_active_window_proxy && has_local_state())
+        set_active_window_proxy(local_active_window_proxy());
+    return m_active_window_proxy;
 }
 
 GC::Ptr<BrowsingContext> Navigable::active_browsing_context()
@@ -138,14 +137,31 @@ LocalNavigable const& Navigable::local() const
 
 void Navigable::set_remote_state(RemoteNavigableState state)
 {
-    if (state.active_window_proxy)
-        state.active_window_proxy->set_remote_navigable(*this);
     m_state = move(state);
+    if (m_active_window_proxy)
+        m_active_window_proxy->set_remote_navigable(*this);
 }
 
 void Navigable::set_local_state()
 {
     m_state = LocalNavigableState {};
+    set_active_window_proxy(local_active_window_proxy());
+}
+
+void Navigable::set_active_window_proxy(GC::Ptr<WindowProxy> window_proxy)
+{
+    m_active_window_proxy = move(window_proxy);
+    if (m_active_window_proxy && !has_local_state())
+        m_active_window_proxy->set_remote_navigable(*this);
+}
+
+GC::Ref<WindowProxy> Navigable::ensure_remote_active_window_proxy(JS::Realm& realm)
+{
+    VERIFY(!has_local_state());
+    if (!m_active_window_proxy)
+        set_active_window_proxy(WindowProxy::create_remote(realm, *this));
+    VERIFY(m_active_window_proxy);
+    return *m_active_window_proxy;
 }
 
 bool Navigable::is_traversable() const
@@ -198,10 +214,10 @@ void Navigable::visit_edges(Visitor& visitor)
     visitor.visit(m_parent);
     visitor.visit(m_container);
     visitor.visit(m_traversable);
+    visitor.visit(m_active_window_proxy);
     m_state.visit(
         [](LocalNavigableState&) {},
         [&](RemoteNavigableState& remote_state) {
-            visitor.visit(remote_state.active_window_proxy);
             visitor.visit(remote_state.active_browsing_context);
         });
 }

@@ -8,6 +8,7 @@
 
 #include <AK/Forward.h>
 #include <AK/Optional.h>
+#include <AK/Variant.h>
 #include <LibGC/Ptr.h>
 #include <LibJS/Forward.h>
 #include <LibJS/Runtime/Object.h>
@@ -19,14 +20,21 @@
 
 namespace Web::HTML {
 
+struct LocalWindowProxyTarget {
+    GC::Ptr<Window> window;
+};
+
+struct RemoteWindowProxyTarget {
+    GC::Ptr<Navigable> navigable;
+    GC::Ptr<JS::Object> location;
+};
+
 class WEB_API WindowProxy final : public DOM::EventTarget {
     WEB_NON_IDL_PLATFORM_OBJECT(WindowProxy, DOM::EventTarget)
     GC_DECLARE_ALLOCATOR(WindowProxy);
 
 public:
     virtual ~WindowProxy() override = default;
-
-    static GC::Ref<WindowProxy> create_remote(JS::Realm&, GC::Ref<Navigable>);
 
     virtual JS::ThrowCompletionOr<JS::Object*> internal_get_prototype_of() const override;
     virtual JS::ThrowCompletionOr<bool> internal_set_prototype_of(Object* prototype) override;
@@ -39,10 +47,9 @@ public:
     virtual JS::ThrowCompletionOr<bool> internal_delete(JS::PropertyKey const&) override;
     virtual JS::ThrowCompletionOr<GC::RootVector<JS::Value>> internal_own_property_keys() const override;
 
-    GC::Ptr<Window> window() const { return m_window; }
+    GC::Ptr<Window> window() const;
     void set_window(GC::Ref<Window>);
-    GC::Ptr<Navigable> remote_navigable() const { return m_remote_navigable; }
-    void set_remote_navigable(GC::Ref<Navigable>);
+    GC::Ptr<Navigable> remote_navigable() const;
     GC::Ref<JS::Object> remote_location_object();
     CrossOriginPropertyDescriptorMap const& cross_origin_property_descriptor_map() const { return m_cross_origin_property_descriptor_map; }
     CrossOriginPropertyDescriptorMap& cross_origin_property_descriptor_map() { return m_cross_origin_property_descriptor_map; }
@@ -53,18 +60,26 @@ public:
 
 private:
     explicit WindowProxy(JS::Realm&);
+    static GC::Ref<WindowProxy> create_remote(JS::Realm&, GC::Ref<Navigable>);
+    void set_remote_navigable(GC::Ref<Navigable>);
+
     bool is_remote_same_origin_domain() const;
+    LocalWindowProxyTarget* local_target();
+    LocalWindowProxyTarget const* local_target() const;
+    RemoteWindowProxyTarget* remote_target();
+    RemoteWindowProxyTarget const* remote_target() const;
+    Window& local_window() const;
+    Navigable& remote_navigable_ref() const;
 
     virtual bool is_universal_global_scope_mixin() const final { return true; }
 
     virtual bool is_html_window_proxy() const override { return true; }
     virtual void visit_edges(JS::Cell::Visitor&) override;
 
-    // [[Window]], https://html.spec.whatwg.org/multipage/window-object.html#concept-windowproxy-window
-    GC::Ptr<Window> m_window;
-    GC::Ptr<Navigable> m_remote_navigable;
-    GC::Ptr<JS::Object> m_remote_location;
+    Variant<Empty, LocalWindowProxyTarget, RemoteWindowProxyTarget> m_target;
     CrossOriginPropertyDescriptorMap m_cross_origin_property_descriptor_map;
+
+    friend class Navigable;
 };
 
 }
