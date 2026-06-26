@@ -53,6 +53,7 @@ public:
 
 private:
     explicit WindowProxy(JS::Realm&);
+    bool is_remote_same_origin_domain() const;
 
     virtual bool is_universal_global_scope_mixin() const final { return true; }
 

@@ -1375,8 +1375,14 @@ WebIDL::ExceptionOr<void> Window::post_message_to_remote_navigable(GC::Ref<Navig
 
     auto source_navigable = this->navigable();
     auto source_navigable_id = source_navigable ? source_navigable->id() : String {};
+    auto target_navigable_id = target_navigable->id();
+    auto source_origin = incumbent_settings.origin();
     dbgln("SI_TRACE sending remote message target={} source={}", target_navigable->id(), source_navigable_id);
-    page().client().page_did_post_message_to_remote_navigable(target_navigable->id(), source_navigable_id, move(serialize_with_transfer_result), move(target_origin), incumbent_settings.origin());
+    // Preserve the posted-message task boundary before crossing process boundaries,
+    // so remote targets do not overtake same-turn local posted-message tasks.
+    queue_global_task(Task::Source::PostedMessage, *this, GC::create_function(heap(), [source_window = GC::Ref { *this }, target_navigable_id = move(target_navigable_id), source_navigable_id = move(source_navigable_id), serialize_with_transfer_result = move(serialize_with_transfer_result), target_origin = move(target_origin), source_origin = move(source_origin)] mutable {
+        source_window->page().client().page_did_post_message_to_remote_navigable(target_navigable_id, source_navigable_id, move(serialize_with_transfer_result), move(target_origin), move(source_origin));
+    }));
     return {};
 }
 

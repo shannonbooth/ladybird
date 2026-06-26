@@ -58,6 +58,17 @@ Optional<URL::Origin> WindowProxy::extract_an_origin() const
     return origin;
 }
 
+bool WindowProxy::is_remote_same_origin_domain() const
+{
+    VERIFY(m_remote_navigable);
+
+    auto origin = m_remote_navigable->active_document_origin();
+    if (!origin.has_value())
+        return false;
+
+    return origin->is_same_origin_domain(current_settings_object().origin());
+}
+
 // 7.4 The WindowProxy exotic object, https://html.spec.whatwg.org/multipage/window-object.html#the-windowproxy-exotic-object
 WindowProxy::WindowProxy(JS::Realm& realm)
     : DOM::EventTarget(realm, MayInterfereWithIndexedPropertyAccess::Yes)
@@ -207,8 +218,23 @@ JS::ThrowCompletionOr<JS::Value> WindowProxy::internal_get(JS::PropertyKey const
 {
     auto& vm = this->vm();
 
-    if (m_remote_navigable)
+    if (m_remote_navigable) {
+        if (is_remote_same_origin_domain()) {
+            // The actual Window lives in another process, but same-origin code can
+            // still observe the WindowProxy object's ordinary conversion branding.
+            if (property_key.is_symbol()) {
+                if (property_key.as_symbol() == vm.well_known_symbol_to_primitive())
+                    return JS::js_undefined();
+                if (property_key.as_symbol() == vm.well_known_symbol_to_string_tag())
+                    return JS::PrimitiveString::create(vm, "Window"_utf16_fly_string);
+            }
+
+            if (property_key.is_string() && property_key.as_string() == vm.names.toString.as_string())
+                return realm().intrinsics().object_prototype_to_string_function().ptr();
+        }
+
         return cross_origin_get(vm, *this, property_key, receiver);
+    }
 
     // 1. Let W be the value of the [[Window]] internal slot of this.
 
