@@ -123,9 +123,9 @@ void ConnectionFromClient::initialize(u64 initial_page_id)
     m_page_host->initialize(initial_page_id);
 }
 
-void ConnectionFromClient::initialize_embedded_frame(u64 initial_page_id, String local_navigable_id, Web::HTML::SandboxingFlagSet remote_container_sandboxing_flags, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors)
+void ConnectionFromClient::initialize_embedded_frame(u64 initial_page_id, Web::HTML::RemoteNavigableDescriptor local_navigable_descriptor, Web::HTML::TargetSnapshotParams remote_container_target_snapshot_params, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors)
 {
-    m_page_host->initialize_embedded_frame(initial_page_id, move(local_navigable_id), remote_container_sandboxing_flags, move(ancestors));
+    m_page_host->initialize_embedded_frame(initial_page_id, move(local_navigable_descriptor), move(remote_container_target_snapshot_params), move(ancestors));
 }
 
 void ConnectionFromClient::set_page_parent_context(u64 page_id, Optional<Web::Compositor::CompositorContextId> parent_context_id)
@@ -145,6 +145,12 @@ void ConnectionFromClient::set_remote_navigable_ancestors(u64 page_id, String lo
     dbgln("SI_TRACE server set_remote_navigable_ancestors page={} local={} count={} page_exists={}", page_id, local_navigable_id, ancestors.size(), this->page(page_id).has_value());
     if (auto page = this->page(page_id); page.has_value())
         page->set_remote_navigable_ancestors(move(local_navigable_id), move(ancestors));
+}
+
+void ConnectionFromClient::update_remote_navigable(u64 page_id, Web::HTML::RemoteNavigableDescriptor descriptor)
+{
+    if (auto page = this->page(page_id); page.has_value())
+        page->update_remote_navigable(move(descriptor));
 }
 
 void ConnectionFromClient::set_remote_child_frame_compositor_context(u64 page_id, String frame_id, Optional<Web::Compositor::CompositorContextId> context_id)

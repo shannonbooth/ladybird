@@ -13,6 +13,7 @@
 #include <AK/String.h>
 #include <AK/Tuple.h>
 #include <LibCore/Forward.h>
+#include <LibIPC/Forward.h>
 #include <LibWeb/Bindings/Navigation.h>
 #include <LibWeb/Compositor/CompositorHost.h>
 #include <LibWeb/DOM/DocumentLoadEventDelayer.h>
@@ -223,7 +224,7 @@ public:
     [[nodiscard]] bool has_a_rendering_opportunity() const;
 
     [[nodiscard]] TargetSnapshotParams snapshot_target_snapshot_params();
-    void set_remote_container_sandboxing_flags(SandboxingFlagSet flags) { m_remote_container_sandboxing_flags = flags; }
+    void set_remote_container_target_snapshot_params(TargetSnapshotParams params) { m_remote_container_target_snapshot_params = move(params); }
 
     Page& page() { return m_page; }
     Page const& page() const { return m_page; }
@@ -346,7 +347,7 @@ private:
     RefPtr<SessionHistoryEntry> m_active_session_history_entry;
 
     size_t m_next_child_navigable_id { 0 };
-    Optional<SandboxingFlagSet> m_remote_container_sandboxing_flags;
+    Optional<TargetSnapshotParams> m_remote_container_target_snapshot_params;
 
     // AD-HOC: Direct reference to the active document, decoupled from session history.
     //         This is the authoritative source for active_document().
@@ -430,5 +431,15 @@ Vector<NonnullRefPtr<SessionHistoryEntry>>* append_nested_history_for_child_navi
 bool navigation_must_be_a_replace(URL::URL const& url, DOM::Document const& document);
 void finalize_a_cross_document_navigation(GC::Ref<LocalNavigable>, HistoryHandlingBehavior, UserNavigationInvolvement, NonnullRefPtr<SessionHistoryEntry>, GC::Ptr<DOM::Document> pending_document, Optional<String> expected_ongoing_navigation_id, GC::Ref<OnApplyHistoryStepComplete> on_complete);
 void perform_url_and_history_update_steps(DOM::Document& document, URL::URL new_url, Optional<SerializationRecord> = {}, HistoryHandlingBehavior history_handling = HistoryHandlingBehavior::Replace);
+
+}
+
+namespace IPC {
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::TargetSnapshotParams const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::TargetSnapshotParams> decode(Decoder&);
 
 }

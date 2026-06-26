@@ -44,6 +44,7 @@
 #include <LibWeb/HTML/AudioPlayState.h>
 #include <LibWeb/HTML/ColorPickerUpdateState.h>
 #include <LibWeb/HTML/FileFilter.h>
+#include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/POSTResource.h>
 #include <LibWeb/HTML/Scripting/ScriptRegistry.h>
 #include <LibWeb/HTML/SelectItem.h>
@@ -89,15 +90,18 @@ public:
     Compositor::CompositorHost const& compositor_host() const;
 
     void set_local_root_navigable(GC::Ref<HTML::LocalNavigable>);
+    void set_local_browsing_context_group(GC::Ref<HTML::BrowsingContextGroup>);
 
     // FIXME: This is a hack.
     bool local_root_navigable_is_initialized() const;
+    bool local_browsing_context_group_is_initialized() const;
     bool has_local_top_level_traversable() const;
 
     HTML::LocalTraversableNavigable& local_top_level_traversable();
     HTML::LocalTraversableNavigable const& local_top_level_traversable() const;
 
     GC::Ref<HTML::LocalNavigable> local_root_navigable() const;
+    GC::Ref<HTML::BrowsingContextGroup> local_browsing_context_group() const;
 
     HTML::LocalNavigable& focused_navigable();
     HTML::LocalNavigable const& focused_navigable() const { return const_cast<Page*>(this)->focused_navigable(); }
@@ -331,6 +335,7 @@ private:
     GC::Weak<HTML::LocalNavigable> m_focused_navigable;
 
     GC::Ptr<HTML::LocalNavigable> m_local_root_navigable;
+    GC::Ptr<HTML::BrowsingContextGroup> m_local_browsing_context_group;
 
     bool m_is_scripting_enabled { true };
     bool m_should_block_pop_ups { true };
@@ -454,7 +459,7 @@ public:
     virtual void request_navigation_of_remote_child_frame(String const&, URL::URL const&, Variant<Empty, String, HTML::POSTResource>, Bindings::NavigationHistoryBehavior) { }
     virtual void page_did_create_child_frame(String const&, String const&) { }
     virtual void page_did_update_child_frame_viewport(String const&, CSSPixelRect) { }
-    virtual void page_did_commit_child_frame_navigation(String const&, URL::URL const&) { }
+    virtual void page_did_commit_child_frame_navigation(String const&, URL::URL const&, HTML::RemoteNavigableDescriptor) { }
     virtual void page_did_destroy_child_frame(String const&) { }
     virtual Optional<Compositor::CompositorContextId> compositor_context_id_for_remote_child_frame(String const&) const { return {}; }
     virtual String dump_site_isolation_process_tree_for_testing() { return {}; }

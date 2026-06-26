@@ -64,6 +64,7 @@ public:
     DOM::Document* active_document();
     Optional<URL::Origin> active_document_origin() const;
     bool active_document_is_fully_active() const;
+    void update_remote_state(RemoteNavigableDescriptor const&);
     void set_active_document(GC::Ptr<DOM::Document>);
 
     HTML::WindowProxy* window_proxy();

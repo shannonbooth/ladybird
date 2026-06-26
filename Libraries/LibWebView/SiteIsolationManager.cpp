@@ -73,7 +73,7 @@ void SiteIsolationManager::did_update_child_frame_viewport(u64 page_id, String f
     }
 }
 
-bool SiteIsolationManager::did_commit_child_frame_navigation(WebContentClient& parent_client, u64 page_id, StringView frame_id, URL::URL const& url)
+bool SiteIsolationManager::did_commit_child_frame_navigation(WebContentClient& parent_client, u64 page_id, StringView frame_id, URL::URL const& url, Web::HTML::RemoteNavigableDescriptor)
 {
     auto child_frame = this->child_frame(page_id, frame_id);
     if (!child_frame.has_value())
@@ -151,7 +151,7 @@ bool SiteIsolationManager::remote_child_frame_did_finish_loading(WebContentClien
     return true;
 }
 
-bool SiteIsolationManager::remote_child_frame_did_commit_navigation(WebContentClient& remote_client, u64 remote_page_id, URL::URL const& url)
+bool SiteIsolationManager::remote_child_frame_did_commit_navigation(WebContentClient& remote_client, u64 remote_page_id, URL::URL const& url, Optional<Web::HTML::RemoteNavigableDescriptor> descriptor)
 {
     dbgln("SI_TRACE remote child commit remote_page={} url={}", remote_page_id, url);
     auto parent_frame = parent_frame_for_remote_page(remote_client, remote_page_id);
@@ -162,6 +162,8 @@ bool SiteIsolationManager::remote_child_frame_did_commit_navigation(WebContentCl
 
     parent_frame->child_frame->last_committed_url = url;
     parent_frame->child_frame->pending_navigation.clear();
+    if (descriptor.has_value())
+        parent_frame->parent_client->async_update_remote_navigable(parent_frame->page_id, descriptor.release_value());
     return true;
 }
 

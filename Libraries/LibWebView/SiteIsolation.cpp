@@ -57,6 +57,23 @@ bool is_url_suitable_for_same_process_navigation(URL::URL const& current_url, UR
     if (target_url.scheme() == "javascript"sv)
         return true;
 
+    if (current_url.scheme() == "blob"sv || target_url.scheme() == "blob"sv) {
+        auto target_origin = target_url.origin();
+        if (target_origin.is_opaque())
+            return false;
+
+        if (current_origin.has_value()) {
+            if (current_origin->is_opaque())
+                return false;
+            return current_origin->is_same_site(target_origin);
+        }
+
+        auto current_origin = current_url.origin();
+        if (current_origin.is_opaque())
+            return false;
+        return current_origin.is_same_site(target_origin);
+    }
+
     // Allow cross-scheme non-HTTP(S) navigation. Disallow cross-scheme HTTP(s) navigation.
     auto current_url_is_http = Web::Fetch::Infrastructure::is_http_or_https_scheme(current_url.scheme());
     auto target_url_is_http = Web::Fetch::Infrastructure::is_http_or_https_scheme(target_url.scheme());

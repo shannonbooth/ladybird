@@ -25,6 +25,7 @@
 #include <LibWeb/Compositor/Types.h>
 #include <LibWeb/Forward.h>
 #include <LibWeb/HTML/AutoplayPolicy.h>
+#include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/StructuredSerialize.h>
@@ -73,7 +74,7 @@ private:
 
     virtual Messages::WebContentServer::InitTransportResponse init_transport(int peer_pid) override;
     virtual void initialize(u64 initial_page_id) override;
-    virtual void initialize_embedded_frame(u64 initial_page_id, String local_navigable_id, Web::HTML::SandboxingFlagSet remote_container_sandboxing_flags, Vector<Web::HTML::RemoteNavigableDescriptor>) override;
+    virtual void initialize_embedded_frame(u64 initial_page_id, Web::HTML::RemoteNavigableDescriptor local_navigable_descriptor, Web::HTML::TargetSnapshotParams remote_container_target_snapshot_params, Vector<Web::HTML::RemoteNavigableDescriptor>) override;
     virtual void close_server() override;
     virtual Messages::WebContentServer::GetWindowHandleResponse get_window_handle(u64 page_id) override;
     virtual void set_window_handle(u64 page_id, String handle) override;
@@ -96,6 +97,7 @@ private:
     virtual void run_iframe_load_event_steps(u64 page_id, String frame_id) override;
     virtual void set_page_parent_context(u64 page_id, Optional<Web::Compositor::CompositorContextId>) override;
     virtual void set_remote_navigable_ancestors(u64 page_id, String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor>) override;
+    virtual void update_remote_navigable(u64 page_id, Web::HTML::RemoteNavigableDescriptor) override;
     virtual void set_remote_child_frame_compositor_context(u64 page_id, String frame_id, Optional<Web::Compositor::CompositorContextId>) override;
     virtual void dispatch_message_event_from_remote_navigable(u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord, Variant<String, URL::Origin>, URL::Origin) override;
     virtual void traverse_the_history_by_delta(u64 page_id, i32 delta) override;

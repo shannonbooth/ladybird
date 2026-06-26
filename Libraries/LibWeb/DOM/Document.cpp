@@ -5996,10 +5996,10 @@ void Document::make_active()
     auto current_navigable = this->navigable();
     if (current_navigable && current_navigable->is_top_level_traversable()) {
         page().client().page_did_change_active_document_in_top_level_browsing_context(*this);
-    } else if (current_navigable && current_navigable->has_local_state() && as<HTML::LocalNavigable>(*current_navigable).is_page_local_root_navigable()) {
+    } else if (current_navigable && current_navigable->has_local_state() && as<HTML::LocalNavigable>(*current_navigable).is_page_local_root_navigable() && !current_navigable->parent()) {
         page().client().page_did_change_url(url());
     } else if (current_navigable) {
-        page().client().page_did_commit_child_frame_navigation(current_navigable->id(), url());
+        page().client().page_did_commit_child_frame_navigation(current_navigable->id(), url(), current_navigable->remote_descriptor());
     }
 
     // 3. Set window's relevant settings object's execution ready flag.

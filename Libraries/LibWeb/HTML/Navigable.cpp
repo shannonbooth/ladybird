@@ -103,6 +103,27 @@ RemoteNavigableDescriptor Navigable::remote_descriptor() const
     };
 }
 
+void Navigable::update_remote_descriptor(RemoteNavigableDescriptor descriptor)
+{
+    VERIFY(!has_local_state());
+    VERIFY(descriptor.id == id());
+
+    auto& remote_state = m_state.get<RemoteNavigableState>();
+    remote_state.target_name = move(descriptor.target_name);
+    remote_state.active_document_origin = move(descriptor.active_document_origin);
+    remote_state.active_document_top_level_creation_url = move(descriptor.active_document_top_level_creation_url);
+    remote_state.active_document_top_level_origin = move(descriptor.active_document_top_level_origin);
+    remote_state.active_document_is_fully_active = descriptor.active_document_is_fully_active;
+    remote_state.is_traversable = descriptor.is_traversable;
+    remote_state.is_top_level_traversable = descriptor.is_top_level_traversable;
+
+    if (remote_state.active_browsing_context)
+        remote_state.active_browsing_context->update_remote_state(remote_descriptor());
+
+    if (remote_state.is_traversable && !m_traversable)
+        set_traversable_navigable(TraversableNavigable::create_remote(*this));
+}
+
 LocalNavigable& Navigable::local()
 {
     VERIFY(has_local_state());

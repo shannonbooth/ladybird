@@ -67,6 +67,7 @@ public:
     Optional<URL::Origin> active_document_top_level_origin() const;
     bool active_document_is_fully_active() const;
     RemoteNavigableDescriptor remote_descriptor() const;
+    void update_remote_descriptor(RemoteNavigableDescriptor);
 
     LocalNavigable& local();
     LocalNavigable const& local() const;

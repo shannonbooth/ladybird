@@ -33,19 +33,6 @@ HashTable<NavigableContainer*>& NavigableContainer::all_instances()
     return *set;
 }
 
-static GC::Ref<BrowsingContextGroup> local_browsing_context_group_for_new_child_navigable(DOM::Document& document)
-{
-    auto browsing_context = document.browsing_context();
-    VERIFY(browsing_context);
-
-    if (auto* group = browsing_context->group())
-        return *group;
-
-    auto group = BrowsingContextGroup::create(document.page());
-    group->append(*browsing_context);
-    return group;
-}
-
 NavigableContainer::NavigableContainer(DOM::Document& document, DOM::QualifiedName qualified_name)
     : HTMLElement(document, move(qualified_name))
 {
@@ -95,11 +82,12 @@ void NavigableContainer::create_new_child_navigable()
     // 2. Let group be element's node document's browsing context's top-level browsing context's group.
     // In a site-isolated iframe process, the spec top-level browsing context is remote. New local child browsing
     // contexts still join this document's process-local browsing context group.
-    auto group = local_browsing_context_group_for_new_child_navigable(document());
+    auto group = document().page().local_browsing_context_group();
 
     // 3. Let browsingContext and document be the result of creating a new browsing context and document given element's node document, element, and group.
     auto& page = document().page();
     auto [browsing_context, document] = BrowsingContext::create_a_new_browsing_context_and_document(page, this->document(), *this, group);
+    group->append(browsing_context);
 
     // 4. Let targetName be null.
     Optional<String> target_name;

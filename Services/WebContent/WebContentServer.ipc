@@ -16,9 +16,9 @@
 #include <LibWeb/HTML/AutoplayPolicy.h>
 #include <LibWeb/HTML/ColorPickerUpdateState.h>
 #include <LibWeb/HTML/BroadcastChannelMessage.h>
+#include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/SelectedFile.h>
 #include <LibWeb/HTML/Navigable.h>
-#include <LibWeb/HTML/SandboxingFlagSet.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/StructuredSerialize.h>
 #include <LibWeb/HTML/VisibilityState.h>
@@ -39,7 +39,7 @@ endpoint WebContentServer
 {
     init_transport(int peer_pid) => (int peer_pid)
     initialize(u64 initial_page_id) =|
-    initialize_embedded_frame(u64 initial_page_id, String local_navigable_id, Web::HTML::SandboxingFlagSet remote_container_sandboxing_flags, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors) =|
+    initialize_embedded_frame(u64 initial_page_id, Web::HTML::RemoteNavigableDescriptor local_navigable_descriptor, Web::HTML::TargetSnapshotParams remote_container_target_snapshot_params, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors) =|
     close_server() =|
 
     get_window_handle(u64 page_id) => (String handle)
@@ -67,6 +67,7 @@ endpoint WebContentServer
     run_iframe_load_event_steps(u64 page_id, String frame_id) =|
     set_page_parent_context(u64 page_id, Optional<Web::Compositor::CompositorContextId> parent_context_id) =|
     set_remote_navigable_ancestors(u64 page_id, String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors) =|
+    update_remote_navigable(u64 page_id, Web::HTML::RemoteNavigableDescriptor descriptor) =|
     set_remote_child_frame_compositor_context(u64 page_id, String frame_id, Optional<Web::Compositor::CompositorContextId> context_id) =|
     dispatch_message_event_from_remote_navigable(u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord message, Variant<String, URL::Origin> target_origin, URL::Origin source_origin) =|
     traverse_the_history_by_delta(u64 page_id, i32 delta) =|

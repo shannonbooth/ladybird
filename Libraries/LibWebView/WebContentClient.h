@@ -29,6 +29,7 @@
 #include <LibWeb/Forward.h>
 #include <LibWeb/HTML/ActivateTab.h>
 #include <LibWeb/HTML/FileFilter.h>
+#include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/Scripting/ScriptRegistry.h>
 #include <LibWeb/HTML/SelectItem.h>
@@ -118,11 +119,11 @@ private:
     virtual void did_destroy_compositor_context(Web::Compositor::CompositorContextId) override;
     virtual Messages::WebContentClient::DecideNavigationProcessResponse decide_navigation_process(u64 page_id, Optional<String> frame_id, URL::URL current_url, URL::URL target_url, Web::NavigationTarget, Optional<URL::Origin> current_origin) override;
     virtual void did_request_new_process_for_navigation(u64 page_id, URL::URL url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling) override;
-    virtual void did_request_new_process_for_child_frame_navigation(u64 page_id, String frame_id, URL::URL url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling, Web::HTML::SandboxingFlagSet remote_container_sandboxing_flags, Vector<Web::HTML::RemoteNavigableDescriptor> ancestor_navigables) override;
+    virtual void did_request_new_process_for_child_frame_navigation(u64 page_id, String frame_id, URL::URL url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling, Web::HTML::RemoteNavigableDescriptor local_navigable_descriptor, Web::HTML::TargetSnapshotParams remote_container_target_snapshot_params, Vector<Web::HTML::RemoteNavigableDescriptor> ancestor_navigables) override;
     virtual void did_request_navigation_of_remote_child_frame(u64 page_id, String frame_id, URL::URL url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling) override;
     virtual void did_create_child_frame(u64 page_id, String parent_frame_id, String frame_id) override;
     virtual void did_update_child_frame_viewport(u64 page_id, String frame_id, Web::DevicePixelRect viewport_rect, double device_pixel_ratio) override;
-    virtual void did_commit_child_frame_navigation(u64 page_id, String frame_id, URL::URL url) override;
+    virtual void did_commit_child_frame_navigation(u64 page_id, String frame_id, URL::URL url, Web::HTML::RemoteNavigableDescriptor descriptor) override;
     virtual void did_destroy_child_frame(u64 page_id, String frame_id) override;
     virtual void did_start_webdriver_navigation(u64 page_id, URL::URL url) override;
     virtual void did_finish_loading(u64 page_id, URL::URL) override;

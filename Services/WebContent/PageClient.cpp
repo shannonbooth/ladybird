@@ -213,14 +213,15 @@ void PageClient::request_new_process_for_child_frame_navigation(String const& fr
     auto child_navigable = find_navigable_by_id(*active_document, frame_id);
     VERIFY(child_navigable);
     VERIFY(child_navigable->has_local_state());
-    auto remote_container_sandboxing_flags = as<Web::HTML::LocalNavigable>(*child_navigable).snapshot_target_snapshot_params().sandboxing_flags;
+    auto local_navigable_descriptor = child_navigable->remote_descriptor();
+    auto remote_container_target_snapshot_params = as<Web::HTML::LocalNavigable>(*child_navigable).snapshot_target_snapshot_params();
 
     Vector<Web::HTML::RemoteNavigableDescriptor> ancestor_navigables;
     ancestor_navigables = remote_navigable_ancestors_for_child_frame(*active_document, frame_id);
     dbgln("SI_TRACE request remote child frame={} ancestors={}", frame_id, ancestor_navigables.size());
     for (auto const& ancestor : ancestor_navigables)
         dbgln("SI_TRACE ancestor id={} top={} traversable={} top_level_creation_url={} top_level_origin={}", ancestor.id, ancestor.is_top_level_traversable, ancestor.is_traversable, ancestor.active_document_top_level_creation_url.has_value(), ancestor.active_document_top_level_origin.has_value());
-    client().async_did_request_new_process_for_child_frame_navigation(m_id, frame_id, url, move(document_resource), history_handling, remote_container_sandboxing_flags, move(ancestor_navigables));
+    client().async_did_request_new_process_for_child_frame_navigation(m_id, frame_id, url, move(document_resource), history_handling, move(local_navigable_descriptor), move(remote_container_target_snapshot_params), move(ancestor_navigables));
 }
 
 void PageClient::request_navigation_of_remote_child_frame(String const& frame_id, URL::URL const& url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling)
@@ -238,9 +239,9 @@ void PageClient::page_did_update_child_frame_viewport(String const& frame_id, We
     client().async_did_update_child_frame_viewport(m_id, frame_id, page().css_to_device_rect(viewport_rect), page().client().device_pixel_ratio());
 }
 
-void PageClient::page_did_commit_child_frame_navigation(String const& frame_id, URL::URL const& url)
+void PageClient::page_did_commit_child_frame_navigation(String const& frame_id, URL::URL const& url, Web::HTML::RemoteNavigableDescriptor descriptor)
 {
-    client().async_did_commit_child_frame_navigation(m_id, frame_id, url);
+    client().async_did_commit_child_frame_navigation(m_id, frame_id, url, move(descriptor));
 }
 
 void PageClient::page_did_destroy_child_frame(String const& frame_id)
@@ -350,6 +351,19 @@ void PageClient::set_remote_navigable_ancestors(String local_navigable_id, Vecto
         dbgln("SI_TRACE local={} parent={}", local_navigable->id(), parent->id());
     else
         dbgln("SI_TRACE local={} parent=<null>", local_navigable->id());
+}
+
+void PageClient::update_remote_navigable(Web::HTML::RemoteNavigableDescriptor descriptor)
+{
+    auto active_document = page().local_root_navigable()->active_document();
+    if (!active_document)
+        return;
+
+    auto navigable = find_navigable_by_id(*active_document, descriptor.id);
+    if (!navigable || navigable->has_local_state())
+        return;
+
+    navigable->update_remote_descriptor(move(descriptor));
 }
 
 void PageClient::dispatch_message_event_from_remote_navigable(String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord message, Variant<String, URL::Origin> target_origin, URL::Origin source_origin)

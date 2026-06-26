@@ -133,6 +133,7 @@ public:
     void run_iframe_load_event_steps(String const& frame_id);
     void set_remote_child_frame_compositor_context(String, Optional<Web::Compositor::CompositorContextId>);
     void set_remote_navigable_ancestors(String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor>);
+    void update_remote_navigable(Web::HTML::RemoteNavigableDescriptor);
     void dispatch_message_event_from_remote_navigable(String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord, Variant<String, URL::Origin>, URL::Origin);
     void clear_pending_dom_mutations();
     void did_delete_all_cookies(u64 request_id);
@@ -155,7 +156,7 @@ private:
     virtual void request_navigation_of_remote_child_frame(String const& frame_id, URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::Bindings::NavigationHistoryBehavior) override;
     virtual void page_did_create_child_frame(String const& parent_frame_id, String const& frame_id) override;
     virtual void page_did_update_child_frame_viewport(String const& frame_id, Web::CSSPixelRect) override;
-    virtual void page_did_commit_child_frame_navigation(String const& frame_id, URL::URL const&) override;
+    virtual void page_did_commit_child_frame_navigation(String const& frame_id, URL::URL const&, Web::HTML::RemoteNavigableDescriptor) override;
     virtual void page_did_destroy_child_frame(String const& frame_id) override;
     virtual Optional<Web::Compositor::CompositorContextId> compositor_context_id_for_remote_child_frame(String const&) const override;
     virtual String dump_site_isolation_process_tree_for_testing() override;

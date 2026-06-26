@@ -33,7 +33,7 @@ void PageHost::initialize(u64 initial_page_id)
     Web::HTML::LocalTraversableNavigable::create_a_fresh_top_level_traversable(first_page.page(), URL::about_blank());
 }
 
-void PageHost::initialize_embedded_frame(u64 initial_page_id, String local_navigable_id, Web::HTML::SandboxingFlagSet remote_container_sandboxing_flags, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors)
+void PageHost::initialize_embedded_frame(u64 initial_page_id, Web::HTML::RemoteNavigableDescriptor local_navigable_descriptor, Web::HTML::TargetSnapshotParams remote_container_target_snapshot_params, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors)
 {
     VERIFY(m_pages.is_empty());
     auto& first_page = create_page(initial_page_id);
@@ -43,12 +43,20 @@ void PageHost::initialize_embedded_frame(u64 initial_page_id, String local_navig
     (void)group;
 
     auto document_state = Web::HTML::DocumentState::create();
-    document_state->set_origin(document->origin());
+    if (local_navigable_descriptor.active_document_origin.has_value()) {
+        document->set_origin(*local_navigable_descriptor.active_document_origin);
+        document_state->set_initiator_origin(local_navigable_descriptor.active_document_origin);
+        document_state->set_origin(move(local_navigable_descriptor.active_document_origin));
+    } else {
+        document_state->set_initiator_origin(document->origin());
+        document_state->set_origin(document->origin());
+    }
     document_state->set_about_base_url(document->about_base_url());
+    document_state->set_navigable_target_name(move(local_navigable_descriptor.target_name));
 
     auto local_root = Web::HTML::LocalNavigable::create(page);
-    local_root->initialize_navigable(document_state, nullptr, document, move(local_navigable_id));
-    local_root->set_remote_container_sandboxing_flags(remote_container_sandboxing_flags);
+    local_root->initialize_navigable(document_state, nullptr, document, move(local_navigable_descriptor.id));
+    local_root->set_remote_container_target_snapshot_params(move(remote_container_target_snapshot_params));
     local_root->set_has_session_history_entry_and_ready_for_navigation();
     page.set_local_root_navigable(local_root);
 

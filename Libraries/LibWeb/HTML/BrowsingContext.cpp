@@ -414,6 +414,13 @@ bool BrowsingContext::active_document_is_fully_active() const
     return document && document->is_fully_active();
 }
 
+void BrowsingContext::update_remote_state(RemoteNavigableDescriptor const& descriptor)
+{
+    auto& remote_state = m_state.get<RemoteBrowsingContextState>();
+    remote_state.active_document_origin = descriptor.active_document_origin;
+    remote_state.active_document_is_fully_active = descriptor.active_document_is_fully_active;
+}
+
 GC::Ptr<BrowsingContext> BrowsingContext::parent_browsing_context() const
 {
     if (auto const* remote_state = m_state.get_pointer<RemoteBrowsingContextState>())

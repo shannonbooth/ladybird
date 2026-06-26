@@ -9,6 +9,8 @@
 #include <AK/NeverDestroyed.h>
 #include <LibCore/Timer.h>
 #include <LibGfx/PaintingSurface.h>
+#include <LibIPC/Decoder.h>
+#include <LibIPC/Encoder.h>
 #include <LibWeb/CSS/ComputedProperties.h>
 #include <LibWeb/CSS/PseudoElement.h>
 #include <LibWeb/CSS/SystemColor.h>
@@ -66,6 +68,7 @@
 #include <LibWeb/Painting/PaintableBox.h>
 #include <LibWeb/Painting/ViewportPaintable.h>
 #include <LibWeb/Platform/EventLoopPlugin.h>
+#include <LibWeb/ReferrerPolicy/ReferrerPolicy.h>
 #include <LibWeb/Selection/Selection.h>
 #include <LibWeb/UIEvents/InputTypes.h>
 #include <LibWeb/WebIDL/Promise.h>
@@ -3356,11 +3359,11 @@ TargetSnapshotParams LocalNavigable::snapshot_target_snapshot_params()
     //   browsing context and targetNavigable's container
     // - iframe element referrer policy: the result of determining the iframe element referrer policy given
     //   targetNavigable's container
-    auto sandboxing_flags = m_remote_container_sandboxing_flags.has_value()
-        ? *m_remote_container_sandboxing_flags
-        : determine_the_creation_sandboxing_flags(*active_browsing_context(), container());
+    if (m_remote_container_target_snapshot_params.has_value())
+        return *m_remote_container_target_snapshot_params;
+
     return {
-        .sandboxing_flags = sandboxing_flags,
+        .sandboxing_flags = determine_the_creation_sandboxing_flags(*active_browsing_context(), container()),
         .iframe_element_referrer_policy = determine_iframe_element_referrer_policy(container()),
     };
 }
@@ -4471,4 +4474,24 @@ bool LocalNavigable::has_inclusive_ancestor_with_visibility_hidden() const
     return false;
 }
 
+}
+
+template<>
+ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::TargetSnapshotParams const& params)
+{
+    TRY(encoder.encode(params.sandboxing_flags));
+    TRY(encoder.encode(params.iframe_element_referrer_policy));
+    return {};
+}
+
+template<>
+ErrorOr<Web::HTML::TargetSnapshotParams> IPC::decode(Decoder& decoder)
+{
+    auto sandboxing_flags = TRY(decoder.decode<Web::HTML::SandboxingFlagSet>());
+    auto iframe_element_referrer_policy = TRY(decoder.decode<Web::ReferrerPolicy::ReferrerPolicy>());
+
+    return Web::HTML::TargetSnapshotParams {
+        .sandboxing_flags = sandboxing_flags,
+        .iframe_element_referrer_policy = iframe_element_referrer_policy,
+    };
 }

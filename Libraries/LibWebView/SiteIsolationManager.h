@@ -66,11 +66,11 @@ public:
 
     void did_create_child_frame(u64 page_id, String parent_frame_id, String frame_id);
     void did_update_child_frame_viewport(u64 page_id, String frame_id, Web::DevicePixelRect viewport_rect, double device_pixel_ratio);
-    bool did_commit_child_frame_navigation(WebContentClient&, u64 page_id, StringView frame_id, URL::URL const& url);
+    bool did_commit_child_frame_navigation(WebContentClient&, u64 page_id, StringView frame_id, URL::URL const& url, Web::HTML::RemoteNavigableDescriptor);
     bool navigate_remote_child_frame(WebContentClient&, u64 page_id, String frame_id, URL::URL, Variant<Empty, String, Web::HTML::POSTResource>, Web::Bindings::NavigationHistoryBehavior);
     void did_destroy_child_frame(WebContentClient&, u64 page_id, StringView frame_id);
     Optional<RemoteChildFrameInputTarget> remote_child_frame_input_target_at(u64 page_id, Web::DevicePixelPoint) const;
-    bool remote_child_frame_did_commit_navigation(WebContentClient& remote_client, u64 remote_page_id, URL::URL const&);
+    bool remote_child_frame_did_commit_navigation(WebContentClient& remote_client, u64 remote_page_id, URL::URL const&, Optional<Web::HTML::RemoteNavigableDescriptor> = {});
     bool remote_child_frame_did_finish_loading(WebContentClient& remote_client, u64 remote_page_id, URL::URL const&);
     bool remote_child_frame_did_finish_handling_input_event(WebContentClient& remote_client, u64 remote_page_id, Web::EventResult);
     bool did_post_message_to_remote_navigable(WebContentClient&, u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord, Variant<String, URL::Origin>, URL::Origin);

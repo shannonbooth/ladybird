@@ -19,6 +19,7 @@
 #include <LibWeb/Fetch/Infrastructure/HTTP/Bodies.h>
 #include <LibWeb/Fetch/Infrastructure/HTTP/Responses.h>
 #include <LibWeb/HTML/BrowsingContext.h>
+#include <LibWeb/HTML/BrowsingContextGroup.h>
 #include <LibWeb/HTML/EventLoop/EventLoop.h>
 #include <LibWeb/HTML/EventNames.h>
 #include <LibWeb/HTML/HTMLIFrameElement.h>
@@ -82,6 +83,7 @@ void Page::visit_edges(JS::Cell::Visitor& visitor)
 {
     Base::visit_edges(visitor);
     visitor.visit(m_local_root_navigable);
+    visitor.visit(m_local_browsing_context_group);
     visitor.visit(m_client);
     visitor.visit(m_window_rect_observer);
     visitor.visit(m_on_pending_dialog_closed);
@@ -435,9 +437,21 @@ void Page::set_local_root_navigable(GC::Ref<HTML::LocalNavigable> navigable)
     update_needs_beforeunload_check();
 }
 
+void Page::set_local_browsing_context_group(GC::Ref<HTML::BrowsingContextGroup> group)
+{
+    VERIFY(!m_local_browsing_context_group); // Replacement is not allowed!
+    VERIFY(&group->page() == this);
+    m_local_browsing_context_group = group;
+}
+
 bool Page::local_root_navigable_is_initialized() const
 {
     return m_local_root_navigable;
+}
+
+bool Page::local_browsing_context_group_is_initialized() const
+{
+    return m_local_browsing_context_group;
 }
 
 bool Page::has_local_top_level_traversable() const
@@ -462,6 +476,11 @@ HTML::LocalTraversableNavigable const& Page::local_top_level_traversable() const
 GC::Ref<HTML::LocalNavigable> Page::local_root_navigable() const
 {
     return *m_local_root_navigable;
+}
+
+GC::Ref<HTML::BrowsingContextGroup> Page::local_browsing_context_group() const
+{
+    return *m_local_browsing_context_group;
 }
 
 void Page::did_update_window_rect()
