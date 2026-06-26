@@ -184,7 +184,7 @@ void Page::traverse_the_history_by_delta(int delta)
 
 void Page::traverse_the_history_by_delta_from_ui_process(int delta)
 {
-    local_root_navigable()->local_traversable_navigable().traverse_the_history_by_delta(delta);
+    local_top_level_traversable().traverse_the_history_by_delta(delta);
 }
 
 Gfx::Palette Page::palette() const
@@ -445,19 +445,38 @@ bool Page::local_root_navigable_is_initialized() const
     return m_local_root_navigable;
 }
 
+bool Page::has_local_top_level_traversable() const
+{
+    return m_local_root_navigable
+        && is<HTML::LocalTraversableNavigable>(*m_local_root_navigable)
+        && m_local_root_navigable->is_top_level_traversable();
+}
+
 bool Page::top_level_traversable_is_initialized() const
 {
-    return local_root_navigable_is_initialized();
+    return has_local_top_level_traversable();
+}
+
+HTML::LocalTraversableNavigable& Page::local_top_level_traversable()
+{
+    VERIFY(has_local_top_level_traversable());
+    return as<HTML::LocalTraversableNavigable>(*m_local_root_navigable);
+}
+
+HTML::LocalTraversableNavigable const& Page::local_top_level_traversable() const
+{
+    VERIFY(has_local_top_level_traversable());
+    return as<HTML::LocalTraversableNavigable>(*m_local_root_navigable);
 }
 
 HTML::BrowsingContext& Page::top_level_browsing_context()
 {
-    return *m_local_root_navigable->active_browsing_context();
+    return *local_top_level_traversable().active_browsing_context();
 }
 
 HTML::BrowsingContext const& Page::top_level_browsing_context() const
 {
-    return *m_local_root_navigable->active_browsing_context();
+    return const_cast<Page&>(*this).top_level_browsing_context();
 }
 
 GC::Ref<HTML::LocalNavigable> Page::local_root_navigable() const

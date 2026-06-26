@@ -362,7 +362,7 @@ bool LocalNavigable::is_ancestor_of(GC::Ref<LocalNavigable> other) const
     return false;
 }
 
-bool LocalNavigable::is_page_top_level_traversable() const
+bool LocalNavigable::is_page_local_root_navigable() const
 {
     return this == page().local_root_navigable().ptr();
 }
@@ -4151,7 +4151,7 @@ void LocalNavigable::paint_next_frame()
 
     auto viewport_rect = page().css_to_device_rect(this->viewport_rect()).to_type<int>();
     PaintConfig paint_config { .paint_overlay = true, .should_show_line_box_borders = m_should_show_line_box_borders, .should_show_caret_hit_test_debug_overlay = m_should_show_caret_hit_test_debug_overlay };
-    if (is_page_top_level_traversable()) {
+    if (is_page_local_root_navigable()) {
         paint_config.canvas_fill_rect = Gfx::IntRect { {}, viewport_rect.size() };
     } else {
         // Nested navigables paint transparent bitmaps for their parent compositor context.

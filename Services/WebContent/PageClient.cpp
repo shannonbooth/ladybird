@@ -157,10 +157,10 @@ void PageClient::set_has_focus(bool has_focus)
 
 void PageClient::set_window_handle(String window_handle)
 {
-    page().local_root_navigable()->local_traversable_navigable().set_window_handle(move(window_handle));
+    page().local_top_level_traversable().set_window_handle(move(window_handle));
 
     if (m_webdriver)
-        m_webdriver->page_did_set_window_handle({}, page().local_root_navigable()->local_traversable_navigable().window_handle());
+        m_webdriver->page_did_set_window_handle({}, page().local_top_level_traversable().window_handle());
 }
 
 void PageClient::did_start_webdriver_navigation(URL::URL const& url)
@@ -200,7 +200,7 @@ static Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigable_ancestors_f
 void PageClient::request_new_process_for_navigation(URL::URL const& url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling)
 {
     if (m_webdriver)
-        m_webdriver->page_did_start_window_replacement({}, page().local_root_navigable()->local_traversable_navigable().window_handle());
+        m_webdriver->page_did_start_window_replacement({}, page().local_top_level_traversable().window_handle());
 
     client().async_did_request_new_process_for_navigation(m_id, url, move(document_resource), history_handling);
 }
@@ -1067,7 +1067,7 @@ void PageClient::page_did_close_top_level_traversable()
     page().local_root_navigable()->compositor_context().stop_presenting_to_client();
 
     if (m_webdriver)
-        m_webdriver->page_did_close_window({}, page().local_root_navigable()->local_traversable_navigable().window_handle());
+        m_webdriver->page_did_close_window({}, page().local_top_level_traversable().window_handle());
 
     // FIXME: Rename this IPC call
     client().async_did_close_browsing_context(m_id);
@@ -1555,7 +1555,7 @@ Web::Compositor::CompositorHost const* PageClient::compositor_host() const
 
 void PageClient::queue_screenshot_task(Optional<Web::UniqueNodeID> node_id)
 {
-    page().local_root_navigable()->local_traversable_navigable().queue_screenshot_task(node_id);
+    page().local_top_level_traversable().queue_screenshot_task(node_id);
 }
 
 }

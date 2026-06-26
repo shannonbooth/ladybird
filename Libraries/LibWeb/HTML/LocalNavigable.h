@@ -85,7 +85,7 @@ public:
     virtual bool is_traversable() const override { return false; }
     LocalTraversableNavigable& local_traversable_navigable();
     LocalTraversableNavigable& local_traversable_navigable() const;
-    bool is_page_top_level_traversable() const;
+    bool is_page_local_root_navigable() const;
 
     bool is_ancestor_of(GC::Ref<LocalNavigable>) const;
 
@@ -303,6 +303,7 @@ protected:
 
     virtual String local_target_name() const override;
     virtual GC::Ptr<WindowProxy> local_active_window_proxy() override;
+    virtual GC::Ptr<BrowsingContext> local_active_browsing_context() override { return active_browsing_context(); }
     virtual Optional<URL::Origin> local_active_document_origin() const override;
     virtual Optional<URL::URL> local_active_document_top_level_creation_url() const override;
     virtual Optional<URL::Origin> local_active_document_top_level_origin() const override;

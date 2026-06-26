@@ -6,6 +6,8 @@
 
 #include <LibIPC/Decoder.h>
 #include <LibIPC/Encoder.h>
+#include <LibWeb/Bindings/PrincipalHostDefined.h>
+#include <LibWeb/HTML/BrowsingContext.h>
 #include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/NavigableContainer.h>
 #include <LibWeb/HTML/TraversableNavigable.h>
@@ -18,6 +20,7 @@ GC_DEFINE_ALLOCATOR(Navigable);
 GC::Ref<Navigable> Navigable::create_remote(JS::Realm& realm, RemoteNavigableDescriptor descriptor, GC::Ptr<Navigable> parent)
 {
     auto navigable = realm.heap().allocate<Navigable>();
+    auto remote_browsing_context = BrowsingContext::create_remote(Bindings::principal_host_defined_page(realm), descriptor, parent ? parent->active_browsing_context() : nullptr);
     navigable->set_id(move(descriptor.id));
     navigable->set_parent(parent);
     navigable->set_remote_state({
@@ -29,6 +32,7 @@ GC::Ref<Navigable> Navigable::create_remote(JS::Realm& realm, RemoteNavigableDes
         .is_traversable = descriptor.is_traversable,
         .is_top_level_traversable = descriptor.is_top_level_traversable,
         .active_window_proxy = nullptr,
+        .active_browsing_context = remote_browsing_context,
     });
     navigable->m_state.get<RemoteNavigableState>().active_window_proxy = WindowProxy::create_remote(realm, navigable);
     if (descriptor.is_traversable)
@@ -48,6 +52,13 @@ GC::Ptr<WindowProxy> Navigable::active_window_proxy()
     if (auto const* remote_state = m_state.get_pointer<RemoteNavigableState>())
         return remote_state->active_window_proxy;
     return local_active_window_proxy();
+}
+
+GC::Ptr<BrowsingContext> Navigable::active_browsing_context()
+{
+    if (auto const* remote_state = m_state.get_pointer<RemoteNavigableState>())
+        return remote_state->active_browsing_context;
+    return local_active_browsing_context();
 }
 
 Optional<URL::Origin> Navigable::active_document_origin() const
@@ -168,6 +179,7 @@ void Navigable::visit_edges(Visitor& visitor)
         [](LocalNavigableState&) {},
         [&](RemoteNavigableState& remote_state) {
             visitor.visit(remote_state.active_window_proxy);
+            visitor.visit(remote_state.active_browsing_context);
         });
 }
 

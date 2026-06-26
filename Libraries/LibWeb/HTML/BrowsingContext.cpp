@@ -20,6 +20,7 @@
 #include <LibWeb/HTML/SandboxingFlagSet.h>
 #include <LibWeb/HTML/Scripting/WindowEnvironmentSettingsObject.h>
 #include <LibWeb/HTML/LocalTraversableNavigable.h>
+#include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HTML/WindowProxy.h>
 #include <LibWeb/HighResolutionTime/TimeOrigin.h>
@@ -307,6 +308,21 @@ BrowsingContext::BrowsingContext(GC::Ref<Page> page)
 {
 }
 
+GC::Ref<BrowsingContext> BrowsingContext::create_remote(GC::Ref<Page> page, RemoteNavigableDescriptor const& descriptor, GC::Ptr<BrowsingContext> parent)
+{
+    auto browsing_context = page->heap().allocate<BrowsingContext>(page);
+    browsing_context->m_state = RemoteBrowsingContextState {
+        .active_document_origin = descriptor.active_document_origin,
+        .active_document_is_fully_active = descriptor.active_document_is_fully_active,
+        .parent_browsing_context = parent,
+    };
+
+    if (parent)
+        browsing_context->m_virtual_browsing_context_group_id = parent->virtual_browsing_context_group_id();
+
+    return browsing_context;
+}
+
 BrowsingContext::~BrowsingContext() = default;
 
 void BrowsingContext::visit_edges(Cell::Visitor& visitor)
@@ -314,10 +330,17 @@ void BrowsingContext::visit_edges(Cell::Visitor& visitor)
     Base::visit_edges(visitor);
 
     visitor.visit(m_page);
-    visitor.visit(m_window_proxy);
-    visitor.visit(m_active_document);
-    visitor.visit(m_group);
     visitor.visit(m_opener_browsing_context);
+
+    m_state.visit(
+        [&](LocalBrowsingContextState& local_state) {
+            visitor.visit(local_state.window_proxy);
+            visitor.visit(local_state.active_document);
+            visitor.visit(local_state.group);
+        },
+        [&](RemoteBrowsingContextState& remote_state) {
+            visitor.visit(remote_state.parent_browsing_context);
+        });
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#bc-traversable
@@ -334,31 +357,24 @@ GC::Ref<LocalTraversableNavigable> BrowsingContext::top_level_traversable() cons
 bool BrowsingContext::is_top_level() const
 {
     // A top-level browsing context is a browsing context whose active document's node navigable is a traversable navigable.
-    return active_document() != nullptr && active_document()->navigable() != nullptr && active_document()->navigable()->is_traversable();
+    return active_document_is_fully_active() && !parent_browsing_context();
 }
 
 GC::Ptr<BrowsingContext> BrowsingContext::top_level_browsing_context() const
 {
-    auto const* start = this;
-
     // 1. If start's active document is not fully active, then return null.
-    if (!start->active_document()->is_fully_active()) {
+    if (!active_document_is_fully_active())
         return nullptr;
-    }
 
     // 2. Let navigable be start's active document's node navigable.
-    auto navigable = start->active_document()->navigable();
+    auto browsing_context = GC::Ptr<BrowsingContext> { const_cast<BrowsingContext*>(this) };
 
     // 3. While navigable's parent is not null, set navigable to navigable's parent.
-    while (navigable->parent()) {
-        auto parent = navigable->parent();
-        if (!parent->has_local_state())
-            return nullptr;
-        navigable = as<LocalNavigable>(*parent);
-    }
+    while (auto parent = browsing_context->parent_browsing_context())
+        browsing_context = parent;
 
     // 4. Return navigable's active browsing context.
-    return navigable->active_browsing_context();
+    return browsing_context;
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#active-document
@@ -369,63 +385,98 @@ DOM::Document const* BrowsingContext::active_document() const
     //         same-origin navigation, because create-and-initialize updates the associated Document
     //         before the new Document is made active.
     //         Spec issue: https://github.com/whatwg/html/issues/12415
-    return m_active_document;
+    return m_state.get<LocalBrowsingContextState>().active_document;
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#active-document
 DOM::Document* BrowsingContext::active_document()
 {
     // AD-HOC: See the const overload above.
-    return m_active_document;
+    return m_state.get<LocalBrowsingContextState>().active_document;
+}
+
+Optional<URL::Origin> BrowsingContext::active_document_origin() const
+{
+    if (auto const* remote_state = m_state.get_pointer<RemoteBrowsingContextState>())
+        return remote_state->active_document_origin;
+
+    if (auto const* document = active_document())
+        return document->origin();
+    return {};
+}
+
+bool BrowsingContext::active_document_is_fully_active() const
+{
+    if (auto const* remote_state = m_state.get_pointer<RemoteBrowsingContextState>())
+        return remote_state->active_document_is_fully_active;
+
+    auto const* document = active_document();
+    return document && document->is_fully_active();
+}
+
+GC::Ptr<BrowsingContext> BrowsingContext::parent_browsing_context() const
+{
+    if (auto const* remote_state = m_state.get_pointer<RemoteBrowsingContextState>())
+        return remote_state->parent_browsing_context;
+
+    auto const* document = active_document();
+    if (!document)
+        return nullptr;
+
+    auto navigable = document->navigable();
+    if (!navigable || !navigable->parent())
+        return nullptr;
+
+    return navigable->parent()->active_browsing_context();
 }
 
 void BrowsingContext::set_active_document(GC::Ptr<DOM::Document> document)
 {
-    m_active_document = document;
+    m_state.get<LocalBrowsingContextState>().active_document = document;
 }
 
 // https://html.spec.whatwg.org/multipage/browsers.html#active-window
 HTML::Window* BrowsingContext::active_window()
 {
     // A browsing context's active window is its WindowProxy object's [[Window]] internal slot value.
-    return m_window_proxy->window();
+    return window_proxy()->window();
 }
 
 // https://html.spec.whatwg.org/multipage/browsers.html#active-window
 HTML::Window const* BrowsingContext::active_window() const
 {
     // A browsing context's active window is its WindowProxy object's [[Window]] internal slot value.
-    return m_window_proxy->window();
+    return window_proxy()->window();
 }
 
 HTML::WindowProxy* BrowsingContext::window_proxy()
 {
-    return m_window_proxy.ptr();
+    return m_state.get<LocalBrowsingContextState>().window_proxy.ptr();
 }
 
 HTML::WindowProxy const* BrowsingContext::window_proxy() const
 {
-    return m_window_proxy.ptr();
+    return m_state.get<LocalBrowsingContextState>().window_proxy.ptr();
 }
 
 void BrowsingContext::set_window_proxy(GC::Ptr<WindowProxy> window_proxy)
 {
-    m_window_proxy = move(window_proxy);
+    m_state.get<LocalBrowsingContextState>().window_proxy = move(window_proxy);
 }
 
 BrowsingContextGroup* BrowsingContext::group()
 {
-    return m_group;
+    return m_state.get<LocalBrowsingContextState>().group;
 }
 
 BrowsingContextGroup const* BrowsingContext::group() const
 {
-    return m_group;
+    return m_state.get<LocalBrowsingContextState>().group;
 }
 
 void BrowsingContext::set_group(BrowsingContextGroup* group)
 {
-    m_group = group;
+    m_state.get<LocalBrowsingContextState>().group = group;
 }
 
 // https://html.spec.whatwg.org/multipage/browsers.html#bcg-remove
@@ -460,19 +511,12 @@ bool BrowsingContext::is_ancestor_of(BrowsingContext const& potential_descendant
     // A browsing context potentialDescendant is said to be an ancestor of a browsing context potentialAncestor if the following algorithm returns true:
 
     // 1. Let potentialDescendantDocument be potentialDescendant's active document.
-    auto const* potential_descendant_document = potential_descendant.active_document();
-
     // 2. If potentialDescendantDocument is not fully active, then return false.
-    if (!potential_descendant_document->is_fully_active())
+    if (!potential_descendant.active_document_is_fully_active())
         return false;
 
     // 3. Let ancestorBCs be the list obtained by taking the browsing context of the active document of each member of potentialDescendantDocument's ancestor navigables.
-    for (auto const& ancestor : potential_descendant_document->ancestor_navigables()) {
-        if (!ancestor->has_local_state())
-            continue;
-
-        auto ancestor_browsing_context = as<LocalNavigable>(*ancestor).active_browsing_context();
-
+    for (auto ancestor_browsing_context = potential_descendant.parent_browsing_context(); ancestor_browsing_context; ancestor_browsing_context = ancestor_browsing_context->parent_browsing_context()) {
         // 4. If ancestorBCs contains potentialAncestor, then return true.
         if (ancestor_browsing_context == this)
             return true;
@@ -490,7 +534,9 @@ bool BrowsingContext::is_familiar_with(BrowsingContext const& other) const
     auto const& B = other;
 
     // 1. If A's active document's origin is same origin with B's active document's origin, then return true.
-    if (A.active_document()->origin().is_same_origin(B.active_document()->origin()))
+    auto a_origin = A.active_document_origin();
+    auto b_origin = B.active_document_origin();
+    if (a_origin.has_value() && b_origin.has_value() && a_origin->is_same_origin(*b_origin))
         return true;
 
     // 2. If A's top-level browsing context is B, then return true.
@@ -505,12 +551,15 @@ bool BrowsingContext::is_familiar_with(BrowsingContext const& other) const
     // NOTE: This includes the case where A is an ancestor browsing context of B.
 
     // If B's active document is not fully active then it cannot have ancestor browsing context
-    if (!B.active_document()->is_fully_active())
+    if (!B.active_document_is_fully_active())
         return false;
 
-    for (auto const& ancestor : B.active_document()->ancestor_navigables()) {
-        auto active_document_origin = ancestor->active_document_origin();
-        if (active_document_origin.has_value() && active_document_origin->is_same_origin(A.active_document()->origin()))
+    if (!a_origin.has_value())
+        return false;
+
+    for (auto ancestor = B.parent_browsing_context(); ancestor; ancestor = ancestor->parent_browsing_context()) {
+        auto ancestor_origin = ancestor->active_document_origin();
+        if (ancestor_origin.has_value() && ancestor_origin->is_same_origin(*a_origin))
             return true;
     }
 
@@ -544,7 +593,9 @@ SandboxingFlagSet determine_the_creation_sandboxing_flags(BrowsingContext const&
 
 bool BrowsingContext::has_navigable_been_destroyed() const
 {
-    auto navigable = active_document()->navigable();
+    auto const* document = active_document();
+    VERIFY(document);
+    auto navigable = document->navigable();
     return !navigable || navigable->has_been_destroyed();
 }
 

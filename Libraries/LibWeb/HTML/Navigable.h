@@ -31,6 +31,7 @@ struct RemoteNavigableState {
     bool is_traversable { false };
     bool is_top_level_traversable { false };
     GC::Ptr<WindowProxy> active_window_proxy;
+    GC::Ptr<BrowsingContext> active_browsing_context;
 };
 
 struct RemoteNavigableDescriptor {
@@ -60,6 +61,7 @@ public:
 
     GC::Ptr<NavigableContainer> container() const { return m_container; }
     GC::Ptr<WindowProxy> active_window_proxy();
+    GC::Ptr<BrowsingContext> active_browsing_context();
     Optional<URL::Origin> active_document_origin() const;
     Optional<URL::URL> active_document_top_level_creation_url() const;
     Optional<URL::Origin> active_document_top_level_origin() const;
@@ -87,6 +89,7 @@ protected:
 
     virtual String local_target_name() const { return {}; }
     virtual GC::Ptr<WindowProxy> local_active_window_proxy() { return nullptr; }
+    virtual GC::Ptr<BrowsingContext> local_active_browsing_context() { return nullptr; }
     virtual Optional<URL::Origin> local_active_document_origin() const { return {}; }
     virtual Optional<URL::URL> local_active_document_top_level_creation_url() const { return {}; }
     virtual Optional<URL::Origin> local_active_document_top_level_origin() const { return {}; }

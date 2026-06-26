@@ -7,6 +7,7 @@
 #pragma once
 
 #include <AK/Noncopyable.h>
+#include <AK/Variant.h>
 #include <LibJS/Heap/Cell.h>
 #include <LibURL/Origin.h>
 #include <LibWeb/Export.h>
@@ -16,6 +17,24 @@
 #include <LibWeb/HTML/TokenizedFeatures.h>
 
 namespace Web::HTML {
+
+struct RemoteNavigableDescriptor;
+
+struct LocalBrowsingContextState {
+    // https://html.spec.whatwg.org/multipage/document-sequences.html#browsing-context
+    GC::Ptr<WindowProxy> window_proxy;
+
+    GC::Ptr<DOM::Document> active_document;
+
+    // https://html.spec.whatwg.org/multipage/browsers.html#tlbc-group
+    GC::Ptr<BrowsingContextGroup> group;
+};
+
+struct RemoteBrowsingContextState {
+    Optional<URL::Origin> active_document_origin;
+    bool active_document_is_fully_active { false };
+    GC::Ptr<BrowsingContext> parent_browsing_context;
+};
 
 class WEB_API BrowsingContext final : public JS::Cell {
     GC_CELL(BrowsingContext, JS::Cell);
@@ -29,6 +48,7 @@ public:
 
     static BrowsingContextAndDocument create_a_new_browsing_context_and_document(GC::Ref<Page> page, GC::Ptr<DOM::Document> creator, GC::Ptr<DOM::Element> embedder, GC::Ref<BrowsingContextGroup> group);
     static BrowsingContextAndDocument create_a_new_auxiliary_browsing_context_and_document(GC::Ref<Page> page, GC::Ref<HTML::BrowsingContext> opener);
+    static GC::Ref<BrowsingContext> create_remote(GC::Ref<Page>, RemoteNavigableDescriptor const&, GC::Ptr<BrowsingContext> parent);
 
     virtual ~BrowsingContext() override;
 
@@ -42,6 +62,8 @@ public:
 
     DOM::Document const* active_document() const;
     DOM::Document* active_document();
+    Optional<URL::Origin> active_document_origin() const;
+    bool active_document_is_fully_active() const;
     void set_active_document(GC::Ptr<DOM::Document>);
 
     HTML::WindowProxy* window_proxy();
@@ -57,6 +79,7 @@ public:
 
     u64 virtual_browsing_context_group_id() const { return m_virtual_browsing_context_group_id; }
 
+    GC::Ptr<BrowsingContext> parent_browsing_context() const;
     GC::Ptr<BrowsingContext> top_level_browsing_context() const;
 
     BrowsingContextGroup* group();
@@ -91,10 +114,7 @@ private:
 
     GC::Ref<Page> m_page;
 
-    // https://html.spec.whatwg.org/multipage/document-sequences.html#browsing-context
-    GC::Ptr<WindowProxy> m_window_proxy;
-
-    GC::Ptr<DOM::Document> m_active_document;
+    Variant<LocalBrowsingContextState, RemoteBrowsingContextState> m_state { LocalBrowsingContextState {} };
 
     // https://html.spec.whatwg.org/multipage/browsers.html#opener-browsing-context
     GC::Ptr<BrowsingContext> m_opener_browsing_context;
@@ -117,8 +137,6 @@ private:
     // https://html.spec.whatwg.org/multipage/document-sequences.html#virtual-browsing-context-group-id
     u64 m_virtual_browsing_context_group_id = { 0 };
 
-    // https://html.spec.whatwg.org/multipage/browsers.html#tlbc-group
-    GC::Ptr<BrowsingContextGroup> m_group;
 };
 
 URL::Origin determine_the_origin(Optional<URL::URL const&>, SandboxingFlagSet, Optional<URL::Origin> source_origin);
