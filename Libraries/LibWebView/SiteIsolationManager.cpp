@@ -138,12 +138,9 @@ Optional<SiteIsolationManager::RemoteChildFrameInputTarget> SiteIsolationManager
 
 bool SiteIsolationManager::remote_child_frame_did_finish_loading(WebContentClient& remote_client, u64 remote_page_id, URL::URL const& url)
 {
-    dbgln("SI_TRACE remote child finish remote_page={} url={}", remote_page_id, url);
     auto parent_frame = parent_frame_for_remote_page(remote_client, remote_page_id);
-    if (!parent_frame.has_value()) {
-        dbgln("SI_TRACE remote child finish missing parent frame");
+    if (!parent_frame.has_value())
         return false;
-    }
 
     parent_frame->child_frame->last_committed_url = url;
     parent_frame->child_frame->pending_navigation.clear();
@@ -153,12 +150,9 @@ bool SiteIsolationManager::remote_child_frame_did_finish_loading(WebContentClien
 
 bool SiteIsolationManager::remote_child_frame_did_commit_navigation(WebContentClient& remote_client, u64 remote_page_id, URL::URL const& url, Optional<Web::HTML::RemoteNavigableDescriptor> descriptor)
 {
-    dbgln("SI_TRACE remote child commit remote_page={} url={}", remote_page_id, url);
     auto parent_frame = parent_frame_for_remote_page(remote_client, remote_page_id);
-    if (!parent_frame.has_value()) {
-        dbgln("SI_TRACE remote child commit missing parent frame");
+    if (!parent_frame.has_value())
         return false;
-    }
 
     parent_frame->child_frame->last_committed_url = url;
     parent_frame->child_frame->pending_navigation.clear();
@@ -179,20 +173,16 @@ bool SiteIsolationManager::remote_child_frame_did_finish_handling_input_event(We
 
 bool SiteIsolationManager::did_post_message_to_remote_navigable(WebContentClient& source_client, u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord message, Variant<String, URL::Origin> target_origin, URL::Origin source_origin)
 {
-    dbgln("SI_TRACE manager remote message page={} target={} source={}", page_id, target_navigable_id, source_navigable_id);
     if (auto parent_frame = parent_frame_for_remote_page(source_client, page_id); parent_frame.has_value()) {
-        dbgln("SI_TRACE route message upward to parent page={}", parent_frame->page_id);
         parent_frame->parent_client->async_dispatch_message_event_from_remote_navigable(parent_frame->page_id, move(target_navigable_id), move(source_navigable_id), move(message), move(target_origin), move(source_origin));
         return true;
     }
 
     if (auto target_child_frame = child_frame(page_id, target_navigable_id); target_child_frame.has_value() && target_child_frame->is_remote()) {
-        dbgln("SI_TRACE route message downward to remote page={}", target_child_frame->remote_page_id);
         target_child_frame->remote_client->async_dispatch_message_event_from_remote_navigable(target_child_frame->remote_page_id, move(target_navigable_id), move(source_navigable_id), move(message), move(target_origin), move(source_origin));
         return true;
     }
 
-    dbgln("SI_TRACE no route for remote message");
     return false;
 }
 
@@ -224,6 +214,8 @@ bool SiteIsolationManager::did_request_remote_window_operation(WebContentClient&
 
 void SiteIsolationManager::did_update_remote_navigable(WebContentClient& source_client, u64 page_id, Web::HTML::RemoteNavigableDescriptor descriptor)
 {
+    update_remote_navigable_in_remote_descendants(page_id, descriptor);
+
     auto* current_client = &source_client;
     auto current_page_id = page_id;
     for (;;) {
@@ -232,14 +224,49 @@ void SiteIsolationManager::did_update_remote_navigable(WebContentClient& source_
             break;
 
         parent_frame->parent_client->async_update_remote_navigable(parent_frame->page_id, descriptor);
+        update_remote_navigable_in_remote_descendants(parent_frame->page_id, descriptor, RemotePage { current_client, current_page_id });
         current_client = parent_frame->parent_client;
         current_page_id = parent_frame->page_id;
     }
-
-    update_remote_navigable_in_remote_descendants(page_id, descriptor);
 }
 
-void SiteIsolationManager::update_remote_navigable_in_remote_descendants(u64 page_id, Web::HTML::RemoteNavigableDescriptor const& descriptor)
+void SiteIsolationManager::did_register_blob_url(WebContentClient& source_client, u64 page_id, String url, URL::BlobURLEntry entry)
+{
+    register_blob_url_in_remote_descendants(page_id, url, entry);
+
+    auto* current_client = &source_client;
+    auto current_page_id = page_id;
+    for (;;) {
+        auto parent_frame = parent_frame_for_remote_page(*current_client, current_page_id);
+        if (!parent_frame.has_value())
+            break;
+
+        parent_frame->parent_client->async_register_mirrored_blob_url(parent_frame->page_id, url, entry);
+        register_blob_url_in_remote_descendants(parent_frame->page_id, url, entry, RemotePage { current_client, current_page_id });
+        current_client = parent_frame->parent_client;
+        current_page_id = parent_frame->page_id;
+    }
+}
+
+void SiteIsolationManager::did_revoke_blob_url(WebContentClient& source_client, u64 page_id, String url)
+{
+    revoke_blob_url_in_remote_descendants(page_id, url);
+
+    auto* current_client = &source_client;
+    auto current_page_id = page_id;
+    for (;;) {
+        auto parent_frame = parent_frame_for_remote_page(*current_client, current_page_id);
+        if (!parent_frame.has_value())
+            break;
+
+        parent_frame->parent_client->async_revoke_mirrored_blob_url(parent_frame->page_id, url);
+        revoke_blob_url_in_remote_descendants(parent_frame->page_id, url, RemotePage { current_client, current_page_id });
+        current_client = parent_frame->parent_client;
+        current_page_id = parent_frame->page_id;
+    }
+}
+
+void SiteIsolationManager::update_remote_navigable_in_remote_descendants(u64 page_id, Web::HTML::RemoteNavigableDescriptor const& descriptor, Optional<RemotePage> excluded_remote_page)
 {
     auto child_frames = m_child_frames.get(page_id);
     if (!child_frames.has_value())
@@ -249,9 +276,47 @@ void SiteIsolationManager::update_remote_navigable_in_remote_descendants(u64 pag
         auto const& child_frame = child_frame_entry.value;
         if (!child_frame.is_remote())
             continue;
+        if (excluded_remote_page.has_value() && child_frame.remote_client.ptr() == excluded_remote_page->client && child_frame.remote_page_id == excluded_remote_page->page_id)
+            continue;
 
         child_frame.remote_client->async_update_remote_navigable(child_frame.remote_page_id, descriptor);
         update_remote_navigable_in_remote_descendants(child_frame.remote_page_id, descriptor);
+    }
+}
+
+void SiteIsolationManager::register_blob_url_in_remote_descendants(u64 page_id, String const& url, URL::BlobURLEntry const& entry, Optional<RemotePage> excluded_remote_page)
+{
+    auto child_frames = m_child_frames.get(page_id);
+    if (!child_frames.has_value())
+        return;
+
+    for (auto const& child_frame_entry : *child_frames) {
+        auto const& child_frame = child_frame_entry.value;
+        if (!child_frame.is_remote())
+            continue;
+        if (excluded_remote_page.has_value() && child_frame.remote_client.ptr() == excluded_remote_page->client && child_frame.remote_page_id == excluded_remote_page->page_id)
+            continue;
+
+        child_frame.remote_client->async_register_mirrored_blob_url(child_frame.remote_page_id, url, entry);
+        register_blob_url_in_remote_descendants(child_frame.remote_page_id, url, entry);
+    }
+}
+
+void SiteIsolationManager::revoke_blob_url_in_remote_descendants(u64 page_id, String const& url, Optional<RemotePage> excluded_remote_page)
+{
+    auto child_frames = m_child_frames.get(page_id);
+    if (!child_frames.has_value())
+        return;
+
+    for (auto const& child_frame_entry : *child_frames) {
+        auto const& child_frame = child_frame_entry.value;
+        if (!child_frame.is_remote())
+            continue;
+        if (excluded_remote_page.has_value() && child_frame.remote_client.ptr() == excluded_remote_page->client && child_frame.remote_page_id == excluded_remote_page->page_id)
+            continue;
+
+        child_frame.remote_client->async_revoke_mirrored_blob_url(child_frame.remote_page_id, url);
+        revoke_blob_url_in_remote_descendants(child_frame.remote_page_id, url);
     }
 }
 
@@ -366,30 +431,21 @@ HashMap<pid_t, pid_t> SiteIsolationManager::remote_frame_process_embedders() con
 bool SiteIsolationManager::has_matching_pending_child_frame_navigation(u64 page_id, StringView frame_id, URL::URL const& url, ChildFrameOwner target_owner) const
 {
     auto child_frame = this->child_frame(page_id, frame_id);
-    if (!child_frame.has_value()) {
-        dbgln("SI_TRACE pending check missing child frame={}", frame_id);
+    if (!child_frame.has_value())
         return false;
-    }
-    if (!child_frame->pending_navigation.has_value()) {
-        dbgln("SI_TRACE pending check no pending frame={}", frame_id);
+    if (!child_frame->pending_navigation.has_value())
         return false;
-    }
 
-    auto matches = child_frame->pending_navigation->target_owner == target_owner
+    return child_frame->pending_navigation->target_owner == target_owner
         && child_frame->pending_navigation->target_url == url;
-    dbgln("SI_TRACE pending check frame={} matches={} wanted_owner={} actual_owner={} url_matches={}", frame_id, matches, static_cast<int>(target_owner), static_cast<int>(child_frame->pending_navigation->target_owner), child_frame->pending_navigation->target_url == url);
-    return matches;
 }
 
 void SiteIsolationManager::record_pending_child_frame_navigation(u64 page_id, StringView frame_id, URL::URL const& url, ChildFrameOwner target_owner, Optional<u64> remote_page_id)
 {
     auto child_frame = this->child_frame(page_id, frame_id);
-    if (!child_frame.has_value()) {
-        dbgln("SI_TRACE record pending missing child frame={}", frame_id);
+    if (!child_frame.has_value())
         return;
-    }
 
-    dbgln("SI_TRACE record pending frame={} owner={} remote_page={}", frame_id, static_cast<int>(target_owner), remote_page_id.value_or(0));
     child_frame->pending_navigation = PendingChildFrameNavigation {
         .target_url = url,
         .target_owner = target_owner,
@@ -481,7 +537,7 @@ Optional<SiteIsolationManager::ChildFrameHost const&> SiteIsolationManager::chil
 
 bool SiteIsolationManager::client_owns_page(WebContentClient const& client, u64 page_id)
 {
-    return client.m_views.contains(page_id) || client.m_embedded_pages.contains(page_id);
+    return client.owns_page(page_id);
 }
 
 Optional<SiteIsolationManager::ParentFrame> SiteIsolationManager::parent_frame_for_remote_page(WebContentClient& remote_client, u64 remote_page_id)

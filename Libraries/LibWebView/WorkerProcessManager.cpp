@@ -152,10 +152,13 @@ Web::HTML::WorkerAgentId WorkerProcessManager::start_worker_agent(Owner owner, W
     return agent_id;
 }
 
-void WorkerProcessManager::close_worker_agent(WebContentClient& client, Web::HTML::WorkerAgentId agent_id, Web::HTML::WorkerAgentOwnerToken owner_token)
+void WorkerProcessManager::close_worker_agent(WebContentClient& client, u64 page_id, Web::HTML::WorkerAgentId agent_id, Web::HTML::WorkerAgentOwnerToken owner_token)
 {
     Owner identity {
-        .client = WebContentOwner { .client = client },
+        .client = WebContentOwner {
+            .client = client,
+            .page_id = page_id,
+        },
         .token = owner_token,
     };
     remove_owner(agent_id, identity);
@@ -392,7 +395,7 @@ void WorkerProcessManager::remove_owner(Web::HTML::WorkerAgentId agent_id, Owner
 
         if (auto const* incoming = identity.client.get_pointer<WebContentOwner>()) {
             auto const* candidate = owner.client.get_pointer<WebContentOwner>();
-            return candidate && candidate->client.ptr() == incoming->client.ptr();
+            return candidate && candidate->client.ptr() == incoming->client.ptr() && candidate->page_id == incoming->page_id;
         }
         if (auto const* incoming = identity.client.get_pointer<WebWorkerOwner>()) {
             auto const* candidate = owner.client.get_pointer<WebWorkerOwner>();

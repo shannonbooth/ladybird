@@ -502,7 +502,6 @@ void LocalNavigable::set_has_been_destroyed()
 
 void LocalNavigable::detach_local_state_for_remote_navigation()
 {
-    dbgln("SI_TRACE detach local state start id={}", id());
     if (m_has_been_destroyed)
         return;
 
@@ -511,13 +510,9 @@ void LocalNavigable::detach_local_state_for_remote_navigation()
     set_ongoing_navigation(Empty {}, NavigationAPIAbortBehavior::Preserve);
 
     m_has_been_destroyed = true;
-    dbgln("SI_TRACE detach after destroyed id={}", id());
     set_delaying_load_events(false);
-    dbgln("SI_TRACE detach after load events id={}", id());
     clear_navigation_load_event_guard();
-    dbgln("SI_TRACE detach after guard id={}", id());
     remove_from_all_local_navigables();
-    dbgln("SI_TRACE detach done id={}", id());
 }
 
 void LocalNavigable::remove_from_all_local_navigables()
@@ -1201,19 +1196,25 @@ GC::Ptr<LocalNavigable> LocalNavigable::find_a_navigable_by_target_name(StringVi
     }
 
     // 5. Let currentTopLevelBrowsingContext be currentNavigable's active browsing context's top-level browsing context.
-    auto& current_top_level_browsing_context = *active_browsing_context()->top_level_browsing_context();
+    auto current_top_level_navigable = top_level_navigable();
 
     // 6. Let group be currentTopLevelBrowsingContext's group.
-    auto* group = current_top_level_browsing_context.group();
+    // NOTE: In a site-isolated iframe process, the spec top-level navigable is represented remotely. The browsing
+    //       context group remains local implementation state, so enumerate the local active browsing context's group.
+    auto* group = active_browsing_context()->group();
+    if (!group)
+        return nullptr;
 
     // 7. For each topLevelBrowsingContext of group's browsing context set, in an implementation-defined order (the user agent should pick a consistent ordering, such as the most recently opened, most recently focused, or more closely related):
     for (auto const& top_level_browsing_context : group->browsing_context_set()) {
         // 1. If currentTopLevelBrowsingContext is topLevelBrowsingContext, then continue.
-        if (&current_top_level_browsing_context == top_level_browsing_context)
+        if (auto navigable = top_level_browsing_context->active_navigable(); navigable && navigable->top_level_navigable() == current_top_level_navigable)
             continue;
 
         // 2. Let documentToSearch be topLevelBrowsingContext's active document.
         auto* document_to_search = top_level_browsing_context->active_document();
+        if (!document_to_search)
+            continue;
 
         // 3. For each navigable of the inclusive descendant navigables of documentToSearch:
         for (auto const& navigable : document_to_search->inclusive_descendant_navigables()) {

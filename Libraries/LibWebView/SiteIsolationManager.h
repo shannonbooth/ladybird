@@ -76,6 +76,8 @@ public:
     bool did_post_message_to_remote_navigable(WebContentClient&, u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord, Variant<String, URL::Origin>, URL::Origin);
     bool did_request_remote_window_operation(WebContentClient&, u64 page_id, String target_navigable_id, Web::HTML::RemoteWindowOperation);
     void did_update_remote_navigable(WebContentClient&, u64 page_id, Web::HTML::RemoteNavigableDescriptor);
+    void did_register_blob_url(WebContentClient&, u64 page_id, String url, URL::BlobURLEntry);
+    void did_revoke_blob_url(WebContentClient&, u64 page_id, String url);
     void remove_page(u64 page_id);
     void remove_all_pages_for_client(WebContentClient&);
     String dump_process_tree(WebContentClient&, u64 page_id) const;
@@ -104,12 +106,19 @@ private:
         ChildFrameHost* child_frame { nullptr };
     };
 
+    struct RemotePage {
+        WebContentClient* client { nullptr };
+        u64 page_id { 0 };
+    };
+
     static bool client_owns_page(WebContentClient const&, u64 page_id);
     Optional<ParentFrame> parent_frame_for_remote_page(WebContentClient&, u64 page_id);
     URL::URL document_url_for_page(WebContentClient&, u64 page_id, URL::URL const& fallback_url);
     Optional<URL::URL> document_url_for_child_frame(ChildFrameHost const&);
     URL::URL embedding_page_url_for_child_frame_navigation(WebContentClient&, u64 page_id, ChildFrameHost const&, URL::URL const&);
-    void update_remote_navigable_in_remote_descendants(u64 page_id, Web::HTML::RemoteNavigableDescriptor const&);
+    void update_remote_navigable_in_remote_descendants(u64 page_id, Web::HTML::RemoteNavigableDescriptor const&, Optional<RemotePage> excluded_remote_page = {});
+    void register_blob_url_in_remote_descendants(u64 page_id, String const& url, URL::BlobURLEntry const&, Optional<RemotePage> excluded_remote_page = {});
+    void revoke_blob_url_in_remote_descendants(u64 page_id, String const& url, Optional<RemotePage> excluded_remote_page = {});
 
     HashMap<u64, HashMap<String, ChildFrameHost>> m_child_frames;
 };

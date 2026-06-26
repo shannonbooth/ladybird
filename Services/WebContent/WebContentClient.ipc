@@ -198,4 +198,6 @@ endpoint WebContentClient
     close_worker_agent(u64 page_id, Web::HTML::WorkerAgentId agent_id, Web::HTML::WorkerAgentOwnerToken owner_token) =|
     did_request_remote_window_operation(u64 page_id, String target_navigable_id, Web::HTML::RemoteWindowOperation operation) =|
     did_update_remote_navigable(u64 page_id, Web::HTML::RemoteNavigableDescriptor descriptor) =|
+    did_register_blob_url(u64 page_id, String url, URL::BlobURLEntry entry) =|
+    did_revoke_blob_url(u64 page_id, String url) =|
 }

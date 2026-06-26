@@ -220,4 +220,12 @@ ErrorOr<void> encode(Encoder&, URL::BlobURLEntry::MediaSource const&)
     return {};
 }
 
+template<>
+ErrorOr<void> encode(Encoder& encoder, URL::BlobURLEntry const& entry)
+{
+    TRY(encoder.encode(entry.object));
+    TRY(encoder.encode(entry.environment.origin));
+    return {};
+}
+
 }

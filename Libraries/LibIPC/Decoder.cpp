@@ -200,4 +200,13 @@ ErrorOr<URL::BlobURLEntry::MediaSource> decode<URL::BlobURLEntry::MediaSource>(D
     return URL::BlobURLEntry::MediaSource {};
 }
 
+template<>
+ErrorOr<URL::BlobURLEntry> decode<URL::BlobURLEntry>(Decoder& decoder)
+{
+    return URL::BlobURLEntry {
+        .object = TRY(decoder.decode<URL::BlobURLEntry::Object>()),
+        .environment { .origin = TRY(decoder.decode<URL::Origin>()) },
+    };
+}
+
 }

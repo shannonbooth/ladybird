@@ -34,6 +34,9 @@ struct TopLevelNavigation { };
 struct TopLevelSelfFetch { };
 WEB_API Optional<URL::BlobURLEntry::Object> obtain_a_blob_object(URL::BlobURLEntry const&, Variant<GC::Ref<HTML::Environment>, TopLevelNavigation, TopLevelSelfFetch> environment);
 void remove_entry_from_blob_url_store(URL::URL const& url);
+WEB_API void add_mirrored_entry_to_blob_url_store(String const& url, URL::BlobURLEntry);
+WEB_API void remove_mirrored_entry_from_blob_url_store(String const& url);
+Optional<URL::BlobURLEntry> resolve_a_blob_url_entry(URL::URL const&);
 Optional<BlobURLEntry const&> resolve_a_blob_url(URL::URL const&);
 
 void run_unloading_cleanup_steps(GC::Ref<DOM::Document>);

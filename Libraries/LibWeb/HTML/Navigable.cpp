@@ -21,6 +21,7 @@ GC::Ref<Navigable> Navigable::create_remote(JS::Realm& realm, RemoteNavigableDes
 {
     auto navigable = realm.heap().allocate<Navigable>();
     auto remote_browsing_context = BrowsingContext::create_remote(Bindings::principal_host_defined_page(realm), descriptor, parent ? parent->active_browsing_context() : nullptr);
+    remote_browsing_context->set_remote_navigable(navigable);
     navigable->set_id(move(descriptor.id));
     navigable->set_parent(parent);
     navigable->set_remote_state({
@@ -102,6 +103,83 @@ size_t Navigable::active_document_child_navigable_count() const
     if (auto const* remote_state = m_state.get_pointer<RemoteNavigableState>())
         return remote_state->active_document_child_navigable_count;
     return local_active_document_child_navigable_count();
+}
+
+GC::Ptr<Navigable> Navigable::top_level_navigable()
+{
+    GC::Ptr<Navigable> navigable = this;
+    while (navigable->parent())
+        navigable = navigable->parent();
+    return navigable;
+}
+
+GC::Ptr<Navigable const> Navigable::top_level_navigable() const
+{
+    GC::Ptr<Navigable const> navigable = this;
+    while (navigable->parent())
+        navigable = navigable->parent();
+    return navigable;
+}
+
+// https://html.spec.whatwg.org/multipage/document-sequences.html#ancestor-browsing-context
+bool Navigable::is_ancestor_of(Navigable const& potential_descendant) const
+{
+    // 1. Let potentialDescendantDocument be potentialDescendant's active document.
+    // 2. If potentialDescendantDocument is not fully active, then return false.
+    if (!potential_descendant.active_document_is_fully_active())
+        return false;
+
+    // 3. Let ancestorBCs be the list obtained by taking the browsing context of the active document of each member of potentialDescendantDocument's ancestor navigables.
+    for (auto ancestor = potential_descendant.parent(); ancestor; ancestor = ancestor->parent()) {
+        // 4. If ancestorBCs contains potentialAncestor, then return true.
+        if (ancestor.ptr() == this)
+            return true;
+    }
+
+    // 5. Return false.
+    return false;
+}
+
+// https://html.spec.whatwg.org/multipage/document-sequences.html#familiar-with
+bool Navigable::is_familiar_with(Navigable const& other) const
+{
+    // A browsing context A is familiar with a second browsing context B if the following algorithm returns true:
+    auto const& A = *this;
+    auto const& B = other;
+
+    // 1. If A's active document's origin is same origin with B's active document's origin, then return true.
+    auto a_origin = A.active_document_origin();
+    auto b_origin = B.active_document_origin();
+    if (a_origin.has_value() && b_origin.has_value() && a_origin->is_same_origin(*b_origin))
+        return true;
+
+    // 2. If A's top-level browsing context is B, then return true.
+    auto a_top_level_navigable = A.top_level_navigable();
+    if (a_top_level_navigable.ptr() == &B)
+        return true;
+
+    // 3. If B is an auxiliary browsing context and A is familiar with B's opener browsing context, then return true.
+    if (auto opener = B.opener()) {
+        if (A.is_familiar_with(*opener))
+            return true;
+    }
+
+    // 4. If there exists an ancestor browsing context of B whose active document has the same origin as the active document of A, then return true.
+    // NOTE: This includes the case where A is an ancestor browsing context of B.
+    if (!B.active_document_is_fully_active())
+        return false;
+
+    if (!a_origin.has_value())
+        return false;
+
+    for (auto ancestor = B.parent(); ancestor; ancestor = ancestor->parent()) {
+        auto ancestor_origin = ancestor->active_document_origin();
+        if (ancestor_origin.has_value() && ancestor_origin->is_same_origin(*a_origin))
+            return true;
+    }
+
+    // 5. Return false.
+    return false;
 }
 
 RemoteNavigableDescriptor Navigable::remote_descriptor() const
@@ -232,6 +310,7 @@ void Navigable::visit_edges(Visitor& visitor)
 {
     Base::visit_edges(visitor);
     visitor.visit(m_parent);
+    visitor.visit(m_opener);
     visitor.visit(m_container);
     visitor.visit(m_traversable);
     visitor.visit(m_active_window_proxy);

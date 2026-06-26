@@ -18,6 +18,7 @@
 
 namespace Web::HTML {
 
+class Navigable;
 struct RemoteNavigableDescriptor;
 
 struct LocalBrowsingContextState {
@@ -34,6 +35,7 @@ struct RemoteBrowsingContextState {
     Optional<URL::Origin> active_document_origin;
     bool active_document_is_fully_active { false };
     GC::Ptr<BrowsingContext> parent_browsing_context;
+    GC::Ptr<Navigable> navigable;
 };
 
 class WEB_API BrowsingContext final : public JS::Cell {
@@ -62,9 +64,11 @@ public:
 
     DOM::Document const* active_document() const;
     DOM::Document* active_document();
+    GC::Ptr<Navigable> active_navigable() const;
     Optional<URL::Origin> active_document_origin() const;
     bool active_document_is_fully_active() const;
     void update_remote_state(RemoteNavigableDescriptor const&);
+    void set_remote_navigable(GC::Ptr<Navigable>);
     void set_active_document(GC::Ptr<DOM::Document>);
 
     HTML::WindowProxy* window_proxy();
@@ -99,8 +103,8 @@ public:
 
     bool has_navigable_been_destroyed() const;
 
-    GC::Ptr<BrowsingContext> opener_browsing_context() const { return m_opener_browsing_context; }
-    void set_opener_browsing_context(GC::Ptr<BrowsingContext> browsing_context) { m_opener_browsing_context = browsing_context; }
+    GC::Ptr<BrowsingContext> opener_browsing_context() const;
+    void set_opener_browsing_context(GC::Ptr<BrowsingContext>);
 
     void set_is_popup(TokenizedFeature::Popup is_popup) { m_is_popup = is_popup; }
     [[nodiscard]] TokenizedFeature::Popup is_popup() const { return m_is_popup; }
@@ -146,6 +150,6 @@ SandboxingFlagSet determine_the_creation_sandboxing_flags(BrowsingContext const&
 
 // FIXME: Find a better home for these
 WEB_API bool url_matches_about_blank(URL::URL const& url);
-bool url_matches_about_srcdoc(URL::URL const& url);
+WEB_API bool url_matches_about_srcdoc(URL::URL const& url);
 
 }

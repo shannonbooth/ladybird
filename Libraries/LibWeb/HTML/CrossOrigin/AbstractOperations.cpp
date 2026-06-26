@@ -486,8 +486,13 @@ static GC::Ref<JS::NativeFunction> create_cross_origin_remote_window_getter(JS::
     if (property == "opener"sv) {
         return JS::NativeFunction::create(
             realm, [remote_navigable](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
-                (void)remote_navigable;
-                return JS::js_null();
+                auto opener = remote_navigable->opener();
+                if (!opener)
+                    return JS::js_null();
+                auto window_proxy = opener->active_window_proxy();
+                if (!window_proxy)
+                    return JS::js_null();
+                return window_proxy.ptr();
             },
             0, "opener"_utf16_fly_string, &realm, "get"sv);
     }

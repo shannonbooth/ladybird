@@ -59,6 +59,11 @@ Optional<URL::Origin> LocalWindowProxyTarget::extract_an_origin() const
     return window ? window->extract_an_origin() : Optional<URL::Origin> {};
 }
 
+GC::Ref<BrowsingContext> LocalWindowProxyTarget::associated_browsing_context() const
+{
+    return *window_ref().associated_document().browsing_context();
+}
+
 Navigable& RemoteWindowProxyTarget::navigable_ref() const
 {
     VERIFY(navigable);
@@ -84,6 +89,23 @@ Optional<URL::Origin> RemoteWindowProxyTarget::extract_an_origin() const
         return {};
 
     return origin;
+}
+
+GC::Ref<JS::Object> RemoteWindowProxyTarget::location_object(WindowProxy& window_proxy)
+{
+    if (location)
+        return *location;
+
+    auto remote_location = create_remote_location_object(window_proxy.realm(), navigable_ref());
+    location = remote_location;
+    return remote_location;
+}
+
+GC::Ref<BrowsingContext> RemoteWindowProxyTarget::associated_browsing_context() const
+{
+    auto browsing_context = navigable_ref().active_browsing_context();
+    VERIFY(browsing_context);
+    return *browsing_context;
 }
 
 LocalWindowProxyTarget* WindowProxy::local_target()
@@ -544,21 +566,18 @@ GC::Ref<JS::Object> WindowProxy::remote_location_object()
 {
     auto* target = remote_target();
     VERIFY(target);
-    VERIFY(target->navigable);
-
-    if (target->location)
-        return *target->location;
-
-    auto remote_location = create_remote_location_object(realm(), *target->navigable);
-    target->location = remote_location;
-    return remote_location;
+    return target->location_object(*this);
 }
 
 GC::Ref<BrowsingContext> WindowProxy::associated_browsing_context() const
 {
-    auto const* target = local_target();
-    VERIFY(target);
-    return *target->window_ref().associated_document().browsing_context();
+    return m_target.visit(
+        [](Empty const&) -> GC::Ref<BrowsingContext> {
+            VERIFY_NOT_REACHED();
+        },
+        [](auto const& target) -> GC::Ref<BrowsingContext> {
+            return target.associated_browsing_context();
+        });
 }
 
 }

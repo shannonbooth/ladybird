@@ -67,6 +67,8 @@ public:
     String target_name() const;
     GC::Ptr<Navigable> parent() const { return m_parent; }
     void set_parent(GC::Ptr<Navigable> parent) { m_parent = parent; }
+    GC::Ptr<Navigable> opener() const { return m_opener; }
+    void set_opener(GC::Ptr<Navigable> opener) { m_opener = opener; }
 
     GC::Ptr<NavigableContainer> container() const { return m_container; }
     GC::Ptr<WindowProxy> active_window_proxy();
@@ -77,6 +79,10 @@ public:
     bool active_document_is_fully_active() const;
     bool is_closed() const;
     size_t active_document_child_navigable_count() const;
+    GC::Ptr<Navigable> top_level_navigable();
+    GC::Ptr<Navigable const> top_level_navigable() const;
+    bool is_ancestor_of(Navigable const&) const;
+    bool is_familiar_with(Navigable const&) const;
     RemoteNavigableDescriptor remote_descriptor() const;
     void update_remote_descriptor(RemoteNavigableDescriptor);
     void set_active_window_proxy(GC::Ptr<WindowProxy>);
@@ -116,6 +122,7 @@ protected:
 private:
     String m_id;
     GC::Ptr<Navigable> m_parent;
+    GC::Ptr<Navigable> m_opener;
     GC::Ptr<NavigableContainer> m_container;
     GC::Ptr<TraversableNavigable> m_traversable;
     GC::Ptr<WindowProxy> m_active_window_proxy;

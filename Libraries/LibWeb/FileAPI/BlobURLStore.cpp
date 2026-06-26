@@ -6,8 +6,10 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+#include <AK/HashMap.h>
 #include <AK/NeverDestroyed.h>
 #include <AK/Utf16StringBuilder.h>
+#include <AK/Vector.h>
 #include <LibURL/Origin.h>
 #include <LibURL/URL.h>
 #include <LibWeb/Crypto/Crypto.h>
@@ -15,6 +17,7 @@
 #include <LibWeb/FileAPI/Blob.h>
 #include <LibWeb/FileAPI/BlobURLStore.h>
 #include <LibWeb/HTML/Scripting/Environments.h>
+#include <LibWeb/Page/Page.h>
 #include <LibWeb/StorageAPI/StorageKey.h>
 
 namespace Web::FileAPI {
@@ -23,6 +26,29 @@ BlobURLStore& blob_url_store()
 {
     static NeverDestroyed<GC::ConservativeHashMap<String, BlobURLEntry>> store;
     return *store;
+}
+
+static HashMap<String, URL::BlobURLEntry>& mirrored_blob_url_store()
+{
+    static NeverDestroyed<HashMap<String, URL::BlobURLEntry>> store;
+    return *store;
+}
+
+static URL::BlobURLEntry serialize_blob_url_entry(BlobURLEntry const& entry)
+{
+    return URL::BlobURLEntry {
+        .object = entry.object.visit(
+            [](GC::Ref<FileAPI::Blob> const& blob) -> URL::BlobURLEntry::Object {
+                return URL::BlobURLEntry::Blob {
+                    .type = blob->type(),
+                    .data = MUST(ByteBuffer::copy(blob->raw_bytes())),
+                };
+            },
+            [](GC::Ref<MediaSourceExtensions::MediaSource> const&) -> URL::BlobURLEntry::Object {
+                return URL::BlobURLEntry::MediaSource {};
+            }),
+        .environment { .origin = entry.environment->origin() },
+    };
 }
 
 // https://w3c.github.io/FileAPI/#unicodeBlobURL
@@ -72,9 +98,14 @@ ErrorOr<Utf16String> add_entry_to_blob_url_store(BlobURLEntry::Object object)
 
     // 3. Let entry be a new blob URL entry consisting of object and the current settings object.
     BlobURLEntry entry { object, HTML::current_settings_object() };
+    auto serialized_entry = serialize_blob_url_entry(entry);
+    auto url_string = url.to_utf8_but_should_be_ported_to_utf16();
 
     // 4. Set store[url] to entry.
-    TRY(store.try_set(url.to_utf8_but_should_be_ported_to_utf16(), move(entry)));
+    TRY(store.try_set(url_string, move(entry)));
+
+    if (auto document = HTML::current_settings_object().responsible_document())
+        document->page().client().page_did_register_blob_url(url_string, move(serialized_entry));
 
     // 5. Return url.
     return url;
@@ -126,6 +157,10 @@ void remove_entry_from_blob_url_store(URL::URL const& url)
 
     // 3. Remove store[url string].
     store.remove(url_string);
+    mirrored_blob_url_store().remove(url_string);
+
+    if (auto document = HTML::current_settings_object().responsible_document())
+        document->page().client().page_did_revoke_blob_url(url_string);
 }
 
 // https://w3c.github.io/FileAPI/#lifeTime
@@ -138,9 +173,39 @@ void run_unloading_cleanup_steps(GC::Ref<DOM::Document> document)
     auto& store = FileAPI::blob_url_store();
 
     // 3. Remove from store any entries for which the value's environment is equal to environment.
-    store.remove_all_matching([&](auto&, auto& value) {
-        return value.environment == &environment;
+    Vector<String> removed_urls;
+    store.remove_all_matching([&](auto& url, auto& value) {
+        if (value.environment != &environment)
+            return false;
+        removed_urls.append(url);
+        return true;
     });
+
+    for (auto const& url : removed_urls) {
+        mirrored_blob_url_store().remove(url);
+        document->page().client().page_did_revoke_blob_url(url);
+    }
+}
+
+void add_mirrored_entry_to_blob_url_store(String const& url, URL::BlobURLEntry entry)
+{
+    mirrored_blob_url_store().set(url, move(entry));
+}
+
+void remove_mirrored_entry_from_blob_url_store(String const& url)
+{
+    mirrored_blob_url_store().remove(url);
+}
+
+Optional<URL::BlobURLEntry> resolve_a_blob_url_entry(URL::URL const& url)
+{
+    if (auto entry = resolve_a_blob_url(url); entry.has_value())
+        return serialize_blob_url_entry(*entry);
+
+    auto url_string = url.serialize(URL::ExcludeFragment::Yes);
+    if (auto entry = mirrored_blob_url_store().get(url_string); entry.has_value())
+        return *entry;
+    return {};
 }
 
 // https://w3c.github.io/FileAPI/#blob-url-resolve

@@ -136,6 +136,7 @@ public:
     void update_remote_navigable(Web::HTML::RemoteNavigableDescriptor);
     void dispatch_message_event_from_remote_navigable(String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord, Variant<String, URL::Origin>, URL::Origin);
     void perform_remote_window_operation(String target_navigable_id, Web::HTML::RemoteWindowOperation);
+    void close_local_root_navigable();
     void clear_pending_dom_mutations();
     void did_delete_all_cookies(u64 request_id);
 
@@ -159,6 +160,8 @@ private:
     virtual void page_did_update_child_frame_viewport(String const& frame_id, Web::CSSPixelRect) override;
     virtual void page_did_commit_child_frame_navigation(String const& frame_id, URL::URL const&, Web::HTML::RemoteNavigableDescriptor) override;
     virtual void page_did_destroy_child_frame(String const& frame_id) override;
+    virtual void page_did_register_blob_url(String const&, URL::BlobURLEntry) override;
+    virtual void page_did_revoke_blob_url(String const&) override;
     virtual void page_did_request_remote_window_operation(String const& target_navigable_id, Web::HTML::RemoteWindowOperation) override;
     virtual void page_did_update_remote_navigable(Web::HTML::RemoteNavigableDescriptor) override;
     virtual Optional<Web::Compositor::CompositorContextId> compositor_context_id_for_remote_child_frame(String const&) const override;

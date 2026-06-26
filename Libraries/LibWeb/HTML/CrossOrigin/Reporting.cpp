@@ -12,6 +12,7 @@
 #include <LibWeb/HTML/BrowsingContext.h>
 #include <LibWeb/HTML/CrossOrigin/AbstractOperations.h>
 #include <LibWeb/HTML/CrossOrigin/Reporting.h>
+#include <LibWeb/HTML/Navigable.h>
 
 namespace Web::HTML {
 
@@ -31,38 +32,42 @@ void check_if_access_between_two_browsing_contexts_should_be_reported(
         return;
 
     // 2. Assert: accessor's active document and accessed's active document are both fully active.
-    if (!accessor->active_document_is_fully_active() || !accessed->active_document_is_fully_active())
+    auto accessor_navigable = accessor->active_navigable();
+    auto accessed_navigable = accessed->active_navigable();
+    if (!accessor_navigable || !accessed_navigable)
+        return;
+    if (!accessor_navigable->active_document_is_fully_active() || !accessed_navigable->active_document_is_fully_active())
         return;
 
     // 3. Let accessorTopDocument be accessor's top-level browsing context's active document.
-    auto accessor_top_level_browsing_context = accessor->top_level_browsing_context();
-    if (!accessor_top_level_browsing_context)
+    auto accessor_top_level_navigable = accessor_navigable->top_level_navigable();
+    if (!accessor_top_level_navigable)
         return;
 
-    auto accessor_top_document_origin = accessor_top_level_browsing_context->active_document_origin();
+    auto accessor_top_document_origin = accessor_top_level_navigable->active_document_origin();
     if (!accessor_top_document_origin.has_value())
         return;
 
     // 4. Let accessorInclusiveAncestorOrigins be the list obtained by taking the origin of the active document of each of accessor's active document's inclusive ancestor navigables.
     Vector<URL::Origin> accessor_inclusive_ancestor_origins = {};
-    for (auto ancestor = accessor; ancestor; ancestor = ancestor->parent_browsing_context()) {
+    for (auto ancestor = accessor_navigable; ancestor; ancestor = ancestor->parent()) {
         auto origin = ancestor->active_document_origin();
         if (origin.has_value())
             accessor_inclusive_ancestor_origins.append(origin.release_value());
     }
 
     // 5. Let accessedTopDocument be accessed's top-level browsing context's active document.
-    auto accessed_top_level_browsing_context = accessed->top_level_browsing_context();
-    if (!accessed_top_level_browsing_context)
+    auto accessed_top_level_navigable = accessed_navigable->top_level_navigable();
+    if (!accessed_top_level_navigable)
         return;
 
-    auto accessed_top_document_origin = accessed_top_level_browsing_context->active_document_origin();
+    auto accessed_top_document_origin = accessed_top_level_navigable->active_document_origin();
     if (!accessed_top_document_origin.has_value())
         return;
 
     // 6. Let accessedInclusiveAncestorOrigins be the list obtained by taking the origin of the active document of each of accessed's active document's inclusive ancestor navigables.
     Vector<URL::Origin> accessed_inclusive_ancestor_origins = {};
-    for (auto ancestor = accessed; ancestor; ancestor = ancestor->parent_browsing_context()) {
+    for (auto ancestor = accessed_navigable; ancestor; ancestor = ancestor->parent()) {
         auto origin = ancestor->active_document_origin();
         if (origin.has_value())
             accessed_inclusive_ancestor_origins.append(origin.release_value());
@@ -77,6 +82,8 @@ void check_if_access_between_two_browsing_contexts_should_be_reported(
             return;
 
     // 8. If accessor's top-level browsing context's virtual browsing context group ID is accessed's top-level browsing context's virtual browsing context group ID, then return.
+    auto accessor_top_level_browsing_context = accessor_top_level_navigable->active_browsing_context();
+    auto accessed_top_level_browsing_context = accessed_top_level_navigable->active_browsing_context();
     if (accessor_top_level_browsing_context && accessed_top_level_browsing_context && accessor_top_level_browsing_context->virtual_browsing_context_group_id() == accessed_top_level_browsing_context->virtual_browsing_context_group_id())
         return;
 
@@ -84,14 +91,14 @@ void check_if_access_between_two_browsing_contexts_should_be_reported(
     auto accessor_accessed_relationship = AccessorAccessedRelationship::None;
 
     // 10. If accessed's top-level browsing context's opener browsing context is accessor or is an ancestor of accessor, then set accessorAccessedRelationship to accessor is opener.
-    if (auto opener = accessed_top_level_browsing_context->opener_browsing_context()) {
-        if (opener == accessor || opener->is_ancestor_of(*accessor))
+    if (auto opener = accessed_top_level_navigable->opener()) {
+        if (opener == accessor_navigable || opener->is_ancestor_of(*accessor_navigable))
             accessor_accessed_relationship = AccessorAccessedRelationship::AccessorIsOpener;
     }
 
     // 11. If accessor's top-level browsing context's opener browsing context is accessed or is an ancestor of accessed, then set accessorAccessedRelationship to accessor is openee.
-    if (auto opener = accessor_top_level_browsing_context->opener_browsing_context()) {
-        if (opener == accessed || opener->is_ancestor_of(*accessed))
+    if (auto opener = accessor_top_level_navigable->opener()) {
+        if (opener == accessed_navigable || opener->is_ancestor_of(*accessed_navigable))
             accessor_accessed_relationship = AccessorAccessedRelationship::AccessorIsOpenee;
     }
 

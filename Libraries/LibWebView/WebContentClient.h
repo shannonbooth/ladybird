@@ -80,6 +80,7 @@ public:
     void web_ui_disconnected(Badge<WebUI>);
     void register_embedded_page(u64 page_id);
     void unregister_embedded_page(u64 page_id);
+    bool owns_page(u64 page_id) const;
 
     bool has_views() const { return !m_views.is_empty(); }
 
@@ -202,6 +203,8 @@ private:
     virtual void did_post_broadcast_channel_message(u64 page_id, Web::HTML::BroadcastChannelMessage message) override;
     virtual void did_post_message_to_remote_navigable(u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord, Variant<String, URL::Origin>, URL::Origin) override;
     virtual void did_update_remote_navigable(u64 page_id, Web::HTML::RemoteNavigableDescriptor descriptor) override;
+    virtual void did_register_blob_url(u64 page_id, String url, URL::BlobURLEntry) override;
+    virtual void did_revoke_blob_url(u64 page_id, String url) override;
     virtual Messages::WebContentClient::DidRequestNewWebViewResponse did_request_new_web_view(u64 page_id, Web::HTML::ActivateTab, Web::HTML::WebViewHints) override;
     virtual void did_request_activate_tab(u64 page_id) override;
     virtual void did_close_browsing_context(u64 page_id) override;

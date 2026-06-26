@@ -99,6 +99,8 @@ private:
     virtual void set_remote_navigable_ancestors(u64 page_id, String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor>) override;
     virtual void update_remote_navigable(u64 page_id, Web::HTML::RemoteNavigableDescriptor) override;
     virtual void set_remote_child_frame_compositor_context(u64 page_id, String frame_id, Optional<Web::Compositor::CompositorContextId>) override;
+    virtual void register_mirrored_blob_url(u64 page_id, String url, URL::BlobURLEntry) override;
+    virtual void revoke_mirrored_blob_url(u64 page_id, String url) override;
     virtual void dispatch_message_event_from_remote_navigable(u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord, Variant<String, URL::Origin>, URL::Origin) override;
     virtual void perform_remote_window_operation(u64 page_id, String target_navigable_id, Web::HTML::RemoteWindowOperation) override;
     virtual void traverse_the_history_by_delta(u64 page_id, i32 delta) override;

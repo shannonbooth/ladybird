@@ -46,6 +46,7 @@
 #include <LibWeb/DOM/Text.h>
 #include <LibWeb/Dump.h>
 #include <LibWeb/Fetch/Fetching/Fetching.h>
+#include <LibWeb/FileAPI/BlobURLStore.h>
 #include <LibWeb/HTML/AutoplaySettings.h>
 #include <LibWeb/HTML/BroadcastChannel.h>
 #include <LibWeb/HTML/BrowsingContext.h>
@@ -119,7 +120,6 @@ Messages::WebContentServer::InitTransportResponse ConnectionFromClient::init_tra
 
 void ConnectionFromClient::initialize(u64 initial_page_id)
 {
-    dbgln("SI_TRACE server initialize page={}", initial_page_id);
     m_page_host->initialize(initial_page_id);
 }
 
@@ -142,7 +142,6 @@ void ConnectionFromClient::set_page_parent_context(u64 page_id, Optional<Web::Co
 
 void ConnectionFromClient::set_remote_navigable_ancestors(u64 page_id, String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors)
 {
-    dbgln("SI_TRACE server set_remote_navigable_ancestors page={} local={} count={} page_exists={}", page_id, local_navigable_id, ancestors.size(), this->page(page_id).has_value());
     if (auto page = this->page(page_id); page.has_value())
         page->set_remote_navigable_ancestors(move(local_navigable_id), move(ancestors));
 }
@@ -157,6 +156,22 @@ void ConnectionFromClient::set_remote_child_frame_compositor_context(u64 page_id
 {
     if (auto page = this->page(page_id); page.has_value())
         page->set_remote_child_frame_compositor_context(move(frame_id), context_id);
+}
+
+void ConnectionFromClient::register_mirrored_blob_url(u64 page_id, String url, URL::BlobURLEntry entry)
+{
+    if (!this->page(page_id).has_value())
+        return;
+
+    Web::FileAPI::add_mirrored_entry_to_blob_url_store(url, move(entry));
+}
+
+void ConnectionFromClient::revoke_mirrored_blob_url(u64 page_id, String url)
+{
+    if (!this->page(page_id).has_value())
+        return;
+
+    Web::FileAPI::remove_mirrored_entry_from_blob_url_store(url);
 }
 
 void ConnectionFromClient::dispatch_message_event_from_remote_navigable(u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord message, Variant<String, URL::Origin> target_origin, URL::Origin source_origin)
@@ -301,7 +316,6 @@ void ConnectionFromClient::update_screen_rects(u64 page_id, Vector<Web::DevicePi
 
 void ConnectionFromClient::load_url(u64 page_id, URL::URL url, Web::Bindings::NavigationHistoryBehavior history_handling)
 {
-    dbgln("SI_TRACE server load_url page={} page_exists={}", page_id, this->page(page_id).has_value());
     auto page = this->page(page_id);
     if (!page.has_value())
         return;
@@ -313,7 +327,6 @@ void ConnectionFromClient::load_url_with_document_resource(u64 page_id, URL::URL
     Variant<Empty, String, Web::HTML::POSTResource> document_resource,
     Web::Bindings::NavigationHistoryBehavior history_handling)
 {
-    dbgln("SI_TRACE server load_url_with_document_resource page={} page_exists={}", page_id, this->page(page_id).has_value());
     auto page = this->page(page_id);
     if (!page.has_value()) {
         return;
@@ -2471,8 +2484,14 @@ void ConnectionFromClient::request_close(u64 page_id)
 {
     // Browser user agents should offer users the ability to arbitrarily close any top-level traversable in their top-level traversable set.
     // For example, by clicking a "close tab" button.
-    if (auto page = this->page(page_id); page.has_value())
-        page->page().local_top_level_traversable().close_top_level_traversable();
+    if (auto page = this->page(page_id); page.has_value()) {
+        if (page->page().has_local_top_level_traversable()) {
+            page->page().local_top_level_traversable().close_top_level_traversable();
+            return;
+        }
+
+        page->close_local_root_navigable();
+    }
 }
 
 void ConnectionFromClient::exit_fullscreen(u64 page_id)

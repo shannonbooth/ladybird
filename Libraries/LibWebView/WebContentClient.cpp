@@ -201,6 +201,11 @@ void WebContentClient::unregister_embedded_page(u64 page_id)
     close_server_if_unused();
 }
 
+bool WebContentClient::owns_page(u64 page_id) const
+{
+    return m_views.contains(page_id) || m_embedded_pages.contains(page_id);
+}
+
 void WebContentClient::close_server_if_unused()
 {
     if (!m_views.is_empty())
@@ -400,7 +405,6 @@ Messages::WebContentClient::DecideNavigationProcessResponse WebContentClient::de
 
 void WebContentClient::did_request_new_process_for_child_frame_navigation(u64 page_id, String frame_id, URL::URL url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling, Web::HTML::RemoteNavigableDescriptor local_navigable_descriptor, Web::HTML::TargetSnapshotParams remote_container_target_snapshot_params, Vector<Web::HTML::RemoteNavigableDescriptor> ancestor_navigables)
 {
-    dbgln("SI_TRACE UI did_request_new_process_for_child_frame_navigation page={} frame={} ancestors={}", page_id, frame_id, ancestor_navigables.size());
     auto& site_isolation_manager = SiteIsolationManager::the();
     auto child_frame = site_isolation_manager.child_frame(page_id, frame_id);
     if (!child_frame.has_value())
@@ -421,7 +425,6 @@ void WebContentClient::did_request_new_process_for_child_frame_navigation(u64 pa
     site_isolation_manager.record_pending_child_frame_navigation(page_id, frame_id, url, ChildFrameOwner::Remote, remote_page_id);
     remote_client->register_embedded_page(remote_page_id);
     site_isolation_manager.transition_child_frame_to_remote(*this, page_id, frame_id, remote_client, remote_page_id);
-    dbgln("SI_TRACE UI sending child setup/load remote_page={} frame={}", remote_page_id, frame_id);
     remote_client->async_initialize_embedded_frame(remote_page_id, move(local_navigable_descriptor), move(remote_container_target_snapshot_params), move(ancestor_navigables));
     remote_client->async_set_page_parent_context(remote_page_id, Web::Compositor::compositor_context_id_for_page(page_id));
     if (child_frame->viewport_rect.has_value()) {
@@ -452,7 +455,6 @@ void WebContentClient::did_update_child_frame_viewport(u64 page_id, String frame
 
 void WebContentClient::did_commit_child_frame_navigation(u64 page_id, String frame_id, URL::URL url, Web::HTML::RemoteNavigableDescriptor descriptor)
 {
-    dbgln("SI_TRACE UI did_commit_child_frame_navigation page={} frame={} url={}", page_id, frame_id, url);
     if (!view_for_page_id(page_id).has_value()) {
         SiteIsolationManager::the().remote_child_frame_did_commit_navigation(*this, page_id, url, move(descriptor));
         return;
@@ -535,7 +537,6 @@ void WebContentClient::did_cancel_loading(u64 page_id, URL::URL url)
 
 void WebContentClient::did_finish_loading(u64 page_id, URL::URL url)
 {
-    dbgln("SI_TRACE UI did_finish_loading page={} url={} has_view={}", page_id, url, view_for_page_id(page_id).has_value());
     if (url.scheme() == "about"sv && url.paths().size() == 1) {
         if (auto web_ui = WebUI::create(*this, page_id, url.paths().first()); web_ui.is_error())
             warnln("Could not create WebUI for {}: {}", url, web_ui.error());
@@ -663,7 +664,6 @@ void WebContentClient::did_change_title(u64 page_id, Utf16String title)
 
 void WebContentClient::did_change_url(u64 page_id, URL::URL url)
 {
-    dbgln("SI_TRACE UI did_change_url page={} url={} has_view={}", page_id, url, view_for_page_id(page_id).has_value());
     if (auto view = view_for_page_id(page_id); view.has_value()) {
         // Some navigations report the same URL more than once. Keep those
         // duplicate updates inside LibWebView so frontends do not reset
@@ -1262,13 +1262,22 @@ void WebContentClient::did_post_broadcast_channel_message(u64, Web::HTML::Broadc
 
 void WebContentClient::did_post_message_to_remote_navigable(u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord message, Variant<String, URL::Origin> target_origin, URL::Origin source_origin)
 {
-    dbgln("SI_TRACE UI did_post_message page={} target={} source={}", page_id, target_navigable_id, source_navigable_id);
     SiteIsolationManager::the().did_post_message_to_remote_navigable(*this, page_id, move(target_navigable_id), move(source_navigable_id), move(message), move(target_origin), move(source_origin));
 }
 
 void WebContentClient::did_update_remote_navigable(u64 page_id, Web::HTML::RemoteNavigableDescriptor descriptor)
 {
     SiteIsolationManager::the().did_update_remote_navigable(*this, page_id, move(descriptor));
+}
+
+void WebContentClient::did_register_blob_url(u64 page_id, String url, URL::BlobURLEntry entry)
+{
+    SiteIsolationManager::the().did_register_blob_url(*this, page_id, move(url), move(entry));
+}
+
+void WebContentClient::did_revoke_blob_url(u64 page_id, String url)
+{
+    SiteIsolationManager::the().did_revoke_blob_url(*this, page_id, move(url));
 }
 
 Messages::WebContentClient::DidRequestNewWebViewResponse WebContentClient::did_request_new_web_view(u64 page_id, Web::HTML::ActivateTab activate_tab, Web::HTML::WebViewHints hints)
@@ -1687,7 +1696,7 @@ void WebContentClient::did_present_backing_stores(u64 page_id, i32 front_bitmap_
 
 Messages::WebContentClient::StartWorkerAgentResponse WebContentClient::start_worker_agent(u64 page_id, Web::HTML::WorkerAgentStartRequest request)
 {
-    if (auto view = view_for_page_id(page_id); view.has_value()) {
+    if (owns_page(page_id)) {
         auto agent_id = WorkerProcessManager::the().start_worker_agent(*this, page_id, move(request));
         return { agent_id };
     }
@@ -1695,9 +1704,12 @@ Messages::WebContentClient::StartWorkerAgentResponse WebContentClient::start_wor
     return { 0 };
 }
 
-void WebContentClient::close_worker_agent(u64, Web::HTML::WorkerAgentId agent_id, Web::HTML::WorkerAgentOwnerToken owner_token)
+void WebContentClient::close_worker_agent(u64 page_id, Web::HTML::WorkerAgentId agent_id, Web::HTML::WorkerAgentOwnerToken owner_token)
 {
-    WorkerProcessManager::the().close_worker_agent(*this, agent_id, owner_token);
+    if (!owns_page(page_id))
+        return;
+
+    WorkerProcessManager::the().close_worker_agent(*this, page_id, agent_id, owner_token);
 }
 
 Optional<ViewImplementation&> WebContentClient::view_for_page_id(u64 page_id, SourceLocation location)

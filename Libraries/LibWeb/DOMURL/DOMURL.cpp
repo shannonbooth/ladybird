@@ -463,20 +463,9 @@ Optional<URL::URL> parse(StringView input, Optional<URL::URL const&> base_url, O
         return url.release_value();
 
     // 4. Set url’s blob URL entry to the result of resolving the blob URL url, if that did not return failure, and null otherwise.
-    auto blob_url_entry = FileAPI::resolve_a_blob_url(*url);
-    if (blob_url_entry.has_value()) {
-        url->set_blob_url_entry(URL::BlobURLEntry {
-            .object = blob_url_entry->object.visit(
-                [](GC::Ref<FileAPI::Blob> const& blob) -> URL::BlobURLEntry::Object {
-                    return URL::BlobURLEntry::Blob {
-                        .type = blob->type(),
-                        .data = MUST(ByteBuffer::copy(blob->raw_bytes())),
-                    };
-                },
-                [](GC::Ref<MediaSourceExtensions::MediaSource> const&) -> URL::BlobURLEntry::Object { return URL::BlobURLEntry::MediaSource {}; }),
-            .environment { .origin = blob_url_entry->environment->origin() },
-        });
-    }
+    auto blob_url_entry = FileAPI::resolve_a_blob_url_entry(*url);
+    if (blob_url_entry.has_value())
+        url->set_blob_url_entry(blob_url_entry.release_value());
 
     // 5. Return url
     return url.release_value();

@@ -151,6 +151,9 @@ ErrorOr<void> encode(Encoder&, URL::BlobURLEntry::Blob const&);
 template<>
 ErrorOr<void> encode(Encoder&, URL::BlobURLEntry::MediaSource const&);
 
+template<>
+ErrorOr<void> encode(Encoder&, URL::BlobURLEntry const&);
+
 template<Concepts::Span T>
 requires(!IsArithmetic<typename T::ElementType>)
 ErrorOr<void> encode(Encoder& encoder, T const& span)

@@ -610,6 +610,8 @@ public:
     virtual void ensure_compositor_host() { }
     virtual Compositor::CompositorHost* compositor_host() { return nullptr; }
     virtual Compositor::CompositorHost const* compositor_host() const { return nullptr; }
+    virtual void page_did_register_blob_url(String const&, URL::BlobURLEntry) { }
+    virtual void page_did_revoke_blob_url(String const&) { }
 
 protected:
     virtual ~PageClient() = default;

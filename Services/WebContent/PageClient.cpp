@@ -218,9 +218,6 @@ void PageClient::request_new_process_for_child_frame_navigation(String const& fr
 
     Vector<Web::HTML::RemoteNavigableDescriptor> ancestor_navigables;
     ancestor_navigables = remote_navigable_ancestors_for_child_frame(*active_document, frame_id);
-    dbgln("SI_TRACE request remote child frame={} ancestors={}", frame_id, ancestor_navigables.size());
-    for (auto const& ancestor : ancestor_navigables)
-        dbgln("SI_TRACE ancestor id={} top={} traversable={} top_level_creation_url={} top_level_origin={}", ancestor.id, ancestor.is_top_level_traversable, ancestor.is_traversable, ancestor.active_document_top_level_creation_url.has_value(), ancestor.active_document_top_level_origin.has_value());
     client().async_did_request_new_process_for_child_frame_navigation(m_id, frame_id, url, move(document_resource), history_handling, move(local_navigable_descriptor), move(remote_container_target_snapshot_params), move(ancestor_navigables));
 }
 
@@ -252,6 +249,16 @@ void PageClient::page_did_destroy_child_frame(String const& frame_id)
     page_did_update_remote_navigable(page().local_root_navigable()->remote_descriptor());
 }
 
+void PageClient::page_did_register_blob_url(String const& url, URL::BlobURLEntry entry)
+{
+    client().async_did_register_blob_url(m_id, url, move(entry));
+}
+
+void PageClient::page_did_revoke_blob_url(String const& url)
+{
+    client().async_did_revoke_blob_url(m_id, url);
+}
+
 void PageClient::page_did_request_remote_window_operation(String const& target_navigable_id, Web::HTML::RemoteWindowOperation operation)
 {
     client().async_did_request_remote_window_operation(m_id, target_navigable_id, operation);
@@ -266,6 +273,13 @@ static GC::Ptr<Web::HTML::Navigable> find_navigable_by_id(Web::DOM::Document& do
 {
     if (auto navigable = document.navigable(); navigable && navigable->id() == navigable_id)
         return navigable;
+
+    for (auto& local_navigable : Web::HTML::all_local_navigables()) {
+        if (&local_navigable->page() != &document.page())
+            continue;
+        if (local_navigable->id() == navigable_id)
+            return local_navigable;
+    }
 
     for (auto ancestor = document.navigable() ? document.navigable()->parent() : nullptr; ancestor; ancestor = ancestor->parent()) {
         if (ancestor->id() == navigable_id)
@@ -305,13 +319,11 @@ void PageClient::set_remote_child_frame_compositor_context(String frame_id, Opti
         m_remote_child_frame_compositor_contexts.set(frame_id, *context_id);
 
         if (child_navigable) {
-            dbgln("SI_TRACE set remote child start frame={} local={}", frame_id, child_navigable->has_local_state());
             auto descriptor = child_navigable->remote_descriptor();
             auto had_active_window_proxy = child_navigable->active_window_proxy();
             auto remote_browsing_context = Web::HTML::BrowsingContext::create_remote(GC::Ref { page() }, descriptor, child_navigable->parent() ? child_navigable->parent()->active_browsing_context() : nullptr);
-            dbgln("SI_TRACE set remote child before detach frame={}", frame_id);
+            remote_browsing_context->set_remote_navigable(child_navigable);
             as<Web::HTML::LocalNavigable>(*child_navigable).detach_local_state_for_remote_navigation();
-            dbgln("SI_TRACE set remote child after detach frame={}", frame_id);
             child_navigable->set_remote_state({
                 .target_name = move(descriptor.target_name),
                 .active_document_origin = move(descriptor.active_document_origin),
@@ -328,7 +340,6 @@ void PageClient::set_remote_child_frame_compositor_context(String frame_id, Opti
                 child_navigable->ensure_remote_active_window_proxy(active_document->realm());
             if (auto container = child_navigable->container())
                 container->document().schedule_html_parser_end_check();
-            dbgln("SI_TRACE set remote child done frame={}", frame_id);
         }
     } else {
         m_remote_child_frame_compositor_contexts.remove(frame_id);
@@ -338,14 +349,11 @@ void PageClient::set_remote_child_frame_compositor_context(String frame_id, Opti
                 container->document().schedule_html_parser_end_check();
         }
     }
-    dbgln("SI_TRACE set_remote_child_frame_compositor_context before request_frame frame={}", frame_id);
     request_frame();
-    dbgln("SI_TRACE set_remote_child_frame_compositor_context after request_frame frame={}", frame_id);
 }
 
 void PageClient::set_remote_navigable_ancestors(String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors)
 {
-    dbgln("SI_TRACE set remote ancestors local={} count={}", local_navigable_id, ancestors.size());
     auto local_navigable = page().local_root_navigable();
     local_navigable->set_id(move(local_navigable_id));
 
@@ -354,15 +362,9 @@ void PageClient::set_remote_navigable_ancestors(String local_navigable_id, Vecto
         return;
 
     GC::Ptr<Web::HTML::Navigable> parent = nullptr;
-    for (auto i = ancestors.size(); i > 0; --i) {
-        dbgln("SI_TRACE create remote ancestor id={} top={} traversable={} top_level_creation_url={} top_level_origin={}", ancestors[i - 1].id, ancestors[i - 1].is_top_level_traversable, ancestors[i - 1].is_traversable, ancestors[i - 1].active_document_top_level_creation_url.has_value(), ancestors[i - 1].active_document_top_level_origin.has_value());
+    for (auto i = ancestors.size(); i > 0; --i)
         parent = Web::HTML::Navigable::create_remote(active_document->realm(), move(ancestors[i - 1]), parent);
-    }
     local_navigable->set_parent(parent);
-    if (parent)
-        dbgln("SI_TRACE local={} parent={}", local_navigable->id(), parent->id());
-    else
-        dbgln("SI_TRACE local={} parent=<null>", local_navigable->id());
 }
 
 void PageClient::update_remote_navigable(Web::HTML::RemoteNavigableDescriptor descriptor)
@@ -380,13 +382,11 @@ void PageClient::update_remote_navigable(Web::HTML::RemoteNavigableDescriptor de
 
 void PageClient::dispatch_message_event_from_remote_navigable(String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord message, Variant<String, URL::Origin> target_origin, URL::Origin source_origin)
 {
-    dbgln("SI_TRACE dispatch remote message target={} source={}", target_navigable_id, source_navigable_id);
     auto active_document = page().local_root_navigable()->active_document();
     if (!active_document)
         return;
 
     auto target_navigable = find_navigable_by_id(*active_document, target_navigable_id);
-    dbgln("SI_TRACE dispatch target found={} local={}", !!target_navigable, target_navigable ? target_navigable->has_local_state() : false);
     if (!target_navigable || !target_navigable->has_local_state())
         return;
 
@@ -482,13 +482,11 @@ Optional<Web::Compositor::CompositorContextId> PageClient::compositor_context_id
 
 void PageClient::run_iframe_load_event_steps(String const& frame_id)
 {
-    dbgln("SI_TRACE PageClient run_iframe_load_event_steps frame={}", frame_id);
     auto active_document = page().local_root_navigable()->active_document();
     if (!active_document)
         return;
 
     for (auto const& navigable : active_document->inclusive_descendant_navigables()) {
-        dbgln("SI_TRACE load event candidate id={} local={}", navigable->id(), navigable->has_local_state());
         if (navigable->id() != frame_id)
             continue;
 
@@ -497,7 +495,6 @@ void PageClient::run_iframe_load_event_steps(String const& frame_id)
             return;
 
         container->queue_an_element_task(Web::HTML::Task::Source::DOMManipulation, [container] {
-            dbgln("SI_TRACE queued iframe load event task");
             Web::HTML::run_iframe_load_event_steps(as<Web::HTML::HTMLIFrameElement>(*container));
         });
         container->document().schedule_html_parser_end_check();
@@ -1115,7 +1112,6 @@ void PageClient::page_did_post_broadcast_channel_message(Web::HTML::BroadcastCha
 
 void PageClient::page_did_post_message_to_remote_navigable(String const& target_navigable_id, String const& source_navigable_id, Web::HTML::SerializedTransferRecord message, Variant<String, URL::Origin> target_origin, URL::Origin source_origin)
 {
-    dbgln("SI_TRACE PageClient outbound remote message target={} source={}", target_navigable_id, source_navigable_id);
     client().async_did_post_message_to_remote_navigable(m_id, target_navigable_id, source_navigable_id, move(message), move(target_origin), move(source_origin));
 }
 
@@ -1148,10 +1144,19 @@ void PageClient::page_did_request_activate_tab()
 
 void PageClient::page_did_close_top_level_traversable()
 {
-    page().local_root_navigable()->compositor_context().stop_presenting_to_client();
+    VERIFY(page().has_local_top_level_traversable());
 
     if (m_webdriver)
         m_webdriver->page_did_close_window({}, page().local_top_level_traversable().window_handle());
+
+    close_local_root_navigable();
+}
+
+void PageClient::close_local_root_navigable()
+{
+    auto local_root = page().local_root_navigable();
+    if (local_root->has_compositor_context())
+        local_root->compositor_context().stop_presenting_to_client();
 
     // FIXME: Rename this IPC call
     client().async_did_close_browsing_context(m_id);

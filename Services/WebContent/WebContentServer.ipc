@@ -212,4 +212,6 @@ endpoint WebContentServer
 
     update_remote_navigable(u64 page_id, Web::HTML::RemoteNavigableDescriptor descriptor) =|
     perform_remote_window_operation(u64 page_id, String target_navigable_id, Web::HTML::RemoteWindowOperation operation) =|
+    register_mirrored_blob_url(u64 page_id, String url, URL::BlobURLEntry entry) =|
+    revoke_mirrored_blob_url(u64 page_id, String url) =|
 }

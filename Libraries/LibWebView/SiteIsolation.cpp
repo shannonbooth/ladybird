@@ -49,6 +49,11 @@ bool is_url_suitable_for_same_process_navigation(URL::URL const& current_url, UR
     if (target == Web::NavigationTarget::IFrame && s_site_isolation_mode != SiteIsolationMode::IFrame)
         return true;
 
+    // These documents inherit their origin from the embedding/source document. They do not have an
+    // independent site to isolate, and keeping them local preserves same-origin WindowProxy semantics.
+    if (Web::HTML::url_matches_about_blank(target_url) || Web::HTML::url_matches_about_srcdoc(target_url))
+        return true;
+
     // Allow navigating from about:blank to any site.
     if (Web::HTML::url_matches_about_blank(current_url))
         return true;
@@ -58,6 +63,13 @@ bool is_url_suitable_for_same_process_navigation(URL::URL const& current_url, UR
         return true;
 
     if (current_url.scheme() == "blob"sv || target_url.scheme() == "blob"sv) {
+        if (target_url.blob_url_entry().has_value() && current_origin.has_value()) {
+            auto const& blob_origin = target_url.blob_url_entry()->environment.origin;
+            if (current_origin->is_opaque() || blob_origin.is_opaque())
+                return current_origin->is_same_origin(blob_origin);
+            return current_origin->is_same_site(blob_origin);
+        }
+
         auto target_origin = target_url.origin();
         if (target_origin.is_opaque())
             return false;

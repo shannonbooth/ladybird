@@ -326,8 +326,10 @@ WebIDL::ExceptionOr<Window::OpenedWindow> Window::window_open_steps_internal(Str
             TRY(target_navigable->navigate({ .url = url_record.release_value(), .source_document = source_document, .exceptions_enabled = true, .referrer_policy = referrer_policy }));
 
         // 2. If noopener is false, then set targetNavigable's active browsing context's opener browsing context to sourceDocument's browsing context.
-        if (no_opener == TokenizedFeature::NoOpener::No)
+        if (no_opener == TokenizedFeature::NoOpener::No) {
+            target_navigable->set_opener(source_document.navigable());
             target_navigable->active_browsing_context()->set_opener_browsing_context(source_document.browsing_context());
+        }
     }
 
     // NOTE: Steps 17 and 18 are implemented in window_open_steps().
@@ -1131,8 +1133,11 @@ WebIDL::ExceptionOr<void> Window::set_opener(JS::Value value)
 {
     // 1. If the given value is null and this's browsing context is non-null, then set this's browsing context's opener browsing context to null.
     auto* browsing_context = this->browsing_context();
-    if (value.is_null() && browsing_context)
+    if (value.is_null() && browsing_context) {
+        if (auto navigable = this->navigable())
+            navigable->set_opener(nullptr);
         browsing_context->set_opener_browsing_context(nullptr);
+    }
 
     // 2. If the given value is non-null, then perform ? DefinePropertyOrThrow(this, "opener", { [[Value]]: the given value, [[Writable]]: true, [[Enumerable]]: true, [[Configurable]]: true }).
     if (!value.is_null()) {
@@ -1361,7 +1366,6 @@ WebIDL::ExceptionOr<void> Window::post_message_to_remote_navigable(GC::Ref<Navig
 
 WebIDL::ExceptionOr<void> Window::post_message_to_remote_navigable_id(String const& target_navigable_id, JS::Value message, Bindings::WindowPostMessageOptions const& options)
 {
-    dbgln("SI_TRACE Window::post_message_to_remote_navigable_id target={}", target_navigable_id);
     auto& target_realm = this->realm();
     auto& incumbent_settings = incumbent_settings_object();
 
@@ -1383,7 +1387,6 @@ WebIDL::ExceptionOr<void> Window::post_message_to_remote_navigable_id(String con
     auto source_navigable_id = source_navigable ? source_navigable->id() : String {};
     auto target_navigable_id_for_task = target_navigable_id;
     auto source_origin = incumbent_settings.origin();
-    dbgln("SI_TRACE sending remote message target={} source={}", target_navigable_id, source_navigable_id);
     // Preserve the posted-message task boundary before crossing process boundaries,
     // so remote targets do not overtake same-turn local posted-message tasks.
     queue_global_task(Task::Source::PostedMessage, *this, GC::create_function(heap(), [source_window = GC::Ref { *this }, target_navigable_id = move(target_navigable_id_for_task), source_navigable_id = move(source_navigable_id), serialize_with_transfer_result = move(serialize_with_transfer_result), target_origin = move(target_origin), source_origin = move(source_origin)] mutable {

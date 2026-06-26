@@ -33,6 +33,7 @@ struct LocalWindowProxyTarget {
     Window& window_ref() const;
     WindowProxyAccessMode access_mode() const;
     Optional<URL::Origin> extract_an_origin() const;
+    GC::Ref<BrowsingContext> associated_browsing_context() const;
     JS::ThrowCompletionOr<JS::Object*> internal_get_prototype_of() const;
     JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> internal_get_own_property(WindowProxy const&, JS::PropertyKey const&) const;
     JS::ThrowCompletionOr<bool> internal_define_own_property(WindowProxy&, JS::PropertyKey const&, JS::PropertyDescriptor&) const;
@@ -49,6 +50,8 @@ struct RemoteWindowProxyTarget {
     Navigable& navigable_ref() const;
     WindowProxyAccessMode access_mode() const;
     Optional<URL::Origin> extract_an_origin() const;
+    GC::Ref<JS::Object> location_object(WindowProxy&);
+    GC::Ref<BrowsingContext> associated_browsing_context() const;
     JS::ThrowCompletionOr<JS::Object*> internal_get_prototype_of() const;
     JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> internal_get_own_property(WindowProxy const&, JS::PropertyKey const&) const;
     JS::ThrowCompletionOr<bool> internal_define_own_property(WindowProxy&, JS::PropertyKey const&, JS::PropertyDescriptor&) const;
