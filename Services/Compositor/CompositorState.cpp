@@ -101,7 +101,10 @@ void CompositorState::set_parent_context(Web::Compositor::CompositorContextId co
     if (parent_context_id.has_value()) {
         VERIFY(!context->presents_to_client());
         VERIFY(*parent_context_id != context_id);
-        VERIFY(context_if_present(*parent_context_id));
+        if (!context_if_present(*parent_context_id)) {
+            clear_parent_context(*context);
+            return;
+        }
     }
 
     auto current_parent_context_id = context->parent_context_id();

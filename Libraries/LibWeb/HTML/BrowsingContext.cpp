@@ -96,6 +96,7 @@ BrowsingContext::BrowsingContextAndDocument BrowsingContext::create_a_new_auxili
 
     // 3. Assert: group is non-null, as navigating invokes this directly.
     VERIFY(group);
+    page->set_local_browsing_context_group(*group);
 
     // 4. Set browsingContext and document be the result of creating a new browsing context and document with opener's active document, null, and group.
     auto [browsing_context, document] = create_a_new_browsing_context_and_document(page, opener->active_document(), nullptr, *group);

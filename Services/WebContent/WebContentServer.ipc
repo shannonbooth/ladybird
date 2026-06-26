@@ -67,7 +67,6 @@ endpoint WebContentServer
     run_iframe_load_event_steps(u64 page_id, String frame_id) =|
     set_page_parent_context(u64 page_id, Optional<Web::Compositor::CompositorContextId> parent_context_id) =|
     set_remote_navigable_ancestors(u64 page_id, String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors) =|
-    update_remote_navigable(u64 page_id, Web::HTML::RemoteNavigableDescriptor descriptor) =|
     set_remote_child_frame_compositor_context(u64 page_id, String frame_id, Optional<Web::Compositor::CompositorContextId> context_id) =|
     dispatch_message_event_from_remote_navigable(u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord message, Variant<String, URL::Origin> target_origin, URL::Origin source_origin) =|
     traverse_the_history_by_delta(u64 page_id, i32 delta) =|
@@ -210,4 +209,6 @@ endpoint WebContentServer
     request_close(u64 page_id) =|
 
     exit_fullscreen(u64 page_id) =|
+
+    update_remote_navigable(u64 page_id, Web::HTML::RemoteNavigableDescriptor descriptor) =|
 }

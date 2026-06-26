@@ -440,7 +440,6 @@ void Page::set_local_root_navigable(GC::Ref<HTML::LocalNavigable> navigable)
 void Page::set_local_browsing_context_group(GC::Ref<HTML::BrowsingContextGroup> group)
 {
     VERIFY(!m_local_browsing_context_group); // Replacement is not allowed!
-    VERIFY(&group->page() == this);
     m_local_browsing_context_group = group;
 }
 

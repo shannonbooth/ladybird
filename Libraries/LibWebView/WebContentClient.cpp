@@ -160,9 +160,9 @@ void WebContentClient::register_view(u64 page_id, ViewImplementation& view)
 
 void WebContentClient::unregister_view(u64 page_id)
 {
-    forget_compositor_context(Web::Compositor::compositor_context_id_for_page(page_id));
     SiteIsolationManager::the().close_remote_child_frames_for_page(*this, page_id);
     SiteIsolationManager::the().remove_page(page_id);
+    forget_compositor_context(Web::Compositor::compositor_context_id_for_page(page_id));
 
     // A page that still needs a beforeunload check is not a detached
     // background close. It is being closed without waiting for WebContent,
