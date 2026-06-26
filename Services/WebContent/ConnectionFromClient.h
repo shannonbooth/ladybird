@@ -73,7 +73,7 @@ private:
 
     virtual Messages::WebContentServer::InitTransportResponse init_transport(int peer_pid) override;
     virtual void initialize(u64 initial_page_id) override;
-    virtual void initialize_embedded_frame(u64 initial_page_id, String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor>) override;
+    virtual void initialize_embedded_frame(u64 initial_page_id, String local_navigable_id, Web::HTML::SandboxingFlagSet remote_container_sandboxing_flags, Vector<Web::HTML::RemoteNavigableDescriptor>) override;
     virtual void close_server() override;
     virtual Messages::WebContentServer::GetWindowHandleResponse get_window_handle(u64 page_id) override;
     virtual void set_window_handle(u64 page_id, String handle) override;

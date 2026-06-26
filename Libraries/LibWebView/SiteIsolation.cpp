@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include <LibURL/URL.h>
 #include <LibWeb/Fetch/Infrastructure/URL.h>
 #include <LibWeb/HTML/BrowsingContext.h>
 #include <LibWebView/SiteIsolation.h>
@@ -42,7 +41,7 @@ void set_site_isolation_mode(SiteIsolationMode mode)
     s_site_isolation_mode = mode;
 }
 
-bool is_url_suitable_for_same_process_navigation(URL::URL const& current_url, URL::URL const& target_url, Web::NavigationTarget target)
+bool is_url_suitable_for_same_process_navigation(URL::URL const& current_url, URL::URL const& target_url, Web::NavigationTarget target, Optional<URL::Origin> current_origin)
 {
     if (s_site_isolation_mode == SiteIsolationMode::Disabled)
         return true;
@@ -64,6 +63,12 @@ bool is_url_suitable_for_same_process_navigation(URL::URL const& current_url, UR
 
     if (!current_url_is_http || !target_url_is_http)
         return !current_url_is_http && !target_url_is_http;
+
+    if (current_origin.has_value()) {
+        if (current_origin->is_opaque())
+            return false;
+        return current_origin->is_same_site(target_url.origin());
+    }
 
     // Disallow cross-site HTTP(S) navigation.
     return current_url.origin().is_same_site(target_url.origin());

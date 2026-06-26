@@ -185,16 +185,17 @@ bool PageClient::is_connection_open() const
     return client().is_open();
 }
 
-Web::NavigationProcessDecision PageClient::decide_navigation_process(URL::URL const& current_url, URL::URL const& target_url, Web::NavigationTarget target, Optional<String> frame_id) const
+Web::NavigationProcessDecision PageClient::decide_navigation_process(URL::URL const& current_url, URL::URL const& target_url, Web::NavigationTarget target, Optional<String> frame_id, Optional<URL::Origin> current_origin) const
 {
     if (target != Web::NavigationTarget::TopLevel)
-        return client().decide_navigation_process(m_id, move(frame_id), current_url, target_url, target);
+        return client().decide_navigation_process(m_id, move(frame_id), current_url, target_url, target, move(current_origin));
 
-    return WebView::is_url_suitable_for_same_process_navigation(current_url, target_url, Web::NavigationTarget::TopLevel)
+    return WebView::is_url_suitable_for_same_process_navigation(current_url, target_url, Web::NavigationTarget::TopLevel, move(current_origin))
         ? Web::NavigationProcessDecision::Local
         : Web::NavigationProcessDecision::Remote;
 }
 
+static GC::Ptr<Web::HTML::Navigable> find_navigable_by_id(Web::DOM::Document&, String const&);
 static Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigable_ancestors_for_child_frame(Web::DOM::Document&, String const&);
 
 void PageClient::request_new_process_for_navigation(URL::URL const& url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling)
@@ -207,13 +208,19 @@ void PageClient::request_new_process_for_navigation(URL::URL const& url, Variant
 
 void PageClient::request_new_process_for_child_frame_navigation(String const& frame_id, URL::URL const& url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling)
 {
+    auto active_document = page().local_root_navigable()->active_document();
+    VERIFY(active_document);
+    auto child_navigable = find_navigable_by_id(*active_document, frame_id);
+    VERIFY(child_navigable);
+    VERIFY(child_navigable->has_local_state());
+    auto remote_container_sandboxing_flags = as<Web::HTML::LocalNavigable>(*child_navigable).snapshot_target_snapshot_params().sandboxing_flags;
+
     Vector<Web::HTML::RemoteNavigableDescriptor> ancestor_navigables;
-    if (auto active_document = page().local_root_navigable()->active_document())
-        ancestor_navigables = remote_navigable_ancestors_for_child_frame(*active_document, frame_id);
+    ancestor_navigables = remote_navigable_ancestors_for_child_frame(*active_document, frame_id);
     dbgln("SI_TRACE request remote child frame={} ancestors={}", frame_id, ancestor_navigables.size());
     for (auto const& ancestor : ancestor_navigables)
         dbgln("SI_TRACE ancestor id={} top={} traversable={} top_level_creation_url={} top_level_origin={}", ancestor.id, ancestor.is_top_level_traversable, ancestor.is_traversable, ancestor.active_document_top_level_creation_url.has_value(), ancestor.active_document_top_level_origin.has_value());
-    client().async_did_request_new_process_for_child_frame_navigation(m_id, frame_id, url, move(document_resource), history_handling, move(ancestor_navigables));
+    client().async_did_request_new_process_for_child_frame_navigation(m_id, frame_id, url, move(document_resource), history_handling, remote_container_sandboxing_flags, move(ancestor_navigables));
 }
 
 void PageClient::request_navigation_of_remote_child_frame(String const& frame_id, URL::URL const& url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling)

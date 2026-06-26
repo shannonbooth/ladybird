@@ -393,12 +393,12 @@ void WebContentClient::did_request_new_process_for_navigation(u64 page_id, URL::
         view->create_new_process_for_cross_site_navigation(url, move(document_resource), history_handling);
 }
 
-Messages::WebContentClient::DecideNavigationProcessResponse WebContentClient::decide_navigation_process(u64 page_id, Optional<String> frame_id, URL::URL current_url, URL::URL target_url, Web::NavigationTarget target)
+Messages::WebContentClient::DecideNavigationProcessResponse WebContentClient::decide_navigation_process(u64 page_id, Optional<String> frame_id, URL::URL current_url, URL::URL target_url, Web::NavigationTarget target, Optional<URL::Origin> current_origin)
 {
-    return SiteIsolationManager::the().decide_navigation_process(*this, page_id, move(frame_id), move(current_url), move(target_url), target);
+    return SiteIsolationManager::the().decide_navigation_process(*this, page_id, move(frame_id), move(current_url), move(target_url), target, move(current_origin));
 }
 
-void WebContentClient::did_request_new_process_for_child_frame_navigation(u64 page_id, String frame_id, URL::URL url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling, Vector<Web::HTML::RemoteNavigableDescriptor> ancestor_navigables)
+void WebContentClient::did_request_new_process_for_child_frame_navigation(u64 page_id, String frame_id, URL::URL url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling, Web::HTML::SandboxingFlagSet remote_container_sandboxing_flags, Vector<Web::HTML::RemoteNavigableDescriptor> ancestor_navigables)
 {
     dbgln("SI_TRACE UI did_request_new_process_for_child_frame_navigation page={} frame={} ancestors={}", page_id, frame_id, ancestor_navigables.size());
     auto& site_isolation_manager = SiteIsolationManager::the();
@@ -422,7 +422,7 @@ void WebContentClient::did_request_new_process_for_child_frame_navigation(u64 pa
     remote_client->register_embedded_page(remote_page_id);
     site_isolation_manager.transition_child_frame_to_remote(*this, page_id, frame_id, remote_client, remote_page_id);
     dbgln("SI_TRACE UI sending child setup/load remote_page={} frame={}", remote_page_id, frame_id);
-    remote_client->async_initialize_embedded_frame(remote_page_id, frame_id, move(ancestor_navigables));
+    remote_client->async_initialize_embedded_frame(remote_page_id, frame_id, remote_container_sandboxing_flags, move(ancestor_navigables));
     remote_client->async_set_page_parent_context(remote_page_id, Web::Compositor::compositor_context_id_for_page(page_id));
     if (child_frame->viewport_rect.has_value()) {
         remote_client->async_set_viewport(

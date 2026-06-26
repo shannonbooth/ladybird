@@ -149,7 +149,7 @@ private:
 
     // ^PageClient
     virtual bool is_connection_open() const override;
-    virtual Web::NavigationProcessDecision decide_navigation_process(URL::URL const& current_url, URL::URL const& target_url, Web::NavigationTarget, Optional<String> frame_id) const override;
+    virtual Web::NavigationProcessDecision decide_navigation_process(URL::URL const& current_url, URL::URL const& target_url, Web::NavigationTarget, Optional<String> frame_id, Optional<URL::Origin> current_origin) const override;
     virtual void request_new_process_for_navigation(URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::Bindings::NavigationHistoryBehavior) override;
     virtual void request_new_process_for_child_frame_navigation(String const& frame_id, URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::Bindings::NavigationHistoryBehavior) override;
     virtual void request_navigation_of_remote_child_frame(String const& frame_id, URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::Bindings::NavigationHistoryBehavior) override;

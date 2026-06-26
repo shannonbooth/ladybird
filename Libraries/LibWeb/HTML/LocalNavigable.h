@@ -223,6 +223,7 @@ public:
     [[nodiscard]] bool has_a_rendering_opportunity() const;
 
     [[nodiscard]] TargetSnapshotParams snapshot_target_snapshot_params();
+    void set_remote_container_sandboxing_flags(SandboxingFlagSet flags) { m_remote_container_sandboxing_flags = flags; }
 
     Page& page() { return m_page; }
     Page const& page() const { return m_page; }
@@ -343,6 +344,9 @@ private:
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-active-history-entry
     RefPtr<SessionHistoryEntry> m_active_session_history_entry;
+
+    size_t m_next_child_navigable_id { 0 };
+    Optional<SandboxingFlagSet> m_remote_container_sandboxing_flags;
 
     // AD-HOC: Direct reference to the active document, decoupled from session history.
     //         This is the authoritative source for active_document().

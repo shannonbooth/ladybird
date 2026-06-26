@@ -42,6 +42,7 @@ public:
     void set_window(GC::Ref<Window>);
     GC::Ptr<Navigable> remote_navigable() const { return m_remote_navigable; }
     void set_remote_navigable(GC::Ref<Navigable>);
+    GC::Ref<JS::Object> remote_location_object();
 
     GC::Ref<BrowsingContext> associated_browsing_context() const;
 
@@ -58,6 +59,7 @@ private:
     // [[Window]], https://html.spec.whatwg.org/multipage/window-object.html#concept-windowproxy-window
     GC::Ptr<Window> m_window;
     GC::Ptr<Navigable> m_remote_navigable;
+    GC::Ptr<JS::Object> m_remote_location;
 };
 
 }

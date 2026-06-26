@@ -318,6 +318,23 @@ Vector<NonnullRefPtr<SessionHistoryEntry>>* append_nested_history_for_child_navi
     return &parent_doc_state->nested_histories().last().entries;
 }
 
+static void append_nested_history_for_child_navigable_to_active_entry(
+    LocalNavigable& parent_navigable, LocalNavigable& child_navigable, SessionHistoryEntry& history_entry)
+{
+    VERIFY(child_navigable.parent() == &parent_navigable);
+
+    auto parent_entry = parent_navigable.active_session_history_entry();
+    VERIFY(parent_entry);
+
+    history_entry.set_step(parent_entry->step());
+
+    DocumentState::NestedHistory nested_history {
+        .id = child_navigable.id(),
+        .entries { history_entry },
+    };
+    parent_entry->document_state()->nested_histories().append(move(nested_history));
+}
+
 void TraversableNavigable::apply_navigable_creation(GC::Ref<NavigableContainer> container, GC::Ref<LocalNavigable> parent_navigable, GC::Ref<LocalNavigable> child_navigable, NonnullRefPtr<SessionHistoryEntry> history_entry)
 {
     auto apply_local_creation = [container, parent_navigable, child_navigable, history_entry] {
@@ -329,8 +346,10 @@ void TraversableNavigable::apply_navigable_creation(GC::Ref<NavigableContainer> 
     };
 
     if (has_remote_state()) {
-        if (apply_local_creation())
+        if (!child_navigable->has_been_destroyed() && !parent_navigable->has_been_destroyed() && container->content_navigable() == child_navigable.ptr()) {
+            append_nested_history_for_child_navigable_to_active_entry(*parent_navigable, *child_navigable, *history_entry);
             container->set_content_navigable_has_session_history_entry_and_ready_for_navigation();
+        }
         return;
     }
 
@@ -604,11 +623,14 @@ void LocalNavigable::set_current_session_history_entry(RefPtr<SessionHistoryEntr
 // https://html.spec.whatwg.org/multipage/document-sequences.html#initialize-the-navigable
 void LocalNavigable::initialize_navigable(NonnullRefPtr<DocumentState> document_state, GC::Ptr<LocalNavigable> parent, GC::Ref<DOM::Document> document, Optional<String> navigable_id)
 {
-    static int next_id = 0;
-    if (navigable_id.has_value())
+    static size_t next_top_level_id = 0;
+    if (navigable_id.has_value()) {
         set_id(navigable_id.release_value());
-    else
-        set_id(String::number(next_id++));
+    } else if (parent) {
+        set_id(MUST(String::formatted("{}/{}", parent->id(), parent->m_next_child_navigable_id++)));
+    } else {
+        set_id(String::number(next_top_level_id++));
+    }
 
     // 1. Assert: documentState's document is non-null.
     // NOTE: DocumentState no longer owns the document; it is passed separately and owned by the LocalNavigable.
@@ -2514,7 +2536,7 @@ void LocalNavigable::begin_navigation(NavigateParams params)
                     auto& page_client = active_browsing_context()->page().client();
                     auto target = is_top_level_navigation ? NavigationTarget::TopLevel : NavigationTarget::IFrame;
                     auto frame_id = is_top_level_navigation ? Optional<String> {} : Optional<String> { id() };
-                    auto process_decision = page_client.decide_navigation_process(this->active_document()->url(), url, target, move(frame_id));
+                    auto process_decision = page_client.decide_navigation_process(this->active_document()->url(), url, target, move(frame_id), this->active_document()->origin());
                     if (process_decision == NavigationProcessDecision::Remote && is_top_level_navigation) {
                         page_client.request_new_process_for_navigation(url, document_resource, history_handling);
                         set_delaying_load_events(false);
@@ -3334,8 +3356,11 @@ TargetSnapshotParams LocalNavigable::snapshot_target_snapshot_params()
     //   browsing context and targetNavigable's container
     // - iframe element referrer policy: the result of determining the iframe element referrer policy given
     //   targetNavigable's container
+    auto sandboxing_flags = m_remote_container_sandboxing_flags.has_value()
+        ? *m_remote_container_sandboxing_flags
+        : determine_the_creation_sandboxing_flags(*active_browsing_context(), container());
     return {
-        .sandboxing_flags = determine_the_creation_sandboxing_flags(*active_browsing_context(), container()),
+        .sandboxing_flags = sandboxing_flags,
         .iframe_element_referrer_policy = determine_iframe_element_referrer_policy(container()),
     };
 }

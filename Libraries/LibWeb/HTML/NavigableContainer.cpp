@@ -80,8 +80,10 @@ void NavigableContainer::create_new_child_navigable()
     auto parent_navigable = navigable();
 
     // 2. Let group be element's node document's browsing context's top-level browsing context's group.
+    // In a site-isolated iframe process, the spec top-level browsing context is remote. New local child browsing
+    // contexts still join this document's process-local browsing context group.
     VERIFY(document().browsing_context());
-    auto group = document().browsing_context()->top_level_browsing_context()->group();
+    auto group = document().browsing_context()->group();
     VERIFY(group);
 
     // 3. Let browsingContext and document be the result of creating a new browsing context and document given element's node document, element, and group.

@@ -444,7 +444,8 @@ public:
         [[maybe_unused]] URL::URL const& current_url,
         [[maybe_unused]] URL::URL const& target_url,
         [[maybe_unused]] NavigationTarget target = NavigationTarget::TopLevel,
-        [[maybe_unused]] Optional<String> frame_id = {}) const
+        [[maybe_unused]] Optional<String> frame_id = {},
+        [[maybe_unused]] Optional<URL::Origin> current_origin = {}) const
     {
         return NavigationProcessDecision::Local;
     }

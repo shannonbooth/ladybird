@@ -123,9 +123,9 @@ void ConnectionFromClient::initialize(u64 initial_page_id)
     m_page_host->initialize(initial_page_id);
 }
 
-void ConnectionFromClient::initialize_embedded_frame(u64 initial_page_id, String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors)
+void ConnectionFromClient::initialize_embedded_frame(u64 initial_page_id, String local_navigable_id, Web::HTML::SandboxingFlagSet remote_container_sandboxing_flags, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors)
 {
-    m_page_host->initialize_embedded_frame(initial_page_id, move(local_navigable_id), move(ancestors));
+    m_page_host->initialize_embedded_frame(initial_page_id, move(local_navigable_id), remote_container_sandboxing_flags, move(ancestors));
 }
 
 void ConnectionFromClient::set_page_parent_context(u64 page_id, Optional<Web::Compositor::CompositorContextId> parent_context_id)

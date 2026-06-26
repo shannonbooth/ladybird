@@ -18,6 +18,7 @@
 #include <LibWeb/HTML/BroadcastChannelMessage.h>
 #include <LibWeb/HTML/SelectedFile.h>
 #include <LibWeb/HTML/Navigable.h>
+#include <LibWeb/HTML/SandboxingFlagSet.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/StructuredSerialize.h>
 #include <LibWeb/HTML/VisibilityState.h>
@@ -38,7 +39,7 @@ endpoint WebContentServer
 {
     init_transport(int peer_pid) => (int peer_pid)
     initialize(u64 initial_page_id) =|
-    initialize_embedded_frame(u64 initial_page_id, String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors) =|
+    initialize_embedded_frame(u64 initial_page_id, String local_navigable_id, Web::HTML::SandboxingFlagSet remote_container_sandboxing_flags, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors) =|
     close_server() =|
 
     get_window_handle(u64 page_id) => (String handle)

@@ -32,19 +32,14 @@ void SiteIsolationManager::did_create_child_frame(u64 page_id, String parent_fra
     child_frames.set(move(frame_id), move(child_frame));
 }
 
-Web::NavigationProcessDecision SiteIsolationManager::decide_navigation_process(WebContentClient& parent_client, u64 page_id, Optional<String> frame_id, URL::URL current_url, URL::URL target_url, Web::NavigationTarget target)
+Web::NavigationProcessDecision SiteIsolationManager::decide_navigation_process(WebContentClient& parent_client, u64 page_id, Optional<String> frame_id, URL::URL current_url, URL::URL target_url, Web::NavigationTarget target, Optional<URL::Origin> current_origin)
 {
-    dbgln("SI_TRACE decide_navigation_process page={} frame={} target={}", page_id, frame_id.value_or("<none>"_string), static_cast<int>(target));
     if (target == Web::NavigationTarget::IFrame && frame_id.has_value()) {
-        if (auto child_frame = this->child_frame(page_id, *frame_id); child_frame.has_value()) {
-            dbgln("SI_TRACE decide found child frame={}", *frame_id);
+        if (auto child_frame = this->child_frame(page_id, *frame_id); child_frame.has_value())
             current_url = embedding_page_url_for_child_frame_navigation(parent_client, page_id, *child_frame, current_url);
-        } else {
-            dbgln("SI_TRACE decide missing child frame={}", *frame_id);
-        }
     }
 
-    auto decision = WebView::is_url_suitable_for_same_process_navigation(current_url, target_url, target)
+    auto decision = WebView::is_url_suitable_for_same_process_navigation(current_url, target_url, target, move(current_origin))
         ? Web::NavigationProcessDecision::Local
         : Web::NavigationProcessDecision::Remote;
 
@@ -52,7 +47,6 @@ Web::NavigationProcessDecision SiteIsolationManager::decide_navigation_process(W
         auto target_owner = decision == Web::NavigationProcessDecision::Local
             ? ChildFrameOwner::Local
             : ChildFrameOwner::Remote;
-        dbgln("SI_TRACE decide record pending frame={} owner={}", *frame_id, static_cast<int>(target_owner));
         record_pending_child_frame_navigation(page_id, *frame_id, target_url, target_owner);
 
         if (target_owner == ChildFrameOwner::Local)
@@ -374,12 +368,16 @@ void SiteIsolationManager::transition_child_frame_to_local(WebContentClient& par
     if (!child_frame.has_value())
         return;
 
-    parent_client.async_set_remote_child_frame_compositor_context(page_id, MUST(String::from_utf8(frame_id)), {});
-
-    if (child_frame->is_remote()) {
-        child_frame->remote_client->async_set_page_parent_context(child_frame->remote_page_id, {});
-        child_frame->remote_client->request_close(child_frame->remote_page_id);
+    if (!child_frame->is_remote()) {
+        child_frame->owner = ChildFrameOwner::Local;
+        child_frame->remote_client = nullptr;
+        child_frame->remote_page_id = 0;
+        return;
     }
+
+    parent_client.async_set_remote_child_frame_compositor_context(page_id, MUST(String::from_utf8(frame_id)), {});
+    child_frame->remote_client->async_set_page_parent_context(child_frame->remote_page_id, {});
+    child_frame->remote_client->request_close(child_frame->remote_page_id);
 
     child_frame->owner = ChildFrameOwner::Local;
     child_frame->remote_client = nullptr;

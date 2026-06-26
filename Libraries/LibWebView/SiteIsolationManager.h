@@ -62,7 +62,7 @@ public:
         Web::DevicePixelRect viewport_rect;
     };
 
-    Web::NavigationProcessDecision decide_navigation_process(WebContentClient&, u64 page_id, Optional<String> frame_id, URL::URL current_url, URL::URL target_url, Web::NavigationTarget);
+    Web::NavigationProcessDecision decide_navigation_process(WebContentClient&, u64 page_id, Optional<String> frame_id, URL::URL current_url, URL::URL target_url, Web::NavigationTarget, Optional<URL::Origin> current_origin = {});
 
     void did_create_child_frame(u64 page_id, String parent_frame_id, String frame_id);
     void did_update_child_frame_viewport(u64 page_id, String frame_id, Web::DevicePixelRect viewport_rect, double device_pixel_ratio);

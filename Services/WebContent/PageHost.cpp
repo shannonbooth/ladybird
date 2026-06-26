@@ -33,7 +33,7 @@ void PageHost::initialize(u64 initial_page_id)
     Web::HTML::LocalTraversableNavigable::create_a_fresh_top_level_traversable(first_page.page(), URL::about_blank());
 }
 
-void PageHost::initialize_embedded_frame(u64 initial_page_id, String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors)
+void PageHost::initialize_embedded_frame(u64 initial_page_id, String local_navigable_id, Web::HTML::SandboxingFlagSet remote_container_sandboxing_flags, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors)
 {
     VERIFY(m_pages.is_empty());
     auto& first_page = create_page(initial_page_id);
@@ -48,6 +48,7 @@ void PageHost::initialize_embedded_frame(u64 initial_page_id, String local_navig
 
     auto local_root = Web::HTML::LocalNavigable::create(page);
     local_root->initialize_navigable(document_state, nullptr, document, move(local_navigable_id));
+    local_root->set_remote_container_sandboxing_flags(remote_container_sandboxing_flags);
     local_root->set_has_session_history_entry_and_ready_for_navigation();
     page.set_local_root_navigable(local_root);
 
