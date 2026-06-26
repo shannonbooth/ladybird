@@ -27,6 +27,7 @@ struct RemoteNavigableState {
     Optional<URL::Origin> active_document_origin;
     Optional<URL::URL> active_document_top_level_creation_url;
     Optional<URL::Origin> active_document_top_level_origin;
+    bool active_document_is_fully_active { false };
     bool is_traversable { false };
     bool is_top_level_traversable { false };
     GC::Ptr<WindowProxy> active_window_proxy;
@@ -38,6 +39,7 @@ struct RemoteNavigableDescriptor {
     Optional<URL::Origin> active_document_origin;
     Optional<URL::URL> active_document_top_level_creation_url;
     Optional<URL::Origin> active_document_top_level_origin;
+    bool active_document_is_fully_active { false };
     bool is_traversable { false };
     bool is_top_level_traversable { false };
 };
@@ -61,6 +63,7 @@ public:
     Optional<URL::Origin> active_document_origin() const;
     Optional<URL::URL> active_document_top_level_creation_url() const;
     Optional<URL::Origin> active_document_top_level_origin() const;
+    bool active_document_is_fully_active() const;
     RemoteNavigableDescriptor remote_descriptor() const;
 
     LocalNavigable& local();
@@ -87,6 +90,7 @@ protected:
     virtual Optional<URL::Origin> local_active_document_origin() const { return {}; }
     virtual Optional<URL::URL> local_active_document_top_level_creation_url() const { return {}; }
     virtual Optional<URL::Origin> local_active_document_top_level_origin() const { return {}; }
+    virtual bool local_active_document_is_fully_active() const { return false; }
 
     virtual void visit_edges(Visitor&) override;
 

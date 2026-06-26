@@ -280,6 +280,9 @@ void PageClient::set_remote_child_frame_compositor_context(String frame_id, Opti
             auto active_document_origin = child_navigable->active_document_origin();
             auto active_document_top_level_creation_url = child_navigable->active_document_top_level_creation_url();
             auto active_document_top_level_origin = child_navigable->active_document_top_level_origin();
+            auto active_document_is_fully_active = child_navigable->active_document_is_fully_active();
+            auto is_traversable = child_navigable->is_traversable();
+            auto is_top_level_traversable = child_navigable->is_top_level_traversable();
             dbgln("SI_TRACE set remote child before detach frame={}", frame_id);
             as<Web::HTML::LocalNavigable>(*child_navigable).detach_local_state_for_remote_navigation();
             dbgln("SI_TRACE set remote child after detach frame={}", frame_id);
@@ -288,6 +291,9 @@ void PageClient::set_remote_child_frame_compositor_context(String frame_id, Opti
                 .active_document_origin = move(active_document_origin),
                 .active_document_top_level_creation_url = move(active_document_top_level_creation_url),
                 .active_document_top_level_origin = move(active_document_top_level_origin),
+                .active_document_is_fully_active = active_document_is_fully_active,
+                .is_traversable = is_traversable,
+                .is_top_level_traversable = is_top_level_traversable,
                 .active_window_proxy = Web::HTML::WindowProxy::create_remote(active_document->realm(), *child_navigable),
             });
             dbgln("SI_TRACE set remote child done frame={}", frame_id);

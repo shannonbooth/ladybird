@@ -250,7 +250,12 @@ protected:
     Main::Arguments& arguments() { return m_arguments; }
 
 private:
-    ErrorOr<NonnullRefPtr<WebContentClient>> create_web_content_client(Optional<ViewImplementation&>, u64 initial_page_id);
+    enum class WebContentPageRole {
+        TopLevel,
+        EmbeddedFrame,
+    };
+
+    ErrorOr<NonnullRefPtr<WebContentClient>> create_web_content_client(Optional<ViewImplementation&>, u64 initial_page_id, WebContentPageRole = WebContentPageRole::TopLevel);
     ErrorOr<void> launch_services();
     void launch_spare_web_content_process();
     ErrorOr<void> launch_compositor_process();

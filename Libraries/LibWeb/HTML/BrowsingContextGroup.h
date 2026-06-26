@@ -9,11 +9,12 @@
 #include <AK/NonnullRefPtr.h>
 #include <AK/WeakPtr.h>
 #include <LibJS/Heap/Cell.h>
+#include <LibWeb/Export.h>
 #include <LibWeb/Forward.h>
 
 namespace Web::HTML {
 
-class BrowsingContextGroup final : public JS::Cell {
+class WEB_API BrowsingContextGroup final : public JS::Cell {
     GC_CELL(BrowsingContextGroup, JS::Cell);
     GC_DECLARE_ALLOCATOR(BrowsingContextGroup);
 

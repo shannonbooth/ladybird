@@ -123,6 +123,11 @@ void ConnectionFromClient::initialize(u64 initial_page_id)
     m_page_host->initialize(initial_page_id);
 }
 
+void ConnectionFromClient::initialize_embedded_frame(u64 initial_page_id, String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors)
+{
+    m_page_host->initialize_embedded_frame(initial_page_id, move(local_navigable_id), move(ancestors));
+}
+
 void ConnectionFromClient::set_page_parent_context(u64 page_id, Optional<Web::Compositor::CompositorContextId> parent_context_id)
 {
     auto page = this->page(page_id);
@@ -298,8 +303,9 @@ void ConnectionFromClient::load_url_with_document_resource(u64 page_id, URL::URL
 {
     dbgln("SI_TRACE server load_url_with_document_resource page={} page_exists={}", page_id, this->page(page_id).has_value());
     auto page = this->page(page_id);
-    if (!page.has_value())
+    if (!page.has_value()) {
         return;
+    }
 
     page->page().load(url, move(document_resource), history_handling);
 }
@@ -2273,8 +2279,13 @@ void ConnectionFromClient::request_file(u64 page_id, Web::FileRequest file_reque
 
 void ConnectionFromClient::set_system_visibility_state(u64 page_id, Web::HTML::VisibilityState visibility_state)
 {
-    if (auto page = this->page(page_id); page.has_value())
-        page->page().local_root_navigable()->local_traversable_navigable().set_system_visibility_state(visibility_state);
+    if (auto page = this->page(page_id); page.has_value()) {
+        auto local_root = page->page().local_root_navigable();
+        if (local_root->is_traversable())
+            local_root->local_traversable_navigable().set_system_visibility_state(visibility_state);
+        else if (auto document = local_root->active_document())
+            document->update_the_visibility_state(visibility_state);
+    }
 }
 
 void ConnectionFromClient::reset_zoom(u64 page_id)

@@ -532,13 +532,14 @@ void Application::open_url_in_new_window(URL::URL const& url)
     dbgln("open_url_in_new_window() is unsupported on this platform (url: {})", url);
 }
 
-ErrorOr<NonnullRefPtr<WebContentClient>> Application::create_web_content_client(Optional<ViewImplementation&> view, u64 initial_page_id)
+ErrorOr<NonnullRefPtr<WebContentClient>> Application::create_web_content_client(Optional<ViewImplementation&> view, u64 initial_page_id, WebContentPageRole role)
 {
     auto request_server_handle = TRY(connect_new_request_server_client());
     auto image_decoder_handle = TRY(connect_new_image_decoder_client());
 
     auto client = TRY(WebView::launch_web_content_process(initial_page_id));
-    client->async_initialize(initial_page_id);
+    if (role == WebContentPageRole::TopLevel)
+        client->async_initialize(initial_page_id);
     if (view.has_value())
         client->assign_view({}, *view);
 
@@ -721,7 +722,7 @@ ErrorOr<NonnullRefPtr<WebContentClient>> Application::launch_web_content_process
 ErrorOr<Application::ChildFrameWebContentProcess> Application::launch_child_frame_web_content_process()
 {
     auto page_id = allocate_page_id();
-    auto client = TRY(create_web_content_client({}, page_id));
+    auto client = TRY(create_web_content_client({}, page_id, WebContentPageRole::EmbeddedFrame));
     return ChildFrameWebContentProcess {
         .client = move(client),
         .page_id = page_id,

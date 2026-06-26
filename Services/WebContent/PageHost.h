@@ -12,7 +12,10 @@
 #include <AK/HashMap.h>
 #include <AK/NonnullOwnPtr.h>
 #include <AK/OwnPtr.h>
+#include <AK/String.h>
+#include <AK/Vector.h>
 #include <LibGC/Root.h>
+#include <LibWeb/HTML/Navigable.h>
 #include <WebContent/Forward.h>
 
 namespace Web {
@@ -36,6 +39,7 @@ public:
     virtual ~PageHost();
 
     void initialize(u64 initial_page_id);
+    void initialize_embedded_frame(u64 initial_page_id, String local_navigable_id, Vector<Web::HTML::RemoteNavigableDescriptor> ancestors);
     Optional<PageClient&> page(u64 page_id);
     PageClient& create_page(u64 page_id);
     void remove_page(Badge<PageClient>, u64 page_id);

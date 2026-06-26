@@ -422,8 +422,8 @@ void WebContentClient::did_request_new_process_for_child_frame_navigation(u64 pa
     remote_client->register_embedded_page(remote_page_id);
     site_isolation_manager.transition_child_frame_to_remote(*this, page_id, frame_id, remote_client, remote_page_id);
     dbgln("SI_TRACE UI sending child setup/load remote_page={} frame={}", remote_page_id, frame_id);
+    remote_client->async_initialize_embedded_frame(remote_page_id, frame_id, move(ancestor_navigables));
     remote_client->async_set_page_parent_context(remote_page_id, Web::Compositor::compositor_context_id_for_page(page_id));
-    remote_client->async_set_remote_navigable_ancestors(remote_page_id, frame_id, move(ancestor_navigables));
     if (child_frame->viewport_rect.has_value()) {
         remote_client->async_set_viewport(
             remote_page_id,
@@ -448,6 +448,11 @@ void WebContentClient::did_update_child_frame_viewport(u64 page_id, String frame
 void WebContentClient::did_commit_child_frame_navigation(u64 page_id, String frame_id, URL::URL url)
 {
     dbgln("SI_TRACE UI did_commit_child_frame_navigation page={} frame={} url={}", page_id, frame_id, url);
+    if (!view_for_page_id(page_id).has_value()) {
+        SiteIsolationManager::the().remote_child_frame_did_commit_navigation(*this, page_id, url);
+        return;
+    }
+
     SiteIsolationManager::the().did_commit_child_frame_navigation(*this, page_id, frame_id, url);
 }
 

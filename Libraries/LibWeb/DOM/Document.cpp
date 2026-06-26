@@ -347,6 +347,12 @@ WebIDL::ExceptionOr<GC::Ref<Document>> Document::create_and_initialize(Type type
         creation_url = navigation_params.request->current_url();
     }
 
+    // The HTML algorithm treats creationURL as a URL from this point onward. Keep
+    // the optional boundary here, where we still have enough context to diagnose a
+    // malformed navigation response.
+    VERIFY(creation_url.has_value());
+    auto creation_url_for_document = creation_url.release_value();
+
     // 5. Let window be null.
     GC::Ptr<HTML::Window> window;
 
@@ -386,7 +392,7 @@ WebIDL::ExceptionOr<GC::Ref<Document>> Document::create_and_initialize(Type type
         window = as<HTML::Window>(realm_execution_context->realm->global_object());
 
         // 7. Let topLevelCreationURL be creationURL.
-        auto top_level_creation_url = creation_url;
+        Optional<URL::URL> top_level_creation_url = creation_url_for_document;
 
         // 8. Let topLevelOrigin be navigationParams's origin.
         auto top_level_origin = navigation_params.origin;
@@ -418,12 +424,13 @@ WebIDL::ExceptionOr<GC::Ref<Document>> Document::create_and_initialize(Type type
 
         // FIXME: Why do we assume `creation_url` is non-empty here? Is this a spec bug?
         // FIXME: Why do we assume `top_level_creation_url` is non-empty here? Is this a spec bug?
+        VERIFY(top_level_creation_url.has_value());
         HTML::WindowEnvironmentSettingsObject::setup(
             browsing_context->page(),
-            creation_url.value(),
+            creation_url_for_document,
             move(realm_execution_context),
             navigation_params.reserved_environment,
-            top_level_creation_url.value(),
+            top_level_creation_url.release_value(),
             top_level_origin);
     }
 
@@ -462,7 +469,7 @@ WebIDL::ExceptionOr<GC::Ref<Document>> Document::create_and_initialize(Type type
     document->m_navigation_id = navigation_params.id;
     document->set_load_timing_info(load_timing_info);
     document->m_about_base_url = navigation_params.about_base_url;
-    document->set_url(*creation_url);
+    document->set_url(creation_url_for_document);
     document->m_readiness = HTML::DocumentReadyState::Loading;
     document->set_allow_declarative_shadow_roots(true);
     document->set_custom_element_registry(realm.create<HTML::CustomElementRegistry>(realm));
@@ -4539,6 +4546,9 @@ bool Document::is_fully_active() const
     if (container_document && container_document != this && container_document->is_fully_active())
         return true;
 
+    if (auto parent = navigable->parent(); parent && !parent->has_local_state())
+        return parent->active_document_is_fully_active();
+
     return false;
 }
 
@@ -8553,11 +8563,11 @@ void Document::set_navigable(GC::Ptr<HTML::LocalNavigable> navigable)
     m_navigable = navigable.ptr();
     HTML::main_thread_event_loop().document_navigable_did_change({});
 
-    if (previous_traversable)
+    if (previous_traversable && previous_traversable->navigable().has_local_state())
         previous_traversable->local().page().update_needs_beforeunload_check();
     if (navigable) {
         auto new_traversable = navigable->traversable_navigable();
-        if (new_traversable && new_traversable != previous_traversable)
+        if (new_traversable && new_traversable != previous_traversable && new_traversable->navigable().has_local_state())
             new_traversable->local().page().update_needs_beforeunload_check();
     }
 }

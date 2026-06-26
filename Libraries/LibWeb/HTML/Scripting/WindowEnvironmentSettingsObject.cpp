@@ -108,7 +108,11 @@ URL::Origin WindowEnvironmentSettingsObject::origin() const
 bool WindowEnvironmentSettingsObject::has_cross_site_ancestor() const
 {
     // 1. If window's navigable's parent is null, then return false.
-    auto parent_navigable = m_window->navigable()->parent();
+    auto navigable = m_window->navigable();
+    if (!navigable)
+        return false;
+
+    auto parent_navigable = navigable->parent();
     if (parent_navigable == nullptr)
         return false;
 

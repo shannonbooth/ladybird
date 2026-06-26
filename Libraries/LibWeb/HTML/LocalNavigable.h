@@ -31,6 +31,7 @@
 #include <LibWeb/HTML/SourceSnapshotParams.h>
 #include <LibWeb/HTML/StructuredSerializeTypes.h>
 #include <LibWeb/HTML/TokenizedFeatures.h>
+#include <LibWeb/HTML/VisibilityState.h>
 #include <LibWeb/HTML/WindowType.h>
 #include <LibWeb/InvalidateDisplayList.h>
 #include <LibWeb/Page/EventHandler.h>
@@ -66,6 +67,8 @@ class WEB_API LocalNavigable : public Navigable {
 
 public:
     static constexpr bool OVERRIDES_FINALIZE = true;
+
+    static GC::Ref<LocalNavigable> create(GC::Ref<Page>);
 
     virtual ~LocalNavigable() override;
 
@@ -303,6 +306,7 @@ protected:
     virtual Optional<URL::Origin> local_active_document_origin() const override;
     virtual Optional<URL::URL> local_active_document_top_level_creation_url() const override;
     virtual Optional<URL::Origin> local_active_document_top_level_origin() const override;
+    virtual bool local_active_document_is_fully_active() const override;
 
     // https://html.spec.whatwg.org/multipage/browsing-the-web.html#ongoing-navigation
     Variant<Empty, Traversal, String> m_ongoing_navigation;
@@ -318,6 +322,7 @@ private:
     void process_pending_navigations();
     void navigate_to_a_fragment(URL::URL const&, HistoryHandlingBehavior, UserNavigationInvolvement, GC::Ptr<DOM::Element> source_element, Optional<SerializationRecord> navigation_api_state, String navigation_id);
     void navigate_to_a_javascript_url(URL::URL const&, HistoryHandlingBehavior, GC::Ref<SourceSnapshotParams>, URL::Origin const& initiator_origin, UserNavigationInvolvement, ContentSecurityPolicy::Directives::Directive::NavigationType csp_navigation_type, InitialInsertion, String navigation_id);
+    VisibilityState visibility_state_for_new_document() const;
 
     void reset_cursor_blink_cycle();
 

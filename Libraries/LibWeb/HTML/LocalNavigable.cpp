@@ -257,6 +257,15 @@ HashTable<GC::RawRef<LocalNavigable>>& all_local_navigables()
     return *set;
 }
 
+GC::Ref<LocalNavigable> LocalNavigable::create(GC::Ref<Page> page)
+{
+    page->ensure_compositor_host();
+    return page->heap().allocate<LocalNavigable>(
+        page,
+        page->client().is_svg_page_client(),
+        Compositor::PagePresentationRegistration::Yes);
+}
+
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-session-history-entries
 static Vector<NonnullRefPtr<SessionHistoryEntry>>* get_session_history_entries_if_present(LocalTraversableNavigable& traversable, LocalNavigable const& navigable)
 {
@@ -372,6 +381,18 @@ LocalTraversableNavigable& LocalNavigable::local_traversable_navigable() const
     return traversable->local();
 }
 
+VisibilityState LocalNavigable::visibility_state_for_new_document() const
+{
+    auto traversable = Navigable::traversable_navigable();
+    if (traversable && traversable->navigable().has_local_state())
+        return traversable->local().system_visibility_state();
+
+    if (auto document = active_document(); document && document->hidden())
+        return VisibilityState::Hidden;
+
+    return VisibilityState::Visible;
+}
+
 LocalNavigable::LocalNavigable(
     GC::Ref<Page> page,
     bool is_svg_page,
@@ -407,14 +428,16 @@ void LocalNavigable::detach_local_state_for_remote_navigation()
     if (m_has_been_destroyed)
         return;
 
+    clear_pending_navigations();
+    inform_the_navigation_api_about_child_navigable_destruction();
+    set_ongoing_navigation(Empty {}, NavigationAPIAbortBehavior::Preserve);
+
     m_has_been_destroyed = true;
     dbgln("SI_TRACE detach after destroyed id={}", id());
     set_delaying_load_events(false);
     dbgln("SI_TRACE detach after load events id={}", id());
     clear_navigation_load_event_guard();
     dbgln("SI_TRACE detach after guard id={}", id());
-    inform_the_navigation_api_about_child_navigable_destruction();
-    dbgln("SI_TRACE detach after navigation api id={}", id());
     remove_from_all_local_navigables();
     dbgln("SI_TRACE detach done id={}", id());
 }
@@ -484,7 +507,8 @@ void LocalNavigable::set_delaying_load_events(bool value)
 {
     if (value) {
         auto document = container_document();
-        VERIFY(document);
+        if (!document)
+            return;
         m_delaying_the_load_event.emplace(*document);
     } else {
         m_delaying_the_load_event.clear();
@@ -560,7 +584,7 @@ void LocalNavigable::initialize_navigable(NonnullRefPtr<DocumentState> document_
     }
 
     // 6. Set the initial visibility state of documentState's document to navigable's traversable navigable's system visibility state.
-    document->set_initial_visibility_state(local_traversable_navigable().system_visibility_state());
+    document->set_initial_visibility_state(visibility_state_for_new_document());
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-the-target-history-entry
@@ -638,7 +662,7 @@ void LocalNavigable::activate_history_entry(RefPtr<SessionHistoryEntry> entry, G
     new_document->make_active();
 
     // 6. Set the initial visibility state of newDocument to navigable's traversable navigable's system visibility state.
-    new_document->set_initial_visibility_state(local_traversable_navigable().system_visibility_state());
+    new_document->set_initial_visibility_state(visibility_state_for_new_document());
 
     // AD-HOC: In the async state machine, documents created during populate may have completed
     //         their loading lifecycle before being activated (when they had no navigable).
@@ -790,11 +814,21 @@ Optional<URL::Origin> LocalNavigable::local_active_document_top_level_origin() c
     return {};
 }
 
+bool LocalNavigable::local_active_document_is_fully_active() const
+{
+    VERIFY(has_local_state());
+    if (auto document = active_document())
+        return document->is_fully_active();
+    return false;
+}
+
 // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-window
 GC::Ptr<HTML::Window> LocalNavigable::active_window()
 {
+    VERIFY(has_local_state());
+
     // A navigable's active window is its active WindowProxy's [[Window]].
-    if (auto window_proxy = active_window_proxy())
+    if (auto window_proxy = local_active_window_proxy())
         return window_proxy->window();
     return nullptr;
 }
@@ -850,6 +884,9 @@ void LocalNavigable::set_ongoing_navigation(Variant<Empty, Traversal, String> on
 
 void LocalNavigable::queue_pending_navigation(NavigateParams params, PendingNavigationBehavior behavior)
 {
+    if (!has_local_state() || m_has_been_destroyed)
+        return;
+
     if (behavior == PendingNavigationBehavior::Replace)
         m_pending_navigations.clear();
     m_pending_navigations.append(move(params));
@@ -857,7 +894,17 @@ void LocalNavigable::queue_pending_navigation(NavigateParams params, PendingNavi
 
 void LocalNavigable::process_pending_navigations()
 {
+    if (!has_local_state() || m_has_been_destroyed) {
+        m_pending_navigations.clear();
+        return;
+    }
+
     while (!m_pending_navigations.is_empty()) {
+        if (!has_local_state() || m_has_been_destroyed) {
+            m_pending_navigations.clear();
+            return;
+        }
+
         auto navigation_params = m_pending_navigations.take_first();
         begin_navigation(navigation_params);
     }
@@ -1832,7 +1879,7 @@ void LocalNavigable::populate_session_history_entry_document(
     GC::Ptr<GC::Function<void(GC::Ptr<PopulateSessionHistoryEntryDocumentOutput>)>> completion_steps)
 {
     // AD-HOC: Not in the spec but subsequent steps will fail if the navigable doesn't have an active window.
-    if (!active_window())
+    if (!has_local_state() || has_been_destroyed() || !active_window())
         return;
 
     // FIXME: 1. Assert: this is running in parallel.
@@ -1846,11 +1893,21 @@ void LocalNavigable::populate_session_history_entry_document(
 
     auto received_navigation_params = GC::create_function(heap(), [this, url, navigation_id, user_involvement, completion_steps, csp_navigation_type](GC::Ref<InternalNavigationResult> result) {
         // AD-HOC: Not in the spec but subsequent steps will fail if the navigable doesn't have an active window.
-        if (!active_window())
+        if (!has_local_state() || has_been_destroyed())
+            return;
+
+        auto active_window = this->active_window();
+        if (!active_window)
             return;
 
         // 5. Queue a global task on the navigation and traversal task source, given navigable's active window, to run these steps:
-        queue_global_task(Task::Source::NavigationAndTraversal, *active_window(), GC::create_function(heap(), [this, url, result, navigation_id, user_involvement, completion_steps, csp_navigation_type]() mutable {
+        queue_global_task(Task::Source::NavigationAndTraversal, *active_window, GC::create_function(heap(), [this, url, result, navigation_id, user_involvement, completion_steps, csp_navigation_type]() mutable {
+            if (!has_local_state() || has_been_destroyed()) {
+                if (completion_steps)
+                    completion_steps->function()(nullptr);
+                return;
+            }
+
             auto& navigation_params = result->navigation_params;
 
             // 1. If navigable's ongoing navigation no longer equals navigationId, then run completionSteps and abort these steps.
@@ -2077,6 +2134,9 @@ static Bindings::NavigationHistoryBehavior determine_history_handling_for_naviga
 
 WebIDL::ExceptionOr<void> LocalNavigable::navigate(NavigateParams params)
 {
+    if (!has_local_state() || has_been_destroyed())
+        return {};
+
     // AD-HOC: Not in the spec but subsequent steps will fail if the navigable doesn't have an active window.
     if (!active_window())
         return {};
@@ -2116,6 +2176,8 @@ WebIDL::ExceptionOr<void> LocalNavigable::navigate(NavigateParams params)
     return {};
 }
 
+static void finalize_a_cross_document_navigation_with_remote_traversable(GC::Ref<LocalNavigable>, HistoryHandlingBehavior, UserNavigationInvolvement, NonnullRefPtr<SessionHistoryEntry>, GC::Ptr<DOM::Document>, Optional<String>, GC::Ref<OnApplyHistoryStepComplete>);
+
 // To navigate a navigable navigable to a URL url using an optional Document-or-null sourceDocument (default null),
 // with an optional POST resource, string, or null documentResource (default null),
 // an optional response-or-null response (default null), an optional boolean exceptionsEnabled (default false),
@@ -2145,7 +2207,7 @@ void LocalNavigable::begin_navigation(NavigateParams params)
     //         post-connection steps finish processing). Without this check, we would call
     //         set_delaying_load_events(true) below, creating a DocumentLoadEventDelayer on the
     //         parent document that is never cleared.
-    if (has_been_destroyed())
+    if (!has_local_state() || has_been_destroyed())
         return;
 
     // AD-HOC: Not in the spec but subsequent steps will fail if the navigable doesn't have an active window.
@@ -2341,6 +2403,9 @@ void LocalNavigable::begin_navigation(NavigateParams params)
 
     // 23. In parallel, run these steps:
     Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(heap(), [this, source_snapshot_params, target_snapshot_params, csp_navigation_type, document_resource, url, navigation_id, referrer_policy, initiator_origin_snapshot, response, history_handling, initiator_base_url_snapshot, user_involvement, params = move(params)] mutable {
+        if (!has_local_state() || has_been_destroyed())
+            return;
+
         // AD-HOC: Not in the spec but subsequent steps will fail if the navigable doesn't have an active window.
         if (!active_window()) {
             set_delaying_load_events(false);
@@ -2348,12 +2413,14 @@ void LocalNavigable::begin_navigation(NavigateParams params)
         }
 
         // 1. Let unloadPromptCanceled be the result of checking if unloading is user-canceled for navigable's active document's inclusive descendant navigables.
-        local_traversable_navigable().check_if_unloading_is_canceled(this->active_document()->inclusive_descendant_navigables(),
-            GC::create_function(heap(), [this, source_snapshot_params, target_snapshot_params, csp_navigation_type, document_resource, url, navigation_id, referrer_policy, initiator_origin_snapshot, response, history_handling, initiator_base_url_snapshot, user_involvement, params = move(params)](LocalTraversableNavigable::CheckIfUnloadingIsCanceledResult unload_prompt_canceled) mutable {
+        auto continue_after_unload_check = GC::create_function(heap(), [this, source_snapshot_params, target_snapshot_params, csp_navigation_type, document_resource, url, navigation_id, referrer_policy, initiator_origin_snapshot, response, history_handling, initiator_base_url_snapshot, user_involvement, params = move(params)](LocalTraversableNavigable::CheckIfUnloadingIsCanceledResult unload_prompt_canceled) mutable {
+                if (!has_local_state() || has_been_destroyed())
+                    return;
+
                 // 2. If unloadPromptCanceled is not "continue", or navigable's ongoing navigation is no longer navigationId:
                 if (unload_prompt_canceled != LocalTraversableNavigable::CheckIfUnloadingIsCanceledResult::Continue) {
                     // FIXME: 1. Invoke WebDriver BiDi navigation failed with navigable and a new WebDriver BiDi navigation status whose id is navigationId, status is "canceled", and url is url.
-                    if (is_page_top_level_traversable())
+                    if (is_top_level_traversable())
                         active_browsing_context()->page().client().page_did_cancel_loading(url);
 
                     // 2. Abort these steps.
@@ -2385,24 +2452,27 @@ void LocalNavigable::begin_navigation(NavigateParams params)
                 }
 
                 // AD-HOC: If we are not able to continue in this process, request a new process from the UI.
-                auto& page_client = active_browsing_context()->page().client();
-                auto is_top_level_navigation = is_page_top_level_traversable();
-                auto target = is_top_level_navigation ? NavigationTarget::TopLevel : NavigationTarget::IFrame;
-                auto frame_id = is_top_level_navigation ? Optional<String> {} : Optional<String> { id() };
-                auto process_decision = page_client.decide_navigation_process(this->active_document()->url(), url, target, move(frame_id));
-                if (process_decision == NavigationProcessDecision::Remote && is_top_level_navigation) {
-                    page_client.request_new_process_for_navigation(url, document_resource, history_handling);
-                    set_delaying_load_events(false);
-                    return;
+                auto has_remote_parent = parent() && !parent()->has_local_state();
+                auto is_top_level_navigation = is_top_level_traversable();
+                if (!has_remote_parent) {
+                    auto& page_client = active_browsing_context()->page().client();
+                    auto target = is_top_level_navigation ? NavigationTarget::TopLevel : NavigationTarget::IFrame;
+                    auto frame_id = is_top_level_navigation ? Optional<String> {} : Optional<String> { id() };
+                    auto process_decision = page_client.decide_navigation_process(this->active_document()->url(), url, target, move(frame_id));
+                    if (process_decision == NavigationProcessDecision::Remote && is_top_level_navigation) {
+                        page_client.request_new_process_for_navigation(url, document_resource, history_handling);
+                        set_delaying_load_events(false);
+                        return;
+                    }
+                    if (process_decision == NavigationProcessDecision::Remote) {
+                        if (has_compositor_context())
+                            compositor_context().set_parent_context({});
+                        page_client.request_new_process_for_child_frame_navigation(id(), url, document_resource, history_handling);
+                        set_delaying_load_events(false);
+                        return;
+                    }
                 }
-                if (process_decision == NavigationProcessDecision::Remote) {
-                    if (has_compositor_context())
-                        compositor_context().set_parent_context({});
-                    page_client.request_new_process_for_child_frame_navigation(id(), url, document_resource, history_handling);
-                    set_delaying_load_events(false);
-                    return;
-                }
-                if (!is_top_level_navigation) {
+                if (!is_top_level_navigation && !has_remote_parent) {
                     auto parent_navigable = this->parent();
                     VERIFY(parent_navigable);
                     auto& parent = as<LocalNavigable>(*parent_navigable);
@@ -2411,7 +2481,7 @@ void LocalNavigable::begin_navigation(NavigateParams params)
                 }
 
                 // AD-HOC: Tell the UI that we started loading.
-                if (is_page_top_level_traversable()) {
+                if (is_top_level_traversable()) {
                     active_browsing_context()->page().client().page_did_start_loading(url, document_resource, false, history_handling);
                 }
 
@@ -2423,6 +2493,8 @@ void LocalNavigable::begin_navigation(NavigateParams params)
 
                 // 3. Queue a global task on the navigation and traversal task source given navigable's active window to abort a document and its descendants given navigable's active document.
                 queue_global_task(Task::Source::NavigationAndTraversal, *active_window(), GC::create_function(heap(), [this] {
+                    if (!has_local_state() || has_been_destroyed())
+                        return;
                     this->active_document()->abort_a_document_and_its_descendants();
                 }));
 
@@ -2555,29 +2627,58 @@ void LocalNavigable::begin_navigation(NavigateParams params)
                     history_entry->document_state()->reload_pending(),
                     history_entry->document_state()->ever_populated(),
                     source_snapshot_params, target_snapshot_params, user_involvement, navigation_id, navigation_params, csp_navigation_type, true, GC::create_function(heap(), [this, history_entry, history_handling, navigation_id, user_involvement](GC::Ptr<PopulateSessionHistoryEntryDocumentOutput> output) {
+                        if (!has_local_state() || has_been_destroyed()) {
+                            set_delaying_load_events(false);
+                            return;
+                        }
+
                         if (output)
                             output->apply_to(*history_entry);
                         auto pending_document = output ? output->document : GC::Ptr<DOM::Document> {};
                         // 1. Append session history traversal steps to navigable's traversable to finalize a cross-document navigation given navigable, historyHandling, userInvolvement, and historyEntry.
-                        local_traversable_navigable().append_session_history_traversal_steps(GC::create_function(heap(), [this, history_entry, history_handling, navigation_id, user_involvement, pending_document](NonnullRefPtr<Core::Promise<Empty>> signal) {
-                            if (this->has_been_destroyed()) {
-                                // AD-HOC: This check is not in the spec but we should not continue navigation if navigable has been destroyed.
-                                set_delaying_load_events(false);
-                                signal->resolve({});
-                                return;
-                            }
-                            if (this->ongoing_navigation() != navigation_id) {
-                                // AD-HOC: This check is not in the spec but we should not continue navigation if ongoing navigation id has changed.
-                                set_delaying_load_events(false);
-                                signal->resolve({});
-                                return;
-                            }
-                            finalize_a_cross_document_navigation(*this, to_history_handling_behavior(history_handling), user_involvement, history_entry, pending_document, navigation_id, GC::create_function(heap(), [signal](HistoryStepResult) {
-                                signal->resolve({});
+                        auto traversable = Navigable::traversable_navigable();
+                        if (traversable && traversable->navigable().has_local_state()) {
+                            traversable->local().append_session_history_traversal_steps(GC::create_function(heap(), [this, history_entry, history_handling, navigation_id, user_involvement, pending_document](NonnullRefPtr<Core::Promise<Empty>> signal) {
+                                if (!this->has_local_state() || this->has_been_destroyed()) {
+                                    // AD-HOC: This check is not in the spec but we should not continue navigation if navigable has been destroyed.
+                                    set_delaying_load_events(false);
+                                    signal->resolve({});
+                                    return;
+                                }
+                                if (this->ongoing_navigation() != navigation_id) {
+                                    // AD-HOC: This check is not in the spec but we should not continue navigation if ongoing navigation id has changed.
+                                    set_delaying_load_events(false);
+                                    signal->resolve({});
+                                    return;
+                                }
+                                finalize_a_cross_document_navigation(*this, to_history_handling_behavior(history_handling), user_involvement, history_entry, pending_document, navigation_id, GC::create_function(heap(), [signal](HistoryStepResult) {
+                                    signal->resolve({});
+                                }));
                             }));
+                            return;
+                        }
+
+                        // A remote top-level traversable owns the cross-process session history list. This process still
+                        // owns activation of its local Document, so finalize that local commit without pretending we have
+                        // a LocalTraversableNavigable traversal queue.
+                        if (!this->has_local_state() || this->has_been_destroyed()) {
+                            set_delaying_load_events(false);
+                            return;
+                        }
+                        if (this->ongoing_navigation() != navigation_id) {
+                            set_delaying_load_events(false);
+                            return;
+                        }
+                        finalize_a_cross_document_navigation_with_remote_traversable(*this, to_history_handling_behavior(history_handling), user_involvement, history_entry, pending_document, navigation_id, GC::create_function(heap(), [](HistoryStepResult) {
                         }));
                     }));
-            }));
+            });
+        auto traversable = Navigable::traversable_navigable();
+        if (traversable && traversable->navigable().has_local_state()) {
+            traversable->local().check_if_unloading_is_canceled(this->active_document()->inclusive_descendant_navigables(), continue_after_unload_check);
+        } else {
+            continue_after_unload_check->function()(LocalTraversableNavigable::CheckIfUnloadingIsCanceledResult::Continue);
+        }
     }));
 }
 
@@ -3008,6 +3109,75 @@ bool LocalNavigable::allowed_by_sandboxing_to_navigate(LocalNavigable const& tar
     // 5. If sourceSnapshotParams's sandboxing flags's sandboxed navigation browsing context flag is set, then return false.
     // 6. Return true.
     return !has_flag(source_snapshot_params.sandboxing_flags, SandboxingFlagSet::SandboxedNavigation);
+}
+
+static void finalize_a_cross_document_navigation_with_remote_traversable(GC::Ref<LocalNavigable> navigable, HistoryHandlingBehavior history_handling, UserNavigationInvolvement, NonnullRefPtr<SessionHistoryEntry> history_entry, GC::Ptr<DOM::Document> pending_document, Optional<String> expected_ongoing_navigation_id, GC::Ref<OnApplyHistoryStepComplete> on_complete)
+{
+    if (navigable->has_been_destroyed()) {
+        on_complete->function()(HistoryStepResult::Applied);
+        return;
+    }
+
+    if (auto container_doc = navigable->container_document(); container_doc && pending_document)
+        navigable->set_navigation_load_event_guard(*container_doc);
+
+    navigable->set_delaying_load_events(false);
+
+    if (!pending_document) {
+        on_complete->function()(HistoryStepResult::Applied);
+        return;
+    }
+
+    if (expected_ongoing_navigation_id.has_value() && navigable->ongoing_navigation() != expected_ongoing_navigation_id.value()) {
+        on_complete->function()(HistoryStepResult::Applied);
+        return;
+    }
+
+    auto active_document = navigable->active_document();
+    VERIFY(active_document);
+
+    if (navigable->parent() == nullptr
+        && !(pending_document->browsing_context()->is_auxiliary() && pending_document->browsing_context()->opener_browsing_context() != nullptr)
+        && pending_document->origin() != active_document->origin()) {
+        history_entry->document_state()->set_navigable_target_name(String {});
+    }
+
+    if (pending_document->origin() != active_document->origin())
+        history_entry->set_classic_history_api_state(MUST(structured_serialize_for_storage(navigable->vm(), JS::js_null())));
+
+    auto previous_entry = navigable->active_session_history_entry();
+    size_t script_history_index = active_document->history()->m_index;
+    size_t script_history_length = active_document->history()->m_length;
+    if (history_handling == HistoryHandlingBehavior::Push) {
+        ++script_history_index;
+        script_history_length = max(script_history_length, script_history_index + 1);
+    }
+
+    auto previous_step = previous_entry ? previous_entry->step_value().value_or(0) : 0;
+    history_entry->set_step(history_handling == HistoryHandlingBehavior::Push ? previous_step + 1 : previous_step);
+
+    auto navigation_type = history_handling == HistoryHandlingBehavior::Replace ? Bindings::NavigationType::Replace : Bindings::NavigationType::Push;
+
+    navigable->set_current_session_history_entry(history_entry);
+    navigable->set_ongoing_navigation(Empty {});
+    navigable->activate_history_entry(history_entry, *pending_document);
+
+    auto entries_for_navigation_api = Vector<NonnullRefPtr<SessionHistoryEntry>> {};
+    entries_for_navigation_api.append(history_entry);
+    auto update_document = [pending_document, history_entry, script_history_length, script_history_index, navigation_type, entries_for_navigation_api = move(entries_for_navigation_api), previous_entry] {
+        pending_document->update_for_history_step_application(history_entry, false, script_history_length, script_history_index, navigation_type, entries_for_navigation_api, previous_entry, true);
+    };
+
+    if (pending_document->has_deferred_parser_start())
+        update_document();
+    else {
+        queue_global_task(Task::Source::NavigationAndTraversal, relevant_global_object(*pending_document), GC::create_function(navigable->heap(), move(update_document)));
+    }
+
+    if (auto container = navigable->container())
+        container->set_needs_layout_update(DOM::SetNeedsLayoutReason::FinalizeACrossDocumentNavigation);
+
+    on_complete->function()(HistoryStepResult::Applied);
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#snapshotting-target-snapshot-params
@@ -3609,6 +3779,9 @@ void LocalNavigable::inform_the_navigation_api_about_aborting_navigation()
     //     the current event loop and we run the steps inline. Queuing here would defer the abort past the creation of
     //     a new ongoing navigate event by a subsequent fire_a_push_replace_reload_navigate_event, causing the deferred
     //     abort to cancel that newer event.
+
+    if (!has_local_state())
+        return;
 
     // AD-HOC: Not in the spec but subsequent steps will fail if the navigable doesn't have an active window.
     if (!active_window())

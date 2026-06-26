@@ -25,6 +25,7 @@ GC::Ref<Navigable> Navigable::create_remote(JS::Realm& realm, RemoteNavigableDes
         .active_document_origin = move(descriptor.active_document_origin),
         .active_document_top_level_creation_url = move(descriptor.active_document_top_level_creation_url),
         .active_document_top_level_origin = move(descriptor.active_document_top_level_origin),
+        .active_document_is_fully_active = descriptor.active_document_is_fully_active,
         .is_traversable = descriptor.is_traversable,
         .is_top_level_traversable = descriptor.is_top_level_traversable,
         .active_window_proxy = nullptr,
@@ -70,6 +71,13 @@ Optional<URL::Origin> Navigable::active_document_top_level_origin() const
     return local_active_document_top_level_origin();
 }
 
+bool Navigable::active_document_is_fully_active() const
+{
+    if (auto const* remote_state = m_state.get_pointer<RemoteNavigableState>())
+        return remote_state->active_document_is_fully_active;
+    return local_active_document_is_fully_active();
+}
+
 RemoteNavigableDescriptor Navigable::remote_descriptor() const
 {
     return {
@@ -78,6 +86,7 @@ RemoteNavigableDescriptor Navigable::remote_descriptor() const
         .active_document_origin = active_document_origin(),
         .active_document_top_level_creation_url = active_document_top_level_creation_url(),
         .active_document_top_level_origin = active_document_top_level_origin(),
+        .active_document_is_fully_active = active_document_is_fully_active(),
         .is_traversable = is_traversable(),
         .is_top_level_traversable = is_top_level_traversable(),
     };
@@ -172,6 +181,7 @@ ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::RemoteNavigableDescriptor
     TRY(encoder.encode(descriptor.active_document_origin));
     TRY(encoder.encode(descriptor.active_document_top_level_creation_url));
     TRY(encoder.encode(descriptor.active_document_top_level_origin));
+    TRY(encoder.encode(descriptor.active_document_is_fully_active));
     TRY(encoder.encode(descriptor.is_traversable));
     TRY(encoder.encode(descriptor.is_top_level_traversable));
     return {};
@@ -185,6 +195,7 @@ ErrorOr<Web::HTML::RemoteNavigableDescriptor> IPC::decode(Decoder& decoder)
     auto active_document_origin = TRY(decoder.decode<Optional<URL::Origin>>());
     auto active_document_top_level_creation_url = TRY(decoder.decode<Optional<URL::URL>>());
     auto active_document_top_level_origin = TRY(decoder.decode<Optional<URL::Origin>>());
+    auto active_document_is_fully_active = TRY(decoder.decode<bool>());
     auto is_traversable = TRY(decoder.decode<bool>());
     auto is_top_level_traversable = TRY(decoder.decode<bool>());
 
@@ -194,6 +205,7 @@ ErrorOr<Web::HTML::RemoteNavigableDescriptor> IPC::decode(Decoder& decoder)
         .active_document_origin = move(active_document_origin),
         .active_document_top_level_creation_url = move(active_document_top_level_creation_url),
         .active_document_top_level_origin = move(active_document_top_level_origin),
+        .active_document_is_fully_active = active_document_is_fully_active,
         .is_traversable = is_traversable,
         .is_top_level_traversable = is_top_level_traversable,
     };

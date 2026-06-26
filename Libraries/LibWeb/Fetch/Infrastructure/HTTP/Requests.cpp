@@ -14,7 +14,8 @@
 #include <LibWeb/DOMURL/DOMURL.h>
 #include <LibWeb/Fetch/Fetching/PendingResponse.h>
 #include <LibWeb/Fetch/Infrastructure/HTTP/Requests.h>
-#include <LibWeb/HTML/LocalTraversableNavigable.h>
+#include <LibWeb/HTML/PolicyContainers.h>
+#include <LibWeb/HTML/TraversableNavigable.h>
 
 namespace Web::Fetch::Infrastructure {
 
