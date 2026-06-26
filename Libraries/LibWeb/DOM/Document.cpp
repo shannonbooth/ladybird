@@ -4230,7 +4230,10 @@ void Document::update_readiness(HTML::DocumentReadyState readiness_value)
 
     if (readiness_value == HTML::DocumentReadyState::Complete) {
         auto navigable = this->navigable();
-        if (navigable && navigable->is_traversable()) {
+        auto is_page_local_root_navigable = navigable
+            && page().local_root_navigable_is_initialized()
+            && page().local_root_navigable().ptr() == navigable.ptr();
+        if (navigable && (navigable->is_traversable() || is_page_local_root_navigable)) {
             if (!is_decoded_svg()) {
                 HTML::HTMLLinkElement::load_fallback_favicon_if_needed(*this);
             }
@@ -5993,6 +5996,8 @@ void Document::make_active()
     auto current_navigable = this->navigable();
     if (current_navigable && current_navigable->is_top_level_traversable()) {
         page().client().page_did_change_active_document_in_top_level_browsing_context(*this);
+    } else if (current_navigable && current_navigable->has_local_state() && as<HTML::LocalNavigable>(*current_navigable).is_page_local_root_navigable()) {
+        page().client().page_did_change_url(url());
     } else if (current_navigable) {
         page().client().page_did_commit_child_frame_navigation(current_navigable->id(), url());
     }

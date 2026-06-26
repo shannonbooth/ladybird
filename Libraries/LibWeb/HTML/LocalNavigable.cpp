@@ -318,6 +318,62 @@ Vector<NonnullRefPtr<SessionHistoryEntry>>* append_nested_history_for_child_navi
     return &parent_doc_state->nested_histories().last().entries;
 }
 
+void TraversableNavigable::apply_navigable_creation(GC::Ref<NavigableContainer> container, GC::Ref<LocalNavigable> parent_navigable, GC::Ref<LocalNavigable> child_navigable, NonnullRefPtr<SessionHistoryEntry> history_entry)
+{
+    auto apply_local_creation = [container, parent_navigable, child_navigable, history_entry] {
+        if (child_navigable->has_been_destroyed() || parent_navigable->has_been_destroyed() || container->content_navigable() != child_navigable.ptr())
+            return false;
+
+        VERIFY(append_nested_history_for_child_navigable(*parent_navigable, *child_navigable, *history_entry));
+        return true;
+    };
+
+    if (has_remote_state()) {
+        if (apply_local_creation())
+            container->set_content_navigable_has_session_history_entry_and_ready_for_navigation();
+        return;
+    }
+
+    GC::Ref<LocalTraversableNavigable> local_traversable = local();
+    local_traversable->append_session_history_traversal_steps(GC::create_function(heap(), [container, child_navigable, local_traversable, apply_local_creation](NonnullRefPtr<Core::Promise<Empty>> signal) mutable {
+        if (!apply_local_creation()) {
+            signal->resolve({});
+            return;
+        }
+
+        local_traversable->update_for_navigable_creation_or_destruction(GC::create_function(local_traversable->heap(), [container, child_navigable, local_traversable, signal](HistoryStepResult) {
+            local_traversable->append_session_history_traversal_steps(GC::create_function(local_traversable->heap(), [container, child_navigable](NonnullRefPtr<Core::Promise<Empty>> signal) {
+                if (child_navigable->has_been_destroyed() || container->content_navigable() != child_navigable.ptr()) {
+                    signal->resolve({});
+                    return;
+                }
+
+                container->set_content_navigable_has_session_history_entry_and_ready_for_navigation();
+                signal->resolve({});
+            }));
+            signal->resolve({});
+        }));
+    }));
+}
+
+void TraversableNavigable::apply_navigable_destruction(GC::Ref<LocalNavigable> parent_navigable, String child_navigable_id)
+{
+    auto parent_doc_state = parent_navigable->active_session_history_entry()->document_state();
+    parent_doc_state->nested_histories().remove_all_matching([&](auto& nested_history) {
+        return child_navigable_id == nested_history.id;
+    });
+
+    if (has_remote_state())
+        return;
+
+    GC::Ref<LocalTraversableNavigable> local_traversable = local();
+    local_traversable->append_session_history_traversal_steps(GC::create_function(heap(), [local_traversable](NonnullRefPtr<Core::Promise<Empty>> signal) {
+        local_traversable->update_for_navigable_creation_or_destruction(GC::create_function(local_traversable->heap(), [signal](HistoryStepResult) {
+            signal->resolve({});
+        }));
+    }));
+}
+
 static Vector<NonnullRefPtr<SessionHistoryEntry>>*
 recreate_missing_nested_history_for_live_child_navigable(LocalTraversableNavigable& traversable, LocalNavigable& navigable)
 {
@@ -2177,7 +2233,6 @@ WebIDL::ExceptionOr<void> LocalNavigable::navigate(NavigateParams params)
 }
 
 static void finalize_a_cross_document_navigation_with_remote_traversable(GC::Ref<LocalNavigable>, HistoryHandlingBehavior, UserNavigationInvolvement, NonnullRefPtr<SessionHistoryEntry>, GC::Ptr<DOM::Document>, Optional<String>, GC::Ref<OnApplyHistoryStepComplete>);
-static void reload_with_remote_traversable(GC::Ref<LocalNavigable>, UserNavigationInvolvement);
 
 // To navigate a navigable navigable to a URL url using an optional Document-or-null sourceDocument (default null),
 // with an optional POST resource, string, or null documentResource (default null),
@@ -2759,26 +2814,15 @@ void LocalNavigable::navigate_to_a_fragment(URL::URL const& url, HistoryHandling
     active_document()->scroll_to_the_fragment();
 
     // 16. Let traversable be navigable's traversable navigable.
-    auto traversable = GC::Ptr<LocalTraversableNavigable> { local_traversable_navigable() };
+    auto traversable = Navigable::traversable_navigable();
+    VERIFY(traversable);
 
-    // AD-HOC: Browser engines commit same-document navigations synchronously when no traversal state is active. Keep
-    //         the spec's queued synchronous-navigation steps as the fallback for reentrant traversal work and child
-    //         navigables whose nested history is not ready yet.
-    // 17. Append the following session history synchronous navigation steps involving navigable to traversable:
-    if (!traversable->try_to_synchronously_commit_same_document_navigation(*this, history_entry, entry_to_replace)) {
-        traversable->append_session_history_synchronous_navigation_steps(*this, GC::create_function(heap(), [this, traversable, history_entry, entry_to_replace, navigation_id, history_handling, user_involvement](NonnullRefPtr<Core::Promise<Empty>> signal) {
-            // 1. Finalize a same-document navigation given traversable, navigable, historyEntry, entryToReplace,
-            //    historyHandling, and userInvolvement.
-            finalize_a_same_document_navigation(*traversable, *this, history_entry, entry_to_replace, history_handling, user_involvement,
-                GC::create_function(heap(), [signal](HistoryStepResult) {
-                    signal->resolve({});
-                }));
+    // 17. Append the following session history synchronous navigation steps involving navigable to traversable.
+    traversable->apply_same_document_history_update(*this, history_entry, entry_to_replace, history_handling, user_involvement);
 
-            // FIXME: 2. Invoke WebDriver BiDi fragment navigated with navigable and a new WebDriver BiDi
-            //            navigation status whose id is navigationId, url is url, and status is "complete".
-            (void)navigation_id;
-        }));
-    }
+    // FIXME: Invoke WebDriver BiDi fragment navigated with navigable and a new WebDriver BiDi
+    //        navigation status whose id is navigationId, url is url, and status is "complete".
+    (void)navigation_id;
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#evaluate-a-javascript:-url
@@ -2992,64 +3036,9 @@ void LocalNavigable::navigate_to_a_javascript_url(URL::URL const& url, HistoryHa
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#reload
 void LocalNavigable::reload(Optional<SerializationRecord> navigation_api_state, UserNavigationInvolvement user_involvement)
 {
-    // 1. If userInvolvement is not "browser UI", then:
-    if (user_involvement != UserNavigationInvolvement::BrowserUI) {
-        // 1. Let navigation be navigable's active window's navigation API.
-        auto active_window = this->active_window();
-        VERIFY(active_window);
-        auto navigation = active_window->navigation();
-
-        // 2. Let destinationNavigationAPIState be navigable's active session history entry's navigation API state.
-        auto destination_navigation_api_state = active_session_history_entry()->navigation_api_state();
-
-        // 3. If navigationAPIState is not null, then set destinationNavigationAPIState to navigationAPIState.
-        if (navigation_api_state.has_value())
-            destination_navigation_api_state = *navigation_api_state;
-
-        // 4. Let continue be the result of firing a push/replace/reload navigate event at navigation with
-        //    navigationType set to "reload", isSameDocument set to false, userInvolvement set to userInvolvement,
-        //    destinationURL set to navigable's active session history entry's URL, navigationAPIState set to
-        //    destinationNavigationAPIState, and apiMethodTracker set to apiMethodTracker.
-        auto continue_ = navigation->fire_a_push_replace_reload_navigate_event(Bindings::NavigationType::Reload, active_session_history_entry()->url(), false, user_involvement, nullptr, {}, destination_navigation_api_state);
-
-        // 5. If continue is false, then return.
-        if (!continue_)
-            return;
-    }
-
-    // 1. If navigationAPIState is not null, then set navigable's active session history entry's navigation API state
-    //    to navigationAPIState.
-    if (navigation_api_state.has_value())
-        active_session_history_entry()->set_navigation_api_state(navigation_api_state.release_value());
-
-    // 2. Set navigable's active session history entry's document state's reload pending to true.
-    active_session_history_entry()->document_state()->set_reload_pending(true);
-
-    // 3. Let traversable be navigable's traversable navigable.
     auto traversable = Navigable::traversable_navigable();
     VERIFY(traversable);
-
-    if (traversable->has_remote_state()) {
-        reload_with_remote_traversable(*this, user_involvement);
-        return;
-    }
-
-    GC::Ref<LocalTraversableNavigable> local_traversable = traversable->local();
-
-    // AD-HOC: Report the reload-pending document state to the UI process before the reload history step finishes,
-    //         so the UI-owned session history mirror remains synchronized during an in-flight reload.
-    if (local_traversable->page().client().should_report_session_history_updates()) {
-        auto session_history_snapshot = local_traversable->create_session_history_snapshot();
-        local_traversable->page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
-    }
-
-    // 4. Append the following session history traversal steps to traversable:
-    local_traversable->append_session_history_traversal_steps(GC::create_function(heap(), [local_traversable, user_involvement](NonnullRefPtr<Core::Promise<Empty>> signal) {
-        // 1. Apply the reload history step to traversable given userInvolvement.
-        local_traversable->apply_the_reload_history_step(user_involvement, GC::create_function(local_traversable->heap(), [signal](HistoryStepResult) {
-            signal->resolve({});
-        }));
-    }));
+    traversable->reload(*this, move(navigation_api_state), user_involvement);
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#the-navigation-must-be-a-replace
@@ -3246,6 +3235,95 @@ static void reload_with_remote_traversable(GC::Ref<LocalNavigable> navigable, Us
                 }));
             }));
     }));
+}
+
+void TraversableNavigable::reload(GC::Ref<LocalNavigable> target_navigable, Optional<SerializationRecord> navigation_api_state, UserNavigationInvolvement user_involvement)
+{
+    // 1. If userInvolvement is not "browser UI", then:
+    if (user_involvement != UserNavigationInvolvement::BrowserUI) {
+        // 1. Let navigation be navigable's active window's navigation API.
+        auto active_window = target_navigable->active_window();
+        VERIFY(active_window);
+        auto navigation = active_window->navigation();
+
+        // 2. Let destinationNavigationAPIState be navigable's active session history entry's navigation API state.
+        auto destination_navigation_api_state = target_navigable->active_session_history_entry()->navigation_api_state();
+
+        // 3. If navigationAPIState is not null, then set destinationNavigationAPIState to navigationAPIState.
+        if (navigation_api_state.has_value())
+            destination_navigation_api_state = *navigation_api_state;
+
+        // 4. Let continue be the result of firing a push/replace/reload navigate event at navigation with
+        //    navigationType set to "reload", isSameDocument set to false, userInvolvement set to userInvolvement,
+        //    destinationURL set to navigable's active session history entry's URL, navigationAPIState set to
+        //    destinationNavigationAPIState, and apiMethodTracker set to apiMethodTracker.
+        auto continue_ = navigation->fire_a_push_replace_reload_navigate_event(Bindings::NavigationType::Reload, target_navigable->active_session_history_entry()->url(), false, user_involvement, nullptr, {}, destination_navigation_api_state);
+
+        // 5. If continue is false, then return.
+        if (!continue_)
+            return;
+    }
+
+    // 1. If navigationAPIState is not null, then set navigable's active session history entry's navigation API state
+    //    to navigationAPIState.
+    if (navigation_api_state.has_value())
+        target_navigable->active_session_history_entry()->set_navigation_api_state(navigation_api_state.release_value());
+
+    // 2. Set navigable's active session history entry's document state's reload pending to true.
+    target_navigable->active_session_history_entry()->document_state()->set_reload_pending(true);
+
+    if (has_remote_state()) {
+        reload_with_remote_traversable(target_navigable, user_involvement);
+        return;
+    }
+
+    GC::Ref<LocalTraversableNavigable> local_traversable = local();
+
+    // AD-HOC: Report the reload-pending document state to the UI process before the reload history step finishes,
+    //         so the UI-owned session history mirror remains synchronized during an in-flight reload.
+    if (local_traversable->page().client().should_report_session_history_updates()) {
+        auto session_history_snapshot = local_traversable->create_session_history_snapshot();
+        local_traversable->page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
+    }
+
+    // 4. Append the following session history traversal steps to traversable:
+    local_traversable->append_session_history_traversal_steps(GC::create_function(heap(), [local_traversable, user_involvement](NonnullRefPtr<Core::Promise<Empty>> signal) {
+        // 1. Apply the reload history step to traversable given userInvolvement.
+        local_traversable->apply_the_reload_history_step(user_involvement, GC::create_function(local_traversable->heap(), [signal](HistoryStepResult) {
+            signal->resolve({});
+        }));
+    }));
+}
+
+void TraversableNavigable::apply_same_document_history_update(GC::Ref<LocalNavigable> target_navigable, NonnullRefPtr<SessionHistoryEntry> target_entry, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior history_handling, UserNavigationInvolvement user_involvement)
+{
+    if (has_remote_state()) {
+        auto previous_entry = entry_to_replace ? entry_to_replace : target_navigable->current_session_history_entry();
+        auto previous_step = previous_entry ? previous_entry->step_value().value_or(0) : 0;
+        target_entry->set_step(history_handling == HistoryHandlingBehavior::Push ? previous_step + 1 : previous_step);
+        target_navigable->set_current_session_history_entry(target_entry);
+        if (!target_navigable->ongoing_navigation().has<String>())
+            target_navigable->set_ongoing_navigation({}, LocalNavigable::NavigationAPIAbortBehavior::Preserve);
+        (void)user_involvement;
+        return;
+    }
+
+    GC::Ref<LocalTraversableNavigable> local_traversable = local();
+
+    // AD-HOC: Browser engines commit same-document navigations synchronously when no traversal state is active. Keep
+    //         the spec's queued synchronous-navigation steps as the fallback for reentrant traversal work and child
+    //         navigables whose nested history is not ready yet.
+    if (!local_traversable->try_to_synchronously_commit_same_document_navigation(target_navigable, target_entry, entry_to_replace)) {
+        local_traversable->append_session_history_synchronous_navigation_steps(target_navigable, GC::create_function(target_navigable->heap(), [local_traversable, target_navigable, target_entry, entry_to_replace, history_handling, user_involvement](NonnullRefPtr<Core::Promise<Empty>> signal) {
+            // 1. Finalize a same-document navigation given traversable, navigable, newEntry, entryToReplace,
+            //    historyHandling, and userInvolvement.
+            finalize_a_same_document_navigation(local_traversable, target_navigable, target_entry, entry_to_replace, history_handling, user_involvement,
+                GC::create_function(local_traversable->heap(), [signal](HistoryStepResult) {
+                    signal->resolve({});
+                }));
+            // 2. FIXME: Invoke WebDriver BiDi history updated with navigable.
+        }));
+    }
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#snapshotting-target-snapshot-params
@@ -3470,23 +3548,11 @@ void perform_url_and_history_update_steps(DOM::Document& document, URL::URL new_
     relevant_global_object.navigation()->update_the_navigation_api_entries_for_a_same_document_navigation(new_entry, navigation_type);
 
     // 12. Let traversable be navigable's traversable navigable.
-    auto traversable = GC::Ptr<LocalTraversableNavigable> { navigable->local_traversable_navigable() };
+    auto traversable = navigable->traversable_navigable();
+    VERIFY(traversable);
 
-    // AD-HOC: Browser engines commit same-document navigations synchronously when no traversal state is active. Keep
-    //         the spec's queued synchronous-navigation steps as the fallback for reentrant traversal work and child
-    //         navigables whose nested history is not ready yet.
-    // 13. Append the following session history synchronous navigation steps involving navigable to traversable:
-    if (!traversable->try_to_synchronously_commit_same_document_navigation(*navigable, new_entry, entry_to_replace)) {
-        traversable->append_session_history_synchronous_navigation_steps(*navigable, GC::create_function(document.realm().heap(), [traversable, navigable, new_entry, entry_to_replace, history_handling](NonnullRefPtr<Core::Promise<Empty>> signal) {
-            // 1. Finalize a same-document navigation given traversable, navigable, newEntry, entryToReplace,
-            //    historyHandling, and "none".
-            finalize_a_same_document_navigation(*traversable, *navigable, new_entry, entry_to_replace, history_handling, UserNavigationInvolvement::None,
-                GC::create_function(traversable->heap(), [signal](HistoryStepResult) {
-                    signal->resolve({});
-                }));
-            // 2. FIXME: Invoke WebDriver BiDi history updated with navigable.
-        }));
-    }
+    // 13. Append the following session history synchronous navigation steps involving navigable to traversable.
+    traversable->apply_same_document_history_update(*navigable, new_entry, entry_to_replace, history_handling, UserNavigationInvolvement::None);
 }
 
 void LocalNavigable::scroll_offset_did_change()

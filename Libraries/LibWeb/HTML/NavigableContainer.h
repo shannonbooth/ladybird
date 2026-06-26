@@ -65,6 +65,8 @@ protected:
     void set_content_navigable_has_session_history_entry_and_ready_for_navigation();
 
 private:
+    friend class TraversableNavigable;
+
     virtual bool is_navigable_container() const override { return true; }
 
     virtual void finalize() override;

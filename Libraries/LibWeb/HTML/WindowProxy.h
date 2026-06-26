@@ -41,6 +41,7 @@ public:
     GC::Ptr<Window> window() const { return m_window; }
     void set_window(GC::Ref<Window>);
     GC::Ptr<Navigable> remote_navigable() const { return m_remote_navigable; }
+    void set_remote_navigable(GC::Ref<Navigable>);
 
     GC::Ref<BrowsingContext> associated_browsing_context() const;
 

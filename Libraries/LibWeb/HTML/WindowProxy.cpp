@@ -463,7 +463,13 @@ void WindowProxy::visit_edges(JS::Cell::Visitor& visitor)
 
 void WindowProxy::set_window(GC::Ref<Window> window)
 {
+    m_remote_navigable = nullptr;
     m_window = move(window);
+}
+
+void WindowProxy::set_remote_navigable(GC::Ref<Navigable> navigable)
+{
+    m_remote_navigable = navigable;
 }
 
 GC::Ref<BrowsingContext> WindowProxy::associated_browsing_context() const

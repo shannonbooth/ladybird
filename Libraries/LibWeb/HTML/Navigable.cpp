@@ -117,6 +117,8 @@ LocalNavigable const& Navigable::local() const
 
 void Navigable::set_remote_state(RemoteNavigableState state)
 {
+    if (state.active_window_proxy)
+        state.active_window_proxy->set_remote_navigable(*this);
     m_state = move(state);
 }
 

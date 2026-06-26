@@ -435,6 +435,11 @@ void WebContentClient::did_request_new_process_for_child_frame_navigation(u64 pa
     remote_client->async_load_url_with_document_resource(remote_page_id, url, move(document_resource), history_handling);
 }
 
+void WebContentClient::did_request_navigation_of_remote_child_frame(u64 page_id, String frame_id, URL::URL url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling)
+{
+    SiteIsolationManager::the().navigate_remote_child_frame(*this, page_id, move(frame_id), move(url), move(document_resource), history_handling);
+}
+
 void WebContentClient::did_create_child_frame(u64 page_id, String parent_frame_id, String frame_id)
 {
     SiteIsolationManager::the().did_create_child_frame(page_id, move(parent_frame_id), move(frame_id));
@@ -567,7 +572,7 @@ void WebContentClient::did_finish_loading(u64 page_id, URL::URL url)
                 listener.on_load_finish(client_url);
         }
     } else {
-        SiteIsolationManager::the().remote_child_frame_did_commit_navigation(*this, page_id, url);
+        SiteIsolationManager::the().remote_child_frame_did_finish_loading(*this, page_id, url);
     }
 }
 
@@ -666,7 +671,7 @@ void WebContentClient::did_change_url(u64 page_id, URL::URL url)
         if (view->on_url_change)
             view->on_url_change(url);
     } else {
-        SiteIsolationManager::the().remote_child_frame_did_finish_loading(*this, page_id, url);
+        SiteIsolationManager::the().remote_child_frame_did_commit_navigation(*this, page_id, url);
     }
 }
 

@@ -152,6 +152,7 @@ private:
     virtual Web::NavigationProcessDecision decide_navigation_process(URL::URL const& current_url, URL::URL const& target_url, Web::NavigationTarget, Optional<String> frame_id) const override;
     virtual void request_new_process_for_navigation(URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::Bindings::NavigationHistoryBehavior) override;
     virtual void request_new_process_for_child_frame_navigation(String const& frame_id, URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::Bindings::NavigationHistoryBehavior) override;
+    virtual void request_navigation_of_remote_child_frame(String const& frame_id, URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::Bindings::NavigationHistoryBehavior) override;
     virtual void page_did_create_child_frame(String const& parent_frame_id, String const& frame_id) override;
     virtual void page_did_update_child_frame_viewport(String const& frame_id, Web::CSSPixelRect) override;
     virtual void page_did_commit_child_frame_navigation(String const& frame_id, URL::URL const&) override;

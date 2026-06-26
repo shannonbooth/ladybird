@@ -93,6 +93,19 @@ bool SiteIsolationManager::did_commit_child_frame_navigation(WebContentClient& p
     return true;
 }
 
+bool SiteIsolationManager::navigate_remote_child_frame(WebContentClient&, u64 page_id, String frame_id, URL::URL url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling)
+{
+    auto child_frame = this->child_frame(page_id, frame_id);
+    if (!child_frame.has_value() || !child_frame->is_remote())
+        return false;
+
+    auto remote_page_id = child_frame->remote_page_id;
+    auto remote_client = child_frame->remote_client;
+    record_pending_child_frame_navigation(page_id, frame_id, url, ChildFrameOwner::Remote, remote_page_id);
+    remote_client->async_load_url_with_document_resource(remote_page_id, move(url), move(document_resource), history_handling);
+    return true;
+}
+
 void SiteIsolationManager::did_destroy_child_frame(WebContentClient& parent_client, u64 page_id, StringView frame_id)
 {
     auto child_frames = m_child_frames.get(page_id);

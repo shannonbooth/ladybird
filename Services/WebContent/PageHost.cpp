@@ -53,8 +53,8 @@ void PageHost::initialize_embedded_frame(u64 initial_page_id, String local_navig
 
     GC::Ptr<Web::HTML::Navigable> parent;
     JS::Realm& realm = document->realm();
-    for (auto& ancestor : ancestors)
-        parent = Web::HTML::Navigable::create_remote(realm, move(ancestor), parent);
+    for (auto i = ancestors.size(); i > 0; --i)
+        parent = Web::HTML::Navigable::create_remote(realm, move(ancestors[i - 1]), parent);
     local_root->set_parent(parent);
 }
 

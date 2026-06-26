@@ -55,6 +55,11 @@ public:
     GC::Ptr<WindowProxy> active_window_proxy();
     bool is_top_level_traversable() const;
 
+    void reload(GC::Ref<LocalNavigable> target_navigable, Optional<SerializationRecord> navigation_api_state = {}, UserNavigationInvolvement = UserNavigationInvolvement::None);
+    void apply_same_document_history_update(GC::Ref<LocalNavigable> target_navigable, NonnullRefPtr<SessionHistoryEntry> target_entry, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior, UserNavigationInvolvement);
+    void apply_navigable_creation(GC::Ref<NavigableContainer>, GC::Ref<LocalNavigable> parent_navigable, GC::Ref<LocalNavigable> child_navigable, NonnullRefPtr<SessionHistoryEntry>);
+    void apply_navigable_destruction(GC::Ref<LocalNavigable> parent_navigable, String child_navigable_id);
+
     bool has_local_state() const { return m_state.has<LocalTraversableState>(); }
     bool has_remote_state() const { return m_state.has<RemoteTraversableState>(); }
 
