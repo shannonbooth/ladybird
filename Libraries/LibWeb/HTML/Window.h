@@ -198,6 +198,8 @@ public:
     WebIDL::ExceptionOr<void> post_message(JS::Value message, Bindings::WindowPostMessageOptions const&);
     WebIDL::ExceptionOr<void> post_message_to_remote_navigable(GC::Ref<Navigable>, JS::Value message, String const&, GC::RootVector<GC::Ref<JS::Object>> const&);
     WebIDL::ExceptionOr<void> post_message_to_remote_navigable(GC::Ref<Navigable>, JS::Value message, Bindings::WindowPostMessageOptions const&);
+    WebIDL::ExceptionOr<void> post_message_to_remote_navigable_id(String const& target_navigable_id, JS::Value message, String const&, GC::RootVector<GC::Ref<JS::Object>> const&);
+    WebIDL::ExceptionOr<void> post_message_to_remote_navigable_id(String const& target_navigable_id, JS::Value message, Bindings::WindowPostMessageOptions const&);
 
     Variant<GC::Ref<DOM::Event>, Empty> event() const;
 

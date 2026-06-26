@@ -20,13 +20,42 @@
 
 namespace Web::HTML {
 
+class WindowProxy;
+
+enum class WindowProxyAccessMode {
+    SameOriginDomain,
+    CrossOrigin,
+};
+
 struct LocalWindowProxyTarget {
     GC::Ptr<Window> window;
+
+    Window& window_ref() const;
+    WindowProxyAccessMode access_mode() const;
+    Optional<URL::Origin> extract_an_origin() const;
+    JS::ThrowCompletionOr<JS::Object*> internal_get_prototype_of() const;
+    JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> internal_get_own_property(WindowProxy const&, JS::PropertyKey const&) const;
+    JS::ThrowCompletionOr<bool> internal_define_own_property(WindowProxy&, JS::PropertyKey const&, JS::PropertyDescriptor&) const;
+    JS::ThrowCompletionOr<JS::Value> internal_get(WindowProxy const&, JS::PropertyKey const&, JS::Value receiver) const;
+    JS::ThrowCompletionOr<bool> internal_set(WindowProxy&, JS::PropertyKey const&, JS::Value value, JS::Value receiver) const;
+    JS::ThrowCompletionOr<bool> internal_delete(WindowProxy&, JS::PropertyKey const&) const;
+    JS::ThrowCompletionOr<GC::RootVector<JS::Value>> internal_own_property_keys(WindowProxy const&) const;
 };
 
 struct RemoteWindowProxyTarget {
     GC::Ptr<Navigable> navigable;
     GC::Ptr<JS::Object> location;
+
+    Navigable& navigable_ref() const;
+    WindowProxyAccessMode access_mode() const;
+    Optional<URL::Origin> extract_an_origin() const;
+    JS::ThrowCompletionOr<JS::Object*> internal_get_prototype_of() const;
+    JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> internal_get_own_property(WindowProxy const&, JS::PropertyKey const&) const;
+    JS::ThrowCompletionOr<bool> internal_define_own_property(WindowProxy&, JS::PropertyKey const&, JS::PropertyDescriptor&) const;
+    JS::ThrowCompletionOr<JS::Value> internal_get(WindowProxy const&, JS::PropertyKey const&, JS::Value receiver) const;
+    JS::ThrowCompletionOr<bool> internal_set(WindowProxy&, JS::PropertyKey const&, JS::Value value, JS::Value receiver) const;
+    JS::ThrowCompletionOr<bool> internal_delete(WindowProxy&, JS::PropertyKey const&) const;
+    JS::ThrowCompletionOr<GC::RootVector<JS::Value>> internal_own_property_keys(WindowProxy const&) const;
 };
 
 class WEB_API WindowProxy final : public DOM::EventTarget {
@@ -63,13 +92,10 @@ private:
     static GC::Ref<WindowProxy> create_remote(JS::Realm&, GC::Ref<Navigable>);
     void set_remote_navigable(GC::Ref<Navigable>);
 
-    bool is_remote_same_origin_domain() const;
     LocalWindowProxyTarget* local_target();
     LocalWindowProxyTarget const* local_target() const;
     RemoteWindowProxyTarget* remote_target();
     RemoteWindowProxyTarget const* remote_target() const;
-    Window& local_window() const;
-    Navigable& remote_navigable_ref() const;
 
     virtual bool is_universal_global_scope_mixin() const final { return true; }
 

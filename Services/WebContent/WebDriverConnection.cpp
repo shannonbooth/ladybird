@@ -2729,12 +2729,10 @@ void WebDriverConnection::set_current_browsing_context(Web::HTML::BrowsingContex
 
     // 2. Set the session's current parent browsing context to the parent browsing context of context, if that context
     //    exists, or null otherwise.
-    if (auto navigable = browsing_context.active_document()->navigable(); navigable && navigable->parent()) {
-        auto parent_navigable = navigable->parent();
-        m_current_parent_browsing_context = as<Web::HTML::LocalNavigable>(*parent_navigable).active_browsing_context();
-    } else {
+    if (auto navigable = browsing_context.active_document()->navigable(); navigable && navigable->parent())
+        m_current_parent_browsing_context = as<Web::HTML::LocalNavigable>(*navigable->parent()).active_browsing_context();
+    else
         m_current_parent_browsing_context = nullptr;
-    }
 }
 
 // https://w3c.github.io/webdriver/#dfn-set-the-current-browsing-context

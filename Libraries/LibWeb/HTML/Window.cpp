@@ -1355,7 +1355,12 @@ WebIDL::ExceptionOr<void> Window::window_post_message_steps(JS::Value message, B
 
 WebIDL::ExceptionOr<void> Window::post_message_to_remote_navigable(GC::Ref<Navigable> target_navigable, JS::Value message, Bindings::WindowPostMessageOptions const& options)
 {
-    dbgln("SI_TRACE Window::post_message_to_remote_navigable target={}", target_navigable->id());
+    return post_message_to_remote_navigable_id(target_navigable->id(), message, options);
+}
+
+WebIDL::ExceptionOr<void> Window::post_message_to_remote_navigable_id(String const& target_navigable_id, JS::Value message, Bindings::WindowPostMessageOptions const& options)
+{
+    dbgln("SI_TRACE Window::post_message_to_remote_navigable_id target={}", target_navigable_id);
     auto& target_realm = this->realm();
     auto& incumbent_settings = incumbent_settings_object();
 
@@ -1375,12 +1380,12 @@ WebIDL::ExceptionOr<void> Window::post_message_to_remote_navigable(GC::Ref<Navig
 
     auto source_navigable = this->navigable();
     auto source_navigable_id = source_navigable ? source_navigable->id() : String {};
-    auto target_navigable_id = target_navigable->id();
+    auto target_navigable_id_for_task = target_navigable_id;
     auto source_origin = incumbent_settings.origin();
-    dbgln("SI_TRACE sending remote message target={} source={}", target_navigable->id(), source_navigable_id);
+    dbgln("SI_TRACE sending remote message target={} source={}", target_navigable_id, source_navigable_id);
     // Preserve the posted-message task boundary before crossing process boundaries,
     // so remote targets do not overtake same-turn local posted-message tasks.
-    queue_global_task(Task::Source::PostedMessage, *this, GC::create_function(heap(), [source_window = GC::Ref { *this }, target_navigable_id = move(target_navigable_id), source_navigable_id = move(source_navigable_id), serialize_with_transfer_result = move(serialize_with_transfer_result), target_origin = move(target_origin), source_origin = move(source_origin)] mutable {
+    queue_global_task(Task::Source::PostedMessage, *this, GC::create_function(heap(), [source_window = GC::Ref { *this }, target_navigable_id = move(target_navigable_id_for_task), source_navigable_id = move(source_navigable_id), serialize_with_transfer_result = move(serialize_with_transfer_result), target_origin = move(target_origin), source_origin = move(source_origin)] mutable {
         source_window->page().client().page_did_post_message_to_remote_navigable(target_navigable_id, source_navigable_id, move(serialize_with_transfer_result), move(target_origin), move(source_origin));
     }));
     return {};
@@ -1389,6 +1394,11 @@ WebIDL::ExceptionOr<void> Window::post_message_to_remote_navigable(GC::Ref<Navig
 WebIDL::ExceptionOr<void> Window::post_message_to_remote_navigable(GC::Ref<Navigable> target_navigable, JS::Value message, String const& target_origin, GC::RootVector<GC::Ref<JS::Object>> const& transfer)
 {
     return post_message_to_remote_navigable(target_navigable, message, Bindings::WindowPostMessageOptions { { .transfer = transfer }, target_origin });
+}
+
+WebIDL::ExceptionOr<void> Window::post_message_to_remote_navigable_id(String const& target_navigable_id, JS::Value message, String const& target_origin, GC::RootVector<GC::Ref<JS::Object>> const& transfer)
+{
+    return post_message_to_remote_navigable_id(target_navigable_id, message, Bindings::WindowPostMessageOptions { { .transfer = transfer }, target_origin });
 }
 
 // https://html.spec.whatwg.org/multipage/web-messaging.html#dom-window-postmessage-options
@@ -1966,10 +1976,8 @@ OrderedHashMap<FlyString, GC::Ref<Navigable>> Window::document_tree_child_naviga
     for (auto const& [name, navigable] : first_named_children) {
         // 1. Let name be navigable's target name.
         // 2. If navigable's active document's origin is same origin with window's relevant settings object's origin, then append name to names.
-        auto window_proxy = navigable->active_window_proxy();
-        auto window = window_proxy ? window_proxy->window() : nullptr;
-        auto document = window ? &window->associated_document() : nullptr;
-        if (!document || document->origin().is_same_origin(relevant_settings_object(*this).origin()))
+        auto active_document_origin = navigable->active_document_origin();
+        if (!active_document_origin.has_value() || active_document_origin->is_same_origin(relevant_settings_object(*this).origin()))
             names.set(name, *navigable);
     }
 
