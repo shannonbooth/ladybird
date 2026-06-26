@@ -14,6 +14,7 @@
 #include <LibWeb/DOM/EventTarget.h>
 #include <LibWeb/Export.h>
 #include <LibWeb/Forward.h>
+#include <LibWeb/HTML/CrossOrigin/CrossOriginPropertyDescriptorMap.h>
 #include <LibURL/Origin.h>
 
 namespace Web::HTML {
@@ -43,6 +44,8 @@ public:
     GC::Ptr<Navigable> remote_navigable() const { return m_remote_navigable; }
     void set_remote_navigable(GC::Ref<Navigable>);
     GC::Ref<JS::Object> remote_location_object();
+    CrossOriginPropertyDescriptorMap const& cross_origin_property_descriptor_map() const { return m_cross_origin_property_descriptor_map; }
+    CrossOriginPropertyDescriptorMap& cross_origin_property_descriptor_map() { return m_cross_origin_property_descriptor_map; }
 
     GC::Ref<BrowsingContext> associated_browsing_context() const;
 
@@ -60,6 +63,7 @@ private:
     GC::Ptr<Window> m_window;
     GC::Ptr<Navigable> m_remote_navigable;
     GC::Ptr<JS::Object> m_remote_location;
+    CrossOriginPropertyDescriptorMap m_cross_origin_property_descriptor_map;
 };
 
 }

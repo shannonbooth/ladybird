@@ -36,412 +36,6 @@ namespace Web::HTML {
 
 GC_DEFINE_ALLOCATOR(WindowProxy);
 
-static JS::ThrowCompletionOr<GC::RootVector<GC::Ref<JS::Object>>> convert_transfer_argument(JS::VM& vm, JS::Value value)
-{
-    GC::RootVector<GC::Ref<JS::Object>> transfer;
-    if (value.is_undefined())
-        return transfer;
-
-    if (!value.is_object())
-        return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObject, value);
-
-    auto iterator_method = TRY(value.get_method(vm, vm.well_known_symbol_iterator()));
-    if (!iterator_method)
-        return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotIterable, value);
-
-    auto iterator = TRY(JS::get_iterator_from_method(vm, value, *iterator_method));
-    for (;;) {
-        auto next = TRY(JS::iterator_step_value(vm, iterator));
-        if (!next.has_value())
-            break;
-
-        auto next_value = next.release_value();
-        if (!next_value.is_object())
-            return vm.throw_completion<JS::TypeError>(JS::ErrorType::NotAnObject, next_value);
-
-        transfer.append(next_value.as_object());
-    }
-
-    return transfer;
-}
-
-static GC::Ref<JS::NativeFunction> create_remote_window_post_message_method(JS::Realm& realm, GC::Ref<Navigable> remote_navigable)
-{
-    return JS::NativeFunction::create(
-        realm, [remote_navigable](JS::VM& vm) -> JS::ThrowCompletionOr<JS::Value> {
-            auto message = vm.argument(0);
-            auto& source_window = as<Window>(current_global_object());
-            if (auto source_navigable = source_window.navigable())
-                dbgln("SI_TRACE remote postMessage target={} source={}", remote_navigable->id(), source_navigable->id());
-            else
-                dbgln("SI_TRACE remote postMessage target={} source=<null>", remote_navigable->id());
-
-            if (vm.argument_count() >= 3) {
-                auto target_origin = TRY(WebIDL::to_usv_string(vm, vm.argument(1)));
-                auto transfer = TRY(convert_transfer_argument(vm, vm.argument(2)));
-                TRY(Bindings::throw_dom_exception_if_needed(vm, [&] {
-                    return source_window.post_message_to_remote_navigable(remote_navigable, message, target_origin, transfer);
-                }));
-                return JS::js_undefined();
-            }
-
-            auto second_argument = vm.argument(1);
-            if (vm.argument_count() == 2 && !second_argument.is_undefined() && !second_argument.is_object()) {
-                auto target_origin = TRY(WebIDL::to_usv_string(vm, second_argument));
-                GC::RootVector<GC::Ref<JS::Object>> transfer;
-                TRY(Bindings::throw_dom_exception_if_needed(vm, [&] {
-                    return source_window.post_message_to_remote_navigable(remote_navigable, message, target_origin, transfer);
-                }));
-                return JS::js_undefined();
-            }
-
-            Bindings::WindowPostMessageOptions options {};
-            if (vm.argument_count() >= 2 && !second_argument.is_undefined())
-                options = TRY(Bindings::convert_to_idl_value_for_window_post_message_options(vm, second_argument));
-            TRY(Bindings::throw_dom_exception_if_needed(vm, [&] {
-                return source_window.post_message_to_remote_navigable(remote_navigable, message, options);
-            }));
-            return JS::js_undefined();
-        },
-        1, "postMessage"_utf16_fly_string);
-}
-
-static WebIDL::ExceptionOr<void> navigate_remote_location(JS::VM& vm, GC::Ref<Navigable> remote_navigable, String const& href, Bindings::NavigationHistoryBehavior history_handling)
-{
-    auto& realm = *vm.current_realm();
-
-    auto url = entry_settings_object().encoding_parse_url(href.to_byte_string());
-    if (!url.has_value())
-        return WebIDL::SyntaxError::create(realm, Utf16String::formatted("Invalid URL '{}'", href));
-
-    auto& source_window = as<Window>(incumbent_global_object());
-    source_window.associated_document().page().client().request_navigation_of_remote_child_frame(remote_navigable->id(), url.release_value(), Empty {}, history_handling);
-    return {};
-}
-
-static GC::Ref<JS::NativeFunction> create_remote_location_method(JS::Realm& realm, GC::Ref<Navigable> remote_navigable, StringView property)
-{
-    if (property == "replace"sv) {
-        return JS::NativeFunction::create(
-            realm, [remote_navigable](JS::VM& vm) -> JS::ThrowCompletionOr<JS::Value> {
-                if (vm.argument_count() < 1)
-                    return vm.throw_completion<JS::TypeError>(JS::ErrorType::BadArgCountOne, "replace");
-
-                auto url = TRY(WebIDL::to_usv_string(vm, vm.argument(0)));
-                TRY(Bindings::throw_dom_exception_if_needed(vm, [&] {
-                    return navigate_remote_location(vm, remote_navigable, url, Bindings::NavigationHistoryBehavior::Replace);
-                }));
-                return JS::js_undefined();
-            },
-            1, "replace"_utf16_fly_string);
-    }
-
-    VERIFY_NOT_REACHED();
-}
-
-static GC::Ref<JS::NativeFunction> create_remote_location_setter(JS::Realm& realm, GC::Ref<Navigable> remote_navigable, StringView property)
-{
-    if (property == "href"sv) {
-        return JS::NativeFunction::create(
-            realm, [remote_navigable](JS::VM& vm) -> JS::ThrowCompletionOr<JS::Value> {
-                auto href = TRY(WebIDL::to_usv_string(vm, vm.argument(0)));
-                TRY(Bindings::throw_dom_exception_if_needed(vm, [&] {
-                    return navigate_remote_location(vm, remote_navigable, href, Bindings::NavigationHistoryBehavior::Auto);
-                }));
-                return JS::js_undefined();
-            },
-            1, "href"_utf16_fly_string, &realm, "set"sv);
-    }
-
-    VERIFY_NOT_REACHED();
-}
-
-class RemoteLocationObject final : public JS::Object {
-    JS_OBJECT(RemoteLocationObject, JS::Object);
-    GC_DECLARE_ALLOCATOR(RemoteLocationObject);
-
-public:
-    static GC::Ref<RemoteLocationObject> create(JS::Realm& realm, GC::Ref<Navigable> remote_navigable)
-    {
-        return realm.create<RemoteLocationObject>(realm, remote_navigable);
-    }
-
-    RemoteLocationObject(JS::Realm& realm, GC::Ref<Navigable> remote_navigable)
-        : JS::Object(realm, realm.intrinsics().object_prototype(), MayInterfereWithIndexedPropertyAccess::Yes)
-        , m_remote_navigable(remote_navigable)
-    {
-    }
-
-    virtual JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> internal_get_own_property(JS::PropertyKey const& property_key) const override
-    {
-        auto& vm = this->vm();
-        auto& realm = *vm.current_realm();
-
-        if (!property_key.is_string())
-            return TRY(cross_origin_property_fallback(vm, property_key));
-
-        auto property = property_key.to_utf16_string().to_utf8_but_should_be_ported_to_utf16();
-        if (property == "replace"sv) {
-            return JS::PropertyDescriptor {
-                .value = JS::Value(create_remote_location_method(realm, m_remote_navigable, property).ptr()),
-                .writable = false,
-                .enumerable = false,
-                .configurable = true,
-            };
-        }
-
-        if (property == "href"sv) {
-            return JS::PropertyDescriptor {
-                .set = create_remote_location_setter(realm, m_remote_navigable, property).ptr(),
-                .enumerable = false,
-                .configurable = true,
-            };
-        }
-
-        return TRY(cross_origin_property_fallback(vm, property_key));
-    }
-
-    virtual JS::ThrowCompletionOr<JS::Value> internal_get(JS::PropertyKey const& property_key, JS::Value receiver, JS::CacheableGetPropertyMetadata*, PropertyLookupPhase) const override
-    {
-        auto& vm = this->vm();
-        auto& realm = *vm.current_realm();
-        auto descriptor = TRY(internal_get_own_property(property_key));
-        VERIFY(descriptor.has_value());
-
-        if (descriptor->is_data_descriptor())
-            return *descriptor->value;
-
-        VERIFY(descriptor->is_accessor_descriptor());
-        if (!descriptor->get.has_value())
-            return throw_completion(WebIDL::SecurityError::create(realm, Utf16String::formatted("Can't get property '{}' on cross-origin object", property_key)));
-
-        return JS::call(vm, *descriptor->get, receiver);
-    }
-
-    virtual JS::ThrowCompletionOr<bool> internal_set(JS::PropertyKey const& property_key, JS::Value value, JS::Value receiver, JS::CacheableSetPropertyMetadata*, PropertyLookupPhase) override
-    {
-        return cross_origin_set(vm(), *this, property_key, value, receiver);
-    }
-
-    virtual JS::ThrowCompletionOr<GC::RootVector<JS::Value>> internal_own_property_keys() const override
-    {
-        auto& vm = this->vm();
-
-        GC::RootVector<JS::Value> keys;
-        keys.append(JS::PrimitiveString::create(vm, "href"_utf16_fly_string));
-        keys.append(JS::PrimitiveString::create(vm, "replace"_utf16_fly_string));
-        keys.append(JS::PrimitiveString::create(vm, vm.names.then.as_string()));
-        keys.append(vm.well_known_symbol_to_string_tag());
-        keys.append(vm.well_known_symbol_has_instance());
-        keys.append(vm.well_known_symbol_is_concat_spreadable());
-        return keys;
-    }
-
-private:
-    virtual void visit_edges(JS::Cell::Visitor& visitor) override
-    {
-        Base::visit_edges(visitor);
-        visitor.visit(m_remote_navigable);
-    }
-
-    GC::Ref<Navigable> m_remote_navigable;
-};
-
-GC_DEFINE_ALLOCATOR(RemoteLocationObject);
-
-static GC::Ref<JS::NativeFunction> create_remote_window_method(JS::Realm& realm, GC::Ref<Navigable> remote_navigable, StringView property)
-{
-    if (property == "close"sv) {
-        return JS::NativeFunction::create(
-            realm, [remote_navigable](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
-                (void)remote_navigable;
-                // FIXME: Route remote window close by navigable id.
-                return JS::js_undefined();
-            },
-            0, "close"_utf16_fly_string);
-    }
-
-    if (property == "focus"sv) {
-        return JS::NativeFunction::create(
-            realm, [remote_navigable](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
-                (void)remote_navigable;
-                // FIXME: Route remote window focus by navigable id.
-                return JS::js_undefined();
-            },
-            0, "focus"_utf16_fly_string);
-    }
-
-    if (property == "blur"sv) {
-        return JS::NativeFunction::create(
-            realm, [remote_navigable](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
-                (void)remote_navigable;
-                // FIXME: Route remote window blur by navigable id.
-                return JS::js_undefined();
-            },
-            0, "blur"_utf16_fly_string);
-    }
-
-    if (property == "postMessage"sv)
-        return create_remote_window_post_message_method(realm, remote_navigable);
-
-    VERIFY_NOT_REACHED();
-}
-
-static GC::Ref<JS::NativeFunction> create_remote_window_getter(JS::Realm& realm, WindowProxy& window_proxy, GC::Ref<Navigable> remote_navigable, StringView property)
-{
-    auto window_proxy_ref = GC::Ref { window_proxy };
-
-    if (property == "window"sv) {
-        return JS::NativeFunction::create(
-            realm, [window_proxy = window_proxy_ref](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
-                return window_proxy.ptr();
-            },
-            0, "window"_utf16_fly_string, &realm, "get"sv);
-    }
-
-    if (property == "self"sv) {
-        return JS::NativeFunction::create(
-            realm, [window_proxy = window_proxy_ref](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
-                return window_proxy.ptr();
-            },
-            0, "self"_utf16_fly_string, &realm, "get"sv);
-    }
-
-    if (property == "location"sv) {
-        return JS::NativeFunction::create(
-            realm, [window_proxy = window_proxy_ref](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
-                return window_proxy->remote_location_object().ptr();
-            },
-            0, "location"_utf16_fly_string, &realm, "get"sv);
-    }
-
-    if (property == "closed"sv) {
-        return JS::NativeFunction::create(
-            realm, [remote_navigable](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
-                (void)remote_navigable;
-                return JS::Value(false);
-            },
-            0, "closed"_utf16_fly_string, &realm, "get"sv);
-    }
-
-    if (property == "frames"sv) {
-        return JS::NativeFunction::create(
-            realm, [window_proxy = window_proxy_ref](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
-                return window_proxy.ptr();
-            },
-            0, "frames"_utf16_fly_string, &realm, "get"sv);
-    }
-
-    if (property == "length"sv) {
-        return JS::NativeFunction::create(
-            realm, [remote_navigable](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
-                (void)remote_navigable;
-                return JS::Value(0);
-            },
-            0, "length"_utf16_fly_string, &realm, "get"sv);
-    }
-
-    if (property == "top"sv) {
-        return JS::NativeFunction::create(
-            realm, [remote_navigable](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
-                auto traversable = remote_navigable->top_level_traversable();
-                if (!traversable)
-                    return JS::js_null();
-                auto window_proxy = traversable->active_window_proxy();
-                if (!window_proxy)
-                    return JS::js_null();
-                return window_proxy.ptr();
-            },
-            0, "top"_utf16_fly_string, &realm, "get"sv);
-    }
-
-    if (property == "opener"sv) {
-        return JS::NativeFunction::create(
-            realm, [remote_navigable](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
-                (void)remote_navigable;
-                return JS::js_null();
-            },
-            0, "opener"_utf16_fly_string, &realm, "get"sv);
-    }
-
-    if (property == "parent"sv) {
-        return JS::NativeFunction::create(
-            realm, [window_proxy = window_proxy_ref, remote_navigable](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
-                if (auto parent = remote_navigable->parent()) {
-                    auto parent_window_proxy = parent->active_window_proxy();
-                    if (!parent_window_proxy)
-                        return JS::js_null();
-                    return parent_window_proxy.ptr();
-                }
-                return window_proxy.ptr();
-            },
-            0, "parent"_utf16_fly_string, &realm, "get"sv);
-    }
-
-    VERIFY_NOT_REACHED();
-}
-
-static GC::Ref<JS::NativeFunction> create_remote_window_setter(JS::Realm& realm, GC::Ref<Navigable> remote_navigable, StringView property)
-{
-    if (property == "location"sv) {
-        return JS::NativeFunction::create(
-            realm, [remote_navigable](JS::VM& vm) -> JS::ThrowCompletionOr<JS::Value> {
-                auto href = TRY(WebIDL::to_usv_string(vm, vm.argument(0)));
-                TRY(Bindings::throw_dom_exception_if_needed(vm, [&] {
-                    return navigate_remote_location(vm, remote_navigable, href, Bindings::NavigationHistoryBehavior::Auto);
-                }));
-                return JS::js_undefined();
-            },
-            1, "location"_utf16_fly_string, &realm, "set"sv);
-    }
-
-    VERIFY_NOT_REACHED();
-}
-
-static bool is_remote_window_proxy_property(StringView property)
-{
-    return property == "window"sv
-        || property == "self"sv
-        || property == "location"sv
-        || property == "close"sv
-        || property == "focus"sv
-        || property == "blur"sv
-        || property == "frames"sv
-        || property == "parent"sv
-        || property == "top"sv
-        || property == "length"sv
-        || property == "closed"sv
-        || property == "opener"sv
-        || property == "postMessage"sv;
-}
-
-static JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> remote_window_proxy_get_own_property(WindowProxy const& window_proxy, JS::PropertyKey const& property_key)
-{
-    auto remote_navigable = window_proxy.remote_navigable();
-    VERIFY(remote_navigable);
-
-    auto& vm = window_proxy.vm();
-
-    if (!property_key.is_string())
-        return TRY(cross_origin_property_fallback(vm, property_key));
-
-    auto property = property_key.to_utf16_string().to_utf8_but_should_be_ported_to_utf16();
-    if (!is_remote_window_proxy_property(property))
-        return TRY(cross_origin_property_fallback(vm, property_key));
-
-    if (property == "close"sv || property == "focus"sv || property == "blur"sv || property == "postMessage"sv) {
-        auto value = JS::Value(create_remote_window_method(window_proxy.realm(), *remote_navigable, property).ptr());
-        return JS::PropertyDescriptor { .value = value, .writable = false, .enumerable = false, .configurable = true };
-    }
-
-    Optional<GC::Ptr<JS::FunctionObject>> getter = create_remote_window_getter(window_proxy.realm(), const_cast<WindowProxy&>(window_proxy), *remote_navigable, property).ptr();
-    Optional<GC::Ptr<JS::FunctionObject>> setter;
-    if (property == "location"sv)
-        setter = create_remote_window_setter(window_proxy.realm(), *remote_navigable, property).ptr();
-
-    return JS::PropertyDescriptor { .get = getter, .set = setter, .enumerable = false, .configurable = true };
-}
-
 GC::Ref<WindowProxy> WindowProxy::create_remote(JS::Realm& realm, GC::Ref<Navigable> navigable)
 {
     auto window_proxy = realm.create<WindowProxy>(realm);
@@ -512,8 +106,12 @@ JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> WindowProxy::internal_ge
 {
     auto& vm = this->vm();
 
-    if (m_remote_navigable)
-        return remote_window_proxy_get_own_property(*this, property_key);
+    if (m_remote_navigable) {
+        auto property = cross_origin_get_own_property_helper(*this, property_key);
+        if (property.has_value())
+            return property;
+        return TRY(cross_origin_property_fallback(vm, property_key));
+    }
 
     // 1. Let W be the value of the [[Window]] internal slot of this.
 
@@ -693,27 +291,8 @@ JS::ThrowCompletionOr<GC::RootVector<JS::Value>> WindowProxy::internal_own_prope
     auto& event_loop = main_thread_event_loop();
     auto& vm = event_loop.vm();
 
-    if (m_remote_navigable) {
-        GC::RootVector<JS::Value> keys;
-        keys.append(JS::PrimitiveString::create(vm, "window"_utf16_fly_string));
-        keys.append(JS::PrimitiveString::create(vm, "self"_utf16_fly_string));
-        keys.append(JS::PrimitiveString::create(vm, "location"_utf16_fly_string));
-        keys.append(JS::PrimitiveString::create(vm, "close"_utf16_fly_string));
-        keys.append(JS::PrimitiveString::create(vm, "focus"_utf16_fly_string));
-        keys.append(JS::PrimitiveString::create(vm, "blur"_utf16_fly_string));
-        keys.append(JS::PrimitiveString::create(vm, "closed"_utf16_fly_string));
-        keys.append(JS::PrimitiveString::create(vm, "frames"_utf16_fly_string));
-        keys.append(JS::PrimitiveString::create(vm, "length"_utf16_fly_string));
-        keys.append(JS::PrimitiveString::create(vm, "top"_utf16_fly_string));
-        keys.append(JS::PrimitiveString::create(vm, "opener"_utf16_fly_string));
-        keys.append(JS::PrimitiveString::create(vm, "parent"_utf16_fly_string));
-        keys.append(JS::PrimitiveString::create(vm, "postMessage"_utf16_fly_string));
-        keys.append(JS::PrimitiveString::create(vm, vm.names.then.as_string()));
-        keys.append(vm.well_known_symbol_to_string_tag());
-        keys.append(vm.well_known_symbol_has_instance());
-        keys.append(vm.well_known_symbol_is_concat_spreadable());
-        return keys;
-    }
+    if (m_remote_navigable)
+        return cross_origin_own_property_keys(*this);
 
     // 1. Let W be the value of the [[Window]] internal slot of this.
 
@@ -749,12 +328,15 @@ void WindowProxy::visit_edges(JS::Cell::Visitor& visitor)
     visitor.visit(m_window);
     visitor.visit(m_remote_navigable);
     visitor.visit(m_remote_location);
+    for (auto& descriptor : m_cross_origin_property_descriptor_map)
+        descriptor.value.visit_edges(visitor);
 }
 
 void WindowProxy::set_window(GC::Ref<Window> window)
 {
     m_remote_navigable = nullptr;
     m_remote_location = nullptr;
+    m_cross_origin_property_descriptor_map.clear();
     m_window = move(window);
 }
 
@@ -762,6 +344,7 @@ void WindowProxy::set_remote_navigable(GC::Ref<Navigable> navigable)
 {
     m_remote_navigable = navigable;
     m_remote_location = nullptr;
+    m_cross_origin_property_descriptor_map.clear();
 }
 
 GC::Ref<JS::Object> WindowProxy::remote_location_object()
@@ -771,7 +354,7 @@ GC::Ref<JS::Object> WindowProxy::remote_location_object()
     if (m_remote_location)
         return *m_remote_location;
 
-    auto remote_location = RemoteLocationObject::create(realm(), *m_remote_navigable);
+    auto remote_location = create_remote_location_object(realm(), *m_remote_navigable);
     m_remote_location = remote_location;
     return remote_location;
 }

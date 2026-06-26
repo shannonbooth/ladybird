@@ -27,6 +27,11 @@ BrowsingContextGroup::BrowsingContextGroup(GC::Ref<Web::Page> page)
     user_agent_browsing_context_group_set().set(*this);
 }
 
+GC::Ref<BrowsingContextGroup> BrowsingContextGroup::create(GC::Ref<Page> page)
+{
+    return Bindings::main_thread_vm().heap().allocate<BrowsingContextGroup>(page);
+}
+
 void BrowsingContextGroup::finalize()
 {
     Base::finalize();
@@ -45,7 +50,7 @@ BrowsingContextGroup::BrowsingContextGroupAndDocument BrowsingContextGroup::crea
 {
     // 1. Let group be a new browsing context group.
     // 2. Append group to the user agent's browsing context group set.
-    auto group = Bindings::main_thread_vm().heap().allocate<BrowsingContextGroup>(page);
+    auto group = BrowsingContextGroup::create(page);
 
     // 3. Let browsingContext and document be the result of creating a new browsing context and document with null, null, and group.
     auto [browsing_context, document] = BrowsingContext::create_a_new_browsing_context_and_document(page, nullptr, nullptr, group);

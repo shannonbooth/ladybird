@@ -25,6 +25,7 @@ public:
     };
     static constexpr bool OVERRIDES_FINALIZE = true;
 
+    static GC::Ref<BrowsingContextGroup> create(GC::Ref<Page>);
     static BrowsingContextGroupAndDocument create_a_new_browsing_context_group_and_document(GC::Ref<Page>);
 
     Page& page() { return m_page; }
