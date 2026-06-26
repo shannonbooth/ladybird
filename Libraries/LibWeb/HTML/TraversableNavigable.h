@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <AK/Variant.h>
 #include <AK/Vector.h>
 #include <LibWeb/Bindings/NavigationType.h>
 #include <LibWeb/Export.h>
@@ -31,13 +32,20 @@ namespace Web::HTML {
 class ApplyHistoryStepState;
 class LocalTraversableNavigable;
 
+struct LocalTraversableState {
+};
+
+struct RemoteTraversableState {
+};
+
 // https://html.spec.whatwg.org/multipage/document-sequences.html#traversable-navigable
 class WEB_API TraversableNavigable final : public JS::Cell {
     GC_CELL(TraversableNavigable, JS::Cell);
     GC_DECLARE_ALLOCATOR(TraversableNavigable);
 
 public:
-    static GC::Ref<TraversableNavigable> create(GC::Ref<Navigable>);
+    static GC::Ref<TraversableNavigable> create_local(GC::Ref<LocalTraversableNavigable>);
+    static GC::Ref<TraversableNavigable> create_remote(GC::Ref<Navigable>);
 
     virtual ~TraversableNavigable() override;
 
@@ -47,6 +55,9 @@ public:
     GC::Ptr<WindowProxy> active_window_proxy();
     bool is_top_level_traversable() const;
 
+    bool has_local_state() const { return m_state.has<LocalTraversableState>(); }
+    bool has_remote_state() const { return m_state.has<RemoteTraversableState>(); }
+
     LocalTraversableNavigable& local();
     LocalTraversableNavigable const& local() const;
 
@@ -55,11 +66,12 @@ public:
     void set_emulated_position_data(Geolocation::EmulatedPositionData data) { m_emulated_position_data = move(data); }
 
 private:
-    explicit TraversableNavigable(GC::Ref<Navigable>);
+    TraversableNavigable(GC::Ref<Navigable>, Variant<LocalTraversableState, RemoteTraversableState>);
 
     virtual void visit_edges(Cell::Visitor&) override;
 
     GC::Ref<Navigable> m_navigable;
+    Variant<LocalTraversableState, RemoteTraversableState> m_state;
 
     // https://w3c.github.io/geolocation/#dfn-emulated-position-data
     Geolocation::EmulatedPositionData m_emulated_position_data;

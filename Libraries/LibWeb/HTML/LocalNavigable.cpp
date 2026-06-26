@@ -2177,6 +2177,7 @@ WebIDL::ExceptionOr<void> LocalNavigable::navigate(NavigateParams params)
 }
 
 static void finalize_a_cross_document_navigation_with_remote_traversable(GC::Ref<LocalNavigable>, HistoryHandlingBehavior, UserNavigationInvolvement, NonnullRefPtr<SessionHistoryEntry>, GC::Ptr<DOM::Document>, Optional<String>, GC::Ref<OnApplyHistoryStepComplete>);
+static void reload_with_remote_traversable(GC::Ref<LocalNavigable>, UserNavigationInvolvement);
 
 // To navigate a navigable navigable to a URL url using an optional Document-or-null sourceDocument (default null),
 // with an optional POST resource, string, or null documentResource (default null),
@@ -3025,19 +3026,27 @@ void LocalNavigable::reload(Optional<SerializationRecord> navigation_api_state, 
     active_session_history_entry()->document_state()->set_reload_pending(true);
 
     // 3. Let traversable be navigable's traversable navigable.
-    auto traversable = GC::Ptr<LocalTraversableNavigable> { local_traversable_navigable() };
+    auto traversable = Navigable::traversable_navigable();
+    VERIFY(traversable);
+
+    if (traversable->has_remote_state()) {
+        reload_with_remote_traversable(*this, user_involvement);
+        return;
+    }
+
+    GC::Ref<LocalTraversableNavigable> local_traversable = traversable->local();
 
     // AD-HOC: Report the reload-pending document state to the UI process before the reload history step finishes,
     //         so the UI-owned session history mirror remains synchronized during an in-flight reload.
-    if (traversable->page().client().should_report_session_history_updates()) {
-        auto session_history_snapshot = traversable->create_session_history_snapshot();
-        traversable->page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
+    if (local_traversable->page().client().should_report_session_history_updates()) {
+        auto session_history_snapshot = local_traversable->create_session_history_snapshot();
+        local_traversable->page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
     }
 
     // 4. Append the following session history traversal steps to traversable:
-    traversable->append_session_history_traversal_steps(GC::create_function(heap(), [traversable, user_involvement](NonnullRefPtr<Core::Promise<Empty>> signal) {
+    local_traversable->append_session_history_traversal_steps(GC::create_function(heap(), [local_traversable, user_involvement](NonnullRefPtr<Core::Promise<Empty>> signal) {
         // 1. Apply the reload history step to traversable given userInvolvement.
-        traversable->apply_the_reload_history_step(user_involvement, GC::create_function(traversable->heap(), [signal](HistoryStepResult) {
+        local_traversable->apply_the_reload_history_step(user_involvement, GC::create_function(local_traversable->heap(), [signal](HistoryStepResult) {
             signal->resolve({});
         }));
     }));
@@ -3178,6 +3187,65 @@ static void finalize_a_cross_document_navigation_with_remote_traversable(GC::Ref
         container->set_needs_layout_update(DOM::SetNeedsLayoutReason::FinalizeACrossDocumentNavigation);
 
     on_complete->function()(HistoryStepResult::Applied);
+}
+
+static void reload_with_remote_traversable(GC::Ref<LocalNavigable> navigable, UserNavigationInvolvement user_involvement)
+{
+    auto active_entry = navigable->active_session_history_entry();
+    auto active_document = navigable->active_document();
+    if (!active_entry || !active_document)
+        return;
+
+    NonnullRefPtr<SessionHistoryEntry> history_entry = *active_entry;
+    auto source_snapshot_params = active_document->snapshot_source_snapshot_params();
+    auto target_snapshot_params = navigable->snapshot_target_snapshot_params();
+
+    // Population runs in a deferred task, during which sync navigations can mutate
+    // the live entry. Snapshot the input fields now so population reads stable values.
+    auto input_url = history_entry->url();
+    auto input_document_resource = history_entry->document_state()->resource();
+    auto input_request_referrer = history_entry->document_state()->request_referrer();
+    auto input_request_referrer_policy = history_entry->document_state()->request_referrer_policy();
+    auto input_initiator_origin = history_entry->document_state()->initiator_origin();
+    auto input_origin = history_entry->document_state()->origin();
+    if (url_matches_about_srcdoc(input_url) && input_origin.has_value() && input_origin->is_opaque())
+        input_origin = URL::Origin::create_opaque();
+    auto input_history_policy_container = history_entry->document_state()->history_policy_container();
+    auto input_about_base_url = history_entry->document_state()->about_base_url();
+    auto input_navigable_target_name = history_entry->document_state()->navigable_target_name();
+    auto input_ever_populated = history_entry->document_state()->ever_populated();
+
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(navigable->heap(), [input_url = move(input_url), input_document_resource = move(input_document_resource), input_request_referrer = move(input_request_referrer), input_request_referrer_policy, input_initiator_origin = move(input_initiator_origin), input_origin = move(input_origin), input_history_policy_container = move(input_history_policy_container), input_about_base_url = move(input_about_base_url), input_navigable_target_name = move(input_navigable_target_name), input_ever_populated, source_snapshot_params, target_snapshot_params, navigable, history_entry, user_involvement] mutable {
+        if (!navigable->has_local_state() || navigable->has_been_destroyed() || !navigable->active_document())
+            return;
+
+        navigable->populate_session_history_entry_document(
+            move(input_url), move(input_document_resource), move(input_request_referrer),
+            input_request_referrer_policy, move(input_initiator_origin), move(input_origin),
+            input_history_policy_container, move(input_about_base_url), move(input_navigable_target_name),
+            false, input_ever_populated,
+            source_snapshot_params, target_snapshot_params,
+            user_involvement, {}, LocalNavigable::NullOrError {},
+            ContentSecurityPolicy::Directives::Directive::NavigationType::Other, false,
+            GC::create_function(navigable->heap(), [navigable, history_entry, user_involvement](GC::Ptr<PopulateSessionHistoryEntryDocumentOutput> output) {
+                if (!navigable->has_local_state() || navigable->has_been_destroyed() || !navigable->active_document())
+                    return;
+
+                queue_a_task(Task::Source::NavigationAndTraversal, nullptr, navigable->active_document(), GC::create_function(navigable->heap(), [navigable, history_entry, output, user_involvement] {
+                    if (!navigable->has_local_state() || navigable->has_been_destroyed())
+                        return;
+
+                    history_entry->document_state()->set_reload_pending(false);
+                    if (output)
+                        output->apply_to(*history_entry);
+
+                    auto pending_document = output ? output->document : GC::Ptr<DOM::Document> {};
+                    finalize_a_cross_document_navigation_with_remote_traversable(navigable, HistoryHandlingBehavior::Replace, user_involvement, history_entry, pending_document, {},
+                        GC::create_function(navigable->heap(), [](HistoryStepResult) {
+                        }));
+                }));
+            }));
+    }));
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#snapshotting-target-snapshot-params

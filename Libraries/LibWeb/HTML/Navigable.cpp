@@ -36,7 +36,7 @@ GC::Ref<Navigable> Navigable::create_remote(JS::Realm& realm, RemoteNavigableDes
     });
     navigable->m_state.get<RemoteNavigableState>().active_window_proxy = WindowProxy::create_remote(realm, navigable);
     if (descriptor.is_traversable)
-        navigable->set_traversable_navigable(TraversableNavigable::create(navigable));
+        navigable->set_traversable_navigable(TraversableNavigable::create_remote(navigable));
     return navigable;
 }
 

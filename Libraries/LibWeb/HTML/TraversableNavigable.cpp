@@ -40,13 +40,19 @@ namespace Web::HTML {
 GC_DEFINE_ALLOCATOR(TraversableNavigable);
 GC_DEFINE_ALLOCATOR(LocalTraversableNavigable);
 
-GC::Ref<TraversableNavigable> TraversableNavigable::create(GC::Ref<Navigable> navigable)
+GC::Ref<TraversableNavigable> TraversableNavigable::create_local(GC::Ref<LocalTraversableNavigable> navigable)
 {
-    return navigable->heap().allocate<TraversableNavigable>(navigable);
+    return navigable->heap().allocate<TraversableNavigable>(navigable, LocalTraversableState {});
 }
 
-TraversableNavigable::TraversableNavigable(GC::Ref<Navigable> navigable)
+GC::Ref<TraversableNavigable> TraversableNavigable::create_remote(GC::Ref<Navigable> navigable)
+{
+    return navigable->heap().allocate<TraversableNavigable>(navigable, RemoteTraversableState {});
+}
+
+TraversableNavigable::TraversableNavigable(GC::Ref<Navigable> navigable, Variant<LocalTraversableState, RemoteTraversableState> state)
     : m_navigable(navigable)
+    , m_state(move(state))
 {
 }
 
@@ -64,11 +70,13 @@ bool TraversableNavigable::is_top_level_traversable() const
 
 LocalTraversableNavigable& TraversableNavigable::local()
 {
+    VERIFY(has_local_state());
     return as<LocalTraversableNavigable>(*m_navigable);
 }
 
 LocalTraversableNavigable const& TraversableNavigable::local() const
 {
+    VERIFY(has_local_state());
     return as<LocalTraversableNavigable>(*m_navigable);
 }
 
@@ -159,7 +167,7 @@ GC::Ref<LocalTraversableNavigable> LocalTraversableNavigable::create_a_new_top_l
 
     // 5. Let traversable be a new traversable navigable.
     auto traversable = vm.heap().allocate<LocalTraversableNavigable>(page);
-    traversable->set_traversable_navigable(TraversableNavigable::create(traversable));
+    traversable->set_traversable_navigable(TraversableNavigable::create_local(traversable));
 
     // 6. Initialize the navigable traversable given documentState.
     traversable->initialize_navigable(document_state, nullptr, *document);
