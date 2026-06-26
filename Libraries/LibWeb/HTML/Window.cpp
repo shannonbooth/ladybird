@@ -933,6 +933,7 @@ void Window::close()
     {
         // 1. Set thisTraversable's is closing to true.
         traversable->set_closing(true);
+        page().client().page_did_update_remote_navigable(traversable->remote_descriptor());
 
         // 2. Queue a task on the DOM manipulation task source to definitely close thisTraversable.
         HTML::queue_global_task(HTML::Task::Source::DOMManipulation, incumbent_global_object, GC::create_function(heap(), [traversable] {

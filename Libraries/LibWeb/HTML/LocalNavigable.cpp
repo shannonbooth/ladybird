@@ -912,6 +912,23 @@ bool LocalNavigable::local_active_document_is_fully_active() const
     return false;
 }
 
+bool LocalNavigable::local_is_closed() const
+{
+    VERIFY(has_local_state());
+    auto document = active_document();
+    if (!document || !document->browsing_context())
+        return true;
+    return is_closing();
+}
+
+size_t LocalNavigable::local_active_document_child_navigable_count() const
+{
+    VERIFY(has_local_state());
+    if (auto document = active_document())
+        return document->document_tree_child_navigables().size();
+    return 0;
+}
+
 // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-window
 GC::Ptr<HTML::Window> LocalNavigable::active_window()
 {

@@ -310,6 +310,8 @@ protected:
     virtual Optional<URL::URL> local_active_document_top_level_creation_url() const override;
     virtual Optional<URL::Origin> local_active_document_top_level_origin() const override;
     virtual bool local_active_document_is_fully_active() const override;
+    virtual bool local_is_closed() const override;
+    virtual size_t local_active_document_child_navigable_count() const override;
 
     // https://html.spec.whatwg.org/multipage/browsing-the-web.html#ongoing-navigation
     Variant<Empty, Traversal, String> m_ongoing_navigation;

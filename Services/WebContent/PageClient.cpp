@@ -232,6 +232,7 @@ void PageClient::request_navigation_of_remote_child_frame(String const& frame_id
 void PageClient::page_did_create_child_frame(String const& parent_frame_id, String const& frame_id)
 {
     client().async_did_create_child_frame(m_id, parent_frame_id, frame_id);
+    page_did_update_remote_navigable(page().local_root_navigable()->remote_descriptor());
 }
 
 void PageClient::page_did_update_child_frame_viewport(String const& frame_id, Web::CSSPixelRect viewport_rect)
@@ -248,6 +249,17 @@ void PageClient::page_did_destroy_child_frame(String const& frame_id)
 {
     m_remote_child_frame_compositor_contexts.remove(frame_id);
     client().async_did_destroy_child_frame(m_id, frame_id);
+    page_did_update_remote_navigable(page().local_root_navigable()->remote_descriptor());
+}
+
+void PageClient::page_did_request_remote_window_operation(String const& target_navigable_id, Web::HTML::RemoteWindowOperation operation)
+{
+    client().async_did_request_remote_window_operation(m_id, target_navigable_id, operation);
+}
+
+void PageClient::page_did_update_remote_navigable(Web::HTML::RemoteNavigableDescriptor descriptor)
+{
+    client().async_did_update_remote_navigable(m_id, move(descriptor));
 }
 
 static GC::Ptr<Web::HTML::Navigable> find_navigable_by_id(Web::DOM::Document& document, String const& navigable_id)
@@ -306,6 +318,8 @@ void PageClient::set_remote_child_frame_compositor_context(String frame_id, Opti
                 .active_document_top_level_creation_url = move(descriptor.active_document_top_level_creation_url),
                 .active_document_top_level_origin = move(descriptor.active_document_top_level_origin),
                 .active_document_is_fully_active = descriptor.active_document_is_fully_active,
+                .is_closed = descriptor.is_closed,
+                .active_document_child_navigable_count = descriptor.active_document_child_navigable_count,
                 .is_traversable = descriptor.is_traversable,
                 .is_top_level_traversable = descriptor.is_top_level_traversable,
                 .active_browsing_context = remote_browsing_context,
@@ -423,6 +437,42 @@ void PageClient::dispatch_message_event_from_remote_navigable(String target_navi
         message_event->set_is_trusted(true);
         target_window->dispatch_event(message_event);
     }));
+}
+
+void PageClient::perform_remote_window_operation(String target_navigable_id, Web::HTML::RemoteWindowOperation operation)
+{
+    auto active_document = page().local_root_navigable()->active_document();
+    if (!active_document)
+        return;
+
+    auto target_navigable = find_navigable_by_id(*active_document, target_navigable_id);
+    if (!target_navigable || !target_navigable->has_local_state())
+        return;
+
+    auto& local_navigable = as<Web::HTML::LocalNavigable>(*target_navigable);
+    auto target_window = local_navigable.active_window();
+    if (!target_window)
+        return;
+
+    switch (operation) {
+    case Web::HTML::RemoteWindowOperation::Focus:
+        target_window->focus();
+        return;
+    case Web::HTML::RemoteWindowOperation::Blur:
+        target_window->blur();
+        return;
+    case Web::HTML::RemoteWindowOperation::Close:
+        if (!local_navigable.is_top_level_traversable() || !local_navigable.is_script_closable() || local_navigable.is_closing())
+            return;
+        local_navigable.set_closing(true);
+        page_did_update_remote_navigable(local_navigable.remote_descriptor());
+        Web::HTML::queue_global_task(Web::HTML::Task::Source::DOMManipulation, *target_window, GC::create_function(heap(), [local_navigable = GC::Ref { local_navigable }] {
+            local_navigable->local_traversable_navigable().definitely_close_top_level_traversable();
+        }));
+        return;
+    }
+
+    VERIFY_NOT_REACHED();
 }
 
 Optional<Web::Compositor::CompositorContextId> PageClient::compositor_context_id_for_remote_child_frame(String const& frame_id) const

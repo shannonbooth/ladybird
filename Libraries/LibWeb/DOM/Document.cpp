@@ -6015,6 +6015,8 @@ void Document::make_active()
 
     if (!m_observers_consider_document_fully_active) {
         m_observers_consider_document_fully_active = true;
+        if (auto current_navigable = this->navigable())
+            page().client().page_did_update_remote_navigable(current_navigable->remote_descriptor());
         notify_each_document_observer([&](auto const& document_observer) {
             return document_observer.document_became_active();
         });

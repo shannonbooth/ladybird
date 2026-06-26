@@ -125,6 +125,7 @@ private:
     virtual void did_update_child_frame_viewport(u64 page_id, String frame_id, Web::DevicePixelRect viewport_rect, double device_pixel_ratio) override;
     virtual void did_commit_child_frame_navigation(u64 page_id, String frame_id, URL::URL url, Web::HTML::RemoteNavigableDescriptor descriptor) override;
     virtual void did_destroy_child_frame(u64 page_id, String frame_id) override;
+    virtual void did_request_remote_window_operation(u64 page_id, String target_navigable_id, Web::HTML::RemoteWindowOperation operation) override;
     virtual void did_start_webdriver_navigation(u64 page_id, URL::URL url) override;
     virtual void did_finish_loading(u64 page_id, URL::URL) override;
     virtual void did_request_refresh(u64 page_id) override;
@@ -200,6 +201,7 @@ private:
     virtual void did_update_indexed_database(u64 page_id, String update) override;
     virtual void did_post_broadcast_channel_message(u64 page_id, Web::HTML::BroadcastChannelMessage message) override;
     virtual void did_post_message_to_remote_navigable(u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord, Variant<String, URL::Origin>, URL::Origin) override;
+    virtual void did_update_remote_navigable(u64 page_id, Web::HTML::RemoteNavigableDescriptor descriptor) override;
     virtual Messages::WebContentClient::DidRequestNewWebViewResponse did_request_new_web_view(u64 page_id, Web::HTML::ActivateTab, Web::HTML::WebViewHints) override;
     virtual void did_request_activate_tab(u64 page_id) override;
     virtual void did_close_browsing_context(u64 page_id) override;

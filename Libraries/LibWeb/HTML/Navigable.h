@@ -19,6 +19,12 @@
 
 namespace Web::HTML {
 
+enum class RemoteWindowOperation : u8 {
+    Focus,
+    Blur,
+    Close,
+};
+
 struct LocalNavigableState {
 };
 
@@ -28,6 +34,8 @@ struct RemoteNavigableState {
     Optional<URL::URL> active_document_top_level_creation_url;
     Optional<URL::Origin> active_document_top_level_origin;
     bool active_document_is_fully_active { false };
+    bool is_closed { false };
+    size_t active_document_child_navigable_count { 0 };
     bool is_traversable { false };
     bool is_top_level_traversable { false };
     GC::Ptr<BrowsingContext> active_browsing_context;
@@ -40,6 +48,8 @@ struct RemoteNavigableDescriptor {
     Optional<URL::URL> active_document_top_level_creation_url;
     Optional<URL::Origin> active_document_top_level_origin;
     bool active_document_is_fully_active { false };
+    bool is_closed { false };
+    size_t active_document_child_navigable_count { 0 };
     bool is_traversable { false };
     bool is_top_level_traversable { false };
 };
@@ -65,6 +75,8 @@ public:
     Optional<URL::URL> active_document_top_level_creation_url() const;
     Optional<URL::Origin> active_document_top_level_origin() const;
     bool active_document_is_fully_active() const;
+    bool is_closed() const;
+    size_t active_document_child_navigable_count() const;
     RemoteNavigableDescriptor remote_descriptor() const;
     void update_remote_descriptor(RemoteNavigableDescriptor);
     void set_active_window_proxy(GC::Ptr<WindowProxy>);
@@ -96,6 +108,8 @@ protected:
     virtual Optional<URL::URL> local_active_document_top_level_creation_url() const { return {}; }
     virtual Optional<URL::Origin> local_active_document_top_level_origin() const { return {}; }
     virtual bool local_active_document_is_fully_active() const { return false; }
+    virtual bool local_is_closed() const { return false; }
+    virtual size_t local_active_document_child_navigable_count() const { return 0; }
 
     virtual void visit_edges(Visitor&) override;
 

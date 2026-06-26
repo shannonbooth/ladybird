@@ -2572,6 +2572,7 @@ void LocalTraversableNavigable::close_top_level_traversable()
 
     // AD-HOC: Set the is closing flag to prevent re-entrant calls from queuing duplicate session history steps.
     set_closing(true);
+    page().client().page_did_update_remote_navigable(remote_descriptor());
 
     // 2. Definitely close traversable.
     definitely_close_top_level_traversable();

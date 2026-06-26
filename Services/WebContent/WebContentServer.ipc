@@ -211,4 +211,5 @@ endpoint WebContentServer
     exit_fullscreen(u64 page_id) =|
 
     update_remote_navigable(u64 page_id, Web::HTML::RemoteNavigableDescriptor descriptor) =|
+    perform_remote_window_operation(u64 page_id, String target_navigable_id, Web::HTML::RemoteWindowOperation operation) =|
 }

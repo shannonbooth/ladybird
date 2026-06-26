@@ -74,6 +74,8 @@ public:
     bool remote_child_frame_did_finish_loading(WebContentClient& remote_client, u64 remote_page_id, URL::URL const&);
     bool remote_child_frame_did_finish_handling_input_event(WebContentClient& remote_client, u64 remote_page_id, Web::EventResult);
     bool did_post_message_to_remote_navigable(WebContentClient&, u64 page_id, String target_navigable_id, String source_navigable_id, Web::HTML::SerializedTransferRecord, Variant<String, URL::Origin>, URL::Origin);
+    bool did_request_remote_window_operation(WebContentClient&, u64 page_id, String target_navigable_id, Web::HTML::RemoteWindowOperation);
+    void did_update_remote_navigable(WebContentClient&, u64 page_id, Web::HTML::RemoteNavigableDescriptor);
     void remove_page(u64 page_id);
     void remove_all_pages_for_client(WebContentClient&);
     String dump_process_tree(WebContentClient&, u64 page_id) const;
@@ -107,6 +109,7 @@ private:
     URL::URL document_url_for_page(WebContentClient&, u64 page_id, URL::URL const& fallback_url);
     Optional<URL::URL> document_url_for_child_frame(ChildFrameHost const&);
     URL::URL embedding_page_url_for_child_frame_navigation(WebContentClient&, u64 page_id, ChildFrameHost const&, URL::URL const&);
+    void update_remote_navigable_in_remote_descendants(u64 page_id, Web::HTML::RemoteNavigableDescriptor const&);
 
     HashMap<u64, HashMap<String, ChildFrameHost>> m_child_frames;
 };

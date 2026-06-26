@@ -165,6 +165,12 @@ void ConnectionFromClient::dispatch_message_event_from_remote_navigable(u64 page
         page->dispatch_message_event_from_remote_navigable(move(target_navigable_id), move(source_navigable_id), move(message), move(target_origin), move(source_origin));
 }
 
+void ConnectionFromClient::perform_remote_window_operation(u64 page_id, String target_navigable_id, Web::HTML::RemoteWindowOperation operation)
+{
+    if (auto page = this->page(page_id); page.has_value())
+        page->perform_remote_window_operation(move(target_navigable_id), operation);
+}
+
 void ConnectionFromClient::run_iframe_load_event_steps(u64 page_id, String frame_id)
 {
     if (auto page = this->page(page_id); page.has_value())

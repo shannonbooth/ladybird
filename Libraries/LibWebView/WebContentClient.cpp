@@ -466,6 +466,11 @@ void WebContentClient::did_destroy_child_frame(u64 page_id, String frame_id)
     SiteIsolationManager::the().did_destroy_child_frame(*this, page_id, frame_id);
 }
 
+void WebContentClient::did_request_remote_window_operation(u64 page_id, String target_navigable_id, Web::HTML::RemoteWindowOperation operation)
+{
+    SiteIsolationManager::the().did_request_remote_window_operation(*this, page_id, move(target_navigable_id), operation);
+}
+
 Optional<WebContentClient::ChildFrameHost const&> WebContentClient::child_frame(u64 page_id, StringView frame_id) const
 {
     return SiteIsolationManager::the().child_frame(page_id, frame_id);
@@ -1259,6 +1264,11 @@ void WebContentClient::did_post_message_to_remote_navigable(u64 page_id, String 
 {
     dbgln("SI_TRACE UI did_post_message page={} target={} source={}", page_id, target_navigable_id, source_navigable_id);
     SiteIsolationManager::the().did_post_message_to_remote_navigable(*this, page_id, move(target_navigable_id), move(source_navigable_id), move(message), move(target_origin), move(source_origin));
+}
+
+void WebContentClient::did_update_remote_navigable(u64 page_id, Web::HTML::RemoteNavigableDescriptor descriptor)
+{
+    SiteIsolationManager::the().did_update_remote_navigable(*this, page_id, move(descriptor));
 }
 
 Messages::WebContentClient::DidRequestNewWebViewResponse WebContentClient::did_request_new_web_view(u64 page_id, Web::HTML::ActivateTab activate_tab, Web::HTML::WebViewHints hints)

@@ -196,6 +196,65 @@ bool SiteIsolationManager::did_post_message_to_remote_navigable(WebContentClient
     return false;
 }
 
+bool SiteIsolationManager::did_request_remote_window_operation(WebContentClient& source_client, u64 page_id, String target_navigable_id, Web::HTML::RemoteWindowOperation operation)
+{
+    auto* current_client = &source_client;
+    auto current_page_id = page_id;
+
+    for (;;) {
+        if (auto target_child_frame = child_frame(current_page_id, target_navigable_id); target_child_frame.has_value() && target_child_frame->is_remote()) {
+            target_child_frame->remote_client->async_perform_remote_window_operation(target_child_frame->remote_page_id, move(target_navigable_id), operation);
+            return true;
+        }
+
+        auto parent_frame = parent_frame_for_remote_page(*current_client, current_page_id);
+        if (!parent_frame.has_value())
+            break;
+
+        current_client = parent_frame->parent_client;
+        current_page_id = parent_frame->page_id;
+    }
+
+    if (current_client == &source_client && current_page_id == page_id)
+        return false;
+
+    current_client->async_perform_remote_window_operation(current_page_id, move(target_navigable_id), operation);
+    return true;
+}
+
+void SiteIsolationManager::did_update_remote_navigable(WebContentClient& source_client, u64 page_id, Web::HTML::RemoteNavigableDescriptor descriptor)
+{
+    auto* current_client = &source_client;
+    auto current_page_id = page_id;
+    for (;;) {
+        auto parent_frame = parent_frame_for_remote_page(*current_client, current_page_id);
+        if (!parent_frame.has_value())
+            break;
+
+        parent_frame->parent_client->async_update_remote_navigable(parent_frame->page_id, descriptor);
+        current_client = parent_frame->parent_client;
+        current_page_id = parent_frame->page_id;
+    }
+
+    update_remote_navigable_in_remote_descendants(page_id, descriptor);
+}
+
+void SiteIsolationManager::update_remote_navigable_in_remote_descendants(u64 page_id, Web::HTML::RemoteNavigableDescriptor const& descriptor)
+{
+    auto child_frames = m_child_frames.get(page_id);
+    if (!child_frames.has_value())
+        return;
+
+    for (auto const& child_frame_entry : *child_frames) {
+        auto const& child_frame = child_frame_entry.value;
+        if (!child_frame.is_remote())
+            continue;
+
+        child_frame.remote_client->async_update_remote_navigable(child_frame.remote_page_id, descriptor);
+        update_remote_navigable_in_remote_descendants(child_frame.remote_page_id, descriptor);
+    }
+}
+
 void SiteIsolationManager::remove_page(u64 page_id)
 {
     m_child_frames.remove(page_id);

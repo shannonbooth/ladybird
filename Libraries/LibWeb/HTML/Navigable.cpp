@@ -29,6 +29,8 @@ GC::Ref<Navigable> Navigable::create_remote(JS::Realm& realm, RemoteNavigableDes
         .active_document_top_level_creation_url = move(descriptor.active_document_top_level_creation_url),
         .active_document_top_level_origin = move(descriptor.active_document_top_level_origin),
         .active_document_is_fully_active = descriptor.active_document_is_fully_active,
+        .is_closed = descriptor.is_closed,
+        .active_document_child_navigable_count = descriptor.active_document_child_navigable_count,
         .is_traversable = descriptor.is_traversable,
         .is_top_level_traversable = descriptor.is_top_level_traversable,
         .active_browsing_context = remote_browsing_context,
@@ -88,6 +90,20 @@ bool Navigable::active_document_is_fully_active() const
     return local_active_document_is_fully_active();
 }
 
+bool Navigable::is_closed() const
+{
+    if (auto const* remote_state = m_state.get_pointer<RemoteNavigableState>())
+        return remote_state->is_closed;
+    return local_is_closed();
+}
+
+size_t Navigable::active_document_child_navigable_count() const
+{
+    if (auto const* remote_state = m_state.get_pointer<RemoteNavigableState>())
+        return remote_state->active_document_child_navigable_count;
+    return local_active_document_child_navigable_count();
+}
+
 RemoteNavigableDescriptor Navigable::remote_descriptor() const
 {
     return {
@@ -97,6 +113,8 @@ RemoteNavigableDescriptor Navigable::remote_descriptor() const
         .active_document_top_level_creation_url = active_document_top_level_creation_url(),
         .active_document_top_level_origin = active_document_top_level_origin(),
         .active_document_is_fully_active = active_document_is_fully_active(),
+        .is_closed = is_closed(),
+        .active_document_child_navigable_count = active_document_child_navigable_count(),
         .is_traversable = is_traversable(),
         .is_top_level_traversable = is_top_level_traversable(),
     };
@@ -113,6 +131,8 @@ void Navigable::update_remote_descriptor(RemoteNavigableDescriptor descriptor)
     remote_state.active_document_top_level_creation_url = move(descriptor.active_document_top_level_creation_url);
     remote_state.active_document_top_level_origin = move(descriptor.active_document_top_level_origin);
     remote_state.active_document_is_fully_active = descriptor.active_document_is_fully_active;
+    remote_state.is_closed = descriptor.is_closed;
+    remote_state.active_document_child_navigable_count = descriptor.active_document_child_navigable_count;
     remote_state.is_traversable = descriptor.is_traversable;
     remote_state.is_top_level_traversable = descriptor.is_top_level_traversable;
 
@@ -233,6 +253,8 @@ ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::RemoteNavigableDescriptor
     TRY(encoder.encode(descriptor.active_document_top_level_creation_url));
     TRY(encoder.encode(descriptor.active_document_top_level_origin));
     TRY(encoder.encode(descriptor.active_document_is_fully_active));
+    TRY(encoder.encode(descriptor.is_closed));
+    TRY(encoder.encode(descriptor.active_document_child_navigable_count));
     TRY(encoder.encode(descriptor.is_traversable));
     TRY(encoder.encode(descriptor.is_top_level_traversable));
     return {};
@@ -247,6 +269,8 @@ ErrorOr<Web::HTML::RemoteNavigableDescriptor> IPC::decode(Decoder& decoder)
     auto active_document_top_level_creation_url = TRY(decoder.decode<Optional<URL::URL>>());
     auto active_document_top_level_origin = TRY(decoder.decode<Optional<URL::Origin>>());
     auto active_document_is_fully_active = TRY(decoder.decode<bool>());
+    auto is_closed = TRY(decoder.decode<bool>());
+    auto active_document_child_navigable_count = TRY(decoder.decode<size_t>());
     auto is_traversable = TRY(decoder.decode<bool>());
     auto is_top_level_traversable = TRY(decoder.decode<bool>());
 
@@ -257,6 +281,8 @@ ErrorOr<Web::HTML::RemoteNavigableDescriptor> IPC::decode(Decoder& decoder)
         .active_document_top_level_creation_url = move(active_document_top_level_creation_url),
         .active_document_top_level_origin = move(active_document_top_level_origin),
         .active_document_is_fully_active = active_document_is_fully_active,
+        .is_closed = is_closed,
+        .active_document_child_navigable_count = active_document_child_navigable_count,
         .is_traversable = is_traversable,
         .is_top_level_traversable = is_top_level_traversable,
     };
