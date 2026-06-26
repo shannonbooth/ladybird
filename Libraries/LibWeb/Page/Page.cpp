@@ -435,11 +435,6 @@ void Page::set_local_root_navigable(GC::Ref<HTML::LocalNavigable> navigable)
     update_needs_beforeunload_check();
 }
 
-void Page::set_top_level_traversable(GC::Ref<HTML::LocalTraversableNavigable> navigable)
-{
-    set_local_root_navigable(navigable);
-}
-
 bool Page::local_root_navigable_is_initialized() const
 {
     return m_local_root_navigable;
@@ -452,11 +447,6 @@ bool Page::has_local_top_level_traversable() const
         && m_local_root_navigable->is_top_level_traversable();
 }
 
-bool Page::top_level_traversable_is_initialized() const
-{
-    return has_local_top_level_traversable();
-}
-
 HTML::LocalTraversableNavigable& Page::local_top_level_traversable()
 {
     VERIFY(has_local_top_level_traversable());
@@ -467,16 +457,6 @@ HTML::LocalTraversableNavigable const& Page::local_top_level_traversable() const
 {
     VERIFY(has_local_top_level_traversable());
     return as<HTML::LocalTraversableNavigable>(*m_local_root_navigable);
-}
-
-HTML::BrowsingContext& Page::top_level_browsing_context()
-{
-    return *local_top_level_traversable().active_browsing_context();
-}
-
-HTML::BrowsingContext const& Page::top_level_browsing_context() const
-{
-    return const_cast<Page&>(*this).top_level_browsing_context();
 }
 
 GC::Ref<HTML::LocalNavigable> Page::local_root_navigable() const

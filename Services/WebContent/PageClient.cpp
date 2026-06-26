@@ -430,7 +430,7 @@ Gfx::Palette PageClient::palette() const
 void PageClient::set_palette_impl(Gfx::PaletteImpl& impl)
 {
     m_palette_impl = impl;
-    if (auto* document = page().top_level_browsing_context().active_document()) {
+    if (auto document = page().local_root_navigable()->active_document()) {
         document->invalidate_style(Web::DOM::StyleInvalidationReason::SettingsChange);
         document->set_needs_media_query_evaluation();
     }
@@ -440,7 +440,7 @@ void PageClient::set_palette_impl(Gfx::PaletteImpl& impl)
 void PageClient::set_preferred_color_scheme(Web::CSS::PreferredColorScheme color_scheme)
 {
     m_preferred_color_scheme = color_scheme;
-    if (auto* document = page().top_level_browsing_context().active_document()) {
+    if (auto document = page().local_root_navigable()->active_document()) {
         document->invalidate_style(Web::DOM::StyleInvalidationReason::SettingsChange);
         document->set_needs_media_query_evaluation();
     }
@@ -449,7 +449,7 @@ void PageClient::set_preferred_color_scheme(Web::CSS::PreferredColorScheme color
 void PageClient::set_preferred_contrast(Web::CSS::PreferredContrast contrast)
 {
     m_preferred_contrast = contrast;
-    if (auto* document = page().top_level_browsing_context().active_document()) {
+    if (auto document = page().local_root_navigable()->active_document()) {
         document->invalidate_style(Web::DOM::StyleInvalidationReason::SettingsChange);
         document->set_needs_media_query_evaluation();
     }
@@ -458,7 +458,7 @@ void PageClient::set_preferred_contrast(Web::CSS::PreferredContrast contrast)
 void PageClient::set_preferred_motion(Web::CSS::PreferredMotion motion)
 {
     m_preferred_motion = motion;
-    if (auto* document = page().top_level_browsing_context().active_document()) {
+    if (auto document = page().local_root_navigable()->active_document()) {
         document->invalidate_style(Web::DOM::StyleInvalidationReason::SettingsChange);
         document->set_needs_media_query_evaluation();
     }
@@ -910,7 +910,7 @@ void PageClient::page_did_update_cookie(HTTP::Cookie::Cookie const& cookie)
     client().async_did_update_cookie(cookie);
 
     // Since the above (test-only) IPC is async, we reset the document cookie version now to avoid a stale cache.
-    if (auto* document = page().top_level_browsing_context().active_document())
+    if (auto document = page().local_root_navigable()->active_document())
         document->reset_cookie_version();
 }
 
@@ -919,7 +919,7 @@ void PageClient::page_did_expire_cookies_with_time_offset(AK::Duration offset)
     client().async_did_expire_cookies_with_time_offset(offset);
 
     // Since the above (test-only) IPC is async, we reset the document cookie version now to avoid a stale cache.
-    if (auto* document = page().top_level_browsing_context().active_document())
+    if (auto document = page().local_root_navigable()->active_document())
         document->reset_cookie_version();
 }
 
@@ -929,7 +929,7 @@ void PageClient::page_did_delete_all_cookies(URL::URL const& url, GC::Ref<Web::W
     m_pending_delete_all_cookies_promises.set(request_id, promise);
     client().async_did_request_delete_all_cookies(m_id, request_id, url);
 
-    if (auto* document = page().top_level_browsing_context().active_document())
+    if (auto document = page().local_root_navigable()->active_document())
         document->reset_cookie_version();
 }
 
@@ -1314,7 +1314,7 @@ ErrorOr<void> PageClient::connect_to_webdriver(ByteString const& webdriver_endpo
 
 ErrorOr<void> PageClient::connect_to_web_ui(IPC::TransportHandle handle)
 {
-    auto* active_document = page().top_level_browsing_context().active_document();
+    auto active_document = page().local_root_navigable()->active_document();
     if (!active_document || !active_document->window())
         return {};
 
@@ -1409,7 +1409,7 @@ void PageClient::js_console_input(StringView js_source)
 
 void PageClient::run_javascript(StringView js_source)
 {
-    auto* active_document = page().top_level_browsing_context().active_document();
+    auto active_document = page().local_root_navigable()->active_document();
 
     if (!active_document)
         return;
@@ -1466,7 +1466,7 @@ Vector<Web::CSS::StyleSheetIdentifier> PageClient::list_style_sheets() const
 {
     Vector<Web::CSS::StyleSheetIdentifier> results;
 
-    auto const* document = page().top_level_browsing_context().active_document();
+    auto document = page().local_root_navigable()->active_document();
     if (document) {
         for (auto& sheet : document->style_sheets().sheets()) {
             gather_style_sheets(results, sheet);
@@ -1514,7 +1514,7 @@ Vector<Web::HTML::ScriptRegistry::Description> PageClient::list_devtools_sources
 {
     Vector<Web::HTML::ScriptRegistry::Description> results;
 
-    auto const* document = page().top_level_browsing_context().active_document();
+    auto document = page().local_root_navigable()->active_document();
     if (document)
         append_devtools_sources_for_document(results, *document);
 

@@ -265,7 +265,7 @@ ErrorOr<NonnullRefPtr<WebDriverConnection>> WebDriverConnection::connect(Web::Pa
 WebDriverConnection::WebDriverConnection(NonnullOwnPtr<IPC::Transport> transport, Web::PageClient& page_client)
     : IPC::ConnectionToServer<WebDriverClientEndpoint, WebDriverServerEndpoint>(*this, move(transport))
 {
-    set_current_top_level_browsing_context(page_client.page().top_level_browsing_context());
+    set_current_top_level_browsing_context(*page_client.page().local_top_level_traversable().active_browsing_context());
 }
 
 void WebDriverConnection::page_did_set_window_handle(Badge<PageClient>, String const& window_handle)

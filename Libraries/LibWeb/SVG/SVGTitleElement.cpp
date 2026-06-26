@@ -7,6 +7,7 @@
 #include <LibWeb/Bindings/Intrinsics.h>
 #include <LibWeb/Bindings/SVGTitleElement.h>
 #include <LibWeb/DOM/Document.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/Layout/Node.h>
 #include <LibWeb/Page/Page.h>
 #include <LibWeb/SVG/SVGTitleElement.h>
@@ -36,7 +37,7 @@ void SVGTitleElement::children_changed(ChildrenChangedMetadata const& metadata)
     Base::children_changed(metadata);
 
     auto& page = document().page();
-    if (document().browsing_context() != &page.top_level_browsing_context())
+    if (!page.has_local_top_level_traversable() || document().browsing_context() != page.local_top_level_traversable().active_browsing_context())
         return;
 
     auto* document_element = document().document_element();

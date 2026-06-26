@@ -265,7 +265,7 @@ GC::Ref<DOM::Node> IntersectionObserver::intersection_root_node() const
         return *m_root;
 
     // The implicit root is the top-level browsing context’s document node.
-    return *as<HTML::Window>(HTML::relevant_global_object(*this)).page().top_level_browsing_context().active_document();
+    return *as<HTML::Window>(HTML::relevant_global_object(*this)).page().local_root_navigable()->active_document();
 }
 
 // https://www.w3.org/TR/intersection-observer/#intersectionobserver-root-intersection-rectangle

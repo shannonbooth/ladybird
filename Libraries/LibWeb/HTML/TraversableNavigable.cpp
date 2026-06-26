@@ -238,23 +238,6 @@ GC::Ref<LocalTraversableNavigable> LocalTraversableNavigable::create_a_fresh_top
     return traversable;
 }
 
-GC::Ref<LocalTraversableNavigable> LocalTraversableNavigable::create_for_embedded_frame_process_root(GC::Ref<Page> page, NonnullRefPtr<DocumentState> document_state, GC::Ref<DOM::Document> document, String local_navigable_id)
-{
-    auto& vm = Bindings::main_thread_vm();
-
-    auto traversable = vm.heap().allocate<LocalTraversableNavigable>(page);
-    traversable->set_traversable_navigable(TraversableNavigable::create(traversable));
-    traversable->initialize_navigable(move(document_state), nullptr, document, move(local_navigable_id));
-
-    auto initial_history_entry = traversable->active_session_history_entry();
-    VERIFY(initial_history_entry);
-    initial_history_entry->set_step(0);
-
-    traversable->m_session_history_entries.append(*initial_history_entry);
-    traversable->set_has_session_history_entry_and_ready_for_navigation();
-    return traversable;
-}
-
 // https://html.spec.whatwg.org/multipage/document-sequences.html#top-level-traversable
 bool LocalTraversableNavigable::is_top_level_traversable() const
 {

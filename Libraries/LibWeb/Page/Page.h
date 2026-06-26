@@ -89,18 +89,13 @@ public:
     Compositor::CompositorHost const& compositor_host() const;
 
     void set_local_root_navigable(GC::Ref<HTML::LocalNavigable>);
-    void set_top_level_traversable(GC::Ref<HTML::LocalTraversableNavigable>);
 
     // FIXME: This is a hack.
     bool local_root_navigable_is_initialized() const;
     bool has_local_top_level_traversable() const;
-    bool top_level_traversable_is_initialized() const;
 
     HTML::LocalTraversableNavigable& local_top_level_traversable();
     HTML::LocalTraversableNavigable const& local_top_level_traversable() const;
-
-    HTML::BrowsingContext& top_level_browsing_context();
-    HTML::BrowsingContext const& top_level_browsing_context() const;
 
     GC::Ref<HTML::LocalNavigable> local_root_navigable() const;
 

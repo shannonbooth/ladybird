@@ -507,7 +507,7 @@ void ConnectionFromClient::debug_request(u64 page_id, ByteString request, ByteSt
     }
 
     if (request == "dump-display-list") {
-        if (auto* doc = page->page().top_level_browsing_context().active_document()) {
+        if (auto doc = page->page().local_root_navigable()->active_document()) {
             auto display_list_dump = doc->dump_display_list();
             dbgln("{}", display_list_dump);
         }
@@ -515,13 +515,13 @@ void ConnectionFromClient::debug_request(u64 page_id, ByteString request, ByteSt
     }
 
     if (request == "dump-dom-tree") {
-        if (auto* doc = page->page().top_level_browsing_context().active_document())
+        if (auto doc = page->page().local_root_navigable()->active_document())
             Web::dump_tree(*doc);
         return;
     }
 
     if (request == "dump-layout-tree") {
-        if (auto* doc = page->page().top_level_browsing_context().active_document()) {
+        if (auto doc = page->page().local_root_navigable()->active_document()) {
             if (auto* viewport = doc->layout_node())
                 Web::dump_tree(*viewport);
         }
@@ -529,7 +529,7 @@ void ConnectionFromClient::debug_request(u64 page_id, ByteString request, ByteSt
     }
 
     if (request == "dump-paint-tree") {
-        if (auto* doc = page->page().top_level_browsing_context().active_document()) {
+        if (auto doc = page->page().local_root_navigable()->active_document()) {
             if (auto paintable = doc->paintable())
                 Web::dump_tree(*paintable);
         }
@@ -537,7 +537,7 @@ void ConnectionFromClient::debug_request(u64 page_id, ByteString request, ByteSt
     }
 
     if (request == "dump-stacking-context-tree") {
-        if (auto* doc = page->page().top_level_browsing_context().active_document()) {
+        if (auto doc = page->page().local_root_navigable()->active_document()) {
             if (auto* viewport = doc->layout_node()) {
                 auto& viewport_paintable = static_cast<Web::Painting::ViewportPaintable&>(*viewport->paintable_box());
                 viewport_paintable.build_stacking_context_tree_if_needed();
@@ -552,7 +552,7 @@ void ConnectionFromClient::debug_request(u64 page_id, ByteString request, ByteSt
     }
 
     if (request == "dump-style-sheets") {
-        if (auto* doc = page->page().top_level_browsing_context().active_document()) {
+        if (auto doc = page->page().local_root_navigable()->active_document()) {
             dbgln("=== In document: ===");
             for (auto& sheet : doc->style_sheets().sheets()) {
                 Web::dump_sheet(sheet);
@@ -582,7 +582,7 @@ void ConnectionFromClient::debug_request(u64 page_id, ByteString request, ByteSt
             dbgln("---");
         };
 
-        if (auto* doc = page->page().top_level_browsing_context().active_document()) {
+        if (auto doc = page->page().local_root_navigable()->active_document()) {
             Queue<Web::DOM::Node*> nodes_to_visit;
             nodes_to_visit.enqueue(doc->document_element());
             while (!nodes_to_visit.is_empty()) {
@@ -665,7 +665,7 @@ void ConnectionFromClient::debug_request(u64 page_id, ByteString request, ByteSt
     }
 
     if (request == "dump-local-storage") {
-        if (auto* document = page->page().top_level_browsing_context().active_document()) {
+        if (auto document = page->page().local_root_navigable()->active_document()) {
             auto storage_or_error = document->window()->local_storage();
             if (storage_or_error.is_error())
                 dbgln("Failed to retrieve local storage: {}", storage_or_error.release_error());
@@ -676,7 +676,7 @@ void ConnectionFromClient::debug_request(u64 page_id, ByteString request, ByteSt
     }
 
     if (request == "dump-session-storage") {
-        if (auto* document = page->page().top_level_browsing_context().active_document()) {
+        if (auto document = page->page().local_root_navigable()->active_document()) {
             auto storage_or_error = document->window()->session_storage();
             if (storage_or_error.is_error())
                 dbgln("Failed to retrieve session storage: {}", storage_or_error.release_error());
@@ -712,7 +712,7 @@ void ConnectionFromClient::debug_request(u64 page_id, ByteString request, ByteSt
 void ConnectionFromClient::get_source(u64 page_id)
 {
     if (auto page = this->page(page_id); page.has_value()) {
-        if (auto* doc = page->page().top_level_browsing_context().active_document())
+        if (auto doc = page->page().local_root_navigable()->active_document())
             async_did_get_source(page_id, doc->url(), doc->base_url(), doc->source());
     }
 }
@@ -720,7 +720,7 @@ void ConnectionFromClient::get_source(u64 page_id)
 void ConnectionFromClient::inspect_dom_tree(u64 page_id)
 {
     if (auto page = this->page(page_id); page.has_value()) {
-        if (auto* doc = page->page().top_level_browsing_context().active_document())
+        if (auto doc = page->page().local_root_navigable()->active_document())
             async_did_inspect_dom_tree(page_id, doc->dump_dom_tree_as_json());
     }
 }
@@ -733,7 +733,7 @@ void ConnectionFromClient::inspect_storage(u64 page_id, Web::StorageAPI::Storage
         return;
     }
 
-    auto* document = page->page().top_level_browsing_context().active_document();
+    auto document = page->page().local_root_navigable()->active_document();
     if (!document || !document->window()) {
         async_did_inspect_storage(page_id, request_id, "[]"_string);
         return;
@@ -773,7 +773,7 @@ void ConnectionFromClient::inspect_storage(u64 page_id, Web::StorageAPI::Storage
 
 static Optional<GC::Ref<Web::HTML::Storage>> active_session_storage_for_page(PageClient& page)
 {
-    auto* document = page.page().top_level_browsing_context().active_document();
+    auto document = page.page().local_root_navigable()->active_document();
     if (!document || !document->window())
         return {};
 
@@ -1291,7 +1291,7 @@ void ConnectionFromClient::inspect_indexed_database_storage(u64 page_id, u64 req
     if (!page.has_value())
         return;
 
-    auto* document = page->page().top_level_browsing_context().active_document();
+    auto document = page->page().local_root_navigable()->active_document();
     if (!document) {
         async_did_inspect_indexed_database(page_id, request_id, "{}"_string);
         return;
@@ -1306,7 +1306,7 @@ void ConnectionFromClient::inspect_indexed_database_objects(u64 page_id, u64 req
     if (!page.has_value())
         return;
 
-    auto* document = page->page().top_level_browsing_context().active_document();
+    auto document = page->page().local_root_navigable()->active_document();
     if (!document) {
         async_did_inspect_indexed_database(page_id, request_id, "{}"_string);
         return;
@@ -1333,7 +1333,7 @@ void ConnectionFromClient::delete_indexed_database(u64 page_id, u64 request_id, 
     if (!page.has_value())
         return;
 
-    auto* document = page->page().top_level_browsing_context().active_document();
+    auto document = page->page().local_root_navigable()->active_document();
     if (!document) {
         async_did_inspect_indexed_database(page_id, request_id, "{}"_string);
         return;
@@ -1348,7 +1348,7 @@ void ConnectionFromClient::clear_indexed_database_object_store(u64 page_id, u64 
     if (!page.has_value())
         return;
 
-    auto* document = page->page().top_level_browsing_context().active_document();
+    auto document = page->page().local_root_navigable()->active_document();
     if (!document) {
         async_did_inspect_indexed_database(page_id, request_id, "{}"_string);
         return;
@@ -1363,7 +1363,7 @@ void ConnectionFromClient::delete_indexed_database_record(u64 page_id, u64 reque
     if (!page.has_value())
         return;
 
-    auto* document = page->page().top_level_browsing_context().active_document();
+    auto document = page->page().local_root_navigable()->active_document();
     if (!document) {
         async_did_inspect_indexed_database(page_id, request_id, "{}"_string);
         return;
@@ -1528,7 +1528,7 @@ void ConnectionFromClient::clear_grid_highlight(u64 page_id, Web::UniqueNodeID n
 void ConnectionFromClient::inspect_accessibility_tree(u64 page_id)
 {
     if (auto page = this->page(page_id); page.has_value()) {
-        if (auto* doc = page->page().top_level_browsing_context().active_document())
+        if (auto doc = page->page().local_root_navigable()->active_document())
             async_did_inspect_accessibility_tree(page_id, doc->dump_accessibility_tree_as_json());
     }
 }
@@ -1541,7 +1541,7 @@ void ConnectionFromClient::get_hovered_node_id(u64 page_id)
 
     Web::UniqueNodeID node_id = 0;
 
-    if (auto* document = page->page().top_level_browsing_context().active_document()) {
+    if (auto document = page->page().local_root_navigable()->active_document()) {
         if (auto* hovered_node = document->hovered_node())
             node_id = hovered_node->unique_id();
     }
@@ -1575,7 +1575,7 @@ void ConnectionFromClient::request_style_sheet_source(u64 page_id, Web::CSS::Sty
     if (!page.has_value())
         return;
 
-    if (auto* document = page->page().top_level_browsing_context().active_document()) {
+    if (auto document = page->page().local_root_navigable()->active_document()) {
         if (auto stylesheet = document->get_style_sheet_source(identifier); stylesheet.has_value())
             async_did_get_style_sheet_source(page_id, identifier, document->base_url(), stylesheet.value());
     }
@@ -1614,7 +1614,7 @@ void ConnectionFromClient::resolve_dom_node_url(u64 page_id, u64 request_id, Opt
             return nullptr;
         }
 
-        return page->page().top_level_browsing_context().active_document();
+        return page->page().local_root_navigable()->active_document();
     }();
 
     auto resolved_url = document
@@ -1871,7 +1871,7 @@ void ConnectionFromClient::remove_dom_node(u64 page_id, Web::UniqueNodeID node_i
     if (!page.has_value())
         return;
 
-    auto* active_document = page->page().top_level_browsing_context().active_document();
+    auto active_document = page->page().local_root_navigable()->active_document();
     if (!active_document) {
         async_did_finish_editing_dom_node(page_id, {});
         return;
@@ -1912,7 +1912,7 @@ void ConnectionFromClient::take_dom_node_screenshot(u64 page_id, Web::UniqueNode
 
 static void append_page_text(Web::Page& page, StringBuilder& builder)
 {
-    auto* document = page.top_level_browsing_context().active_document();
+    auto document = page.local_root_navigable()->active_document();
     if (!document) {
         builder.append("(no DOM tree)"sv);
         return;
@@ -1929,7 +1929,7 @@ static void append_page_text(Web::Page& page, StringBuilder& builder)
 
 static void append_layout_tree(Web::Page& page, StringBuilder& builder)
 {
-    auto* document = page.top_level_browsing_context().active_document();
+    auto document = page.local_root_navigable()->active_document();
     if (!document) {
         builder.append("(no DOM tree)"sv);
         return;
@@ -1948,7 +1948,7 @@ static void append_layout_tree(Web::Page& page, StringBuilder& builder)
 
 static void append_paint_tree(Web::Page& page, StringBuilder& builder)
 {
-    auto* document = page.top_level_browsing_context().active_document();
+    auto document = page.local_root_navigable()->active_document();
     if (!document) {
         builder.append("(no DOM tree)"sv);
         return;
@@ -1971,7 +1971,7 @@ static void append_paint_tree(Web::Page& page, StringBuilder& builder)
 
 static void append_stacking_context_tree(Web::Page& page, StringBuilder& builder)
 {
-    auto* document = page.top_level_browsing_context().active_document();
+    auto document = page.local_root_navigable()->active_document();
     if (!document) {
         builder.append("(no DOM tree)"sv);
         return;
@@ -2466,8 +2466,12 @@ void ConnectionFromClient::request_close(u64 page_id)
 void ConnectionFromClient::exit_fullscreen(u64 page_id)
 {
     if (auto page = this->page(page_id); page.has_value()) {
-        Web::HTML::TemporaryExecutionContext context(page->page().top_level_browsing_context().active_document()->realm(), Web::HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
-        page->page().top_level_browsing_context().active_document()->fully_exit_fullscreen();
+        auto document = page->page().local_root_navigable()->active_document();
+        if (!document)
+            return;
+
+        Web::HTML::TemporaryExecutionContext context(document->realm(), Web::HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
+        document->fully_exit_fullscreen();
     }
 }
 
