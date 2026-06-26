@@ -73,6 +73,7 @@ class WEB_API LocalTraversableNavigable final : public LocalNavigable {
 public:
     static GC::Ref<LocalTraversableNavigable> create_a_new_top_level_traversable(GC::Ref<Page>, GC::Ptr<BrowsingContext> opener, String target_name);
     static GC::Ref<LocalTraversableNavigable> create_a_fresh_top_level_traversable(GC::Ref<Page>, URL::URL const& initial_navigation_url, Variant<Empty, String, POSTResource> = Empty {});
+    static GC::Ref<LocalTraversableNavigable> create_for_embedded_frame_process_root(GC::Ref<Page>, NonnullRefPtr<DocumentState>, GC::Ref<DOM::Document>, String local_navigable_id);
 
     virtual ~LocalTraversableNavigable() override;
 

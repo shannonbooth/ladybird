@@ -46,9 +46,7 @@ void PageHost::initialize_embedded_frame(u64 initial_page_id, String local_navig
     document_state->set_origin(document->origin());
     document_state->set_about_base_url(document->about_base_url());
 
-    auto local_root = Web::HTML::LocalNavigable::create(page);
-    local_root->initialize_navigable(document_state, nullptr, document, move(local_navigable_id));
-    local_root->set_has_session_history_entry_and_ready_for_navigation();
+    auto local_root = Web::HTML::LocalTraversableNavigable::create_for_embedded_frame_process_root(page, document_state, document, move(local_navigable_id));
     page.set_local_root_navigable(local_root);
 
     GC::Ptr<Web::HTML::Navigable> parent;

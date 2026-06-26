@@ -163,6 +163,21 @@ GC::Ref<WindowProxy> WindowProxy::create_remote(JS::Realm& realm, GC::Ref<Naviga
     return window_proxy;
 }
 
+Optional<URL::Origin> WindowProxy::extract_an_origin() const
+{
+    if (!m_remote_navigable)
+        return m_window ? m_window->extract_an_origin() : Optional<URL::Origin> {};
+
+    auto origin = m_remote_navigable->active_document_origin();
+    if (!origin.has_value())
+        return {};
+
+    if (!origin->is_same_origin_domain(entry_settings_object().origin()))
+        return {};
+
+    return origin;
+}
+
 // 7.4 The WindowProxy exotic object, https://html.spec.whatwg.org/multipage/window-object.html#the-windowproxy-exotic-object
 WindowProxy::WindowProxy(JS::Realm& realm)
     : DOM::EventTarget(realm, MayInterfereWithIndexedPropertyAccess::Yes)

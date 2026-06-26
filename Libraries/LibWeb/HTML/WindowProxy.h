@@ -7,12 +7,14 @@
 #pragma once
 
 #include <AK/Forward.h>
+#include <AK/Optional.h>
 #include <LibGC/Ptr.h>
 #include <LibJS/Forward.h>
 #include <LibJS/Runtime/Object.h>
 #include <LibWeb/DOM/EventTarget.h>
 #include <LibWeb/Export.h>
 #include <LibWeb/Forward.h>
+#include <LibURL/Origin.h>
 
 namespace Web::HTML {
 
@@ -41,6 +43,8 @@ public:
     GC::Ptr<Navigable> remote_navigable() const { return m_remote_navigable; }
 
     GC::Ref<BrowsingContext> associated_browsing_context() const;
+
+    virtual Optional<URL::Origin> extract_an_origin() const override;
 
 private:
     explicit WindowProxy(JS::Realm&);
