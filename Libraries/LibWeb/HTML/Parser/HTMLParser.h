@@ -8,8 +8,11 @@
 
 #include <LibGfx/Color.h>
 #include <LibJS/Heap/Cell.h>
+#include <LibWeb/DOM/DocumentFragment.h>
 #include <LibWeb/DOM/FragmentSerializationMode.h>
 #include <LibWeb/Export.h>
+#include <LibWeb/Forward.h>
+#include <LibURL/Forward.h>
 #include <LibWeb/HTML/Parser/HTMLTokenizer.h>
 #include <LibWeb/HTML/Parser/ParserScriptingMode.h>
 #include <LibWeb/MimeSniff/MimeType.h>
@@ -55,7 +58,7 @@ public:
         No,
         Yes,
     };
-    static WebIDL::ExceptionOr<Vector<GC::Root<DOM::Node>>> parse_html_fragment(DOM::Element& context_element, StringView markup, AllowDeclarativeShadowRoots = AllowDeclarativeShadowRoots::No, ParserScriptingMode = ParserScriptingMode::Inert);
+    static WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> parse_html_fragment(DOM::Element& context_element, StringView markup, AllowDeclarativeShadowRoots = AllowDeclarativeShadowRoots::No, ParserScriptingMode = ParserScriptingMode::Inert);
 
     enum class SerializableShadowRoots {
         No,
