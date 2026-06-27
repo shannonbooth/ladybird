@@ -206,6 +206,7 @@ struct StackNode {
 
 struct FragmentParsingContext {
     root: usize,
+    root_insertion_target: usize,
     context_element: StackNode,
     document_quirks_mode: RustFfiHtmlQuirksMode,
     form_element: usize,
@@ -287,6 +288,7 @@ struct ParserState {
     head_element: Option<usize>,
     form_element: Option<usize>,
     parsing_fragment: bool,
+    root_insertion_target: usize,
     context_element: Option<StackNode>,
     scripting_enabled: bool,
     next_line_feed_can_be_ignored: bool,
@@ -312,6 +314,7 @@ impl ParserState {
             head_element: None,
             form_element: None,
             parsing_fragment: false,
+            root_insertion_target: 0,
             context_element: None,
             scripting_enabled: true,
             next_line_feed_can_be_ignored: false,
@@ -332,6 +335,7 @@ impl ParserState {
         let context_local_name = fragment_context.context_element.local_name.clone();
         *self = Self::new();
         self.parsing_fragment = true;
+        self.root_insertion_target = fragment_context.root_insertion_target;
         self.document_quirks_mode = fragment_context.document_quirks_mode;
         self.context_element = Some(fragment_context.context_element);
 
@@ -375,6 +379,7 @@ impl ParserState {
 
         visit_node(visitor, self.head_element.unwrap_or(0));
         visit_node(visitor, self.form_element.unwrap_or(0));
+        visit_node(visitor, self.root_insertion_target);
         if let Some(context_element) = &self.context_element {
             visit_node(visitor, context_element.handle);
         }
@@ -3012,10 +3017,11 @@ impl TreeBuilder {
 
     // https://html.spec.whatwg.org/multipage/parsing.html#insert-an-html-element
     fn insert_html_element_named(&mut self, name: &str, parent: usize) -> usize {
+        // To insert an HTML element given a token token: insert a foreign element given token, the HTML namespace, and false.
         self.flush_character_insertions();
-        let (adjusted_parent, adjusted_before) = self.appropriate_place_for_inserting_node(parent);
+        let (adjusted_parent, _) = self.appropriate_place_for_inserting_node(parent);
         let element = self.create_element(adjusted_parent, RustFfiHtmlNamespace::Html, None, name, &[], false);
-        self.insert_parser_created_element(adjusted_parent, adjusted_before, element);
+        self.insert_element_at_adjusted_insertion_location(parent, element);
         let template_content = if name == "template" {
             Some(self.template_content(element))
         } else {
@@ -3034,11 +3040,23 @@ impl TreeBuilder {
 
     // https://html.spec.whatwg.org/multipage/parsing.html#insert-an-html-element
     fn insert_html_element_for(&mut self, token: &Token, parent: usize) -> usize {
+        // To insert an HTML element given a token token: insert a foreign element given token, the HTML namespace, and false.
         self.insert_element_for(token, RustFfiHtmlNamespace::Html, parent)
     }
 
     // https://html.spec.whatwg.org/multipage/parsing.html#insert-a-foreign-element
+    // To insert a foreign element, given a token token, a string namespace, and a boolean onlyAddToElementStack:
     fn insert_foreign_element_for(&mut self, token: &Token, namespace_: RustFfiHtmlNamespace) -> usize {
+        // 1. Let the adjustedInsertionLocation be the appropriate place for inserting a node.
+
+        // 2. Let element be the result of creating an element for the token given token, namespace, and the element in
+        //    which the adjustedInsertionLocation finds itself.
+
+        // 3. If onlyAddToElementStack is false, then run insert an element at the adjusted insertion location with element.
+
+        // 4. Push element onto the stack of open elements so that it is the new current node.
+
+        // 5. Return element.
         self.insert_element_for(token, namespace_, self.current_insertion_parent_handle())
     }
 
@@ -3102,7 +3120,11 @@ impl TreeBuilder {
         drop(attributes);
         // 3. If onlyAddToElementStack is false, then run insert an element at the adjusted insertion location with
         //    element.
-        self.insert_parser_created_element(adjusted_parent, adjusted_before, element);
+        if before == 0 {
+            self.insert_element_at_adjusted_insertion_location(parent, element);
+        } else {
+            self.insert_element_at_precomputed_adjusted_insertion_location(adjusted_parent, adjusted_before, element);
+        }
         let template_content = if namespace_ == RustFfiHtmlNamespace::Html && local_name == "template" {
             Some(self.template_content(element))
         } else {
@@ -3126,9 +3148,9 @@ impl TreeBuilder {
         entry: &ActiveFormattingElement,
         parent: usize,
     ) -> usize {
-        let (adjusted_parent, adjusted_before) = self.appropriate_place_for_inserting_node(parent);
+        let (adjusted_parent, _) = self.appropriate_place_for_inserting_node(parent);
         let element = self.create_html_element_for_active_formatting_element(entry, adjusted_parent);
-        self.insert_parser_created_element(adjusted_parent, adjusted_before, element);
+        self.insert_element_at_adjusted_insertion_location(parent, element);
         self.stack_of_open_elements.push(StackNode {
             handle: element,
             local_name: entry.local_name.clone(),
@@ -3257,14 +3279,50 @@ impl TreeBuilder {
         unsafe { ladybird_html_parser_append_child(parent, child) }
     }
 
-    fn insert_node(&mut self, parent: usize, before: usize, child: usize) {
+    fn insert_node_at_adjusted_insertion_location(&mut self, parent: usize, before: usize, child: usize) {
+        let (parent, before) = self.adjust_insertion_location_for_root_insertion_target(parent, before);
         unsafe { ladybird_html_parser_insert_node(parent, before, child, false) };
     }
 
     // https://html.spec.whatwg.org/multipage/parsing.html#insert-an-element-at-the-adjusted-insertion-location
-    fn insert_parser_created_element(&mut self, parent: usize, before: usize, child: usize) {
+    fn insert_element_at_adjusted_insertion_location(&mut self, target: usize, child: usize) {
+        // 1. Let the adjusted insertion location be the appropriate place for inserting a node.
+        let (parent, before) = self.appropriate_place_for_inserting_node(target);
+
+        self.insert_element_at_precomputed_adjusted_insertion_location(parent, before, child);
+    }
+
+    fn insert_element_at_precomputed_adjusted_insertion_location(
+        &mut self,
+        mut parent: usize,
+        mut before: usize,
+        child: usize,
+    ) {
+        // 2. If the adjusted insertion location is the topmost node in the stack of open elements and the root
+        //    insertion target is non-null, then set the adjusted insertion location to the root insertion target,
+        //    after its last child (if any).
+        (parent, before) = self.adjust_insertion_location_for_root_insertion_target(parent, before);
+
         let queue_custom_element_reactions = !self.parsing_fragment;
         unsafe { ladybird_html_parser_insert_node(parent, before, child, queue_custom_element_reactions) };
+    }
+
+    fn adjust_insertion_location_for_root_insertion_target(
+        &self,
+        mut parent: usize,
+        mut before: usize,
+    ) -> (usize, usize) {
+        if self.root_insertion_target != 0
+            && self
+                .stack_of_open_elements
+                .first()
+                .is_some_and(|node| node.handle == parent)
+        {
+            parent = self.root_insertion_target;
+            before = 0;
+        }
+
+        (parent, before)
     }
 
     fn parent_node(&self, node: usize) -> usize {
@@ -3426,7 +3484,7 @@ impl TreeBuilder {
         // If an exception is thrown, then catch it and:
         if shadow_root == 0 {
             // 1. Insert an element at the adjusted insertion location with template.
-            self.insert_node(
+            self.insert_element_at_precomputed_adjusted_insertion_location(
                 adjusted_insertion_location_parent,
                 adjusted_insertion_location_before,
                 template,
@@ -3502,15 +3560,35 @@ impl TreeBuilder {
 
     // https://html.spec.whatwg.org/multipage/parsing.html#insert-a-comment
     fn insert_comment(&mut self, data: &str) {
-        let parent = self.current_insertion_parent_handle();
-        self.append_comment_to_node(parent, data);
+        // 1. Let data be the data given in the comment token being processed.
+
+        // 2. If position was specified, then let the adjusted insertion location be position.
+        //    Otherwise, let adjusted insertion location be the appropriate place for inserting a node.
+        self.flush_character_insertions();
+        let (parent, before) = self.appropriate_place_for_inserting_node(self.current_node_handle());
+
+        // 3. Create a Comment node whose data attribute is set to data and whose node document is the same as that of
+        //    the node in which the adjusted insertion location finds itself.
+        let comment = self.create_comment(data);
+
+        // 4. Insert the newly created node at the adjusted insertion location.
+        self.insert_node_at_adjusted_insertion_location(parent, before, comment);
     }
 
     // https://html.spec.whatwg.org/multipage/parsing.html#insert-a-comment
     fn append_comment_to_node(&mut self, parent: usize, data: &str) {
+        // 1. Let data be the data given in the comment token being processed.
+
         self.flush_character_insertions();
+
+        // 2. If position was specified, then let the adjusted insertion location be position.
+        //    Otherwise, let adjusted insertion location be the appropriate place for inserting a node.
+        // 3. Create a Comment node whose data attribute is set to data and whose node document is the same as that of
+        //    the node in which the adjusted insertion location finds itself.
         let comment = self.create_comment(data);
-        self.append_child(parent, comment);
+
+        // 4. Insert the newly created node at the adjusted insertion location.
+        self.insert_node_at_adjusted_insertion_location(parent, 0, comment);
     }
 
     // https://html.spec.whatwg.org/multipage/parsing.html#insert-a-character
@@ -3533,6 +3611,7 @@ impl TreeBuilder {
     }
 
     fn insert_text(&mut self, parent: usize, before: usize, data: &str) {
+        let (parent, before) = self.adjust_insertion_location_for_root_insertion_target(parent, before);
         unsafe { ladybird_html_parser_insert_text(parent, before, data.as_ptr(), data.len()) }
     }
 
@@ -4190,7 +4269,7 @@ impl TreeBuilder {
             // 14. Insert whatever lastNode ended up being in the previous step at the appropriate place for inserting a node,
             //     but using commonAncestor as the override target.
             let (parent, before) = self.appropriate_place_for_inserting_node(common_ancestor);
-            self.insert_node(parent, before, last_node);
+            self.insert_node_at_adjusted_insertion_location(parent, before, last_node);
 
             // 15. Create an element for the token for which formattingElement was created,
             //     in the HTML namespace, with furthestBlock as the intended parent.
@@ -5081,6 +5160,7 @@ pub extern "C" fn rust_html_parser_create() -> *mut RustFfiHtmlParserHandle {
 pub unsafe extern "C" fn rust_html_parser_begin_fragment(
     handle: *mut RustFfiHtmlParserHandle,
     root: usize,
+    root_insertion_target: usize,
     context_element: usize,
     context_namespace: RustFfiHtmlNamespace,
     context_namespace_uri_ptr: *const u8,
@@ -5109,6 +5189,7 @@ pub unsafe extern "C" fn rust_html_parser_begin_fragment(
     let handle = unsafe { &mut *handle };
     handle.state.begin_fragment(FragmentParsingContext {
         root,
+        root_insertion_target,
         context_element: StackNode {
             handle: context_element,
             local_name: context_local_name,

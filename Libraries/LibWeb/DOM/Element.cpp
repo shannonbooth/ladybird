@@ -2540,24 +2540,12 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> Element::parse_fragment(Stri
     // 2. Let newChildren be null.
     Vector<GC::Root<Node>> new_children;
 
-    // 3. If context's node document is an XML document, then set newChildren to the result of invoking the XML fragment parsing algorithm given context and markup.
-    if (document().is_xml_document()) {
-        new_children = TRY(XMLFragmentParser::parse_xml_fragment(*this, markup));
-    }
-    // 4. Otherwise, set newChildren to the result of invoking the HTML fragment parsing algorithm given context, markup, false, and scriptingMode.
-    else {
-        new_children = TRY(HTML::HTMLParser::parse_html_fragment(*this, markup, HTML::HTMLParser::AllowDeclarativeShadowRoots::No, scripting_mode));
-    }
+    // 3. If context's node document is an XML document, return the result of invoking the XML fragment parsing algorithm given context and markup.
+    if (document().is_xml_document())
+        return XMLFragmentParser::parse_xml_fragment(*this, markup);
 
-    // 5. Let fragment be a new DocumentFragment whose node document is context's node document.
-    auto fragment = realm().create<DOM::DocumentFragment>(document());
-
-    // 6. For each node of newChildren, in tree order: append node to fragment.
-    for (auto& child : new_children)
-        TRY(fragment->append_child(*child));
-
-    // 7. Return fragment.
-    return fragment;
+    // 4. Return the result of invoking the HTML fragment parsing algorithm given context, markup, false, and scriptingMode.
+    return HTML::HTMLParser::parse_html_fragment(*this, markup, HTML::HTMLParser::AllowDeclarativeShadowRoots::No, scripting_mode);
 }
 
 // https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-element-outerhtml

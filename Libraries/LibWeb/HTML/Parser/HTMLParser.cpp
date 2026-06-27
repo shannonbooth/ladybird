@@ -20,6 +20,7 @@
 #include <LibWeb/DOM/Attr.h>
 #include <LibWeb/DOM/Comment.h>
 #include <LibWeb/DOM/Document.h>
+#include <LibWeb/DOM/DocumentFragment.h>
 #include <LibWeb/DOM/DocumentType.h>
 #include <LibWeb/DOM/Element.h>
 #include <LibWeb/DOM/ElementFactory.h>
@@ -130,6 +131,7 @@ void HTMLParser::visit_edges(Cell::Visitor& visitor)
     visitor.visit(m_document);
     visitor.visit(m_form_element);
     visitor.visit(m_context_element);
+    visitor.visit(m_root_insertion_target);
     visitor.visit(m_active_speculative_html_parser);
 
     rust_html_parser_visit_edges(m_rust_parser, &visitor);
@@ -894,7 +896,7 @@ DOM::Document& HTMLParser::document()
 }
 
 // https://html.spec.whatwg.org/multipage/parsing.html#parsing-html-fragments
-WebIDL::ExceptionOr<Vector<GC::Root<DOM::Node>>> HTMLParser::parse_html_fragment(DOM::Element& context_element, StringView markup, AllowDeclarativeShadowRoots allow_declarative_shadow_roots, ParserScriptingMode scripting_mode)
+WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragment(DOM::Element& context_element, StringView markup, AllowDeclarativeShadowRoots allow_declarative_shadow_roots, ParserScriptingMode scripting_mode)
 {
     // 1. Assert: scriptingMode is either Inert or Fragment.
     VERIFY(scripting_mode == HTML::ParserScriptingMode::Inert || scripting_mode == HTML::ParserScriptingMode::Fragment);
@@ -983,7 +985,23 @@ WebIDL::ExceptionOr<Vector<GC::Root<DOM::Node>>> HTMLParser::parse_html_fragment
     // 12. Append root to document.
     MUST(temp_document->append_child(root));
 
-    // 17. Set the HTML parser's form element pointer to the nearest node to context that is a form element
+    // 13. Set up the HTML parser's stack of open elements so that it contains just the single element root.
+    // 14. Let fragment be a new DocumentFragment whose node document is contextDocument.
+    auto fragment = context_element.realm().create<DOM::DocumentFragment>(context_document);
+
+    // 15. Set the parser's root insertion target to fragment.
+    parser->m_root_insertion_target = fragment;
+
+    // 16. If context is a template element, then push "in template" onto the stack of template insertion modes so that it is the new current template insertion mode.
+
+    // 17. Create a start tag token whose name is the local name of context and whose attributes are the attributes of context.
+    //     Let this start tag token be the start tag token of context; e.g. for the purposes of determining if it is an HTML integration point.
+
+    // 18. Reset the parser's insertion mode appropriately.
+    // NB: The parser will reference the context element as part of that algorithm.
+
+
+    // 19. Set the HTML parser's form element pointer to the nearest node to context that is a form element
     //     (going straight up the ancestor chain, and including the element itself, if it is a form element), if any.
     //     (If there is no such form element, the form element pointer keeps its initial value, null.)
     parser->m_form_element = as_if<HTMLFormElement>(context_element);
@@ -1018,6 +1036,7 @@ WebIDL::ExceptionOr<Vector<GC::Root<DOM::Node>>> HTMLParser::parse_html_fragment
     rust_html_parser_begin_fragment(
         parser->m_rust_parser,
         reinterpret_cast<size_t>(root.ptr()),
+        reinterpret_cast<size_t>(fragment.ptr()),
         reinterpret_cast<size_t>(&context_element),
         context_namespace_ffi,
         reinterpret_cast<u8 const*>(context_namespace_uri.characters_without_null_termination()),
@@ -1029,18 +1048,12 @@ WebIDL::ExceptionOr<Vector<GC::Root<DOM::Node>>> HTMLParser::parse_html_fragment
         quirks_mode_to_html_parser_ffi(temp_document->mode()),
         parser->m_form_element ? reinterpret_cast<size_t>(parser->m_form_element.ptr()) : 0);
 
-    // 18. Place the input into the input stream for the HTML parser just created. The encoding confidence is irrelevant.
-    // 19. Start the HTML parser and let it run until it has consumed all the characters just inserted into the input stream.
+    // 20. Place the input into the input stream for the HTML parser just created. The encoding confidence is irrelevant.
+    // 21. Start the HTML parser and let it run until it has consumed all the characters just inserted into the input stream.
     parser->run(context_element.document().url());
 
-    // 20. Return root's children, in tree order.
-    Vector<GC::Root<DOM::Node>> children;
-    while (GC::Ptr<DOM::Node> child = root->first_child()) {
-        MUST(root->remove_child(*child));
-        context_element.document().adopt_node(*child);
-        children.append(GC::make_root(*child));
-    }
-    return children;
+    // 22. Return fragment.
+    return fragment;
 }
 
 GC::Ref<HTMLParser> HTMLParser::create_for_scripting(DOM::Document& document)

@@ -15,7 +15,7 @@
 namespace Web {
 
 // https://html.spec.whatwg.org/multipage/xhtml.html#parsing-xhtml-fragments
-WebIDL::ExceptionOr<Vector<GC::Root<DOM::Node>>> XMLFragmentParser::parse_xml_fragment(DOM::Element& context, StringView input)
+WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> XMLFragmentParser::parse_xml_fragment(DOM::Element& context, StringView input)
 {
     // 1. Create a new XML parser.
     // NB: The feed will be used to create the parser below
@@ -86,13 +86,20 @@ WebIDL::ExceptionOr<Vector<GC::Root<DOM::Node>>> XMLFragmentParser::parse_xml_fr
         return WebIDL::SyntaxError::create(context.realm(), "Document element has sibling nodes"_utf16);
     }
 
-    // 7. Return the resulting Document node's document element's children, in tree order.
-    Vector<GC::Root<DOM::Node>> result_nodes;
-    for (auto* child = doc_element->first_child(); child; child = child->next_sibling()) {
-        result_nodes.append(*child);
+    // 7. Let newChildren be the resulting Document node's document element's children, in tree order.
+    // 8. Let fragment be a new DocumentFragment whose node document is context's node document.
+    auto fragment = context.realm().create<DOM::DocumentFragment>(context.document());
+
+    // 9. For each node of newChildren, in tree order: append node to fragment.
+    for (auto* child = doc_element->first_child(); child;) {
+        // append_child() moves child out of doc_element, so keep the next sibling first.
+        auto* next_child = child->next_sibling();
+        TRY(fragment->append_child(*child));
+        child = next_child;
     }
 
-    return result_nodes;
+    // 10. Return fragment.
+    return fragment;
 }
 
 }

@@ -592,7 +592,7 @@ void Document::set_temporary_document_for_fragment_parsing(Badge<HTML::HTMLParse
     // into the context document.
     // Spec issue: https://github.com/whatwg/html/issues/11023
     m_temporary_document_for_fragment_parsing = true;
-    set_is_connected(false);
+    // set_is_connected(false);
 }
 
 void Document::set_style_invalidation_counter_dump_interval(Optional<u64> interval)

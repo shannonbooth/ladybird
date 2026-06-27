@@ -2293,18 +2293,12 @@ WebIDL::ExceptionOr<Utf16String> Node::serialize_fragment(HTML::RequireWellForme
 WebIDL::ExceptionOr<void> Node::unsafely_set_html(Element& context_element, StringView html)
 {
     // 1. Let newChildren be the result of the HTML fragment parsing algorithm given contextElement, html, and true.
-    auto new_children = TRY(HTML::HTMLParser::parse_html_fragment(context_element, html, HTML::HTMLParser::AllowDeclarativeShadowRoots::Yes));
-
-    // 2. Let fragment be a new DocumentFragment whose node document is contextElement’s node document.
-    auto fragment = realm().create<DocumentFragment>(context_element.document());
-
-    // 3. For each node in newChildren, append node to fragment.
-    for (auto& child : new_children)
-        // I don't know if this can throw here, but let's be safe.
-        (void)TRY(fragment->append_child(*child));
+    auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(context_element, html, HTML::HTMLParser::AllowDeclarativeShadowRoots::Yes));
 
     // 4. Replace all with fragment within contextElement.
     replace_all(fragment);
+
+    // FIXME: Algorithm updated for sanitizer API with https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#set-and-filter-html
 
     return {};
 }
