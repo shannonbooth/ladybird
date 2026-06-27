@@ -206,6 +206,7 @@ struct StackNode {
 
 struct FragmentParsingContext {
     root: usize,
+    root_insertion_target: usize,
     context_element: StackNode,
     document_quirks_mode: RustFfiHtmlQuirksMode,
     form_element: usize,
@@ -287,6 +288,7 @@ struct ParserState {
     head_element: Option<usize>,
     form_element: Option<usize>,
     parsing_fragment: bool,
+    root_insertion_target: usize,
     context_element: Option<StackNode>,
     scripting_enabled: bool,
     next_line_feed_can_be_ignored: bool,
@@ -312,6 +314,7 @@ impl ParserState {
             head_element: None,
             form_element: None,
             parsing_fragment: false,
+            root_insertion_target: 0,
             context_element: None,
             scripting_enabled: true,
             next_line_feed_can_be_ignored: false,
@@ -332,6 +335,7 @@ impl ParserState {
         let context_local_name = fragment_context.context_element.local_name.clone();
         *self = Self::new();
         self.parsing_fragment = true;
+        self.root_insertion_target = fragment_context.root_insertion_target;
         self.document_quirks_mode = fragment_context.document_quirks_mode;
         self.context_element = Some(fragment_context.context_element);
 
@@ -375,6 +379,7 @@ impl ParserState {
 
         visit_node(visitor, self.head_element.unwrap_or(0));
         visit_node(visitor, self.form_element.unwrap_or(0));
+        visit_node(visitor, self.root_insertion_target);
         if let Some(context_element) = &self.context_element {
             visit_node(visitor, context_element.handle);
         }
@@ -3589,6 +3594,10 @@ impl TreeBuilder {
 
     // https://html.spec.whatwg.org/multipage/parsing.html#appropriate-place-for-inserting-a-node
     fn appropriate_place_for_inserting_node(&self, target: usize) -> (usize, usize) {
+        if self.stack_of_open_elements.len() == 1 && self.root_insertion_target != 0 {
+            return (self.root_insertion_target, 0);
+        }
+
         let Some(target_node) = self.stack_of_open_elements.iter().find(|node| node.handle == target) else {
             return (target, 0);
         };
@@ -4806,6 +4815,7 @@ pub extern "C" fn rust_html_parser_create() -> *mut RustFfiHtmlParserHandle {
 pub unsafe extern "C" fn rust_html_parser_begin_fragment(
     handle: *mut RustFfiHtmlParserHandle,
     root: usize,
+    root_insertion_target: usize,
     context_element: usize,
     context_namespace: RustFfiHtmlNamespace,
     context_namespace_uri_ptr: *const u8,
@@ -4834,6 +4844,7 @@ pub unsafe extern "C" fn rust_html_parser_begin_fragment(
     let handle = unsafe { &mut *handle };
     handle.state.begin_fragment(FragmentParsingContext {
         root,
+        root_insertion_target,
         context_element: StackNode {
             handle: context_element,
             local_name: context_local_name,

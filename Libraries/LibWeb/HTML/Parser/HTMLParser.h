@@ -141,6 +141,9 @@ private:
     GC::Ptr<HTMLFormElement> m_form_element;
     GC::Ptr<DOM::Element> m_context_element;
 
+    // https://html.spec.whatwg.org/multipage/parsing.html#root-insertion-target
+    GC::Ptr<DOM::Node> m_root_insertion_target;
+
     // https://html.spec.whatwg.org/multipage/parsing.html#active-speculative-html-parser
     GC::Ptr<SpeculativeHTMLParser> m_active_speculative_html_parser;
 };
