@@ -152,7 +152,7 @@ unsafe extern "C" {
         keep_custom_element_registry_null: bool,
     ) -> usize;
     fn ladybird_html_parser_set_template_content(element: usize, content: usize);
-    fn ladybird_html_parser_allows_declarative_shadow_roots(node: usize) -> bool;
+    fn ladybird_html_parser_allows_declarative_shadow_roots(parser: *mut c_void) -> bool;
 }
 
 /// Opaque handle for the Rust HTML parser, passed across the FFI boundary.
@@ -3082,8 +3082,8 @@ impl TreeBuilder {
         unsafe { ladybird_html_parser_set_template_content(element, content) }
     }
 
-    fn allows_declarative_shadow_roots(&self, node: usize) -> bool {
-        unsafe { ladybird_html_parser_allows_declarative_shadow_roots(node) }
+    fn allows_declarative_shadow_roots(&self) -> bool {
+        unsafe { ladybird_html_parser_allows_declarative_shadow_roots(self.host) }
     }
 
     // https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead:attr-template-shadowrootmode
@@ -3106,7 +3106,7 @@ impl TreeBuilder {
         };
 
         //    - document's allow declarative shadow roots is true; or
-        if !self.allows_declarative_shadow_roots(intended_parent) {
+        if !self.allows_declarative_shadow_roots() {
             return false;
         }
 
@@ -3619,6 +3619,13 @@ impl TreeBuilder {
         let creation_parent = target_node.template_content.unwrap_or(target_node.handle);
 
         if self.stack_of_open_elements.len() == 1 && self.root_insertion_target != 0 {
+            let creation_parent = if self.context_element.as_ref().is_some_and(|element| {
+                element.namespace_ == RustFfiHtmlNamespace::Html && element.local_name == "template"
+            }) {
+                self.root_insertion_target
+            } else {
+                creation_parent
+            };
             return (creation_parent, self.root_insertion_target, 0);
         }
 

@@ -91,7 +91,7 @@ extern "C" void ladybird_html_parser_move_all_children(size_t, size_t);
 extern "C" size_t ladybird_html_parser_template_content(size_t);
 extern "C" size_t ladybird_html_parser_attach_declarative_shadow_root(size_t, RustFfiHtmlShadowRootMode, RustFfiHtmlSlotAssignmentMode, bool, bool, bool, bool);
 extern "C" void ladybird_html_parser_set_template_content(size_t, size_t);
-extern "C" bool ladybird_html_parser_allows_declarative_shadow_roots(size_t);
+extern "C" bool ladybird_html_parser_allows_declarative_shadow_roots(void*);
 
 HTMLParser::HTMLParser(DOM::Document& document, ParserScriptingMode scripting_mode, StringView input, StringView encoding, HTMLTokenizer::InputType input_type)
     : m_tokenizer(input, encoding, input_type)
@@ -1050,6 +1050,11 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragm
     // 20. Place the input into the input stream for the HTML parser just created. The encoding confidence is irrelevant.
     // 21. Start the HTML parser and let it run until it has consumed all the characters just inserted into the input stream.
     parser->run(context_element.document().url());
+
+    // Some tree-construction paths, such as adoption agency reparenting, can still insert into the synthetic root
+    // while the stack of open elements has more than one item. Preserve those nodes in the returned fragment.
+    while (auto child = root->first_child())
+        TRY(fragment->append_child(*child));
 
     // 22. Return fragment.
     return fragment;
@@ -2095,9 +2100,9 @@ extern "C" void ladybird_html_parser_set_template_content(size_t element, size_t
     as<HTMLTemplateElement>(node_from_html_parser_ffi(element)).set_template_contents(as<DOM::DocumentFragment>(node_from_html_parser_ffi(content)));
 }
 
-extern "C" bool ladybird_html_parser_allows_declarative_shadow_roots(size_t node)
+extern "C" bool ladybird_html_parser_allows_declarative_shadow_roots(void* parser)
 {
-    return node_from_html_parser_ffi(node).document().allow_declarative_shadow_roots();
+    return parser_from_html_parser_ffi(parser).document().allow_declarative_shadow_roots();
 }
 
 }
