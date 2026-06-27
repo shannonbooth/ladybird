@@ -2475,7 +2475,7 @@ impl TreeBuilder {
 
         if token.token_type == TokenType::Comment {
             if let Some(html) = self.stack_of_open_elements.first() {
-                self.append_comment_to_node(html.handle, token.comment_data());
+                self.append_comment_to_node_or_root_insertion_target(html.handle, token.comment_data());
             }
             return;
         }
@@ -2516,7 +2516,7 @@ impl TreeBuilder {
     fn handle_after_after_body(&mut self, token: Token) {
         if token.token_type == TokenType::Comment {
             let document = self.document_node();
-            self.append_comment_to_node(document, token.comment_data());
+            self.append_comment_to_node_or_root_insertion_target(document, token.comment_data());
             return;
         }
 
@@ -2540,7 +2540,7 @@ impl TreeBuilder {
     fn handle_after_after_frameset(&mut self, token: Token) {
         if token.token_type == TokenType::Comment {
             let document = self.document_node();
-            self.append_comment_to_node(document, token.comment_data());
+            self.append_comment_to_node_or_root_insertion_target(document, token.comment_data());
             return;
         }
 
@@ -2780,8 +2780,9 @@ impl TreeBuilder {
     // https://html.spec.whatwg.org/multipage/parsing.html#insert-an-html-element
     fn insert_html_element_named(&mut self, name: &str, parent: usize) -> usize {
         self.flush_character_insertions();
-        let (adjusted_parent, adjusted_before) = self.appropriate_place_for_inserting_node(parent);
-        let element = self.create_element(adjusted_parent, RustFfiHtmlNamespace::Html, None, name, &[], false);
+        let (creation_parent, adjusted_parent, adjusted_before) =
+            self.appropriate_place_for_inserting_node_and_creation_parent(parent);
+        let element = self.create_element(creation_parent, RustFfiHtmlNamespace::Html, None, name, &[], false);
         self.insert_parser_created_element(adjusted_parent, adjusted_before, element);
         let template_content = if name == "template" {
             Some(self.template_content(element))
@@ -2834,10 +2835,10 @@ impl TreeBuilder {
     ) -> usize {
         self.flush_character_insertions();
         // 1. Let the adjustedInsertionLocation be the appropriate place for inserting a node.
-        let (adjusted_parent, adjusted_before) = if before == 0 {
-            self.appropriate_place_for_inserting_node(parent)
+        let (creation_parent, adjusted_parent, adjusted_before) = if before == 0 {
+            self.appropriate_place_for_inserting_node_and_creation_parent(parent)
         } else {
-            (parent, before)
+            (parent, parent, before)
         };
         let attributes = attributes_from_token(token, namespace_);
         let owned_attributes = owned_attributes_from_token(token, namespace_);
@@ -2851,7 +2852,7 @@ impl TreeBuilder {
         // 2. Let element be the result of creating an element for the token given token, namespace, and the element in
         //    which the adjustedInsertionLocation finds itself.
         let element = self.create_element(
-            adjusted_parent,
+            creation_parent,
             namespace_,
             namespace_uri.as_deref(),
             local_name,
@@ -2893,8 +2894,9 @@ impl TreeBuilder {
         entry: &ActiveFormattingElement,
         parent: usize,
     ) -> usize {
-        let (adjusted_parent, adjusted_before) = self.appropriate_place_for_inserting_node(parent);
-        let element = self.create_html_element_for_active_formatting_element(entry, adjusted_parent);
+        let (creation_parent, adjusted_parent, adjusted_before) =
+            self.appropriate_place_for_inserting_node_and_creation_parent(parent);
+        let element = self.create_html_element_for_active_formatting_element(entry, creation_parent);
         self.insert_parser_created_element(adjusted_parent, adjusted_before, element);
         self.stack_of_open_elements.push(StackNode {
             handle: element,
@@ -3269,8 +3271,10 @@ impl TreeBuilder {
 
     // https://html.spec.whatwg.org/multipage/parsing.html#insert-a-comment
     fn insert_comment(&mut self, data: &str) {
-        let parent = self.current_insertion_parent_handle();
-        self.append_comment_to_node(parent, data);
+        self.flush_character_insertions();
+        let (parent, before) = self.appropriate_place_for_inserting_node(self.current_node_handle());
+        let comment = self.create_comment(data);
+        self.insert_node(parent, before, comment);
     }
 
     // https://html.spec.whatwg.org/multipage/parsing.html#insert-a-comment
@@ -3278,6 +3282,14 @@ impl TreeBuilder {
         self.flush_character_insertions();
         let comment = self.create_comment(data);
         self.append_child(parent, comment);
+    }
+
+    fn append_comment_to_node_or_root_insertion_target(&mut self, parent: usize, data: &str) {
+        if self.root_insertion_target != 0 {
+            self.append_comment_to_node(self.root_insertion_target, data);
+        } else {
+            self.append_comment_to_node(parent, data);
+        }
     }
 
     // https://html.spec.whatwg.org/multipage/parsing.html#insert-a-character
@@ -3594,13 +3606,21 @@ impl TreeBuilder {
 
     // https://html.spec.whatwg.org/multipage/parsing.html#appropriate-place-for-inserting-a-node
     fn appropriate_place_for_inserting_node(&self, target: usize) -> (usize, usize) {
-        if self.stack_of_open_elements.len() == 1 && self.root_insertion_target != 0 {
-            return (self.root_insertion_target, 0);
-        }
+        let (_, adjusted_parent, adjusted_before) =
+            self.appropriate_place_for_inserting_node_and_creation_parent(target);
+        (adjusted_parent, adjusted_before)
+    }
 
+    fn appropriate_place_for_inserting_node_and_creation_parent(&self, target: usize) -> (usize, usize, usize) {
         let Some(target_node) = self.stack_of_open_elements.iter().find(|node| node.handle == target) else {
-            return (target, 0);
+            return (target, target, 0);
         };
+
+        let creation_parent = target_node.template_content.unwrap_or(target_node.handle);
+
+        if self.stack_of_open_elements.len() == 1 && self.root_insertion_target != 0 {
+            return (creation_parent, self.root_insertion_target, 0);
+        }
 
         if !self.foster_parenting_enabled
             || target_node.namespace_ != RustFfiHtmlNamespace::Html
@@ -3609,7 +3629,7 @@ impl TreeBuilder {
                 "table" | "tbody" | "tfoot" | "thead" | "tr"
             )
         {
-            return (target_node.template_content.unwrap_or(target_node.handle), 0);
+            return (creation_parent, creation_parent, 0);
         }
 
         let last_template_index = self
@@ -3625,10 +3645,12 @@ impl TreeBuilder {
             && last_table_index.is_none_or(|table_index| template_index > table_index)
         {
             let template = &self.stack_of_open_elements[template_index];
-            return (template.template_content.unwrap_or(template.handle), 0);
+            let parent = template.template_content.unwrap_or(template.handle);
+            return (parent, parent, 0);
         }
 
-        self.foster_parenting_location()
+        let (parent, before) = self.foster_parenting_location();
+        (parent, parent, before)
     }
 
     fn insert_marker_at_the_end_of_the_list_of_active_formatting_elements(&mut self) {

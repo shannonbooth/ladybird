@@ -91,8 +91,11 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> XMLFragmentParser::parse_xml
     auto fragment = context.realm().create<DOM::DocumentFragment>(context.document());
 
     // 9. For each node of newChildren, in tree order: append node to fragment.
-    for (auto* child = doc_element->first_child(); child; child = child->next_sibling())
+    for (auto* child = doc_element->first_child(); child;) {
+        auto* next_child = child->next_sibling();
         TRY(fragment->append_child(*child));
+        child = next_child;
+    }
 
     // 10. Return fragment.
     return fragment;
