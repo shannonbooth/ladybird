@@ -91,7 +91,6 @@ extern "C" void ladybird_html_parser_move_all_children(size_t, size_t);
 extern "C" size_t ladybird_html_parser_template_content(size_t);
 extern "C" size_t ladybird_html_parser_attach_declarative_shadow_root(size_t, RustFfiHtmlShadowRootMode, RustFfiHtmlSlotAssignmentMode, bool, bool, bool, bool);
 extern "C" void ladybird_html_parser_set_template_content(size_t, size_t);
-extern "C" bool ladybird_html_parser_allows_declarative_shadow_roots(size_t);
 extern "C" bool ladybird_html_parser_is_shadow_host(size_t);
 
 HTMLParser::HTMLParser(DOM::Document& document, ParserScriptingMode scripting_mode, StringView input, StringView encoding, HTMLTokenizer::InputType input_type)
@@ -156,6 +155,7 @@ void HTMLParser::run(HTMLTokenizer::StopAtInsertionPoint stop_at_insertion_point
             m_tokenizer.ffi_handle({}),
             this,
             m_scripting_mode != ParserScriptingMode::Disabled,
+            m_allow_declarative_shadow_roots == AllowDeclarativeShadowRoots::Yes,
             stop_at_insertion_point == HTMLTokenizer::StopAtInsertionPoint::Yes);
         if (result == RustFfiHtmlParserRunResult::Ok)
             break;
@@ -899,6 +899,11 @@ DOM::Document& HTMLParser::document()
 // https://html.spec.whatwg.org/multipage/parsing.html#parsing-html-fragments
 WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragment(DOM::Element& context_element, StringView markup, AllowDeclarativeShadowRoots allow_declarative_shadow_roots, ParserScriptingMode scripting_mode)
 {
+    return parse_html_fragment(context_element, context_element, markup, allow_declarative_shadow_roots, scripting_mode);
+}
+
+WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragment(DOM::Node& target, DOM::Element& context_element, StringView markup, AllowDeclarativeShadowRoots allow_declarative_shadow_roots, ParserScriptingMode scripting_mode)
+{
     // 1. Assert: scriptingMode is either Inert or Fragment.
     VERIFY(scripting_mode == HTML::ParserScriptingMode::Inert || scripting_mode == HTML::ParserScriptingMode::Fragment);
 
@@ -915,6 +920,8 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragm
 
     // 3. Let contextDocument be context's node document.
     auto& context_document = context_element.document();
+    // WebKit passes both a context element and a target fragment; use target for fragment document/registry.
+    auto& target_document = target.document();
 
     // 4. If contextDocument is in quirks mode, then set document's mode to "quirks".
     if (context_document.in_quirks_mode()) {
@@ -925,10 +932,6 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragm
         temp_document->set_quirks_mode(DOM::QuirksMode::Limited);
     }
 
-    // 6. If allowDeclarativeShadowRoots is true, then set document's allow declarative shadow roots to true.
-    if (allow_declarative_shadow_roots == AllowDeclarativeShadowRoots::Yes)
-        temp_document->set_allow_declarative_shadow_roots(true);
-
     // 7. Create a new HTML parser, and associate it with document.
     // 8. If contextDocument's scripting is disabled, then set scriptingMode to Disabled.
     // 9. Set the parser's scripting mode to scriptingMode.
@@ -936,6 +939,7 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragm
         scripting_mode = HTML::ParserScriptingMode::Disabled;
 
     auto parser = HTMLParser::create_for_decoded_string(*temp_document, markup, scripting_mode, "utf-8"sv);
+    parser->set_allow_declarative_shadow_roots(allow_declarative_shadow_roots);
     parser->m_context_element = context_element;
     parser->m_parsing_fragment = true;
 
@@ -981,14 +985,14 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragm
 
     // 11. Let root be the result of creating an element given document, "html", the HTML namespace, null, null, false,
     //    and context's custom element registry.
-    auto root = MUST(create_element(context_element.document(), HTML::TagNames::html, Namespace::HTML, {}, {}, false, context_element.custom_element_registry()));
+    auto root = MUST(create_element(target_document, HTML::TagNames::html, Namespace::HTML, {}, {}, false, look_up_a_custom_element_registry(target)));
 
     // 12. Append root to document.
     MUST(temp_document->append_child(root));
 
     // 13. Set up the HTML parser's stack of open elements so that it contains just the single element root.
     // 14. Let fragment be a new DocumentFragment whose node document is contextDocument.
-    auto fragment = context_element.realm().create<DOM::DocumentFragment>(context_document);
+    auto fragment = context_element.realm().create<DOM::DocumentFragment>(target_document);
 
     // 15. Set the parser's root insertion target to fragment.
     parser->m_root_insertion_target = fragment;
@@ -1047,6 +1051,7 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragm
         context_attributes.data(),
         context_attributes.size(),
         quirks_mode_to_html_parser_ffi(temp_document->mode()),
+        allow_declarative_shadow_roots == AllowDeclarativeShadowRoots::Yes,
         parser->m_form_element ? reinterpret_cast<size_t>(parser->m_form_element.ptr()) : 0);
 
     // 20. Place the input into the input stream for the HTML parser just created. The encoding confidence is irrelevant.
@@ -1066,17 +1071,23 @@ GC::Ref<HTMLParser> HTMLParser::create_for_scripting(DOM::Document& document)
 GC::Ref<HTMLParser> HTMLParser::create_with_open_input_stream(DOM::Document& document)
 {
     auto scripting_mode = document.is_scripting_enabled() ? ParserScriptingMode::Normal : ParserScriptingMode::Disabled;
-    return document.realm().create<HTMLParser>(document, scripting_mode, ScriptCreatedParser::No);
+    auto parser = document.realm().create<HTMLParser>(document, scripting_mode, ScriptCreatedParser::No);
+    parser->set_allow_declarative_shadow_roots(AllowDeclarativeShadowRoots::Yes);
+    return parser;
 }
 
 GC::Ref<HTMLParser> HTMLParser::create_with_uncertain_encoding(DOM::Document& document, ByteBuffer const& input, Optional<MimeSniff::MimeType> maybe_mime_type)
 {
     auto scripting_mode = document.is_scripting_enabled() ? ParserScriptingMode::Normal : ParserScriptingMode::Disabled;
-    if (document.has_encoding())
-        return document.realm().create<HTMLParser>(document, scripting_mode, input, document.encoding().value().to_byte_string());
-    auto encoding = run_encoding_sniffing_algorithm(document, input, maybe_mime_type);
-    dbgln_if(HTML_PARSER_DEBUG, "The encoding sniffing algorithm returned encoding '{}'", encoding);
-    return document.realm().create<HTMLParser>(document, scripting_mode, input, encoding);
+    auto parser = [&] {
+        if (document.has_encoding())
+            return document.realm().create<HTMLParser>(document, scripting_mode, input, document.encoding().value().to_byte_string());
+        auto encoding = run_encoding_sniffing_algorithm(document, input, maybe_mime_type);
+        dbgln_if(HTML_PARSER_DEBUG, "The encoding sniffing algorithm returned encoding '{}'", encoding);
+        return document.realm().create<HTMLParser>(document, scripting_mode, input, encoding);
+    }();
+    parser->set_allow_declarative_shadow_roots(AllowDeclarativeShadowRoots::Yes);
+    return parser;
 }
 
 GC::Ref<HTMLParser> HTMLParser::create(DOM::Document& document, StringView input, ParserScriptingMode scripting_mode, StringView encoding)
@@ -2095,11 +2106,6 @@ extern "C" size_t ladybird_html_parser_attach_declarative_shadow_root(size_t hos
 extern "C" void ladybird_html_parser_set_template_content(size_t element, size_t content)
 {
     as<HTMLTemplateElement>(node_from_html_parser_ffi(element)).set_template_contents(as<DOM::DocumentFragment>(node_from_html_parser_ffi(content)));
-}
-
-extern "C" bool ladybird_html_parser_allows_declarative_shadow_roots(size_t node)
-{
-    return node_from_html_parser_ffi(node).document().allow_declarative_shadow_roots();
 }
 
 extern "C" bool ladybird_html_parser_is_shadow_host(size_t node)

@@ -439,7 +439,6 @@ WebIDL::ExceptionOr<GC::Ref<Document>> Document::create_and_initialize(Type type
     //    URL: creationURL
     //    current document readiness: "loading"
     //    about base URL: navigationParams's about base URL
-    //    allow declarative shadow roots: true
     //    custom element registry: A new CustomElementRegistry object.
     auto& realm = window->realm();
     auto document = HTML::HTMLDocument::create(realm);
@@ -454,7 +453,6 @@ WebIDL::ExceptionOr<GC::Ref<Document>> Document::create_and_initialize(Type type
     document->m_about_base_url = navigation_params.about_base_url;
     document->set_url(*creation_url);
     document->m_readiness = HTML::DocumentReadyState::Loading;
-    document->set_allow_declarative_shadow_roots(true);
     document->set_custom_element_registry(realm.create<HTML::CustomElementRegistry>(realm));
 
     document->m_window = window;
@@ -1055,10 +1053,13 @@ WebIDL::ExceptionOr<Document*> Document::open(Optional<String> const&, Optional<
     // 17. Set the insertion point to point at just before the end of the input stream (which at this point will be empty).
     m_parser->tokenizer().update_insertion_point();
 
-    // 18. Update the current document readiness of document to "loading".
+    // 18. Set the parser's allow declarative shadow roots to true.
+    m_parser->set_allow_declarative_shadow_roots(HTML::HTMLParser::AllowDeclarativeShadowRoots::Yes);
+
+    // 19. Update the current document readiness of document to "loading".
     update_readiness(HTML::DocumentReadyState::Loading);
 
-    // 19. Return document.
+    // 20. Return document.
     return this;
 }
 
@@ -5868,11 +5869,6 @@ GC::Ref<DOM::Document> Document::appropriate_template_contents_owner_document()
             if (document_type() == Type::HTML)
                 new_document->set_document_type(Type::HTML);
 
-            // AD-HOC: Copy over the "allow declarative shadow roots" flag, otherwise no elements inside templates will
-            //         be able to have declarative shadow roots.
-            // Spec issue: https://github.com/whatwg/html/issues/11955
-            new_document->set_allow_declarative_shadow_roots(allow_declarative_shadow_roots());
-
             // 3. Set document's associated inert template document to newDocument.
             m_associated_inert_template_document = new_document;
         }
@@ -7985,12 +7981,6 @@ Vector<GC::Root<Range>> Document::find_matching_text(String const& query, CaseSe
     return matches;
 }
 
-// https://dom.spec.whatwg.org/#document-allow-declarative-shadow-roots
-bool Document::allow_declarative_shadow_roots() const
-{
-    return m_allow_declarative_shadow_roots;
-}
-
 bool Document::is_render_blocking_element(GC::Ref<Element> element) const
 {
     return m_render_blocking_elements.contains(element);
@@ -8316,25 +8306,21 @@ void Document::unfullscreen_element(GC::Ref<Element> element)
     remove_an_element_from_the_top_layer_immediately(element);
 }
 
-// https://dom.spec.whatwg.org/#document-allow-declarative-shadow-roots
-void Document::set_allow_declarative_shadow_roots(bool allow)
-{
-    m_allow_declarative_shadow_roots = allow;
-}
-
 // https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#parse-html-from-a-string
-void Document::parse_html_from_a_string(StringView html)
+void Document::parse_html_from_a_string(StringView html, HTML::HTMLParser::AllowDeclarativeShadowRoots allow_declarative_shadow_roots)
 {
     // 1. Set document's type to "html".
     set_document_type(DOM::Document::Type::HTML);
 
     // 2. Create an HTML parser parser, associated with document.
-    // 3. Place html into the input stream for parser. The encoding confidence is irrelevant.
+    // 3. Set the parser's allow declarative shadow roots to allowDeclarativeShadowRoots.
+    // 4. Place html into the input stream for parser. The encoding confidence is irrelevant.
     // FIXME: We don't have the concept of encoding confidence yet.
     auto scripting_mode = is_scripting_enabled() ? HTML::ParserScriptingMode::Normal : HTML::ParserScriptingMode::Disabled;
     auto parser = HTML::HTMLParser::create_for_decoded_string(*this, html, scripting_mode, "UTF-8"sv);
+    parser->set_allow_declarative_shadow_roots(allow_declarative_shadow_roots);
 
-    // 4. Start parser and let it run until it has consumed all the characters just inserted into the input stream.
+    // 5. Start parser and let it run until it has consumed all the characters just inserted into the input stream.
     parser->run(as<HTML::Window>(HTML::relevant_global_object(*this)).associated_document().url());
 }
 
@@ -8357,11 +8343,8 @@ WebIDL::ExceptionOr<GC::Root<DOM::Document>> Document::parse_html_unsafe(JS::VM&
     auto document = Document::create(realm);
     document->set_content_type("text/html"_string);
 
-    // 3. Set document's allow declarative shadow roots to true.
-    document->set_allow_declarative_shadow_roots(true);
-
-    // 4. Parse HTML from a string given document and compliantHTML.
-    document->parse_html_from_a_string(compliant_html.to_utf8_but_should_be_ported_to_utf16());
+    // 3. Parse HTML from a string given document, compliantHTML and true.
+    document->parse_html_from_a_string(compliant_html.to_utf8_but_should_be_ported_to_utf16(), HTML::HTMLParser::AllowDeclarativeShadowRoots::Yes);
 
     // AD-HOC: Setting the origin to match that of the associated document matches the behavior of existing browsers.
     auto& associated_document = as<HTML::Window>(realm.global_object()).associated_document();

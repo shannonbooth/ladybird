@@ -43,6 +43,7 @@
 #include <LibWeb/HTML/DocumentReadyState.h>
 #include <LibWeb/HTML/Focus.h>
 #include <LibWeb/HTML/PaintConfig.h>
+#include <LibWeb/HTML/Parser/HTMLParser.h>
 #include <LibWeb/HTML/PreloadEntry.h>
 #include <LibWeb/HTML/SandboxingFlagSet.h>
 #include <LibWeb/HTML/Scripting/ScriptRegistry.h>
@@ -595,9 +596,6 @@ public:
     bool is_fully_active() const;
     bool is_active() const;
 
-    [[nodiscard]] bool allow_declarative_shadow_roots() const;
-    void set_allow_declarative_shadow_roots(bool);
-
     GC::Ref<HTML::History> history();
     GC::Ref<HTML::History> history() const;
 
@@ -979,7 +977,7 @@ public:
 
     Vector<GC::Root<Range>> find_matching_text(String const&, CaseSensitivity);
 
-    void parse_html_from_a_string(StringView);
+    void parse_html_from_a_string(StringView, HTML::HTMLParser::AllowDeclarativeShadowRoots);
     static WebIDL::ExceptionOr<GC::Root<DOM::Document>> parse_html_unsafe(JS::VM&, TrustedTypes::TrustedHTMLOrString const&);
 
     void set_console_client(GC::Ptr<JS::ConsoleClient> console_client) { m_console_client = console_client; }
@@ -1561,9 +1559,6 @@ private:
 
     Vector<GC::Ref<HTML::HTMLDialogElement>> m_open_dialogs_list;
     GC::Ptr<HTML::HTMLDialogElement> m_dialog_pointerdown_target;
-
-    // https://dom.spec.whatwg.org/#document-allow-declarative-shadow-roots
-    bool m_allow_declarative_shadow_roots { false };
 
     // https://w3c.github.io/selection-api/#dfn-has-scheduled-selectionchange-event
     bool m_has_scheduled_selectionchange_event { false };

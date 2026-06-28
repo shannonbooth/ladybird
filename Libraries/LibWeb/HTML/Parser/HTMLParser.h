@@ -59,6 +59,7 @@ public:
         Yes,
     };
     static WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> parse_html_fragment(DOM::Element& context_element, StringView markup, AllowDeclarativeShadowRoots = AllowDeclarativeShadowRoots::No, ParserScriptingMode = ParserScriptingMode::Inert);
+    static WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> parse_html_fragment(DOM::Node& target, DOM::Element& context_element, StringView markup, AllowDeclarativeShadowRoots = AllowDeclarativeShadowRoots::No, ParserScriptingMode = ParserScriptingMode::Inert);
 
     enum class SerializableShadowRoots {
         No,
@@ -67,6 +68,8 @@ public:
     static String serialize_html_fragment(DOM::Node const&, SerializableShadowRoots, ReadonlySpan<GC::Ref<DOM::ShadowRoot>>, DOM::FragmentSerializationMode = DOM::FragmentSerializationMode::Inner);
 
     HTMLTokenizer& tokenizer() { return m_tokenizer; }
+
+    void set_allow_declarative_shadow_roots(AllowDeclarativeShadowRoots allow ) { m_allow_declarative_shadow_roots = allow; }
 
     void configure_element_created_by_rust_parser(DOM::Element&);
     GC::Ref<DOM::Element> create_element_for_rust_parser(HTMLToken const&, Optional<FlyString> const& namespace_, DOM::Node& intended_parent, bool had_duplicate_attribute, GC::Ptr<HTMLFormElement>, bool has_template_element_on_stack);
@@ -125,6 +128,10 @@ private:
 
     // https://html.spec.whatwg.org/multipage/parsing.html#scripting-mode
     ParserScriptingMode m_scripting_mode {};
+
+    // https://html.spec.whatwg.org/multipage/parsing.html#allow-declarative-shadow-roots
+    AllowDeclarativeShadowRoots m_allow_declarative_shadow_roots { AllowDeclarativeShadowRoots::No };
+
     bool m_script_created { false };
 
     bool m_aborted { false };
@@ -142,7 +149,7 @@ private:
     GC::Ptr<DOM::Element> m_context_element;
 
     // https://html.spec.whatwg.org/multipage/parsing.html#root-insertion-target
-    GC::Ptr<DOM::Node> m_root_insertion_target;
+    GC::Ptr<DOM::DocumentFragment> m_root_insertion_target;
 
     // https://html.spec.whatwg.org/multipage/parsing.html#active-speculative-html-parser
     GC::Ptr<SpeculativeHTMLParser> m_active_speculative_html_parser;

@@ -152,7 +152,6 @@ unsafe extern "C" {
         keep_custom_element_registry_null: bool,
     ) -> usize;
     fn ladybird_html_parser_set_template_content(element: usize, content: usize);
-    fn ladybird_html_parser_allows_declarative_shadow_roots(node: usize) -> bool;
     fn ladybird_html_parser_is_shadow_host(node: usize) -> bool;
 }
 
@@ -210,6 +209,7 @@ struct FragmentParsingContext {
     root_insertion_target: usize,
     context_element: StackNode,
     document_quirks_mode: RustFfiHtmlQuirksMode,
+    allow_declarative_shadow_roots: bool,
     form_element: usize,
 }
 
@@ -291,6 +291,7 @@ struct ParserState {
     parsing_fragment: bool,
     root_insertion_target: usize,
     context_element: Option<StackNode>,
+    allow_declarative_shadow_roots: bool,
     scripting_enabled: bool,
     next_line_feed_can_be_ignored: bool,
     pending_text: String,
@@ -317,6 +318,7 @@ impl ParserState {
             parsing_fragment: false,
             root_insertion_target: 0,
             context_element: None,
+            allow_declarative_shadow_roots: false,
             scripting_enabled: true,
             next_line_feed_can_be_ignored: false,
             pending_text: String::new(),
@@ -338,6 +340,7 @@ impl ParserState {
         self.parsing_fragment = true;
         self.root_insertion_target = fragment_context.root_insertion_target;
         self.document_quirks_mode = fragment_context.document_quirks_mode;
+        self.allow_declarative_shadow_roots = fragment_context.allow_declarative_shadow_roots;
         self.context_element = Some(fragment_context.context_element);
 
         // 13. Set up the HTML parser's stack of open elements so that it contains just the single element root.
@@ -3369,10 +3372,6 @@ impl TreeBuilder {
         unsafe { ladybird_html_parser_set_template_content(element, content) }
     }
 
-    fn allows_declarative_shadow_roots(&self, node: usize) -> bool {
-        unsafe { ladybird_html_parser_allows_declarative_shadow_roots(node) }
-    }
-
     fn is_shadow_host(&self, node: usize) -> bool {
         unsafe { ladybird_html_parser_is_shadow_host(node) }
     }
@@ -3396,11 +3395,7 @@ impl TreeBuilder {
         let (adjusted_insertion_location_parent, adjusted_insertion_location_before) =
             self.appropriate_place_for_inserting_node(self.current_node_handle());
 
-        // 7. Let intendedParent be the element in which the adjustedInsertionLocation finds itself.
-        let intended_parent = adjusted_insertion_location_parent;
-
-        // 8. Let document be intendedParent's node document.
-        // 9. If any of the following are false:
+        // 7. If any of the following are false:
         //   * templateStartTag's shadowrootmode is not in the None state;
         let mode = match token.attribute("shadowrootmode") {
             Some(value) if value.eq_ignore_ascii_case("open") => Some(RustFfiHtmlShadowRootMode::Open),
@@ -3408,8 +3403,8 @@ impl TreeBuilder {
             _ => None,
         };
 
-        //   * document's allow declarative shadow roots is true; or
-        let document_allows_declarative_shadow_roots = self.allows_declarative_shadow_roots(intended_parent);
+        //   * the parser's allow declarative shadow roots is true; or
+        let parser_allows_declarative_shadow_roots = self.allow_declarative_shadow_roots;
 
         //   * the adjusted current node is not the topmost element in the stack of open elements,
         let adjusted_current_node = self.adjusted_current_node().map(|node| node.handle);
@@ -3420,12 +3415,12 @@ impl TreeBuilder {
         });
 
         // then insert an HTML element for the token.
-        if mode.is_none() || !document_allows_declarative_shadow_roots || !adjusted_current_node_is_not_topmost_element {
+        if mode.is_none() || !parser_allows_declarative_shadow_roots || !adjusted_current_node_is_not_topmost_element {
             self.insert_html_element_for(token);
             return;
         }
 
-        // 10. Otherwise:
+        // Otherwise:
         // 1. Let declarativeShadowHostElement be adjusted current node.
         let declarative_shadow_host_element = adjusted_current_node.unwrap();
 
@@ -5151,6 +5146,7 @@ pub unsafe extern "C" fn rust_html_parser_begin_fragment(
     context_attributes: *const RustFfiHtmlParserAttribute,
     context_attribute_count: usize,
     document_quirks_mode: RustFfiHtmlQuirksMode,
+    allow_declarative_shadow_roots: bool,
     form_element: usize,
 ) {
     if handle.is_null() || root == 0 {
@@ -5180,6 +5176,7 @@ pub unsafe extern "C" fn rust_html_parser_begin_fragment(
             template_content: None,
         },
         document_quirks_mode,
+        allow_declarative_shadow_roots,
         form_element,
     });
 }
@@ -5197,6 +5194,7 @@ pub unsafe extern "C" fn rust_html_parser_run_document(
     tokenizer: *mut RustFfiTokenizerHandle,
     host: *mut c_void,
     scripting_enabled: bool,
+    allow_declarative_shadow_roots: bool,
     stop_at_insertion_point: bool,
 ) -> RustFfiHtmlParserRunResult {
     if handle.is_null() || tokenizer.is_null() || host.is_null() {
@@ -5208,6 +5206,7 @@ pub unsafe extern "C" fn rust_html_parser_run_document(
     unsafe {
         (*handle).run_count = (*handle).run_count.wrapping_add(1);
         (*handle).state.scripting_enabled = scripting_enabled;
+        (*handle).state.allow_declarative_shadow_roots = allow_declarative_shadow_roots;
         (*handle).state.parser_pause_requested = false;
     }
     let tokenizer = NonNull::new(unsafe { addr_of_mut!((*tokenizer).tokenizer) }).unwrap();

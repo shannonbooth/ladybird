@@ -1434,13 +1434,17 @@ WebIDL::ExceptionOr<void> Element::set_inner_html(TrustedTypes::TrustedHTMLOrStr
     // 2. Let context be this.
     DOM::Node* context = this;
 
+    auto* template_element = as_if<HTML::HTMLTemplateElement>(*context);
+    DOM::Node* target = context;
+    if (template_element)
+        target = template_element->content();
+
     // 3. Let fragment be the result of invoking the fragment parsing algorithm steps with context and compliantString.
-    auto fragment = TRY(as<Element>(*context).parse_fragment(compliant_string.to_utf8_but_should_be_ported_to_utf16()));
+    auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(*target, as<Element>(*context), compliant_string.to_utf8_but_should_be_ported_to_utf16()));
 
     // 4. If context is a template element, then set context to the template element's template contents (a DocumentFragment).
-    auto* template_element = as_if<HTML::HTMLTemplateElement>(*context);
     if (template_element)
-        context = template_element->content();
+        context = target;
 
     // 5. Replace all with fragment within context.
     context->replace_all(fragment);

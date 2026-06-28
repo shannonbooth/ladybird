@@ -62,8 +62,8 @@ WebIDL::ExceptionOr<GC::Ref<DOM::Document>> DOMParser::parse_from_string(Trusted
         document->set_content_type("text/html"_string);
         document->set_document_type(DOM::Document::Type::HTML);
 
-        // 1. Parse HTML from a string given document and compliantString.
-        document->parse_html_from_a_string(compliant_string.to_utf8_but_should_be_ported_to_utf16());
+        // 1. Parse HTML from a string given document, compliantString, and false.
+        document->parse_html_from_a_string(compliant_string.to_utf8_but_should_be_ported_to_utf16(), HTMLParser::AllowDeclarativeShadowRoots::No);
     } else {
         // -> Otherwise
         document = DOM::Document::create(realm(), associated_document.url());
