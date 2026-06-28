@@ -153,6 +153,7 @@ unsafe extern "C" {
     ) -> usize;
     fn ladybird_html_parser_set_template_content(element: usize, content: usize);
     fn ladybird_html_parser_allows_declarative_shadow_roots(node: usize) -> bool;
+    fn ladybird_html_parser_is_shadow_host(node: usize) -> bool;
 }
 
 /// Opaque handle for the Rust HTML parser, passed across the FFI boundary.
@@ -1423,7 +1424,7 @@ impl TreeBuilder {
 
         if token.is_start_tag_named("svg") {
             self.reconstruct_the_active_formatting_elements();
-            self.insert_foreign_element_for(&token, RustFfiHtmlNamespace::Svg);
+            self.insert_foreign_element_for(&token, RustFfiHtmlNamespace::Svg, false);
             if token.is_self_closing() {
                 self.pop_current_node();
             }
@@ -1432,7 +1433,7 @@ impl TreeBuilder {
 
         if token.is_start_tag_named("math") {
             self.reconstruct_the_active_formatting_elements();
-            self.insert_foreign_element_for(&token, RustFfiHtmlNamespace::MathMl);
+            self.insert_foreign_element_for(&token, RustFfiHtmlNamespace::MathMl, false);
             if token.is_self_closing() {
                 self.pop_current_node();
             }
@@ -2823,7 +2824,7 @@ impl TreeBuilder {
 
             // Insert a foreign element for the token, with the adjusted current node's namespace and false.
             // FIXME: And false.
-            let element = self.insert_foreign_element_for(&token, namespace_);
+            let element = self.insert_foreign_element_for(&token, namespace_, false);
 
             // If the token has its self-closing flag set, then run the appropriate steps from the following list:
             if token.is_self_closing() {
@@ -3041,12 +3042,17 @@ impl TreeBuilder {
     // https://html.spec.whatwg.org/multipage/parsing.html#insert-an-html-element
     fn insert_html_element_for(&mut self, token: &Token, parent: usize) -> usize {
         // To insert an HTML element given a token token: insert a foreign element given token, the HTML namespace, and false.
-        self.insert_element_for(token, RustFfiHtmlNamespace::Html, parent)
+        self.insert_element_for(token, RustFfiHtmlNamespace::Html, parent, false)
     }
 
     // https://html.spec.whatwg.org/multipage/parsing.html#insert-a-foreign-element
     // To insert a foreign element, given a token token, a string namespace, and a boolean onlyAddToElementStack:
-    fn insert_foreign_element_for(&mut self, token: &Token, namespace_: RustFfiHtmlNamespace) -> usize {
+    fn insert_foreign_element_for(
+        &mut self,
+        token: &Token,
+        namespace_: RustFfiHtmlNamespace,
+        only_add_to_element_stack: bool,
+    ) -> usize {
         // 1. Let the adjustedInsertionLocation be the appropriate place for inserting a node.
 
         // 2. Let element be the result of creating an element for the token given token, namespace, and the element in
@@ -3057,11 +3063,22 @@ impl TreeBuilder {
         // 4. Push element onto the stack of open elements so that it is the new current node.
 
         // 5. Return element.
-        self.insert_element_for(token, namespace_, self.current_insertion_parent_handle())
+        self.insert_element_for(
+            token,
+            namespace_,
+            self.current_node_handle(),
+            only_add_to_element_stack,
+        )
     }
 
-    fn insert_element_for(&mut self, token: &Token, namespace_: RustFfiHtmlNamespace, parent: usize) -> usize {
-        self.insert_element_for_at(token, namespace_, parent, 0)
+    fn insert_element_for(
+        &mut self,
+        token: &Token,
+        namespace_: RustFfiHtmlNamespace,
+        parent: usize,
+        only_add_to_element_stack: bool,
+    ) -> usize {
+        self.insert_element_for_at(token, namespace_, parent, 0, only_add_to_element_stack)
     }
 
     fn insert_element_for_at(
@@ -3070,9 +3087,17 @@ impl TreeBuilder {
         namespace_: RustFfiHtmlNamespace,
         parent: usize,
         before: usize,
+        only_add_to_element_stack: bool,
     ) -> usize {
         let local_name = adjusted_foreign_tag_name(token.tag_name(), namespace_);
-        self.insert_element_for_with_name_at(token, namespace_, local_name, parent, before)
+        self.insert_element_for_with_name_at(
+            token,
+            namespace_,
+            local_name,
+            parent,
+            before,
+            only_add_to_element_stack,
+        )
     }
 
     fn insert_element_for_with_name_at(
@@ -3082,6 +3107,7 @@ impl TreeBuilder {
         local_name: &str,
         parent: usize,
         before: usize,
+        only_add_to_element_stack: bool,
     ) -> usize {
         self.flush_character_insertions();
         // 1. Let the adjustedInsertionLocation be the appropriate place for inserting a node.
@@ -3120,10 +3146,12 @@ impl TreeBuilder {
         drop(attributes);
         // 3. If onlyAddToElementStack is false, then run insert an element at the adjusted insertion location with
         //    element.
-        if before == 0 {
-            self.insert_element_at_adjusted_insertion_location(parent, element);
-        } else {
-            self.insert_element_at_precomputed_adjusted_insertion_location(adjusted_parent, adjusted_before, element);
+        if !only_add_to_element_stack {
+            if before == 0 {
+                self.insert_element_at_adjusted_insertion_location(parent, element);
+            } else {
+                self.insert_element_at_precomputed_adjusted_insertion_location(adjusted_parent, adjusted_before, element);
+            }
         }
         let template_content = if namespace_ == RustFfiHtmlNamespace::Html && local_name == "template" {
             Some(self.template_content(element))
@@ -3276,7 +3304,7 @@ impl TreeBuilder {
     }
 
     fn append_child(&mut self, parent: usize, child: usize) {
-        unsafe { ladybird_html_parser_append_child(parent, child) }
+        unsafe { ladybird_html_ parser_append_child(parent, child) }
     }
 
     fn insert_node_at_adjusted_insertion_location(&mut self, parent: usize, before: usize, child: usize) {
@@ -3375,8 +3403,25 @@ impl TreeBuilder {
         unsafe { ladybird_html_parser_allows_declarative_shadow_roots(node) }
     }
 
+    fn is_shadow_host(&self, node: usize) -> bool {
+        unsafe { ladybird_html_parser_is_shadow_host(node) }
+    }
+
     // https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead:attr-template-shadowrootmode
-    fn try_to_start_declarative_shadow_root(&mut self, token: &Token) -> bool {
+    fn handle_template_start_tag(&mut self, token: &Token) {
+        // 1. Let templateStartTag be the start tag.
+        // 2. Insert a marker at the end of the list of active formatting elements.
+        self.insert_marker_at_the_end_of_the_list_of_active_formatting_elements();
+
+        // 3. Set the frameset-ok flag to "not ok".
+        self.frameset_ok = false;
+
+        // 4. Switch the insertion mode to "in template".
+        self.insertion_mode = InsertionMode::InTemplate;
+
+        // 5. Push "in template" onto the stack of template insertion modes so that it is the new current template insertion mode.
+        self.stack_of_template_insertion_modes.push(InsertionMode::InTemplate);
+
         // 6. Let the adjustedInsertionLocation be the appropriate place for inserting a node.
         let (adjusted_insertion_location_parent, adjusted_insertion_location_before) =
             self.appropriate_place_for_inserting_node(self.current_node_handle());
@@ -3385,60 +3430,40 @@ impl TreeBuilder {
         let intended_parent = adjusted_insertion_location_parent;
 
         // 8. Let document be intendedParent's node document.
-
         // 9. If any of the following are false:
-        //    - templateStartTag's shadowrootmode is not in the None state;
+        //   * templateStartTag's shadowrootmode is not in the None state;
         let mode = match token.attribute("shadowrootmode") {
-            Some(value) if value.eq_ignore_ascii_case("open") => RustFfiHtmlShadowRootMode::Open,
-            Some(value) if value.eq_ignore_ascii_case("closed") => RustFfiHtmlShadowRootMode::Closed,
-            _ => return false,
+            Some(value) if value.eq_ignore_ascii_case("open") => Some(RustFfiHtmlShadowRootMode::Open),
+            Some(value) if value.eq_ignore_ascii_case("closed") => Some(RustFfiHtmlShadowRootMode::Closed),
+            _ => None,
         };
 
-        //    - document's allow declarative shadow roots is true; or
-        if !self.allows_declarative_shadow_roots(intended_parent) {
-            return false;
-        }
+        //   * document's allow declarative shadow roots is true; or
+        let document_allows_declarative_shadow_roots = self.allows_declarative_shadow_roots(intended_parent);
 
-        //    - the adjusted current node is not the topmost element in the stack of open elements,
-        let Some(adjusted_current_node) = self.adjusted_current_node() else {
-            return false;
-        };
-        let topmost_element = self.stack_of_open_elements.first().map(|node| node.handle);
-        if topmost_element == Some(adjusted_current_node.handle) {
-            return false;
+        //   * the adjusted current node is not the topmost element in the stack of open elements,
+        let adjusted_current_node = self.adjusted_current_node().map(|node| node.handle);
+        let adjusted_current_node_is_not_topmost_element = adjusted_current_node.is_some_and(|adjusted_current_node| {
+            self.stack_of_open_elements
+                .first()
+                .is_none_or(|topmost_element| topmost_element.handle != adjusted_current_node)
+        });
+
+        // then insert an HTML element for the token.
+        if mode.is_none() || !document_allows_declarative_shadow_roots || !adjusted_current_node_is_not_topmost_element {
+            self.insert_html_element_for(token, self.current_insertion_parent_handle());
+            return;
         }
 
         // 10. Otherwise:
-
         // 1. Let declarativeShadowHostElement be adjusted current node.
-        let declarative_shadow_host_element = adjusted_current_node.handle;
-        if declarative_shadow_host_element == 0 {
-            return false;
-        };
+        let declarative_shadow_host_element = adjusted_current_node.unwrap();
 
         // 2. Let template be the result of insert a foreign element for templateStartTag, with HTML namespace and true.
-        let attributes = attributes_from_token(token, RustFfiHtmlNamespace::Html);
-        let owned_attributes = owned_attributes_from_token(token, RustFfiHtmlNamespace::Html);
-        let template = self.create_element(
-            intended_parent,
-            RustFfiHtmlNamespace::Html,
-            None,
-            "template",
-            &attributes.0,
-            token.had_duplicate_attribute(),
-        );
-        drop(attributes);
-        let template_content = self.template_content(template);
-        self.stack_of_open_elements.push(StackNode {
-            handle: template,
-            local_name: "template".to_string(),
-            namespace_: RustFfiHtmlNamespace::Html,
-            namespace_uri: None,
-            attributes: owned_attributes,
-            template_content: Some(template_content),
-        });
+        let template = self.insert_foreign_element_for(token, RustFfiHtmlNamespace::Html, true);
 
         // 3. Let mode be templateStartTag's shadowrootmode attribute's value.
+        let mode = mode.unwrap();
 
         // 4. Let slotAssignment be "named".
         let mut slot_assignment = RustFfiHtmlSlotAssignmentMode::Named;
@@ -3461,116 +3486,41 @@ impl TreeBuilder {
         let delegates_focus = token.has_attribute("shadowrootdelegatesfocus");
 
         // 9. If declarativeShadowHostElement is a shadow host, then insert an element at the adjusted insertion location with template.
-        //
-        // This is handled by the host attach hook returning 0 below.
-
-        // 10. Otherwise:
-
-        // 1. Let registry be null if templateStartTag has a shadowrootcustomelementregistry attribute;
-        //    otherwise declarativeShadowHostElement's node document's custom element registry.
-
-        // 2. Attach a shadow root with declarativeShadowHostElement, mode, clonable, serializable,
-        //    delegatesFocus, slotAssignment, and registry.
-        let shadow_root = self.attach_declarative_shadow_root(DeclarativeShadowRootInit {
-            host: declarative_shadow_host_element,
-            mode,
-            slot_assignment,
-            clonable,
-            serializable,
-            delegates_focus,
-            keep_custom_element_registry_null: token.has_attribute("shadowrootcustomelementregistry"),
-        });
-
-        // If an exception is thrown, then catch it and:
-        if shadow_root == 0 {
-            // 1. Insert an element at the adjusted insertion location with template.
+        if self.is_shadow_host(declarative_shadow_host_element) {
             self.insert_element_at_precomputed_adjusted_insertion_location(
                 adjusted_insertion_location_parent,
                 adjusted_insertion_location_before,
                 template,
             );
-            // 2. The user agent may report an error to the developer console.
-            // 3. Return.
-            return true;
-        }
-
-        // 3. Let shadow be declarativeShadowHostElement's shadow root.
-
-        // 4. Set shadow's declarative to true.
-
-        // 5. Set template's template contents to shadow.
-        self.set_template_content(template, shadow_root);
-        self.stack_of_open_elements.last_mut().unwrap().template_content = Some(shadow_root);
-
-        // 6. Set shadow's available to element internals to true.
-
-        // 7. If templateStartTag has a shadowrootcustomelementregistry attribute, then set shadow's keep
-        //    custom element registry null to true.
-        true
-    }
-
-    fn handle_template_start_tag(&mut self, token: &Token) {
-        // 1. Let templateStartTag be the start tag.
-        // 2. Insert a marker at the end of the list of active formatting elements.
-        self.insert_marker_at_the_end_of_the_list_of_active_formatting_elements();
-
-        // 3. Set the frameset-ok flag to "not ok".
-        self.frameset_ok = false;
-
-        // 4. Switch the insertion mode to "in template".
-        self.insertion_mode = InsertionMode::InTemplate;
-
-        // 5. Push "in template" onto the stack of template insertion modes so that it is the new current template insertion mode.
-        self.stack_of_template_insertion_modes.push(InsertionMode::InTemplate);
-
-        // 6. Let the adjustedInsertionLocation be the appropriate place for inserting a node.
-
-        // 7. Let intendedParent be the element in which the adjustedInsertionLocation finds itself.
-
-        // 8. Let document be intendedParent's node document.
-
-        // 9. If any of the following are false:
-        //   * templateStartTag's shadowrootmode is not in the None state;
-        //   * document's allow declarative shadow roots is true; or
-        //   * the adjusted current node is not the topmost element in the stack of open elements,
-        // then insert an HTML element for the token.
-        if true {
-            self.insert_html_element_for(token, self.current_insertion_parent_handle());
-            return;
-        }
-        // 10. Otherwise:
-        // 1. Let declarativeShadowHostElement be adjusted current node.
-
-        // 2. Let template be the result of insert a foreign element for templateStartTag, with HTML namespace and true.
-
-        // 3. Let mode be templateStartTag's shadowrootmode attribute's value.
-
-        // 4. Let slotAssignment be "named".
-
-        // 5. If templateStartTag's shadowrootslotassignment attribute is in the Manual state, then set slotAssignment to "manual".
-
-        // 6. Let clonable be true if templateStartTag has a shadowrootclonable attribute; otherwise false.
-
-        // 7. Let serializable be true if templateStartTag has a shadowrootserializable attribute; otherwise false.
-
-        // 8. Let delegatesFocus be true if templateStartTag has a shadowrootdelegatesfocus attribute; otherwise false.
-
-        // 9. If declarativeShadowHostElement is a shadow host, then insert an element at the adjusted insertion location with template.
-        if true {
-
         }
         // 10. Otherwise:
         else {
             // 1. Let registry be null if templateStartTag has a shadowrootcustomelementregistry attribute; otherwise declarativeShadowHostElement's node document's custom element registry.
 
             // 2. Attach a shadow root with declarativeShadowHostElement, mode, clonable, serializable, delegatesFocus, slotAssignment, and registry.
+            let shadow_root = self.attach_declarative_shadow_root(DeclarativeShadowRootInit {
+                host: declarative_shadow_host_element,
+                mode,
+                slot_assignment,
+                clonable,
+                serializable,
+                delegates_focus,
+                keep_custom_element_registry_null: token.has_attribute("shadowrootcustomelementregistry"),
+            });
+
             // If an exception is thrown, then catch it and:
-            if false {
+            if shadow_root == 0 {
                 // 1. Insert an element at the adjusted insertion location with template.
+                self.insert_element_at_precomputed_adjusted_insertion_location(
+                    adjusted_insertion_location_parent,
+                    adjusted_insertion_location_before,
+                    template,
+                );
 
                 // 2. The user agent may report an error to the developer console.
 
                 // 3. Return.
+                return;
             }
 
             // 3. Let shadow be declarativeShadowHostElement's shadow root.
@@ -3578,16 +3528,13 @@ impl TreeBuilder {
             // 4. Set shadow's declarative to true.
 
             // 5. Set template's template contents to shadow.
+            self.set_template_content(template, shadow_root);
+            self.stack_of_open_elements.last_mut().unwrap().template_content = Some(shadow_root);
 
             // 6. Set shadow's available to element internals to true.
 
             // 7. If templateStartTag has a shadowrootcustomelementregistry attribute, then set shadow's keep custom element registry null to true.
         }
-        if self.try_to_start_declarative_shadow_root(token) {
-            return;
-        }
-
-        self.insert_html_element_for(token, self.current_insertion_parent_handle());
     }
 
     fn handle_template_end_tag(&mut self) {

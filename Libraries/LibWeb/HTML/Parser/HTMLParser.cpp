@@ -92,6 +92,7 @@ extern "C" size_t ladybird_html_parser_template_content(size_t);
 extern "C" size_t ladybird_html_parser_attach_declarative_shadow_root(size_t, RustFfiHtmlShadowRootMode, RustFfiHtmlSlotAssignmentMode, bool, bool, bool, bool);
 extern "C" void ladybird_html_parser_set_template_content(size_t, size_t);
 extern "C" bool ladybird_html_parser_allows_declarative_shadow_roots(size_t);
+extern "C" bool ladybird_html_parser_is_shadow_host(size_t);
 
 HTMLParser::HTMLParser(DOM::Document& document, ParserScriptingMode scripting_mode, StringView input, StringView encoding, HTMLTokenizer::InputType input_type)
     : m_tokenizer(input, encoding, input_type)
@@ -2099,6 +2100,12 @@ extern "C" void ladybird_html_parser_set_template_content(size_t element, size_t
 extern "C" bool ladybird_html_parser_allows_declarative_shadow_roots(size_t node)
 {
     return node_from_html_parser_ffi(node).document().allow_declarative_shadow_roots();
+}
+
+extern "C" bool ladybird_html_parser_is_shadow_host(size_t node)
+{
+    auto* element = as_if<DOM::Element>(&node_from_html_parser_ffi(node));
+    return element && element->is_shadow_host();
 }
 
 }
