@@ -3510,15 +3510,79 @@ impl TreeBuilder {
     }
 
     fn handle_template_start_tag(&mut self, token: &Token) {
+        // 1. Let templateStartTag be the start tag.
         // 2. Insert a marker at the end of the list of active formatting elements.
         self.insert_marker_at_the_end_of_the_list_of_active_formatting_elements();
+
         // 3. Set the frameset-ok flag to "not ok".
         self.frameset_ok = false;
+
         // 4. Switch the insertion mode to "in template".
         self.insertion_mode = InsertionMode::InTemplate;
+
         // 5. Push "in template" onto the stack of template insertion modes so that it is the new current template insertion mode.
         self.stack_of_template_insertion_modes.push(InsertionMode::InTemplate);
 
+        // 6. Let the adjustedInsertionLocation be the appropriate place for inserting a node.
+
+        // 7. Let intendedParent be the element in which the adjustedInsertionLocation finds itself.
+
+        // 8. Let document be intendedParent's node document.
+
+        // 9. If any of the following are false:
+        //   * templateStartTag's shadowrootmode is not in the None state;
+        //   * document's allow declarative shadow roots is true; or
+        //   * the adjusted current node is not the topmost element in the stack of open elements,
+        // then insert an HTML element for the token.
+        if true {
+            self.insert_html_element_for(token, self.current_insertion_parent_handle());
+            return;
+        }
+        // 10. Otherwise:
+        // 1. Let declarativeShadowHostElement be adjusted current node.
+
+        // 2. Let template be the result of insert a foreign element for templateStartTag, with HTML namespace and true.
+
+        // 3. Let mode be templateStartTag's shadowrootmode attribute's value.
+
+        // 4. Let slotAssignment be "named".
+
+        // 5. If templateStartTag's shadowrootslotassignment attribute is in the Manual state, then set slotAssignment to "manual".
+
+        // 6. Let clonable be true if templateStartTag has a shadowrootclonable attribute; otherwise false.
+
+        // 7. Let serializable be true if templateStartTag has a shadowrootserializable attribute; otherwise false.
+
+        // 8. Let delegatesFocus be true if templateStartTag has a shadowrootdelegatesfocus attribute; otherwise false.
+
+        // 9. If declarativeShadowHostElement is a shadow host, then insert an element at the adjusted insertion location with template.
+        if true {
+
+        }
+        // 10. Otherwise:
+        else {
+            // 1. Let registry be null if templateStartTag has a shadowrootcustomelementregistry attribute; otherwise declarativeShadowHostElement's node document's custom element registry.
+
+            // 2. Attach a shadow root with declarativeShadowHostElement, mode, clonable, serializable, delegatesFocus, slotAssignment, and registry.
+            // If an exception is thrown, then catch it and:
+            if false {
+                // 1. Insert an element at the adjusted insertion location with template.
+
+                // 2. The user agent may report an error to the developer console.
+
+                // 3. Return.
+            }
+
+            // 3. Let shadow be declarativeShadowHostElement's shadow root.
+
+            // 4. Set shadow's declarative to true.
+
+            // 5. Set template's template contents to shadow.
+
+            // 6. Set shadow's available to element internals to true.
+
+            // 7. If templateStartTag has a shadowrootcustomelementregistry attribute, then set shadow's keep custom element registry null to true.
+        }
         if self.try_to_start_declarative_shadow_root(token) {
             return;
         }
