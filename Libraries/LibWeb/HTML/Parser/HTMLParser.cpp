@@ -978,28 +978,40 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragm
 
     // 11. Let root be the result of creating an element given document, "html", the HTML namespace, null, null, false,
     //    and context's custom element registry.
-    auto root = MUST(create_element(*temp_document, HTML::TagNames::html, Namespace::HTML, {}, {}, false, look_up_a_custom_element_registry(context_element)));
+    // NOTE: For <template> fragments, the parser root acts as the intended parent for the first parsed node, so use the
+    // template contents' registry rather than the <template> element's registry.
+    auto root_registry = is<HTMLTemplateElement>(context_element)
+        ? look_up_a_custom_element_registry(as<HTMLTemplateElement>(context_element).content())
+        : look_up_a_custom_element_registry(context_element);
+    auto root = MUST(create_element(*temp_document, HTML::TagNames::html, Namespace::HTML, {}, {}, false, root_registry));
 
     // 12. Append root to document.
     MUST(temp_document->append_child(root));
 
     // 13. Set up the HTML parser's stack of open elements so that it contains just the single element root.
-    // 14. Let fragment be a new DocumentFragment whose node document is contextDocument.
-    auto fragment = context_element.realm().create<DOM::DocumentFragment>(context_document);
+    // 14. Let fragmentDocument be contextDocument.
+    GC::Ref<DOM::Document> fragment_document = context_document;
 
-    // 15. Set the parser's root insertion target to fragment.
+    // 15. If context is a template element, then set fragmentDocument to contextDocument's associated inert template document.
+    if (is<HTMLTemplateElement>(context_element))
+        fragment_document = context_document.appropriate_template_contents_owner_document();
+
+    // 16. Let fragment be a new DocumentFragment whose node document is fragmentDocument.
+    auto fragment = context_element.realm().create<DOM::DocumentFragment>(fragment_document);
+
+    // 17. Set the parser's root insertion target to fragment.
     parser->m_root_insertion_target = fragment;
 
-    // 16. If context is a template element, then push "in template" onto the stack of template insertion modes so that it is the new current template insertion mode.
+    // 18. If context is a template element, then push "in template" onto the stack of template insertion modes so that it is the new current template insertion mode.
 
-    // 17. Create a start tag token whose name is the local name of context and whose attributes are the attributes of context.
+    // 19. Create a start tag token whose name is the local name of context and whose attributes are the attributes of context.
     //     Let this start tag token be the start tag token of context; e.g. for the purposes of determining if it is an HTML integration point.
 
-    // 18. Reset the parser's insertion mode appropriately.
+    // 20. Reset the parser's insertion mode appropriately.
     // NB: The parser will reference the context element as part of that algorithm.
 
 
-    // 19. Set the HTML parser's form element pointer to the nearest node to context that is a form element
+    // 21. Set the HTML parser's form element pointer to the nearest node to context that is a form element
     //     (going straight up the ancestor chain, and including the element itself, if it is a form element), if any.
     //     (If there is no such form element, the form element pointer keeps its initial value, null.)
     parser->m_form_element = as_if<HTMLFormElement>(context_element);
@@ -1047,11 +1059,11 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragm
         allow_declarative_shadow_roots == AllowDeclarativeShadowRoots::Yes,
         parser->m_form_element ? reinterpret_cast<size_t>(parser->m_form_element.ptr()) : 0);
 
-    // 20. Place the input into the input stream for the HTML parser just created. The encoding confidence is irrelevant.
-    // 21. Start the HTML parser and let it run until it has consumed all the characters just inserted into the input stream.
+    // 22. Place the input into the input stream for the HTML parser just created. The encoding confidence is irrelevant.
+    // 23. Start the HTML parser and let it run until it has consumed all the characters just inserted into the input stream.
     parser->run(context_element.document().url());
 
-    // 22. Return fragment.
+    // 24. Return fragment.
     return fragment;
 }
 
