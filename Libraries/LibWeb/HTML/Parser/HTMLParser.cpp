@@ -899,11 +899,6 @@ DOM::Document& HTMLParser::document()
 // https://html.spec.whatwg.org/multipage/parsing.html#parsing-html-fragments
 WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragment(DOM::Element& context_element, StringView markup, AllowDeclarativeShadowRoots allow_declarative_shadow_roots, ParserScriptingMode scripting_mode)
 {
-    return parse_html_fragment(context_element, context_element, markup, allow_declarative_shadow_roots, scripting_mode);
-}
-
-WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragment(DOM::Node& target, DOM::Element& context_element, StringView markup, AllowDeclarativeShadowRoots allow_declarative_shadow_roots, ParserScriptingMode scripting_mode)
-{
     // 1. Assert: scriptingMode is either Inert or Fragment.
     VERIFY(scripting_mode == HTML::ParserScriptingMode::Inert || scripting_mode == HTML::ParserScriptingMode::Fragment);
 
@@ -920,15 +915,13 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragm
 
     // 3. Let contextDocument be context's node document.
     auto& context_document = context_element.document();
-    // WebKit passes both a context element and a target fragment; use target for fragment document/registry.
-    auto& target_document = target.document();
 
     // 4. If contextDocument is in quirks mode, then set document's mode to "quirks".
     if (context_document.in_quirks_mode()) {
         temp_document->set_quirks_mode(DOM::QuirksMode::Yes);
     }
     // 5. Otherwise, if context's node document is in limited-quirks mode, then set document's mode to "limited-quirks".
-    else if (context_element.document().in_limited_quirks_mode()) {
+    else if (context_document.in_limited_quirks_mode()) {
         temp_document->set_quirks_mode(DOM::QuirksMode::Limited);
     }
 
@@ -985,14 +978,14 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragm
 
     // 11. Let root be the result of creating an element given document, "html", the HTML namespace, null, null, false,
     //    and context's custom element registry.
-    auto root = MUST(create_element(target_document, HTML::TagNames::html, Namespace::HTML, {}, {}, false, look_up_a_custom_element_registry(target)));
+    auto root = MUST(create_element(*temp_document, HTML::TagNames::html, Namespace::HTML, {}, {}, false, look_up_a_custom_element_registry(context_element)));
 
     // 12. Append root to document.
     MUST(temp_document->append_child(root));
 
     // 13. Set up the HTML parser's stack of open elements so that it contains just the single element root.
     // 14. Let fragment be a new DocumentFragment whose node document is contextDocument.
-    auto fragment = context_element.realm().create<DOM::DocumentFragment>(target_document);
+    auto fragment = context_element.realm().create<DOM::DocumentFragment>(context_document);
 
     // 15. Set the parser's root insertion target to fragment.
     parser->m_root_insertion_target = fragment;

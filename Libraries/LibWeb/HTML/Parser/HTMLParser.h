@@ -59,7 +59,6 @@ public:
         Yes,
     };
     static WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> parse_html_fragment(DOM::Element& context_element, StringView markup, AllowDeclarativeShadowRoots = AllowDeclarativeShadowRoots::No, ParserScriptingMode = ParserScriptingMode::Inert);
-    static WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> parse_html_fragment(DOM::Node& target, DOM::Element& context_element, StringView markup, AllowDeclarativeShadowRoots = AllowDeclarativeShadowRoots::No, ParserScriptingMode = ParserScriptingMode::Inert);
 
     enum class SerializableShadowRoots {
         No,

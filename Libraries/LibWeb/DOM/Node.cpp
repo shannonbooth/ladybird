@@ -2292,7 +2292,7 @@ WebIDL::ExceptionOr<Utf16String> Node::serialize_fragment(HTML::RequireWellForme
 WebIDL::ExceptionOr<void> Node::unsafely_set_html(Element& context_element, StringView html)
 {
     // 1. Let newChildren be the result of the HTML fragment parsing algorithm given contextElement, html, and true.
-    auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(*this, context_element, html, HTML::HTMLParser::AllowDeclarativeShadowRoots::Yes));
+    auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(context_element, html, HTML::HTMLParser::AllowDeclarativeShadowRoots::Yes));
 
     // 4. Replace all with fragment within contextElement.
     replace_all(fragment);

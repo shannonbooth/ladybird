@@ -2,9 +2,8 @@ Harness status: OK
 
 Found 4 tests
 
-2 Pass
-2 Fail
+4 Fail
 Fail	Re-entry via upgrade before calling super()
-Pass	Re-entry via upgrade after calling super()
-Pass	Re-entry via direct constructor call before calling super()
+Fail	Re-entry via upgrade after calling super()
+Fail	Re-entry via direct constructor call before calling super()
 Fail	Re-entry via direct constructor call after calling super()
