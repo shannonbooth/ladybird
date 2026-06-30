@@ -1024,7 +1024,7 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragm
     if (context_namespace_ffi == RustFfiHtmlNamespace::Other && context_namespace.has_value())
         context_namespace_uri = context_namespace->bytes_as_string_view();
     Vector<RustFfiHtmlParserAttribute> context_attributes;
-    if (auto attributes = context_element.attributes()) {
+    if (auto attributes = context_element->attributes()) {
         context_attributes.ensure_capacity(attributes->length());
         for (size_t i = 0; i < attributes->length(); ++i) {
             auto const* attribute = attributes->item(i);
@@ -1046,7 +1046,7 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragm
         parser->m_rust_parser,
         reinterpret_cast<size_t>(root.ptr()),
         reinterpret_cast<size_t>(fragment.ptr()),
-        reinterpret_cast<size_t>(&context_element),
+        reinterpret_cast<size_t>(context_element),
         context_namespace_ffi,
         reinterpret_cast<u8 const*>(context_namespace_uri.characters_without_null_termination()),
         context_namespace_uri.length(),

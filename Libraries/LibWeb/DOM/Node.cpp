@@ -2291,19 +2291,13 @@ WebIDL::ExceptionOr<Utf16String> Node::serialize_fragment(HTML::RequireWellForme
 // https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#unsafely-set-html
 WebIDL::ExceptionOr<void> Node::unsafely_set_html(Variant<GC::Ref<Element>, GC::Ref<DocumentFragment>> target, StringView html)
 {
-    // 1. Let contextElement be target if target is an Element; otherwise target's host.
-    // Element* context_element = target.has<GC::Ref<Element>>()
-    //     ? target.get<GC::Ref<Element>>().ptr()
-    //     : target.get<GC::Ref<DocumentFragment>>()->host();
-
-    // // 2. Assert: contextElement is non-null.
-    // VERIFY(context_element);
-
     // 1. Let newChildren be the result of the HTML fragment parsing algorithm given contextElement, html, and true.
     auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(target, html, HTML::HTMLParser::AllowDeclarativeShadowRoots::Yes));
 
-    // 4. Replace all with fragment within contextElement.
-    replace_all(fragment);
+    // 4. Replace all with fragment within target.
+    target.visit([&](auto node) {
+        node->replace_all(fragment);
+    });
 
     // FIXME: Algorithm updated for sanitizer API with https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#set-and-filter-html
 

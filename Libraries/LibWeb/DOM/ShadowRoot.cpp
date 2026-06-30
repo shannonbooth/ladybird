@@ -113,12 +113,8 @@ WebIDL::ExceptionOr<void> ShadowRoot::set_inner_html(TrustedTypes::TrustedHTMLOr
         TrustedTypes::InjectionSink::ShadowRoot_innerHTML,
         TrustedTypes::Script.to_string()));
 
-    // 2. Let context be this's host.
-    auto context = this->host();
-    VERIFY(context);
-
     // 3. Let fragment be the result of invoking the fragment parsing algorithm steps with this and compliantString.
-    auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(GC::Ref<DocumentFragment> { *this }, compliant_string.to_utf8_but_should_be_ported_to_utf16(), { .destination = this }));
+    auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(GC::Ref<DocumentFragment> { *this }, compliant_string.to_utf8_but_should_be_ported_to_utf16()));
 
     // 4. Replace all with fragment within this.
     this->replace_all(fragment);
@@ -162,7 +158,7 @@ WebIDL::ExceptionOr<void> ShadowRoot::set_html_unsafe(TrustedTypes::TrustedHTMLO
         TrustedTypes::Script.to_string()));
 
     // 2. Unsafely set HTML given this, this's shadow host, and compliantHTML.
-    TRY(unsafely_set_html(*this->host(), compliant_html.to_utf8_but_should_be_ported_to_utf16()));
+    TRY(unsafely_set_html(GC::Ref<DocumentFragment> { *this }, compliant_html.to_utf8_but_should_be_ported_to_utf16()));
 
     return {};
 }

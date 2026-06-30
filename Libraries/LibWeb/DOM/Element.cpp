@@ -1433,26 +1433,28 @@ WebIDL::ExceptionOr<void> Element::set_inner_html(TrustedTypes::TrustedHTMLOrStr
         TrustedTypes::Script.to_string()));
 
     // 2. Let target be this.
-    DOM::Node* target = this;
+    Variant<GC::Ref<Element>, GC::Ref<DocumentFragment>> target = GC::Ref { *this };
 
     // 3. If target is a template element, then set target to the template element's template contents (a DocumentFragment).
-    auto* template_element = as_if<HTML::HTMLTemplateElement>(*target);
+    auto* template_element = as_if<HTML::HTMLTemplateElement>(*this);
     if (template_element)
         target = template_element->content();
 
     // 4. Let fragment be the result of invoking the fragment parsing algorithm steps with target and compliantString.
-    auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(GC::Ref { as<Element>(*target) }, compliant_string.to_utf8_but_should_be_ported_to_utf16()));
+    auto fragment = TRY(parse_fragment(target, compliant_string.to_utf8_but_should_be_ported_to_utf16()));
 
     // 5. Replace all with fragment within context.
-    target->replace_all(fragment);
+    target.visit([&](auto node) {
+        node->replace_all(fragment);
+    });
 
     // NOTE: We don't invalidate style & layout for <template> elements since they don't affect rendering.
     if (!template_element) {
-        target->set_needs_style_update(true);
+        set_needs_style_update(true);
 
-        if (target->is_connected()) {
+        if (is_connected()) {
             // NOTE: Since the DOM has changed, we have to rebuild the layout tree.
-            target->set_needs_layout_tree_update(true, DOM::SetNeedsLayoutTreeUpdateReason::ElementSetInnerHTML);
+            set_needs_layout_tree_update(true, DOM::SetNeedsLayoutTreeUpdateReason::ElementSetInnerHTML);
         }
     }
 
@@ -2539,9 +2541,10 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> Element::parse_fragment(Vari
     VERIFY(scripting_mode == HTML::ParserScriptingMode::Inert || scripting_mode == HTML::ParserScriptingMode::Fragment);
 
     // 1. Let context be target if target is an Element; otherwise target's host.
-    Element* context = target.has<GC::Ref<Element>>()
-        ? target.get<GC::Ref<Element>>()
+    auto* context = target.has<GC::Ref<Element>>()
+        ? target.get<GC::Ref<Element>>().ptr()
         : target.get<GC::Ref<DocumentFragment>>()->host();
+    VERIFY(context);
 
     // 2. Let newChildren be null.
     Vector<GC::Root<Node>> new_children;
@@ -4750,7 +4753,7 @@ WebIDL::ExceptionOr<void> Element::set_html_unsafe(TrustedTypes::TrustedHTMLOrSt
         target = as<HTML::HTMLTemplateElement>(*this).content();
 
     // 3. Unsafe set HTML given target, this, and compliantHTML.
-    TRY(target->unsafely_set_html(target, compliant_html.to_utf8_but_should_be_ported_to_utf16()));
+    TRY(unsafely_set_html(target, compliant_html.to_utf8_but_should_be_ported_to_utf16()));
 
     return {};
 }
