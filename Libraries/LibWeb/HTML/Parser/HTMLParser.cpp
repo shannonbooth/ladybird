@@ -44,6 +44,7 @@
 #include <LibWeb/HTML/Parser/HTMLEncodingDetection.h>
 #include <LibWeb/HTML/Parser/HTMLParser.h>
 #include <LibWeb/HTML/Parser/HTMLToken.h>
+#include <LibWeb/HTML/Parser/ParserScriptingMode.h>
 #include <LibWeb/HTML/Parser/SpeculativeHTMLParser.h>
 #include <LibWeb/HTML/Scripting/ExceptionReporter.h>
 #include <LibWeb/HTML/Scripting/SimilarOriginWindowAgent.h>
@@ -897,13 +898,21 @@ DOM::Document& HTMLParser::document()
 }
 
 // https://html.spec.whatwg.org/multipage/parsing.html#parsing-html-fragments
-WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragment(DOM::Element& context_element, StringView markup, AllowDeclarativeShadowRoots allow_declarative_shadow_roots, ParserScriptingMode scripting_mode)
+WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragment(Variant<GC::Ref<DOM::Element>, GC::Ref<DOM::DocumentFragment>> target, StringView input, AllowDeclarativeShadowRoots allow_declarative_shadow_roots, ParserScriptingMode scripting_mode)
 {
     // 1. Assert: scriptingMode is either Inert or Fragment.
     VERIFY(scripting_mode == HTML::ParserScriptingMode::Inert || scripting_mode == HTML::ParserScriptingMode::Fragment);
 
-    // 2. Let document be a Document node whose type is "html".
-    auto temp_document = DOM::Document::create(context_element.realm());
+    // 2. Let contextElement be target if target is an Element; otherwise target's host.
+    DOM::Element* context_element = target.has<GC::Ref<DOM::Element>>()
+        ? target.get<GC::Ref<DOM::Element>>().ptr()
+        : target.get<GC::Ref<DOM::DocumentFragment>>()->host();
+
+    // 3. Assert: contextElement is non-null.
+    VERIFY(context_element);
+
+    // 4. Let document be a Document node whose type is "html".
+    auto temp_document = DOM::Document::create(context_element->realm());
     temp_document->set_document_type(DOM::Document::Type::HTML);
 
     temp_document->set_temporary_document_for_fragment_parsing({});
@@ -911,37 +920,38 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragm
     // AD-HOC: We set the about base URL of the document to the same as the context element's document.
     //         This is required for Document::parse_url() to work inside iframe srcdoc documents.
     //         Spec issue: https://github.com/whatwg/html/issues/12210
-    temp_document->set_about_base_url(context_element.document().about_base_url());
+    temp_document->set_about_base_url(context_element->document().about_base_url());
 
-    // 3. Let contextDocument be context's node document.
-    auto& context_document = context_element.document();
+    // 5. Let contextDocument be contextElement's node document.
+    auto& context_document = context_element->document();
 
-    // 4. If contextDocument is in quirks mode, then set document's mode to "quirks".
+    // 6. If contextDocument is in quirks mode, then set document's mode to "quirks".
     if (context_document.in_quirks_mode()) {
         temp_document->set_quirks_mode(DOM::QuirksMode::Yes);
     }
-    // 5. Otherwise, if context's node document is in limited-quirks mode, then set document's mode to "limited-quirks".
+    // 7. Otherwise, if contextDocument is in limited-quirks mode, then set document's mode to "limited-quirks".
     else if (context_document.in_limited_quirks_mode()) {
         temp_document->set_quirks_mode(DOM::QuirksMode::Limited);
     }
 
-    // 7. Create a new HTML parser, and associate it with document.
-    // 8. If contextDocument's scripting is disabled, then set scriptingMode to Disabled.
-    // 9. Set the parser's scripting mode to scriptingMode.
-    if (context_element.document().is_scripting_disabled())
+    // 8. Create a new HTML parser, and associate it with document.
+    // 9. If contextDocument's scripting is disabled, then set scriptingMode to Disabled.
+    // 10. Set the parser's scripting mode to scriptingMode.
+    // 11. If allowDeclarativeShadowRoots is true, then set the parser's allow declarative shadow roots to true.
+    if (context_document.is_scripting_disabled())
         scripting_mode = HTML::ParserScriptingMode::Disabled;
 
-    auto parser = HTMLParser::create_for_decoded_string(*temp_document, markup, scripting_mode, "utf-8"sv);
+    auto parser = HTMLParser::create_for_decoded_string(*temp_document, input, scripting_mode, "utf-8"sv);
     parser->set_allow_declarative_shadow_roots(allow_declarative_shadow_roots);
-    parser->m_context_element = context_element;
+    parser->m_context_element = context_element; // FIXME: Is this needed?
     parser->m_parsing_fragment = true;
 
-    // 10. Set the state of the HTML parser's tokenization stage as follows, switching on the context element:
-    bool const context_element_is_html = context_element.namespace_uri() == Namespace::HTML;
+    // 12. Set the state of the HTML parser's tokenization stage as follows, switching on the context element:
+    bool const context_element_is_html = context_element->namespace_uri() == Namespace::HTML;
     // - title
     // - textarea
     if (context_element_is_html
-        && context_element.local_name().is_one_of(HTML::TagNames::title, HTML::TagNames::textarea)) {
+        && context_element->local_name().is_one_of(HTML::TagNames::title, HTML::TagNames::textarea)) {
         // Switch the tokenizer to the RCDATA state.
         parser->m_tokenizer.switch_to(HTMLTokenizer::State::RCDATA);
     }
@@ -951,23 +961,23 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragm
     // - noembed
     // - noframes
     else if (context_element_is_html
-        && context_element.local_name().is_one_of(HTML::TagNames::style, HTML::TagNames::xmp, HTML::TagNames::iframe, HTML::TagNames::noembed, HTML::TagNames::noframes)) {
+        && context_element->local_name().is_one_of(HTML::TagNames::style, HTML::TagNames::xmp, HTML::TagNames::iframe, HTML::TagNames::noembed, HTML::TagNames::noframes)) {
         // Switch the tokenizer to the RAWTEXT state.
         parser->m_tokenizer.switch_to(HTMLTokenizer::State::RAWTEXT);
     }
     // - script
-    else if (context_element_is_html && context_element.local_name().is_one_of(HTML::TagNames::script)) {
+    else if (context_element_is_html && context_element->local_name().is_one_of(HTML::TagNames::script)) {
         // Switch the tokenizer to the script data state.
         parser->m_tokenizer.switch_to(HTMLTokenizer::State::ScriptData);
     }
     // - noscript
-    else if (context_element_is_html && context_element.local_name().is_one_of(HTML::TagNames::noscript)) {
+    else if (context_element_is_html && context_element->local_name().is_one_of(HTML::TagNames::noscript)) {
         // If scripting mode is not Disabled, switch the tokenizer to the RAWTEXT state. Otherwise, leave the tokenizer in the data state.
         if (scripting_mode != HTML::ParserScriptingMode::Disabled)
             parser->m_tokenizer.switch_to(HTMLTokenizer::State::RAWTEXT);
     }
     // - plaintext
-    else if (context_element_is_html && context_element.local_name().is_one_of(HTML::TagNames::plaintext)) {
+    else if (context_element_is_html && context_element->local_name().is_one_of(HTML::TagNames::plaintext)) {
         // Switch the tokenizer to the PLAINTEXT state.
         parser->m_tokenizer.switch_to(HTMLTokenizer::State::PLAINTEXT);
     }
@@ -976,28 +986,18 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragm
         // Leave the tokenizer in the data state.
     }
 
-    // 11. Let root be the result of creating an element given document, "html", the HTML namespace, null, null, false,
-    //    and context's custom element registry.
-    // NOTE: For <template> fragments, the parser root acts as the intended parent for the first parsed node, so use the
-    // template contents' registry rather than the <template> element's registry.
-    auto root_registry = is<HTMLTemplateElement>(context_element)
-        ? look_up_a_custom_element_registry(as<HTMLTemplateElement>(context_element).content())
-        : look_up_a_custom_element_registry(context_element);
+    // 13. Let root be the result of creating an element given document, "html", the HTML namespace, null, null, false,
+    //     and the result of looking up a custom element registry given target.
+    auto target_node = target.visit([](auto node) -> GC::Ref<DOM::Node> { return node; } );
+    auto root_registry = look_up_a_custom_element_registry(target_node);
     auto root = MUST(create_element(*temp_document, HTML::TagNames::html, Namespace::HTML, {}, {}, false, root_registry));
 
-    // 12. Append root to document.
+    // 14. Append root to document.
     MUST(temp_document->append_child(root));
 
-    // 13. Set up the HTML parser's stack of open elements so that it contains just the single element root.
-    // 14. Let fragmentDocument be contextDocument.
-    GC::Ref<DOM::Document> fragment_document = context_document;
-
-    // 15. If context is a template element, then set fragmentDocument to contextDocument's associated inert template document.
-    if (is<HTMLTemplateElement>(context_element))
-        fragment_document = context_document.appropriate_template_contents_owner_document();
-
-    // 16. Let fragment be a new DocumentFragment whose node document is fragmentDocument.
-    auto fragment = context_element.realm().create<DOM::DocumentFragment>(fragment_document);
+    // 15. Set up the HTML parser 's stack of open elements so that it contains just the single element root.
+    // 16. Let fragment be a new DocumentFragment whose node document is target's node document.
+    auto fragment = context_element->realm().create<DOM::DocumentFragment>(target_node->document());
 
     // 17. Set the parser's root insertion target to fragment.
     parser->m_root_insertion_target = fragment;
@@ -1010,16 +1010,15 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragm
     // 20. Reset the parser's insertion mode appropriately.
     // NB: The parser will reference the context element as part of that algorithm.
 
-
     // 21. Set the HTML parser's form element pointer to the nearest node to context that is a form element
     //     (going straight up the ancestor chain, and including the element itself, if it is a form element), if any.
     //     (If there is no such form element, the form element pointer keeps its initial value, null.)
     parser->m_form_element = as_if<HTMLFormElement>(context_element);
     if (!parser->m_form_element)
-        parser->m_form_element = context_element.first_ancestor_of_type<HTMLFormElement>();
+        parser->m_form_element = context_element->first_ancestor_of_type<HTMLFormElement>();
 
-    auto context_local_name = context_element.local_name().bytes_as_string_view();
-    auto context_namespace = context_element.namespace_uri();
+    auto context_local_name = context_element->local_name().bytes_as_string_view();
+    auto context_namespace = context_element->namespace_uri();
     auto context_namespace_ffi = namespace_to_html_parser_ffi(context_namespace);
     StringView context_namespace_uri;
     if (context_namespace_ffi == RustFfiHtmlNamespace::Other && context_namespace.has_value())
@@ -1061,7 +1060,7 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> HTMLParser::parse_html_fragm
 
     // 22. Place the input into the input stream for the HTML parser just created. The encoding confidence is irrelevant.
     // 23. Start the HTML parser and let it run until it has consumed all the characters just inserted into the input stream.
-    parser->run(context_element.document().url());
+    parser->run(context_element->document().url());
 
     // 24. Return fragment.
     return fragment;

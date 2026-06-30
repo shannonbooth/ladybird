@@ -1440,7 +1440,7 @@ WebIDL::ExceptionOr<void> Element::set_inner_html(TrustedTypes::TrustedHTMLOrStr
         target = template_element->content();
 
     // 3. Let fragment be the result of invoking the fragment parsing algorithm steps with context and compliantString.
-    auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(as<Element>(*context), compliant_string.to_utf8_but_should_be_ported_to_utf16()));
+    auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(as<Element>(*context), compliant_string.to_utf8_but_should_be_ported_to_utf16(), { .destination = target }));
 
     // 4. If context is a template element, then set context to the template element's template contents (a DocumentFragment).
     if (template_element)
@@ -2549,7 +2549,7 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> Element::parse_fragment(Stri
         return XMLFragmentParser::parse_xml_fragment(*this, markup);
 
     // 4. Return the result of invoking the HTML fragment parsing algorithm given context, markup, false, and scriptingMode.
-    return HTML::HTMLParser::parse_html_fragment(*this, markup, HTML::HTMLParser::AllowDeclarativeShadowRoots::No, scripting_mode);
+    return HTML::HTMLParser::parse_html_fragment(*this, markup, { .scripting_mode = scripting_mode, .destination = this });
 }
 
 // https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-element-outerhtml
@@ -4743,12 +4743,12 @@ WebIDL::ExceptionOr<void> Element::set_html_unsafe(TrustedTypes::TrustedHTMLOrSt
         TrustedTypes::Script.to_string()));
 
     // 2. Let target be this's template contents if this is a template element; otherwise this.
-    DOM::Node* target = this;
+    Variant<GC::Ref<DOM::Element>, GC::Ref<DOM::DocumentFragment>> target = GC::Ref { *this };
     if (is<HTML::HTMLTemplateElement>(*this))
-        target = as<HTML::HTMLTemplateElement>(*this).content().ptr();
+        target = as<HTML::HTMLTemplateElement>(*this).content();
 
     // 3. Unsafe set HTML given target, this, and compliantHTML.
-    TRY(target->unsafely_set_html(*this, compliant_html.to_utf8_but_should_be_ported_to_utf16()));
+    TRY(target->unsafely_set_html(target, compliant_html.to_utf8_but_should_be_ported_to_utf16()));
 
     return {};
 }

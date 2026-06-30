@@ -2289,10 +2289,18 @@ WebIDL::ExceptionOr<Utf16String> Node::serialize_fragment(HTML::RequireWellForme
 }
 
 // https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#unsafely-set-html
-WebIDL::ExceptionOr<void> Node::unsafely_set_html(Element& context_element, StringView html)
+WebIDL::ExceptionOr<void> Node::unsafely_set_html(Variant<GC::Ref<Element>, GC::Ref<DocumentFragment>> target, StringView html)
 {
+    // 1. Let contextElement be target if target is an Element; otherwise target's host.
+    // Element* context_element = target.has<GC::Ref<Element>>()
+    //     ? target.get<GC::Ref<Element>>().ptr()
+    //     : target.get<GC::Ref<DocumentFragment>>()->host();
+
+    // // 2. Assert: contextElement is non-null.
+    // VERIFY(context_element);
+
     // 1. Let newChildren be the result of the HTML fragment parsing algorithm given contextElement, html, and true.
-    auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(context_element, html, HTML::HTMLParser::AllowDeclarativeShadowRoots::Yes));
+    auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(target, html, { .allow_declarative_shadow_roots = HTML::HTMLParser::AllowDeclarativeShadowRoots::Yes, .destination = this }));
 
     // 4. Replace all with fragment within contextElement.
     replace_all(fragment);

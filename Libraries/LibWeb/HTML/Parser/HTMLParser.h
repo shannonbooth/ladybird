@@ -8,6 +8,7 @@
 
 #include <LibGfx/Color.h>
 #include <LibJS/Heap/Cell.h>
+#include <LibWeb/CSS/Parser/Parser.h>
 #include <LibWeb/DOM/DocumentFragment.h>
 #include <LibWeb/DOM/FragmentSerializationMode.h>
 #include <LibWeb/Export.h>
@@ -58,7 +59,9 @@ public:
         No,
         Yes,
     };
-    static WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> parse_html_fragment(DOM::Element& context_element, StringView markup, AllowDeclarativeShadowRoots = AllowDeclarativeShadowRoots::No, ParserScriptingMode = ParserScriptingMode::Inert);
+
+    static WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> parse_html_fragment(Variant<GC::Ref<DOM::Element>, GC::Ref<DOM::DocumentFragment>> target, StringView markup,
+        AllowDeclarativeShadowRoots = AllowDeclarativeShadowRoots::No, ParserScriptingMode = ParserScriptingMode::Inert);
 
     enum class SerializableShadowRoots {
         No,

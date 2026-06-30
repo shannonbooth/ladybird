@@ -118,7 +118,7 @@ WebIDL::ExceptionOr<void> ShadowRoot::set_inner_html(TrustedTypes::TrustedHTMLOr
     VERIFY(context);
 
     // 3. Let fragment be the result of invoking the fragment parsing algorithm steps with context and compliantString.
-    auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(*context, compliant_string.to_utf8_but_should_be_ported_to_utf16()));
+    auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(*context, compliant_string.to_utf8_but_should_be_ported_to_utf16(), { .destination = this }));
 
     // 4. Replace all with fragment within this.
     this->replace_all(fragment);
