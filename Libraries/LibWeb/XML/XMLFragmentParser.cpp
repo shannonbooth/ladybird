@@ -15,8 +15,12 @@
 namespace Web {
 
 // https://html.spec.whatwg.org/multipage/xhtml.html#parsing-xhtml-fragments
-WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> XMLFragmentParser::parse_xml_fragment(DOM::Element& context, StringView input)
+WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> XMLFragmentParser::parse_xml_fragment(Variant<GC::Ref<DOM::Element>, GC::Ref<DOM::DocumentFragment>> target, StringView input)
 {
+    DOM::Element* context = target.has<GC::Ref<DOM::Element>>()
+        ? target.get<GC::Ref<DOM::Element>>()
+        : target.get<GC::Ref<DOM::DocumentFragment>>()->host();
+
     // 1. Create a new XML parser.
     // NB: The feed will be used to create the parser below
     StringBuilder feed;
@@ -33,7 +37,7 @@ WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> XMLFragmentParser::parse_xml
     feed.append('<');
     feed.append(qualified_name);
     //  declaring all the namespace prefixes that are in scope on that element in the DOM,
-    for (auto const& prefix : context.get_in_scope_prefixes()) {
+    for (auto const& prefix : context->get_in_scope_prefixes()) {
         // NB: Skipping the empty prefix because it is handled specially
         // and the "xmlns" prefix because it is illegal to declare.
         if (prefix.is_empty() || prefix == "xmlns"_fly_string)

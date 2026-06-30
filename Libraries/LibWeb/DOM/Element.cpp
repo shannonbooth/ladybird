@@ -55,6 +55,7 @@
 #include <LibWeb/DOM/Attr.h>
 #include <LibWeb/DOM/DOMTokenList.h>
 #include <LibWeb/DOM/Document.h>
+#include <LibWeb/DOM/DocumentFragment.h>
 #include <LibWeb/DOM/Element.h>
 #include <LibWeb/DOM/ElementFactory.h>
 #include <LibWeb/DOM/HTMLCollection.h>
@@ -1431,31 +1432,27 @@ WebIDL::ExceptionOr<void> Element::set_inner_html(TrustedTypes::TrustedHTMLOrStr
         TrustedTypes::InjectionSink::Element_innerHTML,
         TrustedTypes::Script.to_string()));
 
-    // 2. Let context be this.
-    DOM::Node* context = this;
+    // 2. Let target be this.
+    DOM::Node* target = this;
 
-    auto* template_element = as_if<HTML::HTMLTemplateElement>(*context);
-    DOM::Node* target = context;
+    // 3. If target is a template element, then set target to the template element's template contents (a DocumentFragment).
+    auto* template_element = as_if<HTML::HTMLTemplateElement>(*target);
     if (template_element)
         target = template_element->content();
 
-    // 3. Let fragment be the result of invoking the fragment parsing algorithm steps with context and compliantString.
-    auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(as<Element>(*context), compliant_string.to_utf8_but_should_be_ported_to_utf16(), { .destination = target }));
-
-    // 4. If context is a template element, then set context to the template element's template contents (a DocumentFragment).
-    if (template_element)
-        context = target;
+    // 4. Let fragment be the result of invoking the fragment parsing algorithm steps with target and compliantString.
+    auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(GC::Ref { as<Element>(*target) }, compliant_string.to_utf8_but_should_be_ported_to_utf16()));
 
     // 5. Replace all with fragment within context.
-    context->replace_all(fragment);
+    target->replace_all(fragment);
 
     // NOTE: We don't invalidate style & layout for <template> elements since they don't affect rendering.
     if (!template_element) {
-        context->set_needs_style_update(true);
+        target->set_needs_style_update(true);
 
-        if (context->is_connected()) {
+        if (target->is_connected()) {
             // NOTE: Since the DOM has changed, we have to rebuild the layout tree.
-            context->set_needs_layout_tree_update(true, DOM::SetNeedsLayoutTreeUpdateReason::ElementSetInnerHTML);
+            target->set_needs_layout_tree_update(true, DOM::SetNeedsLayoutTreeUpdateReason::ElementSetInnerHTML);
         }
     }
 
@@ -2536,20 +2533,25 @@ bool Element::is_actually_disabled() const
 }
 
 // https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#fragment-parsing-algorithm-steps
-WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> Element::parse_fragment(StringView markup, HTML::ParserScriptingMode scripting_mode)
+WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> Element::parse_fragment(Variant<GC::Ref<Element>, GC::Ref<DocumentFragment>> target, StringView markup, HTML::ParserScriptingMode scripting_mode)
 {
     // 1. Assert: scriptingMode is either Inert or Fragment.
     VERIFY(scripting_mode == HTML::ParserScriptingMode::Inert || scripting_mode == HTML::ParserScriptingMode::Fragment);
+
+    // 1. Let context be target if target is an Element; otherwise target's host.
+    Element* context = target.has<GC::Ref<Element>>()
+        ? target.get<GC::Ref<Element>>()
+        : target.get<GC::Ref<DocumentFragment>>()->host();
 
     // 2. Let newChildren be null.
     Vector<GC::Root<Node>> new_children;
 
     // 3. If context's node document is an XML document, return the result of invoking the XML fragment parsing algorithm given context and markup.
-    if (document().is_xml_document())
-        return XMLFragmentParser::parse_xml_fragment(*this, markup);
+    if (context->document().is_xml_document())
+        return XMLFragmentParser::parse_xml_fragment(target, markup);
 
     // 4. Return the result of invoking the HTML fragment parsing algorithm given context, markup, false, and scriptingMode.
-    return HTML::HTMLParser::parse_html_fragment(*this, markup, { .scripting_mode = scripting_mode, .destination = this });
+    return HTML::HTMLParser::parse_html_fragment(target, markup, HTML::HTMLParser::AllowDeclarativeShadowRoots::No, scripting_mode);
 }
 
 // https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-element-outerhtml
@@ -2586,7 +2588,7 @@ WebIDL::ExceptionOr<void> Element::set_outer_html(TrustedTypes::TrustedHTMLOrStr
         parent = TRY(create_element(document(), HTML::TagNames::body, Namespace::HTML));
 
     // 6. Let fragment be the result of invoking the fragment parsing algorithm steps given parent and compliantString.
-    auto fragment = TRY(as<Element>(*parent).parse_fragment(compliant_string.to_utf8_but_should_be_ported_to_utf16()));
+    auto fragment = TRY(Element::parse_fragment(GC::Ref { as<Element>(*parent) }, compliant_string.to_utf8_but_should_be_ported_to_utf16()));
 
     // 6. Replace this with fragment within this's parent.
     TRY(parent->replace_child(fragment, *this));
@@ -2647,7 +2649,7 @@ WebIDL::ExceptionOr<void> Element::insert_adjacent_html(String const& position, 
     }
 
     // 5. Let fragment be the result of invoking the fragment parsing algorithm steps with context and compliantString.
-    auto fragment = TRY(as<Element>(*context).parse_fragment(compliant_string.to_utf8_but_should_be_ported_to_utf16()));
+    auto fragment = TRY(Element::parse_fragment(GC::Ref { as<Element>(*context) }, compliant_string.to_utf8_but_should_be_ported_to_utf16()));
 
     // 6. Use the first matching item from this list:
 

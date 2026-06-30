@@ -2300,7 +2300,7 @@ WebIDL::ExceptionOr<void> Node::unsafely_set_html(Variant<GC::Ref<Element>, GC::
     // VERIFY(context_element);
 
     // 1. Let newChildren be the result of the HTML fragment parsing algorithm given contextElement, html, and true.
-    auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(target, html, { .allow_declarative_shadow_roots = HTML::HTMLParser::AllowDeclarativeShadowRoots::Yes, .destination = this }));
+    auto fragment = TRY(HTML::HTMLParser::parse_html_fragment(target, html, HTML::HTMLParser::AllowDeclarativeShadowRoots::Yes));
 
     // 4. Replace all with fragment within contextElement.
     replace_all(fragment);

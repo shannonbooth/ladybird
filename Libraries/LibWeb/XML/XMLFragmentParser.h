@@ -14,7 +14,7 @@ namespace Web {
 
 class XMLFragmentParser final {
 public:
-    static WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> parse_xml_fragment(DOM::Element& context, StringView markup);
+    static WebIDL::ExceptionOr<GC::Ref<DOM::DocumentFragment>> parse_xml_fragment(Variant<GC::Ref<DOM::Element>, GC::Ref<DOM::DocumentFragment>> target, StringView markup);
 };
 
 }
