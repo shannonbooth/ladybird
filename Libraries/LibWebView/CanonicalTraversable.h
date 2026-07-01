@@ -6,12 +6,162 @@
 
 #pragma once
 
+#include <AK/Function.h>
+#include <AK/Optional.h>
+#include <AK/String.h>
+#include <AK/StringView.h>
+#include <AK/Variant.h>
+#include <AK/Vector.h>
+#include <LibURL/URL.h>
+#include <LibWeb/Bindings/Navigation.h>
 #include <LibWeb/HTML/VisibilityState.h>
 #include <LibWebView/CanonicalNavigable.h>
 #include <LibWebView/Export.h>
 #include <LibWebView/SessionHistory.h>
 
 namespace WebView {
+
+enum class HistoryTraversalStatus : u8 {
+    Started,
+    NoEntry,
+    Canceled,
+};
+
+// NB: The HTML Standard spells this algorithm argument "checkForCancelation".
+enum class CheckForCancelation : u8 {
+    Yes,
+    No,
+    IfWebContentCannotTraverseTarget,
+};
+
+struct HistoryTraversalOutcome {
+    HistoryTraversalStatus status { HistoryTraversalStatus::NoEntry };
+    bool will_replace_web_content_process { false };
+    bool will_change_top_level_entry { false };
+    bool waiting_for_cancelation_check { false };
+};
+
+struct PendingSessionHistoryNavigation {
+    enum class WebContentRestoreMode : u8 {
+        PreserveCurrentProcessState,
+        RestoreFromUIProcess,
+    };
+
+    URL::URL url;
+    TraversableSessionHistory previous_session_history;
+    WebContentRestoreMode web_content_restore_mode { WebContentRestoreMode::PreserveCurrentProcessState };
+};
+
+struct PendingWebContentSessionHistorySeed {
+    bool should_send_entries { false };
+    bool ignore_updates_until_seed { false };
+    bool waiting_for_ack { false };
+    bool should_reseed_after_current_history_load { false };
+    Optional<i32> step_after_loading_top_level_entry;
+
+    void clear() { *this = {}; }
+};
+
+struct PendingSessionHistoryTraversal {
+    enum class Stage : u8 {
+        ApplyingInWebContent,
+        CheckingCancelation,
+        LoadingEntryFromUIProcess,
+        ReplacingWebContentProcess,
+        RestoringNestedStepAfterSeed,
+    };
+
+    i32 target_step { 0 };
+    size_t target_step_index { 0 };
+    u64 cancelation_check_request_id { 0 };
+    bool will_change_top_level_entry { false };
+    bool will_replace_web_content_process { false };
+    Stage stage { Stage::ApplyingInWebContent };
+    Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete;
+};
+
+struct WebContentSessionHistoryUpdateResult {
+    TraversableSessionHistory::UpdateResult update_result { TraversableSessionHistory::UpdateResult::InvalidSnapshot };
+    Optional<URL::URL> current_url;
+    bool should_seed_web_content { false };
+};
+
+enum class WebContentSessionHistorySeedAckStatus : u8 {
+    Ignored,
+    RejectedWithCurrentSnapshot,
+    Rejected,
+    PreloadMismatch,
+    Mismatch,
+    PreloadAccepted,
+    Accepted,
+};
+
+struct WebContentSessionHistorySeedAckResult {
+    WebContentSessionHistorySeedAckStatus status { WebContentSessionHistorySeedAckStatus::Ignored };
+    Optional<URL::URL> current_url;
+    Optional<i32> step_to_traverse;
+    bool should_complete_webdriver_pending_navigation { false };
+};
+
+enum class NavigationStartStatus : u8 {
+    Ignored,
+    StaleUIHistoryLoad,
+    StartedFromUIHistoryLoad,
+    IgnoredBeforeUIHistorySeed,
+    StartedFromCrashPage,
+    Redirect,
+    CurrentEntryUnchanged,
+    ReplacedCurrentEntry,
+    PushedCurrentEntry,
+    Started,
+};
+
+struct NavigationStartResult {
+    NavigationStartStatus status { NavigationStartStatus::Ignored };
+    bool should_update_navigation_action_state { false };
+    bool should_update_webdriver_pending_navigation_url { false };
+    bool did_clear_crash_page { false };
+};
+
+enum class NavigationCancelStatus : u8 {
+    Ignored,
+    RestorePendingSessionHistoryNavigation,
+    CanceledUIHistoryLoad,
+    CompleteWebdriverPendingNavigation,
+};
+
+struct NavigationCancelResult {
+    NavigationCancelStatus status { NavigationCancelStatus::Ignored };
+};
+
+struct NavigationFinishResult {
+    bool should_seed_web_content { false };
+    bool allow_current_entry_reconstruction { false };
+    bool should_dump_skip_seed { false };
+};
+
+struct RestorePendingSessionHistoryNavigationResult {
+    bool restored { false };
+    Optional<URL::URL> current_url;
+    PendingSessionHistoryNavigation::WebContentRestoreMode web_content_restore_mode { PendingSessionHistoryNavigation::WebContentRestoreMode::PreserveCurrentProcessState };
+    bool current_web_content_session_history_matches_mirror { false };
+};
+
+enum class HistoryTraversalAction : u8 {
+    None,
+    TraverseInWebContent,
+    CheckForCancelation,
+    LoadCurrentEntryFromUIProcess,
+};
+
+struct HistoryTraversalDecision {
+    HistoryTraversalOutcome outcome;
+    HistoryTraversalAction action { HistoryTraversalAction::None };
+    Optional<i32> target_step;
+    Optional<u64> cancelation_check_request_id;
+    Optional<URL::URL> webdriver_pending_navigation_url;
+    bool webdriver_pending_navigation_completes_with_session_history_update { false };
+};
 
 class WEBVIEW_API CanonicalTraversable final {
 public:
@@ -27,10 +177,52 @@ public:
     Web::HTML::VisibilityState system_visibility_state() const { return m_system_visibility_state; }
     void set_system_visibility_state(Web::HTML::VisibilityState visibility_state) { m_system_visibility_state = visibility_state; }
 
+    bool& current_web_content_session_history_matches_mirror() { return m_current_web_content_session_history_matches_mirror; }
+    bool current_web_content_session_history_matches_mirror() const { return m_current_web_content_session_history_matches_mirror; }
+
+    Optional<PendingSessionHistoryNavigation>& pending_session_history_navigation() { return m_pending_session_history_navigation; }
+    Optional<PendingSessionHistoryNavigation> const& pending_session_history_navigation() const { return m_pending_session_history_navigation; }
+
+    Optional<PendingSessionHistoryTraversal>& pending_session_history_traversal() { return m_pending_session_history_traversal; }
+    Optional<PendingSessionHistoryTraversal> const& pending_session_history_traversal() const { return m_pending_session_history_traversal; }
+
+    u64& next_traverse_history_step_cancelation_check_request_id() { return m_next_traverse_history_step_cancelation_check_request_id; }
+    u64 next_traverse_history_step_cancelation_check_request_id() const { return m_next_traverse_history_step_cancelation_check_request_id; }
+
+    Optional<URL::URL>& session_history_entry_url_loading_from_ui_process() { return m_session_history_entry_url_loading_from_ui_process; }
+    Optional<URL::URL> const& session_history_entry_url_loading_from_ui_process() const { return m_session_history_entry_url_loading_from_ui_process; }
+
+    PendingWebContentSessionHistorySeed& pending_web_content_session_history_seed() { return m_pending_web_content_session_history_seed; }
+    PendingWebContentSessionHistorySeed const& pending_web_content_session_history_seed() const { return m_pending_web_content_session_history_seed; }
+
+    void abandon_pending_web_content_session_history_seed();
+    void prepare_to_seed_web_content_session_history_from_ui_process();
+    WebContentSessionHistoryUpdateResult update_session_history_from_web_content(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, bool pending_step_after_fallback_load_was_restored, bool seed_web_content_on_invalid_snapshot, URL::URL const& current_url);
+    WebContentSessionHistoryUpdateResult adopt_web_content_session_history_after_rejected_seed(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url);
+    WebContentSessionHistorySeedAckResult did_receive_web_content_session_history_seed_ack(bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url);
+    NavigationStartResult did_start_navigation(URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, bool is_redirect, Web::Bindings::NavigationHistoryBehavior, bool is_showing_crash_page);
+    NavigationCancelResult did_cancel_navigation(URL::URL const&, bool has_webdriver_pending_navigation);
+    NavigationFinishResult did_finish_navigation(URL::URL const&);
+    RestorePendingSessionHistoryNavigationResult restore_pending_session_history_navigation();
+    HistoryTraversalDecision traverse_the_history_by_delta(int delta, CheckForCancelation, URL::URL const& current_url, Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete);
+    URL::URL prepare_to_load_session_history_traversal_target_from_ui_process(TraversableSessionHistory::TraversalTarget const&, URL::URL const& current_url);
+    bool should_allow_current_entry_reconstruction_when_seeding(bool allow_current_entry_reconstruction) const;
+    void reset_session_history_for_testing();
+    void mark_web_content_session_history_stale_for_testing();
+
+    static StringView pending_session_history_navigation_web_content_restore_mode_to_string(PendingSessionHistoryNavigation::WebContentRestoreMode);
+    static StringView pending_session_history_traversal_stage_to_string(PendingSessionHistoryTraversal::Stage);
+
 private:
     CanonicalNavigable m_root_navigable;
     TraversableSessionHistory m_session_history;
     Web::HTML::VisibilityState m_system_visibility_state { Web::HTML::VisibilityState::Hidden };
+    bool m_current_web_content_session_history_matches_mirror { false };
+    Optional<PendingSessionHistoryNavigation> m_pending_session_history_navigation;
+    Optional<PendingSessionHistoryTraversal> m_pending_session_history_traversal;
+    u64 m_next_traverse_history_step_cancelation_check_request_id { 0 };
+    Optional<URL::URL> m_session_history_entry_url_loading_from_ui_process;
+    PendingWebContentSessionHistorySeed m_pending_web_content_session_history_seed;
 };
 
 }
