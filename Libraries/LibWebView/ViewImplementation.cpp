@@ -59,7 +59,8 @@ Optional<ViewImplementation&> ViewImplementation::find_view_by_id(u64 id)
 }
 
 ViewImplementation::ViewImplementation()
-    : m_document_cookie_version_buffer(Core::create_shared_version_buffer())
+    : m_session_history(m_top_level_traversable.session_history())
+    , m_document_cookie_version_buffer(Core::create_shared_version_buffer())
     , m_view_id(s_view_count++)
 {
     all_views().set(m_view_id, this);
@@ -270,6 +271,7 @@ void ViewImplementation::set_system_visibility_state(Web::HTML::VisibilityState 
         return;
 
     m_system_visibility_state = visibility_state;
+    m_top_level_traversable.set_system_visibility_state(visibility_state);
     client().async_set_system_visibility_state(m_client_state.page_index, m_system_visibility_state);
 }
 
@@ -1512,6 +1514,11 @@ void ViewImplementation::initialize_client(CreateNewClient create_new_client)
     // If DevTools is connected, notify the new WebContent process.
     if (m_devtools_connected)
         client().async_did_connect_devtools_client(page_id());
+}
+
+void ViewImplementation::did_register_page_in_web_content(Badge<WebContentClient>, WebContentClient& client, u64 page_id)
+{
+    m_top_level_traversable.root_navigable().set_active_document_host(client, page_id);
 }
 
 void ViewImplementation::did_start_navigation(URL::URL const& url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, bool is_redirect, Web::Bindings::NavigationHistoryBehavior history_handling)

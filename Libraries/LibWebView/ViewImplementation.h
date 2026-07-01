@@ -44,6 +44,7 @@
 #include <LibWeb/Page/ViewportIsFullscreen.h>
 #include <LibWeb/WebDriver/Response.h>
 #include <LibWebView/BookmarkStore.h>
+#include <LibWebView/CanonicalTraversable.h>
 #include <LibWebView/DOMNodeProperties.h>
 #include <LibWebView/Forward.h>
 #include <LibWebView/PageInfo.h>
@@ -423,6 +424,7 @@ protected:
     void load_current_session_history_entry_from_ui_process();
     void load_session_history_traversal_target_from_ui_process(TraversableSessionHistory::TraversalTarget const&, StringView dump_reason);
     NonnullRefPtr<Core::Promise<Empty>> reset_session_history_for_testing();
+    void did_register_page_in_web_content(Badge<WebContentClient>, WebContentClient&, u64 page_id);
 
     virtual void update_zoom();
     String current_host() const;
@@ -589,7 +591,8 @@ protected:
     };
     static StringView pending_session_history_traversal_stage_to_string(PendingSessionHistoryTraversal::Stage);
 
-    TraversableSessionHistory m_session_history;
+    CanonicalTraversable m_top_level_traversable;
+    TraversableSessionHistory& m_session_history;
     bool m_current_web_content_session_history_matches_mirror { false };
     Optional<PendingSessionHistoryNavigation> m_pending_session_history_navigation;
     Optional<PendingSessionHistoryTraversal> m_pending_session_history_traversal;
