@@ -1425,9 +1425,9 @@ Messages::WebContentClient::DidRequestTraverseTheHistoryByDeltaResponse WebConte
             auto view = ViewImplementation::find_view_by_id(view_id);
             if (!view.has_value())
                 return;
-            auto check_for_cancelation = ViewImplementation::CheckForCancelation::IfWebContentCannotTraverseTarget;
+            auto check_for_cancelation = CheckForCancelation::IfWebContentCannotTraverseTarget;
             if (history_traversal_precheck == Web::HistoryTraversalPrecheck::Needed)
-                check_for_cancelation = ViewImplementation::CheckForCancelation::Yes;
+                check_for_cancelation = CheckForCancelation::Yes;
             (void)view->traverse_the_history_by_delta(delta, check_for_cancelation);
         });
         return true;
@@ -1450,8 +1450,8 @@ void WebContentClient::did_request_webdriver_history_traversal(u64 page_id, u64 
                 return;
             }
 
-            auto complete = [this, page_id, request_id](ViewImplementation::HistoryTraversalOutcome outcome) {
-                auto traversal_started = outcome.status == ViewImplementation::HistoryTraversalStatus::Started;
+            auto complete = [this, page_id, request_id](HistoryTraversalOutcome outcome) {
+                auto traversal_started = outcome.status == HistoryTraversalStatus::Started;
                 async_complete_webdriver_history_traversal(
                     page_id,
                     request_id,
@@ -1460,9 +1460,9 @@ void WebContentClient::did_request_webdriver_history_traversal(u64 page_id, u64 
                     traversal_started && outcome.will_change_top_level_entry);
             };
 
-            auto outcome = view->traverse_the_history_by_delta(delta, ViewImplementation::CheckForCancelation::Yes,
-                [this, page_id, request_id](ViewImplementation::HistoryTraversalOutcome outcome) {
-                    auto traversal_started = outcome.status == ViewImplementation::HistoryTraversalStatus::Started;
+            auto outcome = view->traverse_the_history_by_delta(delta, CheckForCancelation::Yes,
+                [this, page_id, request_id](HistoryTraversalOutcome outcome) {
+                    auto traversal_started = outcome.status == HistoryTraversalStatus::Started;
                     async_complete_webdriver_history_traversal(
                         page_id,
                         request_id,
@@ -1507,7 +1507,7 @@ Messages::WebContentClient::DidRequestWebdriverTraverseHistoryFromUiResponse Web
             auto view = ViewImplementation::find_view_by_id(view_id);
             if (!view.has_value())
                 return;
-            (void)view->traverse_the_history_by_delta(delta, ViewImplementation::CheckForCancelation::Yes);
+            (void)view->traverse_the_history_by_delta(delta, CheckForCancelation::Yes);
         });
         return { JsonValue {} };
     }
