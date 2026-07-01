@@ -38,9 +38,50 @@ void CanonicalNavigable::clear_active_document_host()
     m_active_document_page_id = 0;
 }
 
-RefPtr<WebContentClient> CanonicalNavigable::active_document_client_handle() const
+void CanonicalNavigable::set_embedding_host(WebContentClient& client, u64 page_id)
 {
+    m_embedding_client = client;
+    m_embedding_page_id = page_id;
+}
+
+bool CanonicalNavigable::active_document_is_remote() const
+{
+    return m_active_document_client
+        && (m_active_document_client != m_embedding_client
+            || m_active_document_page_id != m_embedding_page_id);
+}
+
+RefPtr<WebContentClient> CanonicalNavigable::remote_active_document_client() const
+{
+    if (!active_document_is_remote())
+        return nullptr;
     return m_active_document_client;
+}
+
+u64 CanonicalNavigable::remote_active_document_page_id() const
+{
+    if (!active_document_is_remote())
+        return 0;
+    return m_active_document_page_id;
+}
+
+void CanonicalNavigable::set_viewport_rect(Web::DevicePixelRect viewport_rect, double device_pixel_ratio)
+{
+    m_viewport_rect = viewport_rect;
+    m_device_pixel_ratio = device_pixel_ratio;
+}
+
+void CanonicalNavigable::set_pending_child_frame_navigation(URL::URL const& url, PendingNavigationHost target_host)
+{
+    m_pending_child_frame_navigation = PendingChildFrameNavigation {
+        .target_url = url,
+        .target_host = target_host,
+    };
+}
+
+void CanonicalNavigable::clear_pending_child_frame_navigation()
+{
+    m_pending_child_frame_navigation.clear();
 }
 
 }

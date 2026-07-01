@@ -7,7 +7,9 @@
 #pragma once
 
 #include <AK/Function.h>
+#include <AK/HashMap.h>
 #include <AK/Optional.h>
+#include <AK/OwnPtr.h>
 #include <AK/String.h>
 #include <AK/StringView.h>
 #include <AK/Variant.h>
@@ -245,6 +247,16 @@ public:
 
     CanonicalNavigable const& root_navigable() const { return m_root_navigable; }
     CanonicalNavigable& root_navigable() { return m_root_navigable; }
+    CanonicalNavigable& create_child_navigable(String parent_id, String child_id, WebContentClient&, u64 page_id);
+    void destroy_child_navigable(StringView child_id);
+    Optional<CanonicalNavigable&> child_navigable(StringView child_id);
+    Optional<CanonicalNavigable const&> child_navigable(StringView child_id) const;
+
+    template<CallableAs<IterationDecision, String const&, CanonicalNavigable&> Callback>
+    void for_each_child_navigable(Callback callback);
+
+    template<CallableAs<IterationDecision, String const&, CanonicalNavigable const&> Callback>
+    void for_each_child_navigable(Callback callback) const;
 
     TraversableSessionHistory const& session_history() const { return m_session_history; }
 
@@ -292,6 +304,7 @@ private:
     WebContentSessionHistoryUpdateResult adopt_web_content_session_history_after_rejected_seed(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url);
 
     CanonicalNavigable m_root_navigable;
+    HashMap<String, OwnPtr<CanonicalNavigable>> m_child_navigables;
     TraversableSessionHistory m_session_history;
     Web::HTML::VisibilityState m_system_visibility_state { Web::HTML::VisibilityState::Hidden };
     bool m_current_web_content_session_history_matches_mirror { false };
@@ -301,5 +314,23 @@ private:
     Optional<URL::URL> m_session_history_entry_url_loading_from_ui_process;
     PendingWebContentSessionHistorySeed m_pending_web_content_session_history_seed;
 };
+
+template<CallableAs<IterationDecision, String const&, CanonicalNavigable&> Callback>
+void CanonicalTraversable::for_each_child_navigable(Callback callback)
+{
+    for (auto& entry : m_child_navigables) {
+        if (callback(entry.key, *entry.value) == IterationDecision::Break)
+            return;
+    }
+}
+
+template<CallableAs<IterationDecision, String const&, CanonicalNavigable const&> Callback>
+void CanonicalTraversable::for_each_child_navigable(Callback callback) const
+{
+    for (auto const& entry : m_child_navigables) {
+        if (callback(entry.key, *entry.value) == IterationDecision::Break)
+            return;
+    }
+}
 
 }

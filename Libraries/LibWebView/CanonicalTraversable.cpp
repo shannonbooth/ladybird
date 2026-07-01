@@ -7,6 +7,7 @@
 #include <LibWebView/CanonicalTraversable.h>
 #include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWebView/SiteIsolation.h>
+#include <LibWebView/WebContentClient.h>
 
 namespace WebView {
 
@@ -18,6 +19,36 @@ CanonicalTraversable::CanonicalTraversable()
 }
 
 CanonicalTraversable::~CanonicalTraversable() = default;
+
+CanonicalNavigable& CanonicalTraversable::create_child_navigable(String parent_id, String child_id, WebContentClient& client, u64 page_id)
+{
+    auto key = child_id;
+    auto child_navigable = make<CanonicalNavigable>(move(child_id));
+    child_navigable->set_parent_id(move(parent_id));
+    child_navigable->set_embedding_host(client, page_id);
+    child_navigable->set_active_document_host(client, page_id);
+    m_child_navigables.set(key, move(child_navigable));
+    return **m_child_navigables.get(key);
+}
+
+void CanonicalTraversable::destroy_child_navigable(StringView child_id)
+{
+    m_child_navigables.remove(child_id);
+}
+
+Optional<CanonicalNavigable&> CanonicalTraversable::child_navigable(StringView child_id)
+{
+    if (auto child = m_child_navigables.get(child_id); child.has_value())
+        return **child;
+    return {};
+}
+
+Optional<CanonicalNavigable const&> CanonicalTraversable::child_navigable(StringView child_id) const
+{
+    if (auto child = m_child_navigables.get(child_id); child.has_value())
+        return **child;
+    return {};
+}
 
 static Optional<size_t> current_top_level_history_entry_index_for_step(Vector<Web::HTML::SessionHistoryEntryDescriptor> const& entries, Optional<i32> current_step)
 {

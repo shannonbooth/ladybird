@@ -59,6 +59,7 @@ class WEBVIEW_API ViewImplementation
     : public SettingsObserver
     , public BookmarkStoreObserver {
     friend class WebContentClient;
+    friend class SiteIsolationManager;
 
 public:
     virtual ~ViewImplementation();
