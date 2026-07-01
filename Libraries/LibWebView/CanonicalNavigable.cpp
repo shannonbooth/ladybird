@@ -16,6 +16,16 @@ CanonicalNavigable::CanonicalNavigable(String id)
 
 CanonicalNavigable::~CanonicalNavigable() = default;
 
+void CanonicalNavigable::set_active_document_url(URL::URL const& url)
+{
+    m_active_document_url = url;
+}
+
+void CanonicalNavigable::clear_active_document_url()
+{
+    m_active_document_url.clear();
+}
+
 void CanonicalNavigable::set_active_document_host(WebContentClient& client, u64 page_id)
 {
     m_active_document_client = client;
@@ -26,6 +36,11 @@ void CanonicalNavigable::clear_active_document_host()
 {
     m_active_document_client = nullptr;
     m_active_document_page_id = 0;
+}
+
+RefPtr<WebContentClient> CanonicalNavigable::active_document_client_handle() const
+{
+    return m_active_document_client;
 }
 
 }

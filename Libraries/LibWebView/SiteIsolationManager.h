@@ -16,6 +16,7 @@
 #include <LibWeb/Page/InputEvent.h>
 #include <LibWeb/Page/Page.h>
 #include <LibWeb/PixelUnits.h>
+#include <LibWebView/CanonicalNavigable.h>
 #include <LibWebView/Forward.h>
 
 namespace WebView {
@@ -36,19 +37,18 @@ public:
     };
 
     struct ChildFrameHost {
-        String parent_frame_id;
-        Optional<URL::URL> last_committed_url;
+        explicit ChildFrameHost(String id = {});
+
+        CanonicalNavigable navigable;
         Optional<PendingChildFrameNavigation> pending_navigation;
         Optional<Web::DevicePixelRect> viewport_rect;
         double device_pixel_ratio { 1 };
-        ChildFrameOwner owner { ChildFrameOwner::Local };
-        RefPtr<WebContentClient> remote_client;
-        u64 remote_page_id { 0 };
+        RefPtr<WebContentClient> embedding_client;
+        u64 embedding_page_id { 0 };
 
-        bool is_remote() const
-        {
-            return owner == ChildFrameOwner::Remote && remote_client && remote_page_id != 0;
-        }
+        bool is_remote() const;
+        RefPtr<WebContentClient> remote_client() const;
+        u64 remote_page_id() const;
     };
 
     struct RemoteChildFrameInputTarget {
@@ -59,7 +59,7 @@ public:
 
     Web::NavigationProcessDecision decide_navigation_process(WebContentClient&, u64 page_id, Optional<String> frame_id, URL::URL current_url, URL::URL target_url, Web::NavigationTarget);
 
-    void did_create_child_frame(u64 page_id, String parent_frame_id, String frame_id);
+    void did_create_child_frame(WebContentClient&, u64 page_id, String parent_frame_id, String frame_id);
     void did_update_child_frame_viewport(u64 page_id, String frame_id, Web::DevicePixelRect viewport_rect, double device_pixel_ratio);
     bool did_commit_child_frame_navigation(WebContentClient&, u64 page_id, StringView frame_id, URL::URL const& url);
     void did_destroy_child_frame(WebContentClient&, u64 page_id, StringView frame_id);

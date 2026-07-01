@@ -480,7 +480,7 @@ void WebContentClient::did_request_new_process_for_child_frame_navigation(u64 pa
 
 void WebContentClient::did_create_child_frame(u64 page_id, String parent_frame_id, String frame_id)
 {
-    SiteIsolationManager::the().did_create_child_frame(page_id, move(parent_frame_id), move(frame_id));
+    SiteIsolationManager::the().did_create_child_frame(*this, page_id, move(parent_frame_id), move(frame_id));
 }
 
 void WebContentClient::did_update_child_frame_viewport(u64 page_id, String frame_id, Web::DevicePixelRect viewport_rect, double device_pixel_ratio)
