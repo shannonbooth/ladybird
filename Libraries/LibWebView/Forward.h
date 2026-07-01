@@ -16,6 +16,8 @@ class Action;
 class Application;
 class Autocomplete;
 class BookmarkStore;
+class CanonicalNavigable;
+class CanonicalTraversable;
 class CompositorClient;
 class CookieJar;
 class HistoryStore;

@@ -157,6 +157,7 @@ void WebContentClient::assign_view(Badge<Application>, ViewImplementation& view)
 {
     VERIFY(m_views.is_empty());
     view.m_client_state.page_index = m_initial_page_id;
+    view.did_register_page_in_web_content({}, *this, m_initial_page_id);
     m_views.set(m_initial_page_id, view);
 }
 
@@ -172,6 +173,7 @@ void WebContentClient::register_view(u64 page_id, ViewImplementation& view)
         m_detached_page_close_timer->stop();
     Application::process_manager().cancel_forced_exit(pid());
     view.m_client_state.page_index = page_id;
+    view.did_register_page_in_web_content({}, *this, page_id);
     m_views.set(page_id, view);
     m_history_recorded_urls_for_current_load.remove(page_id);
 }
