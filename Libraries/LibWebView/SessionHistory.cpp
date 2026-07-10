@@ -1069,6 +1069,21 @@ Optional<TraversableSessionHistory::TraversalTarget> TraversableSessionHistory::
     return traversal_target_for_step(*target_step);
 }
 
+Optional<TraversableSessionHistory::TraversalTarget> TraversableSessionHistory::traversal_target_for_delta_from_step(i32 current_step, int delta) const
+{
+    auto current_step_index = m_used_steps.find_first_index(current_step);
+    if (!current_step_index.has_value())
+        return {};
+
+    auto target_step_index = target_step_index_for_delta_from_index(*current_step_index, delta);
+    if (!target_step_index.has_value())
+        return {};
+
+    auto target_step = step_at(*target_step_index);
+    VERIFY(target_step.has_value());
+    return traversal_target_for_step(*target_step);
+}
+
 Optional<TraversableSessionHistory::TraversalTarget> TraversableSessionHistory::traversal_target_for_step(i32 step) const
 {
     auto target_step_index = m_used_steps.find_first_index(step);
@@ -1095,17 +1110,25 @@ Optional<size_t> TraversableSessionHistory::target_step_index_for_delta(int delt
     // Let allSteps be the result of getting all used history steps. Let
     // targetStepIndex be currentStepIndex plus delta. If allSteps[targetStepIndex]
     // does not exist, then abort these steps.
-    if (!m_current_used_step_index.has_value() || delta == 0)
+    if (!m_current_used_step_index.has_value())
+        return {};
+
+    return target_step_index_for_delta_from_index(*m_current_used_step_index, delta);
+}
+
+Optional<size_t> TraversableSessionHistory::target_step_index_for_delta_from_index(size_t current_step_index, int delta) const
+{
+    if (delta == 0)
         return {};
 
     if (delta < 0) {
         auto magnitude = static_cast<size_t>(-static_cast<i64>(delta));
-        if (magnitude > *m_current_used_step_index)
+        if (magnitude > current_step_index)
             return {};
-        return *m_current_used_step_index - magnitude;
+        return current_step_index - magnitude;
     }
 
-    auto target_index = *m_current_used_step_index + static_cast<size_t>(delta);
+    auto target_index = current_step_index + static_cast<size_t>(delta);
     if (target_index >= m_used_steps.size())
         return {};
     return target_index;

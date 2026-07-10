@@ -239,26 +239,6 @@ static DocumentState::NestedHistory create_nested_history_from_ui_process(Sessio
 static void populate_nested_histories_from_ui_process(DocumentState& document_state, Vector<SessionHistoryNestedHistoryDescriptor> nested_history_descriptors, SessionHistoryEntryReconstructionState& reconstruction_state)
 {
     auto& nested_histories = document_state.nested_histories();
-    if (nested_histories.size() == nested_history_descriptors.size()) {
-        // FIXME: This is temporary glue for the current load-then-seed ordering.
-        //        A replacement WebContent process can create live child navigables
-        //        before the UI process sends its canonical session-history tree.
-        //        Now that nested history ids are canonical NavigableIds, the UI id
-        //        must win; retarget the already-created child to match it. The
-        //        longer-term model should avoid creating a distinct temporary id
-        //        for a child the UI process already knows about.
-        for (size_t i = 0; i < nested_history_descriptors.size(); ++i) {
-            auto previous_id = nested_histories[i].id;
-            auto canonical_id = nested_history_descriptors[i].id;
-            if (previous_id == canonical_id)
-                continue;
-
-            for (auto& navigable : all_local_navigables()) {
-                if (navigable->id() == previous_id)
-                    navigable->set_id_for_session_history_reconstruction(canonical_id);
-            }
-        }
-    }
     nested_histories.clear();
     nested_histories.ensure_capacity(nested_history_descriptors.size());
     for (auto& nested_history_descriptor : nested_history_descriptors)
@@ -385,15 +365,11 @@ bool LocalTraversableNavigable::replace_top_level_session_history_entries_from_u
         auto const& current_entry_from_ui_process = entries_from_ui_process[current_top_level_entry_index];
         if (current_entry_from_ui_process.document_state.id == 0)
             return false;
-        // NB: Nested histories can be UI-owned state that is intentionally restored after the current top-level
-        //     document has loaded. The live latest entry must still match the UI seed's top-level state, but requiring
-        //     nested histories to match would reject the state we are being asked to restore.
         auto latest_entry = active_document->latest_entry();
         if (!latest_entry)
             return false;
 
         auto latest_entry_matches_ui_seed = session_history_entry_matches_descriptor_ignoring_document_state_id(*latest_entry, current_entry_from_ui_process, MatchNestedHistories::No);
-
         auto active_entry_is_latest_entry = latest_entry.ptr() == active_entry.ptr();
         auto current_entry_url_matches_ui_seed = latest_entry->url() == current_entry_from_ui_process.url;
 

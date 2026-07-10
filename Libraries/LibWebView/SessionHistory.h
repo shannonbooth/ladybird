@@ -80,6 +80,7 @@ public:
     [[nodiscard]] Optional<i32> current_step_to_restore_after_loading_top_level_entry() const;
     [[nodiscard]] bool web_content_can_traverse_to(TraversalTarget const&) const;
     [[nodiscard]] Optional<TraversalTarget> traversal_target_for_delta(int delta) const;
+    [[nodiscard]] Optional<TraversalTarget> traversal_target_for_delta_from_step(i32 current_step, int delta) const;
     [[nodiscard]] Optional<TraversalTarget> traversal_target_for_step(i32 step) const;
     [[nodiscard]] Optional<size_t> target_step_index_for_delta(int delta) const;
     [[nodiscard]] Optional<i32> step_at(size_t index) const;
@@ -91,6 +92,8 @@ public:
     void traverse_to(size_t index);
 
 private:
+    [[nodiscard]] Optional<size_t> target_step_index_for_delta_from_index(size_t current_step_index, int delta) const;
+
     // https://html.spec.whatwg.org/multipage/document-sequences.html#tn-session-history-entries
     Vector<Entry> m_entries;
 

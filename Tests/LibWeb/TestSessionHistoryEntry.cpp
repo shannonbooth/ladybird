@@ -22,7 +22,7 @@ static URL::URL parse_url(StringView url)
     return parsed_url.release_value();
 }
 
-TEST_CASE(post_load_seed_match_allows_ui_owned_nested_histories)
+TEST_CASE(entry_match_can_ignore_nested_histories_for_top_level_state)
 {
     Web::HTML::SessionHistoryEntryDescriptor live_descriptor;
     live_descriptor.step = 0;
