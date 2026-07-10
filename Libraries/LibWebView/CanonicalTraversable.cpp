@@ -119,8 +119,16 @@ ProcessSwapNavigationPreparation CanonicalTraversable::prepare_for_process_swap_
     ProcessSwapNavigationPreparation result;
     auto url = continuation.url;
 
-    if (m_pending_session_history_traversal.has_value() && m_pending_session_history_traversal->will_replace_web_content_process)
+    auto process_swap_continues_pending_traversal = false;
+    if (m_pending_session_history_traversal.has_value() && m_pending_session_history_traversal->will_replace_web_content_process) {
+        if (auto target = m_session_history.traversal_target_for_step(m_pending_session_history_traversal->target_step); target.has_value())
+            process_swap_continues_pending_traversal = target->target_top_level_entry->url == url;
+    }
+
+    if (process_swap_continues_pending_traversal)
         m_pending_session_history_traversal->stage = PendingSessionHistoryTraversal::Stage::ReplacingWebContentProcess;
+    else
+        m_pending_session_history_traversal.clear();
 
     auto pending_history_handling = continuation.history_handling;
     if (pending_history_handling == Web::Bindings::NavigationHistoryBehavior::Auto) {
@@ -142,7 +150,7 @@ ProcessSwapNavigationPreparation CanonicalTraversable::prepare_for_process_swap_
     };
 
     m_session_history.forget_web_content_state();
-    m_pending_web_content_session_history_seed.waiting_for_ack = false;
+    m_pending_web_content_session_history_seed.clear();
     m_pending_web_content_session_history_seed.should_send_entries = m_session_history.current_top_level_entry_index().has_value();
     m_pending_web_content_session_history_seed.ignore_updates_until_seed = m_pending_web_content_session_history_seed.should_send_entries;
     result.should_seed_web_content_before_load = m_pending_web_content_session_history_seed.should_send_entries;
@@ -705,6 +713,18 @@ Optional<CurrentSessionHistoryEntryLoad> CanonicalTraversable::pending_session_h
 
 void CanonicalTraversable::prepare_for_web_content_crash_recovery()
 {
+    if (m_pending_session_history_navigation.has_value()
+        && m_pending_session_history_navigation->commit_behavior == PendingSessionHistoryNavigation::CommitBehavior::CommitFromWebContent
+        && m_pending_session_history_navigation->cross_process_navigation_continuation.has_value()) {
+        m_pending_session_history_traversal.clear();
+        m_current_web_content_session_history_matches_mirror = false;
+        m_session_history.forget_web_content_state();
+        m_pending_web_content_session_history_seed.clear();
+        m_pending_web_content_session_history_seed.should_send_entries = m_session_history.current_top_level_entry_index().has_value();
+        m_pending_web_content_session_history_seed.ignore_updates_until_seed = m_pending_web_content_session_history_seed.should_send_entries;
+        return;
+    }
+
     if (m_pending_session_history_traversal.has_value()) {
         auto target = m_session_history.traversal_target_for_step(m_pending_session_history_traversal->target_step);
         if (target.has_value()) {
