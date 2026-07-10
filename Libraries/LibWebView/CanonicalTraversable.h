@@ -60,7 +60,6 @@ struct PendingWebContentSessionHistorySeed {
     bool should_send_entries { false };
     bool ignore_updates_until_seed { false };
     bool waiting_for_ack { false };
-    bool should_reseed_after_current_history_load { false };
     Optional<i32> step_to_traverse_after_seed;
 
     void clear() { *this = {}; }
@@ -130,7 +129,6 @@ struct NavigationCancelResult {
 
 struct NavigationFinishResult {
     bool should_seed_web_content { false };
-    bool allow_current_entry_reconstruction { false };
     Optional<StringView> dump_reason {};
 };
 
@@ -185,7 +183,6 @@ struct HistoryStepCancelationCheckResult {
 struct WebContentSessionHistorySeed {
     Vector<Web::HTML::SessionHistoryEntryDescriptor> entries;
     size_t current_top_level_entry_index { 0 };
-    bool allow_current_entry_reconstruction { false };
 };
 
 struct CurrentSessionHistoryEntryLoad {
@@ -194,14 +191,13 @@ struct CurrentSessionHistoryEntryLoad {
     Web::Bindings::NavigationHistoryBehavior history_handling { Web::Bindings::NavigationHistoryBehavior::Auto };
 };
 
-enum class WebContentCrashRecoveryAction : u8 {
-    RestoreCurrentSessionHistoryEntryFromUIProcess,
-    SeedSessionHistoryFromUIProcess,
-};
-
 struct ProcessSwapNavigationPreparation {
     bool should_update_navigation_action_state { false };
     bool should_seed_web_content_before_load { false };
+};
+
+struct WebContentCrashRecoveryPreparation {
+    bool should_load_current_entry_from_ui_process { false };
 };
 
 struct PageLoadPreparation {
@@ -252,11 +248,10 @@ public:
     URL::URL prepare_to_seed_session_history_and_traverse_to_step_from_ui_process(TraversableSessionHistory::TraversalTarget const&, URL::URL const& current_url);
     WebContentHistoryStepResult did_traverse_the_history_to_step(i32 step, bool step_was_available, Web::HTML::HistoryStepResult);
     HistoryStepCancelationCheckResult did_check_if_traverse_history_step_is_canceled(u64 request_id, i32 step, bool canceled);
-    Optional<WebContentSessionHistorySeed> prepare_web_content_session_history_seed(bool allow_current_entry_reconstruction);
+    Optional<WebContentSessionHistorySeed> prepare_web_content_session_history_seed();
     CurrentSessionHistoryEntryLoad prepare_current_session_history_entry_load(URL::URL const& current_url);
     void did_send_web_content_session_history_seed();
-    bool prepare_to_restore_current_session_history_entry_from_ui_process();
-    WebContentCrashRecoveryAction did_crash_requiring_web_content_session_history_seed();
+    WebContentCrashRecoveryPreparation prepare_for_web_content_crash_recovery();
     void reset_session_history_for_testing();
     void mark_web_content_session_history_stale_for_testing();
 

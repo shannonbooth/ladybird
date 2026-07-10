@@ -554,6 +554,13 @@ Optional<size_t> TraversableSessionHistory::current_top_level_entry_index() cons
     return top_level_entry_index_for_step(m_entries, m_used_steps[*m_current_used_step_index]);
 }
 
+Optional<i32> TraversableSessionHistory::current_step() const
+{
+    if (!m_current_used_step_index.has_value())
+        return {};
+    return m_used_steps[*m_current_used_step_index];
+}
+
 TraversableSessionHistory::UpdateResult TraversableSessionHistory::update_from_web_content(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index)
 {
     auto invalid_snapshot = [&] {

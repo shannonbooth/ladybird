@@ -332,7 +332,7 @@ static bool expected_ongoing_navigation_was_superseded(GC::Ptr<LocalNavigable> n
     return navigable->ongoing_navigation() != *expected_navigation_id;
 }
 
-bool LocalTraversableNavigable::replace_top_level_session_history_entries_from_ui_process(Vector<SessionHistoryEntryDescriptor> entries_from_ui_process, size_t current_top_level_entry_index, bool allow_reconstructing_current_entry)
+bool LocalTraversableNavigable::replace_top_level_session_history_entries_from_ui_process(Vector<SessionHistoryEntryDescriptor> entries_from_ui_process, size_t current_top_level_entry_index)
 {
     if (entries_from_ui_process.is_empty() || current_top_level_entry_index >= entries_from_ui_process.size())
         return false;
@@ -353,6 +353,7 @@ bool LocalTraversableNavigable::replace_top_level_session_history_entries_from_u
     VERIFY(active_entry);
     auto active_document = this->active_document();
     VERIFY(active_document);
+    auto bind_current_entry_to_active_document = !active_document->is_initial_about_blank();
     if (!active_document->is_initial_about_blank()) {
         // NB: The UI process can ask WebContent to reseed its top-level session history after observing an
         //     incomplete or stale snapshot. Same-document history updates are committed synchronously in WebContent,
@@ -370,50 +371,12 @@ bool LocalTraversableNavigable::replace_top_level_session_history_entries_from_u
             return false;
 
         auto latest_entry_matches_ui_seed = session_history_entry_matches_descriptor_ignoring_document_state_id(*latest_entry, current_entry_from_ui_process, MatchNestedHistories::No);
-        auto active_entry_is_latest_entry = latest_entry.ptr() == active_entry.ptr();
-        auto current_entry_url_matches_ui_seed = latest_entry->url() == current_entry_from_ui_process.url;
-
-        // NB: A UI-process fallback load starts a fresh WebContent process with a single top-level entry for the URL
-        //     being restored, then seeds the UI-owned traversable session history around that document. The fresh
-        //     entry has local step and Navigation API identity, so accept the seed when the process has no other
-        //     top-level history to protect.
-        auto can_restore_fresh_ui_history_load = entries_from_ui_process.size() > 1
-            && m_session_history_entries.size() == 1
-            && active_entry.ptr() == m_session_history_entries.first().ptr()
-            && active_entry_is_latest_entry
-            && current_entry_url_matches_ui_seed;
-
-        // NB: Crash recovery pre-seeds WebContent before loading the current entry, then reseeds after the document is
-        //     loaded so same-document state, Navigation API state, scroll restoration mode, and target name are
-        //     restored onto the fresh Document. At that point WebContent already has the UI-owned top-level history and
-        //     step coordinates, but the active entry can still have freshly loaded document state.
-        auto latest_entry_step = latest_entry->step_value();
-        auto can_restore_preseeded_ui_history_load = latest_entry_step.has_value()
-            && *latest_entry_step == current_entry_from_ui_process.step
-            && m_session_history_entries.size() == entries_from_ui_process.size()
-            && active_entry_is_latest_entry
-            && current_entry_url_matches_ui_seed;
-
-        // NB: UI-process fallback history loads can overlap when a newer traversal supersedes an older one before the
-        //     older load has finished. Other engines give pending history loads an identity so the latest traversal
-        //     stays authoritative; after the race has happened, WebContent can still have the latest live document in
-        //     an incomplete local top-level list, for example [b, c] while the UI process is restoring [a, b, c] at c.
-        //     If the live active entry has the UI seed's current URL, accept the UI-owned list around that document
-        //     instead of making the UI process adopt the incomplete WebContent list. The WebContent step, document state
-        //     id, and Navigation API identity are all process-local placeholders at this point, and are replaced by the
-        //     UI-owned values below.
-        auto can_restore_current_entry_after_superseded_ui_history_load = entries_from_ui_process.size() > m_session_history_entries.size()
-            && active_entry_is_latest_entry
-            && current_entry_url_matches_ui_seed;
-
-        auto can_reconstruct_current_entry = allow_reconstructing_current_entry
-            && (can_restore_fresh_ui_history_load || can_restore_preseeded_ui_history_load || can_restore_current_entry_after_superseded_ui_history_load);
-        if (!latest_entry_matches_ui_seed && !can_reconstruct_current_entry)
+        if (!latest_entry_matches_ui_seed)
             return false;
     }
 
     SessionHistoryEntryReconstructionState reconstruction_state;
-    if (entries_from_ui_process[current_top_level_entry_index].document_state.id != 0) {
+    if (bind_current_entry_to_active_document && entries_from_ui_process[current_top_level_entry_index].document_state.id != 0) {
         auto active_document_state = active_entry->document_state();
         VERIFY(active_document_state);
         reconstruction_state.document_states.set(entries_from_ui_process[current_top_level_entry_index].document_state.id, active_document_state);
@@ -423,42 +386,46 @@ bool LocalTraversableNavigable::replace_top_level_session_history_entries_from_u
     entries.ensure_capacity(entries_from_ui_process.size());
     for (size_t i = 0; i < entries_from_ui_process.size(); ++i) {
         auto entry_descriptor = move(entries_from_ui_process[i]);
-        NonnullRefPtr<SessionHistoryEntry> entry = *active_entry;
-        if (i == current_top_level_entry_index) {
+        if (i == current_top_level_entry_index && bind_current_entry_to_active_document) {
+            NonnullRefPtr<SessionHistoryEntry> entry = *active_entry;
             VERIFY(entry->document_state());
             apply_session_history_entry_descriptor_from_ui_process(*entry, entry_descriptor);
             apply_session_history_document_state_descriptor_from_ui_process(*entry->document_state(), entry_descriptor.document_state);
             populate_nested_histories_from_ui_process(*entry->document_state(), move(entry_descriptor.document_state.nested_histories), reconstruction_state);
-        } else {
-            entry = create_session_history_entry_from_ui_process(move(entry_descriptor), reconstruction_state);
+            entries.unchecked_append(move(entry));
+            continue;
         }
 
+        auto entry = create_session_history_entry_from_ui_process(move(entry_descriptor), reconstruction_state);
         entries.unchecked_append(move(entry));
     }
 
     m_session_history_entries = move(entries);
     auto current_entry = m_session_history_entries[current_top_level_entry_index];
-    set_active_session_history_entry(current_entry);
-    set_current_session_history_entry(current_entry);
     m_current_session_history_step = current_entry->step().get<int>();
 
-    auto document = this->active_document();
-    VERIFY(document);
-    auto history_object_length_and_index = get_the_history_object_length_and_index(m_current_session_history_step);
-    document->history()->m_index = history_object_length_and_index.script_history_index;
-    document->history()->m_length = history_object_length_and_index.script_history_length;
+    if (bind_current_entry_to_active_document) {
+        set_active_session_history_entry(current_entry);
+        set_current_session_history_entry(current_entry);
 
-    // NB: The UI process can seed a replacement WebContent process before the new document has loaded. Do not
-    //     restore the UI-owned entry's classic history API state or persisted state onto the initial about:blank
-    //     document; the navigation algorithm will restore them onto the document that is actually created for the
-    //     entry.
-    if (!document->is_initial_about_blank()) {
-        document->restore_the_history_object_state(current_entry);
-        restore_persisted_state_from_session_history_entry(*current_entry);
+        auto document = this->active_document();
+        VERIFY(document);
+        auto history_object_length_and_index = get_the_history_object_length_and_index(m_current_session_history_step);
+        document->history()->m_index = history_object_length_and_index.script_history_index;
+        document->history()->m_length = history_object_length_and_index.script_history_length;
+
+        // NB: The UI process can seed a replacement WebContent process before the new document has loaded. Do not
+        //     restore the UI-owned entry's classic history API state or persisted state onto the initial about:blank
+        //     document; the navigation algorithm will restore them onto the document that is actually created for the
+        //     entry.
+        if (!document->is_initial_about_blank()) {
+            document->restore_the_history_object_state(current_entry);
+            restore_persisted_state_from_session_history_entry(*current_entry);
+        }
+
+        auto entries_for_navigation_api = get_session_history_entries_for_the_navigation_api(*this, m_current_session_history_step);
+        active_window()->navigation()->initialize_the_navigation_api_entries_for_reconstructed_session_history(entries_for_navigation_api, current_entry);
     }
-
-    auto entries_for_navigation_api = get_session_history_entries_for_the_navigation_api(*this, m_current_session_history_step);
-    active_window()->navigation()->initialize_the_navigation_api_entries_for_reconstructed_session_history(entries_for_navigation_api, current_entry);
     return true;
 }
 

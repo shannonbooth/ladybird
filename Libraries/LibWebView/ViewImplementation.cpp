@@ -282,8 +282,12 @@ void ViewImplementation::reload()
         m_is_showing_crash_page = false;
         m_should_suppress_history_for_current_load = false;
         m_should_suppress_history_for_next_load = false;
-        m_top_level_traversable.prepare_to_seed_web_content_session_history_from_ui_process();
-        restore_current_session_history_entry_from_ui_process();
+        auto crash_recovery_preparation = m_top_level_traversable.prepare_for_web_content_crash_recovery();
+        seed_web_content_session_history_from_ui_process();
+        if (crash_recovery_preparation.should_load_current_entry_from_ui_process) {
+            m_webdriver_pending_navigation_url = m_url;
+            load_current_session_history_entry_from_ui_process();
+        }
         return;
     }
 
@@ -1447,7 +1451,7 @@ void ViewImplementation::did_finish_navigation(URL::URL const& url)
 
     auto result = m_top_level_traversable.did_finish_navigation(url);
     if (result.should_seed_web_content)
-        seed_web_content_session_history_from_ui_process(result.allow_current_entry_reconstruction ? AllowCurrentEntryReconstruction::Yes : AllowCurrentEntryReconstruction::No);
+        seed_web_content_session_history_from_ui_process();
     else if (result.dump_reason.has_value())
         dump_session_history(*result.dump_reason);
 }
@@ -1583,7 +1587,6 @@ JsonValue ViewImplementation::webdriver_session_history() const
     serialized.set("waitingToSeedWebContent"sv, m_top_level_traversable.pending_web_content_session_history_seed().should_send_entries);
     serialized.set("waitingForWebContentSeedAck"sv, m_top_level_traversable.pending_web_content_session_history_seed().waiting_for_ack);
     serialized.set("ignoringWebContentUpdatesUntilSeed"sv, m_top_level_traversable.pending_web_content_session_history_seed().ignore_updates_until_seed);
-    serialized.set("reseedAfterCurrentHistoryLoad"sv, m_top_level_traversable.pending_web_content_session_history_seed().should_reseed_after_current_history_load);
     serialized.set("hasOnlyTopLevelUsedSteps"sv, m_top_level_traversable.session_history().has_only_top_level_used_steps());
     serialized.set("webContentUsesUIStepCoordinates"sv, m_top_level_traversable.session_history().web_content_uses_ui_step_coordinates());
     auto web_content_known_entries = m_top_level_traversable.session_history().web_content_known_entries();
@@ -1650,9 +1653,9 @@ void ViewImplementation::update_navigation_action_state()
     m_navigate_forward_action->set_enabled(m_top_level_traversable.session_history().can_go_forward());
 }
 
-void ViewImplementation::seed_web_content_session_history_from_ui_process(AllowCurrentEntryReconstruction allow_current_entry_reconstruction)
+void ViewImplementation::seed_web_content_session_history_from_ui_process()
 {
-    auto seed = m_top_level_traversable.prepare_web_content_session_history_seed(allow_current_entry_reconstruction == AllowCurrentEntryReconstruction::Yes);
+    auto seed = m_top_level_traversable.prepare_web_content_session_history_seed();
     if (!seed.has_value()) {
         update_navigation_action_state();
         dump_session_history("skip-webcontent-session-history-seed"sv);
@@ -1667,19 +1670,10 @@ void ViewImplementation::seed_web_content_session_history_from_ui_process(AllowC
             history_log_entries(seed->entries, seed->current_top_level_entry_index));
     }
 
-    client().async_set_top_level_session_history(page_id(), move(seed->entries), seed->current_top_level_entry_index, seed->allow_current_entry_reconstruction);
+    client().async_set_top_level_session_history(page_id(), move(seed->entries), seed->current_top_level_entry_index);
     m_top_level_traversable.did_send_web_content_session_history_seed();
     update_navigation_action_state();
     dump_session_history("sent-webcontent-session-history-seed"sv);
-}
-
-void ViewImplementation::restore_current_session_history_entry_from_ui_process()
-{
-    m_webdriver_pending_navigation_url = m_url;
-    auto should_seed = m_top_level_traversable.prepare_to_restore_current_session_history_entry_from_ui_process();
-    if (should_seed)
-        seed_web_content_session_history_from_ui_process();
-    load_current_session_history_entry_from_ui_process();
 }
 
 void ViewImplementation::load_current_session_history_entry_from_ui_process()
@@ -1873,7 +1867,7 @@ void ViewImplementation::dump_session_history(StringView reason, SessionHistoryD
         pending_navigation_restore_mode = CanonicalTraversable::pending_session_history_navigation_web_content_restore_mode_to_string(m_top_level_traversable.pending_session_history_navigation()->web_content_restore_mode);
     }
 
-    dbgln("[History] UI session history page={} pid={} reason={} url='{}' webcontent_matches={} webcontent_uses_ui_steps={} loading_from_ui={} waiting_to_seed={} waiting_for_seed_ack={} ignore_until_seed={} reseed_after_current_load={} pending_webcontent_step={} pending_navigation_url={} pending_navigation_restore={} pending_traversal_target={} pending_traversal_stage={} webcontent_current_step={} back={} forward={} entries={} webcontent_known_entries={} webcontent_known_used_steps={}",
+    dbgln("[History] UI session history page={} pid={} reason={} url='{}' webcontent_matches={} webcontent_uses_ui_steps={} loading_from_ui={} waiting_to_seed={} waiting_for_seed_ack={} ignore_until_seed={} pending_webcontent_step={} pending_navigation_url={} pending_navigation_restore={} pending_traversal_target={} pending_traversal_stage={} webcontent_current_step={} back={} forward={} entries={} webcontent_known_entries={} webcontent_known_used_steps={}",
         page_id(),
         client().pid(),
         reason,
@@ -1884,7 +1878,6 @@ void ViewImplementation::dump_session_history(StringView reason, SessionHistoryD
         m_top_level_traversable.pending_web_content_session_history_seed().should_send_entries,
         m_top_level_traversable.pending_web_content_session_history_seed().waiting_for_ack,
         m_top_level_traversable.pending_web_content_session_history_seed().ignore_updates_until_seed,
-        m_top_level_traversable.pending_web_content_session_history_seed().should_reseed_after_current_history_load,
         m_top_level_traversable.pending_web_content_session_history_seed().step_to_traverse_after_seed,
         pending_navigation_url,
         pending_navigation_restore_mode,
@@ -1933,7 +1926,7 @@ void ViewImplementation::handle_web_content_process_crash(LoadErrorPage load_err
     // Don't keep a stale backup bitmap around.
     m_backup_shared_image_buffer = nullptr;
 
-    auto crash_recovery_action = m_top_level_traversable.did_crash_requiring_web_content_session_history_seed();
+    auto crash_recovery_preparation = m_top_level_traversable.prepare_for_web_content_crash_recovery();
 
     handle_resize();
 
@@ -1948,10 +1941,11 @@ void ViewImplementation::handle_web_content_process_crash(LoadErrorPage load_err
     } else {
         m_should_suppress_history_for_current_load = false;
         m_should_suppress_history_for_next_load = false;
-        if (crash_recovery_action == WebContentCrashRecoveryAction::SeedSessionHistoryFromUIProcess)
-            seed_web_content_session_history_from_ui_process();
-        else
-            restore_current_session_history_entry_from_ui_process();
+        seed_web_content_session_history_from_ui_process();
+        if (crash_recovery_preparation.should_load_current_entry_from_ui_process) {
+            m_webdriver_pending_navigation_url = m_url;
+            load_current_session_history_entry_from_ui_process();
+        }
     }
 }
 

@@ -965,7 +965,6 @@ def summarize_history_snapshot(snapshot):
             "waitingToSeedWebContent": ui["waitingToSeedWebContent"],
             "waitingForWebContentSeedAck": ui["waitingForWebContentSeedAck"],
             "ignoringWebContentUpdatesUntilSeed": ui["ignoringWebContentUpdatesUntilSeed"],
-            "reseedAfterCurrentHistoryLoad": ui["reseedAfterCurrentHistoryLoad"],
             "webContentUsesUIStepCoordinates": ui["webContentUsesUIStepCoordinates"],
             "webContentKnownUsedSteps": history_step_values(ui["webContentKnownUsedSteps"]),
             "webContentCurrentStep": ui["webContentCurrentStep"],
@@ -999,7 +998,6 @@ def expect_ui_session_history(
     expected_waiting_to_seed_web_content=None,
     expected_waiting_for_web_content_seed_ack=None,
     expected_ignoring_web_content_updates_until_seed=None,
-    expected_reseed_after_current_history_load=None,
 ):
     def ui_history_matches(ui):
         return (
@@ -1036,10 +1034,6 @@ def expect_ui_session_history(
                 expected_ignoring_web_content_updates_until_seed is None
                 or ui["ignoringWebContentUpdatesUntilSeed"] is expected_ignoring_web_content_updates_until_seed
             )
-            and (
-                expected_reseed_after_current_history_load is None
-                or ui["reseedAfterCurrentHistoryLoad"] is expected_reseed_after_current_history_load
-            )
         )
 
     def web_content_matches_ui(snapshot):
@@ -1049,7 +1043,6 @@ def expect_ui_session_history(
             ui["waitingToSeedWebContent"]
             or ui["waitingForWebContentSeedAck"]
             or ui["ignoringWebContentUpdatesUntilSeed"]
-            or ui["reseedAfterCurrentHistoryLoad"]
             or ui["pendingWebContentHistoryStepAfterSeed"] is not None
             or ui["pendingSessionHistoryNavigation"] is not None
             or ui["pendingSessionHistoryTraversal"] is not None
@@ -1066,7 +1059,6 @@ def expect_ui_session_history(
             f"waitingToSeedWebContent={expected_waiting_to_seed_web_content}, "
             f"waitingForWebContentSeedAck={expected_waiting_for_web_content_seed_ack}, "
             f"ignoringWebContentUpdatesUntilSeed={expected_ignoring_web_content_updates_until_seed}; "
-            f"reseedAfterCurrentHistoryLoad={expected_reseed_after_current_history_load}; "
             f"got {summarize_history_snapshot(snapshot)}\n" + "\n".join(log)
         )
 
@@ -1125,7 +1117,6 @@ def wait_for_ui_session_history(
             and not ui["waitingToSeedWebContent"]
             and not ui["waitingForWebContentSeedAck"]
             and not ui["ignoringWebContentUpdatesUntilSeed"]
-            and not ui["reseedAfterCurrentHistoryLoad"]
             and ui["pendingWebContentHistoryStepAfterSeed"] is None
             and ui["pendingSessionHistoryNavigation"] is None
             and ui["pendingSessionHistoryTraversal"] is None
@@ -1316,7 +1307,6 @@ def expect_web_content_session_history_matches_ui(webdriver_port, session_id, la
         and not ui["waitingToSeedWebContent"]
         and not ui["waitingForWebContentSeedAck"]
         and not ui["ignoringWebContentUpdatesUntilSeed"]
-        and not ui["reseedAfterCurrentHistoryLoad"]
         and ui["pendingWebContentHistoryStepAfterSeed"] is None
         and ui["pendingSessionHistoryNavigation"] is None
         and ui["pendingSessionHistoryTraversal"] is None
@@ -1529,7 +1519,7 @@ def expect_pending_web_content_history_step_after_seed(webdriver_port, session_i
             f"Expected {label} WebContent history to be stale while step is pending\n" + "\n".join(log)
         )
 
-    if ui["waitingToSeedWebContent"] or ui["waitingForWebContentSeedAck"] or ui["reseedAfterCurrentHistoryLoad"]:
+    if ui["waitingToSeedWebContent"] or ui["waitingForWebContentSeedAck"]:
         raise AssertionError(f"Expected {label} WebContent seed to be applied\n" + "\n".join(log))
 
     if pending_traversal is None:
@@ -1581,7 +1571,6 @@ def expect_no_pending_web_content_history_step_after_seed(webdriver_port, sessio
         and not ui["waitingToSeedWebContent"]
         and not ui["waitingForWebContentSeedAck"]
         and not ui["ignoringWebContentUpdatesUntilSeed"]
-        and not ui["reseedAfterCurrentHistoryLoad"]
         and ui["pendingSessionHistoryNavigation"] is None
         and ui["pendingSessionHistoryTraversal"] is None
         and ui["webContentCurrentStep"] == history_used_steps(ui)[ui["currentUsedStepIndex"]]
@@ -4158,7 +4147,6 @@ return [location.href, window.canceledTraverseCount];
                 or ui_history["waitingToSeedWebContent"]
                 or ui_history["waitingForWebContentSeedAck"]
                 or ui_history["ignoringWebContentUpdatesUntilSeed"]
-                or ui_history["reseedAfterCurrentHistoryLoad"]
                 or ui_history["pendingWebContentHistoryStepAfterSeed"] is not None
                 or ui_history["pendingSessionHistoryNavigation"] is not None
                 or ui_history["pendingSessionHistoryTraversal"] is not None
@@ -4806,7 +4794,6 @@ return [Math.floor(rect.left + rect.width / 2), Math.floor(rect.top + rect.heigh
             expected_waiting_to_seed_web_content=True,
             expected_waiting_for_web_content_seed_ack=False,
             expected_ignoring_web_content_updates_until_seed=True,
-            expected_reseed_after_current_history_load=True,
         )
         page_server.release_blocked_reload.set()
         wait_for_event(page_server.reload_blocked_document_ran, "reload document after crash recovery")

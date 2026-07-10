@@ -50,6 +50,7 @@ public:
     size_t size() const { return m_entries.size(); }
     size_t used_step_count() const { return m_used_steps.size(); }
     Optional<size_t> current_used_step_index() const { return m_current_used_step_index; }
+    Optional<i32> current_step() const;
     Optional<size_t> current_top_level_entry_index() const;
 
     void clear();
