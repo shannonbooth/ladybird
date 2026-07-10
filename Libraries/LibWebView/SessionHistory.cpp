@@ -75,6 +75,18 @@ static bool entries_match(Vector<TraversableSessionHistory::Entry> const& a, Vec
     return true;
 }
 
+static bool entry_prefixes_match_ignoring_document_state_ids(Vector<TraversableSessionHistory::Entry> const& a, Vector<TraversableSessionHistory::Entry> const& b, size_t prefix_size)
+{
+    if (a.size() < prefix_size || b.size() < prefix_size)
+        return false;
+
+    for (size_t i = 0; i < prefix_size; ++i) {
+        if (!Web::HTML::session_history_entry_descriptors_match_ignoring_document_state_id(a[i], b[i]))
+            return false;
+    }
+    return true;
+}
+
 static bool seed_ack_nested_histories_match(Vector<Web::HTML::SessionHistoryNestedHistoryDescriptor> const&, Vector<Web::HTML::SessionHistoryNestedHistoryDescriptor> const&, Optional<size_t>);
 
 static bool current_unknown_entry_seed_ack_matches(TraversableSessionHistory::Entry const& a, TraversableSessionHistory::Entry const& b)
@@ -614,6 +626,8 @@ TraversableSessionHistory::UpdateResult TraversableSessionHistory::update_from_w
         && *m_current_used_step_index == m_used_steps.size() - 1
         && *local_current_top_level_entry_index > 0
         && *incoming_current_top_level_entry_index > 0
+        && *incoming_current_top_level_entry_index + 1 == *local_current_top_level_entry_index
+        && entry_prefixes_match_ignoring_document_state_ids(m_entries, entries, *incoming_current_top_level_entry_index)
         && m_entries[*local_current_top_level_entry_index - 1].step == used_steps[current_used_step_index]
         && m_entries[*local_current_top_level_entry_index].url == entries[*incoming_current_top_level_entry_index].url) {
         canonicalize_document_state_ids(entries);

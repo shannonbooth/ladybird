@@ -858,6 +858,43 @@ TEST_CASE(partial_snapshot_translates_fresh_process_steps_to_ui_steps)
     EXPECT(!history.web_content_can_traverse_to(*target_b));
 }
 
+TEST_CASE(partial_snapshot_after_fresh_process_navigation_preserves_ui_prefix)
+{
+    WebView::TraversableSessionHistory history;
+
+    auto initial_update_result = history.update_from_web_content({
+                                                                     entry(0, "https://a.example/"sv),
+                                                                 },
+        { 0 }, 0);
+    EXPECT_EQ(initial_update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+
+    history.navigate(parse_url("https://b.example/"sv));
+
+    auto fresh_process_update_result = history.update_from_web_content({
+                                                                          entry(0, "https://b.example/"sv),
+                                                                      },
+        { 0 }, 0);
+    EXPECT_EQ(fresh_process_update_result, WebView::TraversableSessionHistory::UpdateResult::MergedPartialSnapshot);
+    EXPECT(!history.web_content_uses_ui_step_coordinates());
+
+    history.navigate(parse_url("https://c.example/"sv));
+
+    auto update_result = history.update_from_web_content({
+                                                             entry(0, "https://b.example/"sv),
+                                                             entry(1, "https://c.example/"sv),
+                                                         },
+        { 0, 1 }, 1);
+
+    EXPECT_EQ(update_result, WebView::TraversableSessionHistory::UpdateResult::MergedPartialSnapshot);
+    EXPECT_EQ(history.size(), 3uz);
+    EXPECT(history.can_go_back());
+    EXPECT(!history.can_go_forward());
+    expect_entry(history, 0, 0, "https://a.example/"sv);
+    expect_entry(history, 1, 1, "https://b.example/"sv);
+    expect_current_entry(history, 2, "https://c.example/"sv);
+    EXPECT(!history.web_content_uses_ui_step_coordinates());
+}
+
 TEST_CASE(used_steps_include_nested_history_steps)
 {
     WebView::TraversableSessionHistory history;

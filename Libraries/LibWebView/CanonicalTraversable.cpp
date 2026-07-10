@@ -115,17 +115,6 @@ void CanonicalTraversable::prepare_to_seed_web_content_session_history_from_ui_p
     m_pending_web_content_session_history_seed.ignore_updates_until_seed = true;
 }
 
-static bool can_seed_replacement_process_before_load(TraversableSessionHistory const& session_history, Optional<URL::URL> const& session_history_entry_url_loading_from_ui_process, PendingWebContentSessionHistorySeed const& pending_web_content_session_history_seed)
-{
-    if (!pending_web_content_session_history_seed.should_send_entries)
-        return false;
-    if (session_history_entry_url_loading_from_ui_process.has_value())
-        return false;
-    if (session_history.current_step_to_restore_after_loading_top_level_entry().has_value())
-        return false;
-    return true;
-}
-
 ProcessSwapNavigationPreparation CanonicalTraversable::prepare_for_process_swap_navigation(URL::URL const& url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling)
 {
     ProcessSwapNavigationPreparation result;
@@ -166,49 +155,17 @@ ProcessSwapNavigationPreparation CanonicalTraversable::prepare_for_process_swap_
     if (!m_session_history_entry_url_loading_from_ui_process.has_value())
         m_pending_web_content_session_history_seed.step_to_traverse_after_seed = m_session_history.current_step_to_restore_after_loading_top_level_entry();
 
-    result.should_seed_web_content_before_load = can_seed_replacement_process_before_load(m_session_history, m_session_history_entry_url_loading_from_ui_process, m_pending_web_content_session_history_seed);
     return result;
 }
 
-PageLoadPreparation CanonicalTraversable::prepare_for_page_load(URL::URL const& url, Web::Bindings::NavigationHistoryBehavior history_handling)
+void CanonicalTraversable::prepare_for_page_load()
 {
-    PageLoadPreparation result;
-
     if (m_session_history_entry_url_loading_from_ui_process.has_value())
-        return result;
+        return;
 
     abandon_pending_web_content_session_history_seed();
     m_pending_session_history_traversal.clear();
-    auto const* current_entry = m_session_history.current_entry();
-    auto is_javascript_navigation = url.scheme() == "javascript"sv;
-    result.should_defer_ui_process_history_update = is_javascript_navigation;
-    if (current_entry && !is_javascript_navigation)
-        m_pending_session_history_navigation = PendingSessionHistoryNavigation { url, m_session_history };
-    else
-        m_pending_session_history_navigation.clear();
-
-    if (is_javascript_navigation)
-        return result;
-
-    auto ui_process_history_handling = history_handling;
-    if (ui_process_history_handling == Web::Bindings::NavigationHistoryBehavior::Auto) {
-        // https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate
-        // If url equals navigable's active document's URL, and
-        // initiatorOriginSnapshot is same origin with targetNavigable's
-        // active document's origin, then set historyHandling to "replace".
-        if (current_entry && current_entry->url == url)
-            ui_process_history_handling = Web::Bindings::NavigationHistoryBehavior::Replace;
-        else
-            ui_process_history_handling = Web::Bindings::NavigationHistoryBehavior::Push;
-    }
-
-    if (ui_process_history_handling == Web::Bindings::NavigationHistoryBehavior::Replace)
-        m_session_history.replace_current_entry(url, Empty {});
-    else
-        m_session_history.navigate(url);
-    m_current_web_content_session_history_matches_mirror = false;
-    result.should_update_navigation_action_state = true;
-    return result;
+    m_pending_session_history_navigation.clear();
 }
 
 void CanonicalTraversable::prepare_for_non_history_page_load()

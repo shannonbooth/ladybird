@@ -193,16 +193,10 @@ struct CurrentSessionHistoryEntryLoad {
 
 struct ProcessSwapNavigationPreparation {
     bool should_update_navigation_action_state { false };
-    bool should_seed_web_content_before_load { false };
 };
 
 struct WebContentCrashRecoveryPreparation {
     bool should_load_current_entry_from_ui_process { false };
-};
-
-struct PageLoadPreparation {
-    bool should_defer_ui_process_history_update { false };
-    bool should_update_navigation_action_state { false };
 };
 
 class WEBVIEW_API CanonicalTraversable final
@@ -231,7 +225,7 @@ public:
     PendingWebContentSessionHistorySeed const& pending_web_content_session_history_seed() const { return m_pending_web_content_session_history_seed; }
 
     ProcessSwapNavigationPreparation prepare_for_process_swap_navigation(URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::Bindings::NavigationHistoryBehavior);
-    PageLoadPreparation prepare_for_page_load(URL::URL const&, Web::Bindings::NavigationHistoryBehavior);
+    void prepare_for_page_load();
     void prepare_for_non_history_page_load();
     void prepare_for_reload();
     void prepare_to_seed_web_content_session_history_from_ui_process();

@@ -158,11 +158,8 @@ void ViewImplementation::create_new_process_for_cross_site_navigation(URL::URL c
     m_should_suppress_history_for_current_load = false;
     m_should_suppress_history_for_next_load = false;
     set_url(url);
-    if (preparation.should_seed_web_content_before_load)
-        seed_web_content_session_history_from_ui_process();
-    auto web_content_history_handling = preparation.should_seed_web_content_before_load ? Web::Bindings::NavigationHistoryBehavior::Replace : history_handling;
     dump_session_history("process-swap-load"sv);
-    client().async_load_url_with_document_resource(page_id(), url, document_resource, web_content_history_handling);
+    client().async_load_url_with_document_resource(page_id(), url, document_resource, history_handling);
     dump_session_history("after-process-swap-load"sv);
 }
 
@@ -237,10 +234,8 @@ void ViewImplementation::load(URL::URL const& url, Web::Bindings::NavigationHist
     m_is_showing_crash_page = false;
     m_should_suppress_history_for_current_load = false;
     m_should_suppress_history_for_next_load = false;
-    auto preparation = m_top_level_traversable.prepare_for_page_load(url, history_handling);
-    if (preparation.should_update_navigation_action_state)
-        update_navigation_action_state();
-    if (!preparation.should_defer_ui_process_history_update)
+    m_top_level_traversable.prepare_for_page_load();
+    if (url.scheme() != "javascript"sv)
         set_url(url);
     dump_session_history("load"sv);
     client().async_load_url(page_id(), url, history_handling);

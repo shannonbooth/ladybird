@@ -3378,28 +3378,16 @@ void finalize_a_cross_document_navigation(GC::Ref<LocalNavigable> navigable, His
                 return;
             }
 
-            Optional<size_t> entry_to_replace_index;
-            if (navigable.ptr() == traversable.ptr()) {
-                auto current_session_history_step = traversable->current_session_history_step();
-                for (size_t i = 0; i < target_entries.size(); ++i) {
-                    if (target_entries[i]->step_value() == current_session_history_step) {
-                        entry_to_replace_index = i;
-                        break;
-                    }
-                }
-            }
-
             // https://html.spec.whatwg.org/multipage/document-sequences.html#creating-a-new-child-navigable
             // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-cross-document-navigation
             // AD-HOC: Initial about:blank's first real navigation is a replacement. If a synchronous
             //         same-document history update swapped out the original entry object before the queued
             //         cross-document commit runs, replace the remaining initial child entry instead.
-            if (!entry_to_replace_index.has_value()) {
-                for (size_t i = 0; i < target_entries.size(); ++i) {
-                    if (target_entries[i]->step() == entry_to_replace->step()) {
-                        entry_to_replace_index = i;
-                        break;
-                    }
+            Optional<size_t> entry_to_replace_index;
+            for (size_t i = 0; i < target_entries.size(); ++i) {
+                if (target_entries[i]->step() == entry_to_replace->step()) {
+                    entry_to_replace_index = i;
+                    break;
                 }
             }
             if (!entry_to_replace_index.has_value() && target_entries.size() == 1)
