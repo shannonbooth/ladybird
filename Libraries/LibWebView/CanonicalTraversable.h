@@ -78,7 +78,6 @@ struct PendingSessionHistoryTraversal {
     enum class Stage : u8 {
         ApplyingInWebContent,
         CheckingCancelation,
-        LoadingEntryFromUIProcess,
         SeedingHistoryFromUIProcess,
         ReplacingWebContentProcess,
         ApplyingSeededHistoryStep,
@@ -129,7 +128,6 @@ struct NavigationStartResult {
 enum class NavigationCancelStatus : u8 {
     Ignored,
     RestorePendingSessionHistoryNavigation,
-    CanceledUIHistoryLoad,
     CompleteWebdriverPendingNavigation,
 };
 
@@ -153,7 +151,6 @@ enum class HistoryTraversalAction : u8 {
     None,
     TraverseInWebContent,
     CheckForCancelation,
-    LoadCurrentEntryFromUIProcess,
     SeedHistoryAndTraverseInWebContent,
 };
 
@@ -208,10 +205,6 @@ struct ProcessSwapNavigationPreparation {
     bool should_seed_web_content_before_load { false };
 };
 
-struct WebContentCrashRecoveryPreparation {
-    bool should_load_current_entry_from_ui_process { false };
-};
-
 class WEBVIEW_API CanonicalTraversable final
     : public CanonicalNavigable {
 public:
@@ -234,7 +227,6 @@ public:
     Optional<PendingSessionHistoryNavigation> const& pending_session_history_navigation() const { return m_pending_session_history_navigation; }
     Optional<PendingSessionHistoryTraversal> const& pending_session_history_traversal() const { return m_pending_session_history_traversal; }
 
-    Optional<URL::URL> const& session_history_entry_url_loading_from_ui_process() const { return m_session_history_entry_url_loading_from_ui_process; }
     PendingWebContentSessionHistorySeed const& pending_web_content_session_history_seed() const { return m_pending_web_content_session_history_seed; }
 
     ProcessSwapNavigationPreparation prepare_for_process_swap_navigation(Web::HTML::CrossProcessNavigationContinuation);
@@ -251,15 +243,13 @@ public:
     NavigationFinishResult did_finish_navigation(URL::URL const&);
     RestorePendingSessionHistoryNavigationResult restore_pending_session_history_navigation();
     HistoryTraversalDecision traverse_the_history_by_delta(int delta, CheckForCancelation, URL::URL const& current_url, Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete);
-    URL::URL prepare_to_load_session_history_traversal_target_from_ui_process(TraversableSessionHistory::TraversalTarget const&, URL::URL const& current_url);
     URL::URL prepare_to_seed_session_history_and_traverse_to_step_from_ui_process(TraversableSessionHistory::TraversalTarget const&, URL::URL const& current_url);
     WebContentHistoryStepResult did_traverse_the_history_to_step(i32 step, bool step_was_available, Web::HTML::HistoryStepResult);
     HistoryStepCancelationCheckResult did_check_if_traverse_history_step_is_canceled(u64 request_id, i32 step, bool canceled);
     Optional<WebContentSessionHistorySeed> prepare_web_content_session_history_seed();
-    CurrentSessionHistoryEntryLoad prepare_current_session_history_entry_load(URL::URL const& current_url);
     Optional<CurrentSessionHistoryEntryLoad> pending_session_history_navigation_load() const;
     void did_send_web_content_session_history_seed();
-    WebContentCrashRecoveryPreparation prepare_for_web_content_crash_recovery();
+    void prepare_for_web_content_crash_recovery();
     void reset_session_history_for_testing();
     void mark_web_content_session_history_stale_for_testing();
 
@@ -281,7 +271,6 @@ private:
     Optional<PendingSessionHistoryNavigation> m_pending_session_history_navigation;
     Optional<PendingSessionHistoryTraversal> m_pending_session_history_traversal;
     u64 m_next_traverse_history_step_cancelation_check_request_id { 0 };
-    Optional<URL::URL> m_session_history_entry_url_loading_from_ui_process;
     PendingWebContentSessionHistorySeed m_pending_web_content_session_history_seed;
 };
 

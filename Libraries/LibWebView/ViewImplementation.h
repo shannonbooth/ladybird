@@ -428,8 +428,6 @@ protected:
     void replace_web_content_process_for_top_level_traversal();
     bool seed_web_content_session_history_from_ui_process();
     bool load_pending_session_history_navigation();
-    void load_current_session_history_entry_from_ui_process();
-    void load_session_history_traversal_target_from_ui_process(TraversableSessionHistory::TraversalTarget const&, StringView dump_reason);
     void seed_session_history_and_traverse_to_step_from_ui_process(TraversableSessionHistory::TraversalTarget const&, StringView dump_reason);
     void restore_session_history_traversal_target_from_ui_process(TraversableSessionHistory::TraversalTarget const&, StringView dump_reason);
     NonnullRefPtr<Core::Promise<Empty>> reset_session_history_for_testing();
