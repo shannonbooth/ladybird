@@ -146,6 +146,11 @@ void Page::load(URL::URL const& url, Variant<Empty, String, HTML::POSTResource> 
     });
 }
 
+void Page::continue_process_swap_navigation(HTML::CrossProcessNavigationContinuation continuation)
+{
+    top_level_traversable()->continue_navigation_across_process_boundary(move(continuation));
+}
+
 void Page::load_html(StringView html)
 {
     // FIXME: #23909 Figure out why GC threshold does not stay low when repeatedly loading html from the WebView

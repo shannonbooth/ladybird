@@ -115,28 +115,31 @@ void CanonicalTraversable::prepare_to_seed_web_content_session_history_from_ui_p
     m_pending_web_content_session_history_seed.ignore_updates_until_seed = true;
 }
 
-ProcessSwapNavigationPreparation CanonicalTraversable::prepare_for_process_swap_navigation(URL::URL const& url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling)
+ProcessSwapNavigationPreparation CanonicalTraversable::prepare_for_process_swap_navigation(Web::HTML::CrossProcessNavigationContinuation continuation)
 {
     ProcessSwapNavigationPreparation result;
+    auto url = continuation.url;
 
     if (m_pending_session_history_traversal.has_value() && m_pending_session_history_traversal->will_replace_web_content_process)
         m_pending_session_history_traversal->stage = PendingSessionHistoryTraversal::Stage::ReplacingWebContentProcess;
 
-    auto pending_history_handling = history_handling;
+    auto pending_history_handling = continuation.history_handling;
     if (pending_history_handling == Web::Bindings::NavigationHistoryBehavior::Auto) {
         if (auto const* current_entry = m_session_history.current_entry(); current_entry && current_entry->url != url)
             pending_history_handling = Web::Bindings::NavigationHistoryBehavior::Push;
         else if (m_session_history.current_entry())
             pending_history_handling = Web::Bindings::NavigationHistoryBehavior::Replace;
     }
+    continuation.history_handling = pending_history_handling;
 
     m_pending_session_history_navigation = PendingSessionHistoryNavigation {
         .url = url,
         .previous_session_history = m_session_history,
         .web_content_restore_mode = PendingSessionHistoryNavigation::WebContentRestoreMode::RestoreFromUIProcess,
-        .document_resource = move(document_resource),
+        .document_resource = continuation.document_resource,
         .history_handling = pending_history_handling,
         .commit_behavior = PendingSessionHistoryNavigation::CommitBehavior::CommitFromWebContent,
+        .cross_process_navigation_continuation = move(continuation),
     };
 
     m_session_history.forget_web_content_state();
@@ -320,7 +323,8 @@ WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_cont
             m_pending_session_history_traversal.clear();
             result.should_load_pending_navigation = m_pending_session_history_navigation.has_value()
                 && m_pending_session_history_navigation->commit_behavior == PendingSessionHistoryNavigation::CommitBehavior::CommitFromWebContent;
-            result.should_complete_webdriver_pending_navigation = !m_pending_session_history_navigation.has_value();
+            result.should_complete_webdriver_pending_navigation = !m_pending_session_history_navigation.has_value()
+                && !m_session_history_entry_url_loading_from_ui_process.has_value();
         }
     }
 
@@ -749,6 +753,7 @@ Optional<CurrentSessionHistoryEntryLoad> CanonicalTraversable::pending_session_h
         .url = m_pending_session_history_navigation->url,
         .document_resource = m_pending_session_history_navigation->document_resource,
         .history_handling = m_pending_session_history_navigation->history_handling,
+        .cross_process_navigation_continuation = m_pending_session_history_navigation->cross_process_navigation_continuation,
     };
 }
 
@@ -765,8 +770,8 @@ WebContentCrashRecoveryPreparation CanonicalTraversable::prepare_for_web_content
     }
 
     if (auto current_step = m_session_history.current_step(); current_step.has_value()) {
-        prepare_to_seed_web_content_session_history_from_ui_process_and_traverse_to_step(*current_step);
-        return {};
+        prepare_to_seed_web_content_session_history_from_ui_process();
+        return { .should_load_current_entry_from_ui_process = true };
     }
 
     prepare_to_seed_web_content_session_history_from_ui_process();

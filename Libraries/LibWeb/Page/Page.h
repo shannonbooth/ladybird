@@ -43,6 +43,7 @@
 #include <LibWeb/Forward.h>
 #include <LibWeb/HTML/ActivateTab.h>
 #include <LibWeb/HTML/AudioPlayState.h>
+#include <LibWeb/HTML/CrossProcessNavigationContinuation.h>
 #include <LibWeb/HTML/ColorPickerUpdateState.h>
 #include <LibWeb/HTML/FileFilter.h>
 #include <LibWeb/HTML/NavigableId.h>
@@ -113,6 +114,7 @@ public:
     void load(URL::URL const&, Bindings::NavigationHistoryBehavior = Bindings::NavigationHistoryBehavior::Auto);
     void load(URL::URL const&, Variant<Empty, String, HTML::POSTResource>,
         Bindings::NavigationHistoryBehavior = Bindings::NavigationHistoryBehavior::Auto);
+    void continue_process_swap_navigation(HTML::CrossProcessNavigationContinuation);
 
     void load_html(StringView);
     void load_html(StringView, URL::URL const&);
@@ -456,7 +458,7 @@ public:
     {
         return NavigationProcessDecision::Local;
     }
-    virtual void request_new_process_for_navigation(URL::URL const&, Variant<Empty, String, HTML::POSTResource>, Bindings::NavigationHistoryBehavior) { }
+    virtual void request_new_process_for_navigation(HTML::CrossProcessNavigationContinuation) { }
     virtual void request_new_process_for_child_frame_navigation(HTML::NavigableId, URL::URL const&, Variant<Empty, String, HTML::POSTResource>, Bindings::NavigationHistoryBehavior) { }
     virtual void page_did_create_child_frame(HTML::NavigableId, HTML::NavigableId, HTML::ReplicatedNavigableState const&) { }
     virtual void page_did_update_child_frame_viewport(HTML::NavigableId, CSSPixelRect) { }

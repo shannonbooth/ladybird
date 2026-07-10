@@ -145,13 +145,14 @@ void ViewImplementation::set_favicon(Badge<WebContentClient>, Gfx::Bitmap const&
         on_favicon_change(favicon);
 }
 
-void ViewImplementation::create_new_process_for_cross_site_navigation(URL::URL const& url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling)
+void ViewImplementation::create_new_process_for_cross_site_navigation(Web::HTML::CrossProcessNavigationContinuation continuation)
 {
+    auto url = continuation.url;
     dump_session_history("before-process-swap"sv);
     m_webdriver_pending_navigation_url = url;
 
     replace_web_content_process_for_top_level_traversal();
-    auto preparation = m_top_level_traversable.prepare_for_process_swap_navigation(url, document_resource, history_handling);
+    auto preparation = m_top_level_traversable.prepare_for_process_swap_navigation(move(continuation));
     if (preparation.should_update_navigation_action_state)
         update_navigation_action_state();
 
@@ -1691,7 +1692,9 @@ bool ViewImplementation::load_pending_session_history_navigation()
     if (!load.has_value())
         return false;
 
-    if (load->document_resource.has<Empty>())
+    if (load->cross_process_navigation_continuation.has_value())
+        client().async_continue_process_swap_navigation(page_id(), load->cross_process_navigation_continuation.release_value());
+    else if (load->document_resource.has<Empty>())
         client().async_load_url(page_id(), load->url, load->history_handling);
     else
         client().async_load_url_with_document_resource(page_id(), load->url, load->document_resource, load->history_handling);

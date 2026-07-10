@@ -296,6 +296,15 @@ void ConnectionFromClient::load_url_with_document_resource(u64 page_id, URL::URL
     page->page().load(url, move(document_resource), history_handling);
 }
 
+void ConnectionFromClient::continue_process_swap_navigation(u64 page_id, Web::HTML::CrossProcessNavigationContinuation continuation)
+{
+    auto page = this->page(page_id);
+    if (!page.has_value())
+        return;
+
+    page->page().continue_process_swap_navigation(move(continuation));
+}
+
 void ConnectionFromClient::load_html(u64 page_id, ByteString html)
 {
     if (auto page = this->page(page_id); page.has_value())

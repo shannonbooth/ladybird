@@ -216,12 +216,12 @@ Web::NavigationProcessDecision PageClient::decide_navigation_process(URL::URL co
     return client().decide_navigation_process(m_id, move(frame_id), current_url, target_url, target);
 }
 
-void PageClient::request_new_process_for_navigation(URL::URL const& url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling)
+void PageClient::request_new_process_for_navigation(Web::HTML::CrossProcessNavigationContinuation continuation)
 {
     if (m_webdriver)
         m_webdriver->page_did_start_window_replacement({}, page().top_level_traversable()->window_handle());
 
-    client().async_did_request_new_process_for_navigation(m_id, url, move(document_resource), history_handling);
+    client().async_did_request_new_process_for_navigation(m_id, move(continuation));
 }
 
 void PageClient::request_new_process_for_child_frame_navigation(Web::HTML::NavigableId frame_id, URL::URL const& url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling)

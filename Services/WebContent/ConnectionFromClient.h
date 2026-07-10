@@ -88,6 +88,7 @@ private:
     virtual void load_url(u64 page_id, URL::URL, Web::Bindings::NavigationHistoryBehavior) override;
     virtual void load_url_with_document_resource(u64 page_id, URL::URL,
         Variant<Empty, String, Web::HTML::POSTResource>, Web::Bindings::NavigationHistoryBehavior) override;
+    virtual void continue_process_swap_navigation(u64 page_id, Web::HTML::CrossProcessNavigationContinuation) override;
     virtual void load_html(u64 page_id, ByteString) override;
     virtual void load_html_with_url(u64 page_id, ByteString, URL::URL) override;
     virtual void reload(u64 page_id) override;

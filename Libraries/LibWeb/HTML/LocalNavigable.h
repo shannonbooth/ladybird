@@ -21,8 +21,10 @@
 #include <LibWeb/Export.h>
 #include <LibWeb/Forward.h>
 #include <LibWeb/HTML/ActivateTab.h>
+#include <LibWeb/HTML/CrossProcessNavigationContinuation.h>
 #include <LibWeb/HTML/DocumentState.h>
 #include <LibWeb/HTML/HistoryHandlingBehavior.h>
+#include <LibWeb/HTML/HistoryStepResult.h>
 #include <LibWeb/HTML/InitialInsertion.h>
 #include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/NavigationObserver.h>
@@ -44,14 +46,6 @@
 namespace Web::HTML {
 
 struct PopulateSessionHistoryEntryDocumentOutput;
-
-enum class HistoryStepResult {
-    InitiatorDisallowed,
-    CanceledByBeforeUnload,
-    CanceledByNavigate,
-    Applied,
-};
-using OnApplyHistoryStepComplete = GC::Function<void(HistoryStepResult)>;
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#target-snapshot-params
 struct TargetSnapshotParams {
@@ -199,6 +193,7 @@ public:
     };
 
     WebIDL::ExceptionOr<void> navigate(NavigateParams);
+    void continue_navigation_across_process_boundary(CrossProcessNavigationContinuation);
 
     GC::Ptr<DOM::Document> evaluate_javascript_url(URL::URL const&, URL::Origin const& new_document_origin, UserNavigationInvolvement, String navigation_id);
 

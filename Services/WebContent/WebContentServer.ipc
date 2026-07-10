@@ -16,6 +16,7 @@
 #include <LibWeb/HTML/AutoplayPolicy.h>
 #include <LibWeb/HTML/ColorPickerUpdateState.h>
 #include <LibWeb/HTML/BroadcastChannelMessage.h>
+#include <LibWeb/HTML/CrossProcessNavigationContinuation.h>
 #include <LibWeb/HTML/NavigableId.h>
 #include <LibWeb/HTML/SelectedFile.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
@@ -59,6 +60,7 @@ endpoint WebContentServer
     load_url_with_document_resource(u64 page_id, URL::URL url,
         Variant<Empty, String, Web::HTML::POSTResource> document_resource,
         Web::Bindings::NavigationHistoryBehavior history_handling) =|
+    continue_process_swap_navigation(u64 page_id, Web::HTML::CrossProcessNavigationContinuation continuation) =|
     load_html(u64 page_id, ByteString html) =|
     load_html_with_url(u64 page_id, ByteString html, URL::URL url) =|
     reload(u64 page_id) =|

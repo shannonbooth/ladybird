@@ -14,6 +14,7 @@
 #include <LibGfx/Rect.h>
 #include <LibWeb/CSS/StyleSheetIdentifier.h>
 #include <LibWeb/HTML/AudioPlayState.h>
+#include <LibWeb/HTML/CrossProcessNavigationContinuation.h>
 #include <LibWeb/HTML/FileFilter.h>
 #include <LibWeb/HTML/NavigableId.h>
 #include <LibWeb/HTML/ReplicatedNavigableState.h>
@@ -152,7 +153,7 @@ private:
     // ^PageClient
     virtual bool is_connection_open() const override;
     virtual Web::NavigationProcessDecision decide_navigation_process(URL::URL const& current_url, URL::URL const& target_url, Web::NavigationTarget, Optional<Web::HTML::NavigableId> frame_id) const override;
-    virtual void request_new_process_for_navigation(URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::Bindings::NavigationHistoryBehavior) override;
+    virtual void request_new_process_for_navigation(Web::HTML::CrossProcessNavigationContinuation) override;
     virtual void request_new_process_for_child_frame_navigation(Web::HTML::NavigableId frame_id, URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::Bindings::NavigationHistoryBehavior) override;
     virtual void page_did_create_child_frame(Web::HTML::NavigableId parent_frame_id, Web::HTML::NavigableId frame_id, Web::HTML::ReplicatedNavigableState const&) override;
     virtual void page_did_update_child_frame_viewport(Web::HTML::NavigableId frame_id, Web::CSSPixelRect) override;

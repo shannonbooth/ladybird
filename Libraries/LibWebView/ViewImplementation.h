@@ -36,6 +36,7 @@
 #include <LibWeb/HTML/ActivateTab.h>
 #include <LibWeb/HTML/AudioPlayState.h>
 #include <LibWeb/HTML/ColorPickerUpdateState.h>
+#include <LibWeb/HTML/CrossProcessNavigationContinuation.h>
 #include <LibWeb/HTML/FileFilter.h>
 #include <LibWeb/HTML/Scripting/ScriptRegistry.h>
 #include <LibWeb/HTML/SelectItem.h>
@@ -87,7 +88,7 @@ public:
 
     String const& handle() const { return m_client_state.client_handle; }
 
-    void create_new_process_for_cross_site_navigation(URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::Bindings::NavigationHistoryBehavior);
+    void create_new_process_for_cross_site_navigation(Web::HTML::CrossProcessNavigationContinuation);
 
     void server_did_paint(Badge<WebContentClient>, i32 bitmap_id, Gfx::IntSize size);
 

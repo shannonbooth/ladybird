@@ -415,16 +415,16 @@ bool LocalTraversableNavigable::replace_top_level_session_history_entries_from_u
         document->history()->m_length = history_object_length_and_index.script_history_length;
 
         // NB: The UI process can seed a replacement WebContent process before the new document has loaded. Do not
-        //     restore the UI-owned entry's classic history API state or persisted state onto the initial about:blank
-        //     document; the navigation algorithm will restore them onto the document that is actually created for the
-        //     entry.
+        //     restore the UI-owned entry's classic history API state, persisted state, or Navigation API entries onto
+        //     the initial about:blank document; the navigation algorithm will restore them onto the document that is
+        //     actually created for the entry.
         if (!document->is_initial_about_blank()) {
             document->restore_the_history_object_state(current_entry);
             restore_persisted_state_from_session_history_entry(*current_entry);
-        }
 
-        auto entries_for_navigation_api = get_session_history_entries_for_the_navigation_api(*this, m_current_session_history_step);
-        active_window()->navigation()->initialize_the_navigation_api_entries_for_reconstructed_session_history(entries_for_navigation_api, current_entry);
+            auto entries_for_navigation_api = get_session_history_entries_for_the_navigation_api(*this, m_current_session_history_step);
+            active_window()->navigation()->initialize_the_navigation_api_entries_for_reconstructed_session_history(entries_for_navigation_api, current_entry);
+        }
     }
     return true;
 }

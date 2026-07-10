@@ -62,6 +62,7 @@ struct PendingSessionHistoryNavigation {
     Variant<Empty, String, Web::HTML::POSTResource> document_resource {};
     Web::Bindings::NavigationHistoryBehavior history_handling { Web::Bindings::NavigationHistoryBehavior::Auto };
     CommitBehavior commit_behavior { CommitBehavior::RestorePreviousOnCancel };
+    Optional<Web::HTML::CrossProcessNavigationContinuation> cross_process_navigation_continuation {};
 };
 
 struct PendingWebContentSessionHistorySeed {
@@ -199,6 +200,7 @@ struct CurrentSessionHistoryEntryLoad {
     URL::URL url;
     Variant<Empty, String, Web::HTML::POSTResource> document_resource;
     Web::Bindings::NavigationHistoryBehavior history_handling { Web::Bindings::NavigationHistoryBehavior::Auto };
+    Optional<Web::HTML::CrossProcessNavigationContinuation> cross_process_navigation_continuation {};
 };
 
 struct ProcessSwapNavigationPreparation {
@@ -235,7 +237,7 @@ public:
     Optional<URL::URL> const& session_history_entry_url_loading_from_ui_process() const { return m_session_history_entry_url_loading_from_ui_process; }
     PendingWebContentSessionHistorySeed const& pending_web_content_session_history_seed() const { return m_pending_web_content_session_history_seed; }
 
-    ProcessSwapNavigationPreparation prepare_for_process_swap_navigation(URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::Bindings::NavigationHistoryBehavior);
+    ProcessSwapNavigationPreparation prepare_for_process_swap_navigation(Web::HTML::CrossProcessNavigationContinuation);
     void prepare_for_page_load();
     void prepare_for_non_history_page_load();
     void prepare_for_reload();

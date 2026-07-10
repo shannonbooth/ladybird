@@ -12,6 +12,8 @@
 #include <AK/Variant.h>
 #include <LibCore/Timer.h>
 #include <LibGfx/PaintingSurface.h>
+#include <LibIPC/Decoder.h>
+#include <LibIPC/Encoder.h>
 #include <LibWeb/CSS/ComputedProperties.h>
 #include <LibWeb/CSS/PseudoElement.h>
 #include <LibWeb/CSS/SystemColor.h>
@@ -2637,7 +2639,25 @@ void LocalNavigable::begin_navigation(NavigateParams params)
                 auto frame_id = is_top_level_navigation ? Optional<NavigableId> {} : Optional<NavigableId> { id() };
                 auto process_decision = page_client.decide_navigation_process(this->active_document()->url(), url, target, move(frame_id));
                 if (process_decision == NavigationProcessDecision::Remote && is_top_level_navigation) {
-                    page_client.request_new_process_for_navigation(url, document_resource, history_handling);
+                    page_client.request_new_process_for_navigation(CrossProcessNavigationContinuation {
+                        .url = url,
+                        .document_resource = document_resource,
+                        .history_handling = history_handling,
+                        .navigation_id = navigation_id,
+                        .request_referrer = Fetch::Infrastructure::Request::Referrer::Client,
+                        .request_referrer_policy = referrer_policy,
+                        .initiator_origin = initiator_origin_snapshot,
+                        .initiator_base_url = initiator_base_url_snapshot,
+                        .navigable_target_name = target_name(),
+                        .source_has_transient_activation = source_snapshot_params->has_transient_activation,
+                        .source_sandboxing_flags = source_snapshot_params->sandboxing_flags,
+                        .source_allows_downloading = source_snapshot_params->allows_downloading,
+                        .source_policy_container = source_snapshot_params->source_policy_container->serialize(),
+                        .target_sandboxing_flags = target_snapshot_params.sandboxing_flags,
+                        .target_iframe_element_referrer_policy = target_snapshot_params.iframe_element_referrer_policy,
+                        .csp_navigation_type = csp_navigation_type,
+                        .user_involvement = user_involvement,
+                    });
                     set_delaying_load_events(false);
                     return;
                 }
@@ -2833,6 +2853,108 @@ void LocalNavigable::begin_navigation(NavigateParams params)
                     }));
             }));
     }));
+}
+
+void LocalNavigable::continue_navigation_across_process_boundary(CrossProcessNavigationContinuation continuation)
+{
+    // This resumes the navigate algorithm after Ladybird's implementation-specific process selection boundary.
+    // The old process has already run the spec steps through history handling, unload cancelation, and process
+    // selection; the replacement process must populate and finalize that navigation rather than start a new one.
+    if (has_been_destroyed() || !active_window())
+        return;
+
+    auto url = continuation.url;
+    auto document_resource = continuation.document_resource;
+    auto history_handling = continuation.history_handling;
+    auto navigation_id = continuation.navigation_id;
+    auto user_involvement = continuation.user_involvement;
+
+    auto source_policy_container = create_a_policy_container_from_serialized_policy_container(heap(), continuation.source_policy_container);
+    auto source_snapshot_params = heap().allocate<SourceSnapshotParams>(
+        continuation.source_has_transient_activation,
+        continuation.source_sandboxing_flags,
+        continuation.source_allows_downloading,
+        active_document()->relevant_settings_object(),
+        source_policy_container);
+
+    TargetSnapshotParams target_snapshot_params {
+        .sandboxing_flags = continuation.target_sandboxing_flags,
+        .iframe_element_referrer_policy = continuation.target_iframe_element_referrer_policy,
+    };
+
+    set_ongoing_navigation(navigation_id);
+
+    if (is_top_level_traversable())
+        active_browsing_context()->page().client().page_did_start_loading(url, document_resource, false, history_handling);
+
+    if (!active_window()) {
+        set_delaying_load_events(false);
+        return;
+    }
+
+    queue_global_task(Task::Source::NavigationAndTraversal, *active_window(), GC::create_function(heap(), [this] {
+        this->active_document()->abort_a_document_and_its_descendants();
+    }));
+
+    auto document_state = DocumentState::create();
+    document_state->set_request_referrer(continuation.request_referrer);
+    document_state->set_request_referrer_policy(continuation.request_referrer_policy);
+    document_state->set_initiator_origin(continuation.initiator_origin);
+    document_state->set_resource(document_resource);
+    document_state->set_navigable_target_name(continuation.navigable_target_name);
+
+    if (url_matches_about_blank(url) || url_matches_about_srcdoc(url)) {
+        if (url_matches_about_srcdoc(url) && document_resource.has<Empty>())
+            document_state->set_resource({ String {} });
+        document_state->set_origin(document_state->initiator_origin());
+        document_state->set_about_base_url(continuation.initiator_base_url);
+    }
+
+    auto history_entry = SessionHistoryEntry::create();
+    history_entry->set_url(url);
+    history_entry->set_document_state(document_state);
+
+    NavigationParamsVariant navigation_params = LocalNavigable::NullOrError {};
+    populate_session_history_entry_document(
+        history_entry->url(),
+        history_entry->document_state()->resource(),
+        history_entry->document_state()->request_referrer(),
+        history_entry->document_state()->request_referrer_policy(),
+        history_entry->document_state()->initiator_origin(),
+        history_entry->document_state()->origin(),
+        history_entry->document_state()->history_policy_container(),
+        history_entry->document_state()->about_base_url(),
+        history_entry->document_state()->navigable_target_name(),
+        history_entry->document_state()->reload_pending(),
+        history_entry->document_state()->ever_populated(),
+        source_snapshot_params, target_snapshot_params, user_involvement, navigation_id, navigation_params, continuation.csp_navigation_type, true, GC::create_function(heap(), [this, history_entry, history_handling, navigation_id, user_involvement](GC::Ptr<PopulateSessionHistoryEntryDocumentOutput> output) {
+            if (output && output->download_handled) {
+                if (is_top_level_traversable())
+                    active_browsing_context()->page().client().page_did_cancel_loading(history_entry->url());
+                set_ongoing_navigation({});
+                set_delaying_load_events(false);
+                return;
+            }
+
+            if (output)
+                output->apply_to(*history_entry);
+            auto pending_document = output ? output->document : GC::Ptr<DOM::Document> {};
+            traversable_navigable()->append_session_history_traversal_steps(GC::create_function(heap(), [this, history_entry, history_handling, navigation_id, user_involvement, pending_document](NonnullRefPtr<Core::Promise<Empty>> signal) {
+                if (this->has_been_destroyed()) {
+                    set_delaying_load_events(false);
+                    signal->resolve({});
+                    return;
+                }
+                if (this->ongoing_navigation() != navigation_id) {
+                    set_delaying_load_events(false);
+                    signal->resolve({});
+                    return;
+                }
+                finalize_a_cross_document_navigation(*this, to_history_handling_behavior(history_handling), user_involvement, history_entry, pending_document, navigation_id, GC::create_function(heap(), [signal](HistoryStepResult) {
+                    signal->resolve({});
+                }));
+            }));
+        }));
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate-fragid
@@ -4519,4 +4641,69 @@ bool LocalNavigable::has_inclusive_ancestor_with_visibility_hidden() const
     return false;
 }
 
+}
+
+template<>
+ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::CrossProcessNavigationContinuation const& continuation)
+{
+    TRY(encoder.encode(continuation.url));
+    TRY(encoder.encode(continuation.document_resource));
+    TRY(encoder.encode(continuation.history_handling));
+    TRY(encoder.encode(continuation.navigation_id));
+    TRY(encoder.encode(continuation.request_referrer));
+    TRY(encoder.encode(continuation.request_referrer_policy));
+    TRY(encoder.encode(continuation.initiator_origin));
+    TRY(encoder.encode(continuation.initiator_base_url));
+    TRY(encoder.encode(continuation.navigable_target_name));
+    TRY(encoder.encode(continuation.source_has_transient_activation));
+    TRY(encoder.encode(continuation.source_sandboxing_flags));
+    TRY(encoder.encode(continuation.source_allows_downloading));
+    TRY(encoder.encode(continuation.source_policy_container));
+    TRY(encoder.encode(continuation.target_sandboxing_flags));
+    TRY(encoder.encode(continuation.target_iframe_element_referrer_policy));
+    TRY(encoder.encode(continuation.csp_navigation_type));
+    TRY(encoder.encode(continuation.user_involvement));
+    return {};
+}
+
+template<>
+ErrorOr<Web::HTML::CrossProcessNavigationContinuation> IPC::decode(Decoder& decoder)
+{
+    auto url = TRY(decoder.decode<URL::URL>());
+    auto document_resource = TRY((decoder.decode<Variant<Empty, String, Web::HTML::POSTResource>>()));
+    auto history_handling = TRY(decoder.decode<Web::Bindings::NavigationHistoryBehavior>());
+    auto navigation_id = TRY(decoder.decode<String>());
+    auto request_referrer = TRY(decoder.decode<Web::Fetch::Infrastructure::Request::ReferrerType>());
+    auto request_referrer_policy = TRY(decoder.decode<Web::ReferrerPolicy::ReferrerPolicy>());
+    auto initiator_origin = TRY(decoder.decode<Optional<URL::Origin>>());
+    auto initiator_base_url = TRY(decoder.decode<Optional<URL::URL>>());
+    auto navigable_target_name = TRY(decoder.decode<Utf16String>());
+    auto source_has_transient_activation = TRY(decoder.decode<bool>());
+    auto source_sandboxing_flags = TRY(decoder.decode<Web::HTML::SandboxingFlagSet>());
+    auto source_allows_downloading = TRY(decoder.decode<bool>());
+    auto source_policy_container = TRY(decoder.decode<Web::HTML::SerializedPolicyContainer>());
+    auto target_sandboxing_flags = TRY(decoder.decode<Web::HTML::SandboxingFlagSet>());
+    auto target_iframe_element_referrer_policy = TRY(decoder.decode<Web::ReferrerPolicy::ReferrerPolicy>());
+    auto csp_navigation_type = TRY(decoder.decode<Web::ContentSecurityPolicy::Directives::Directive::NavigationType>());
+    auto user_involvement = TRY(decoder.decode<Web::HTML::UserNavigationInvolvement>());
+
+    return Web::HTML::CrossProcessNavigationContinuation {
+        .url = move(url),
+        .document_resource = move(document_resource),
+        .history_handling = history_handling,
+        .navigation_id = move(navigation_id),
+        .request_referrer = move(request_referrer),
+        .request_referrer_policy = request_referrer_policy,
+        .initiator_origin = move(initiator_origin),
+        .initiator_base_url = move(initiator_base_url),
+        .navigable_target_name = move(navigable_target_name),
+        .source_has_transient_activation = source_has_transient_activation,
+        .source_sandboxing_flags = source_sandboxing_flags,
+        .source_allows_downloading = source_allows_downloading,
+        .source_policy_container = move(source_policy_container),
+        .target_sandboxing_flags = target_sandboxing_flags,
+        .target_iframe_element_referrer_policy = target_iframe_element_referrer_policy,
+        .csp_navigation_type = csp_navigation_type,
+        .user_involvement = user_involvement,
+    };
 }

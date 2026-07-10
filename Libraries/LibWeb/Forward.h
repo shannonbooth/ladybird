@@ -818,6 +818,7 @@ class ImageRequest;
 class ListOfAvailableImages;
 class LocalNavigable;
 class LocalTraversableNavigable;
+struct CrossProcessNavigationContinuation;
 class Location;
 class MediaError;
 class MessageChannel;
