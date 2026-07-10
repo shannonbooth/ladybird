@@ -103,15 +103,30 @@ void CanonicalTraversable::prepare_to_seed_web_content_session_history_from_ui_p
     prepare_to_seed_web_content_session_history_from_ui_process(step);
 }
 
-void CanonicalTraversable::prepare_to_seed_web_content_session_history_from_ui_process(Optional<i32> step_to_traverse_after_seed)
+void CanonicalTraversable::begin_web_content_session_history_seed(Optional<i32> step_to_traverse_after_seed, PendingWebContentSessionHistorySeed::Continuation continuation)
 {
     m_current_web_content_session_history_matches_mirror = false;
     m_session_history.forget_web_content_state();
-    m_pending_session_history_navigation.clear();
     m_pending_web_content_session_history_seed.clear();
+    m_pending_web_content_session_history_seed.continuation = continuation;
     m_pending_web_content_session_history_seed.step_to_traverse_after_seed = step_to_traverse_after_seed;
-    m_pending_web_content_session_history_seed.should_send_entries = true;
-    m_pending_web_content_session_history_seed.ignore_updates_until_seed = true;
+    m_pending_web_content_session_history_seed.should_send_entries = m_session_history.current_top_level_entry_index().has_value();
+    m_pending_web_content_session_history_seed.ignore_updates_until_seed = m_pending_web_content_session_history_seed.should_send_entries;
+}
+
+void CanonicalTraversable::prepare_to_seed_web_content_session_history_from_ui_process(Optional<i32> step_to_traverse_after_seed)
+{
+    m_pending_session_history_navigation.clear();
+    begin_web_content_session_history_seed(
+        step_to_traverse_after_seed,
+        step_to_traverse_after_seed.has_value()
+            ? PendingWebContentSessionHistorySeed::Continuation::TraverseHistoryStep
+            : PendingWebContentSessionHistorySeed::Continuation::None);
+}
+
+void CanonicalTraversable::prepare_to_seed_web_content_session_history_from_ui_process_and_load_pending_navigation()
+{
+    begin_web_content_session_history_seed({}, PendingWebContentSessionHistorySeed::Continuation::LoadPendingNavigation);
 }
 
 ProcessSwapNavigationPreparation CanonicalTraversable::prepare_for_process_swap_navigation(Web::HTML::CrossProcessNavigationContinuation continuation)
@@ -149,10 +164,7 @@ ProcessSwapNavigationPreparation CanonicalTraversable::prepare_for_process_swap_
         .cross_process_navigation_continuation = move(continuation),
     };
 
-    m_session_history.forget_web_content_state();
-    m_pending_web_content_session_history_seed.clear();
-    m_pending_web_content_session_history_seed.should_send_entries = m_session_history.current_top_level_entry_index().has_value();
-    m_pending_web_content_session_history_seed.ignore_updates_until_seed = m_pending_web_content_session_history_seed.should_send_entries;
+    prepare_to_seed_web_content_session_history_from_ui_process_and_load_pending_navigation();
     result.should_seed_web_content_before_load = m_pending_web_content_session_history_seed.should_send_entries;
 
     return result;
@@ -314,20 +326,25 @@ WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_cont
 
     m_pending_web_content_session_history_seed.waiting_for_ack = false;
     m_pending_web_content_session_history_seed.ignore_updates_until_seed = false;
-    m_current_web_content_session_history_matches_mirror = !m_pending_web_content_session_history_seed.step_to_traverse_after_seed.has_value()
+    auto seed_continuation = m_pending_web_content_session_history_seed.continuation;
+    m_current_web_content_session_history_matches_mirror = seed_continuation == PendingWebContentSessionHistorySeed::Continuation::None
         && !m_pending_session_history_navigation.has_value();
-    if (m_pending_web_content_session_history_seed.step_to_traverse_after_seed.has_value()) {
+    if (seed_continuation == PendingWebContentSessionHistorySeed::Continuation::TraverseHistoryStep) {
+        VERIFY(m_pending_web_content_session_history_seed.step_to_traverse_after_seed.has_value());
         if (m_pending_session_history_traversal.has_value())
             m_pending_session_history_traversal->stage = PendingSessionHistoryTraversal::Stage::ApplyingSeededHistoryStep;
         result.step_to_traverse = *m_pending_web_content_session_history_seed.step_to_traverse_after_seed;
+    } else if (seed_continuation == PendingWebContentSessionHistorySeed::Continuation::LoadPendingNavigation) {
+        m_pending_session_history_traversal.clear();
+        m_pending_web_content_session_history_seed.clear();
+        result.should_load_pending_navigation = true;
     } else {
         auto is_waiting_for_history_step_cancelation_check = m_pending_session_history_traversal.has_value()
             && m_pending_session_history_traversal->stage == PendingSessionHistoryTraversal::Stage::CheckingCancelation;
+        m_pending_web_content_session_history_seed.clear();
         if (!is_waiting_for_history_step_cancelation_check) {
             m_pending_session_history_traversal.clear();
-            result.should_load_pending_navigation = m_pending_session_history_navigation.has_value()
-                && m_pending_session_history_navigation->commit_behavior == PendingSessionHistoryNavigation::CommitBehavior::CommitFromWebContent;
-            result.should_complete_webdriver_pending_navigation = !m_pending_session_history_navigation.has_value();
+            result.should_complete_webdriver_pending_navigation = true;
         }
     }
 
@@ -717,11 +734,7 @@ void CanonicalTraversable::prepare_for_web_content_crash_recovery()
         && m_pending_session_history_navigation->commit_behavior == PendingSessionHistoryNavigation::CommitBehavior::CommitFromWebContent
         && m_pending_session_history_navigation->cross_process_navigation_continuation.has_value()) {
         m_pending_session_history_traversal.clear();
-        m_current_web_content_session_history_matches_mirror = false;
-        m_session_history.forget_web_content_state();
-        m_pending_web_content_session_history_seed.clear();
-        m_pending_web_content_session_history_seed.should_send_entries = m_session_history.current_top_level_entry_index().has_value();
-        m_pending_web_content_session_history_seed.ignore_updates_until_seed = m_pending_web_content_session_history_seed.should_send_entries;
+        prepare_to_seed_web_content_session_history_from_ui_process_and_load_pending_navigation();
         return;
     }
 

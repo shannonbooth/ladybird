@@ -66,9 +66,16 @@ struct PendingSessionHistoryNavigation {
 };
 
 struct PendingWebContentSessionHistorySeed {
+    enum class Continuation : u8 {
+        None,
+        TraverseHistoryStep,
+        LoadPendingNavigation,
+    };
+
     bool should_send_entries { false };
     bool ignore_updates_until_seed { false };
     bool waiting_for_ack { false };
+    Continuation continuation { Continuation::None };
     Optional<i32> step_to_traverse_after_seed;
 
     void clear() { *this = {}; }
@@ -201,7 +208,6 @@ struct CurrentSessionHistoryEntryLoad {
 };
 
 struct ProcessSwapNavigationPreparation {
-    bool should_update_navigation_action_state { false };
     bool should_seed_web_content_before_load { false };
 };
 
@@ -258,7 +264,9 @@ public:
 
 private:
     void abandon_pending_web_content_session_history_seed();
+    void begin_web_content_session_history_seed(Optional<i32> step_to_traverse_after_seed, PendingWebContentSessionHistorySeed::Continuation);
     void prepare_to_seed_web_content_session_history_from_ui_process(Optional<i32> step_to_traverse_after_seed);
+    void prepare_to_seed_web_content_session_history_from_ui_process_and_load_pending_navigation();
     void ensure_pending_session_history_traversal(TraversableSessionHistory::TraversalTarget const&, URL::URL const& current_url, PendingSessionHistoryTraversal::Stage);
     void remove_from_index(CanonicalNavigable&);
     WebContentSessionHistoryUpdateResult update_session_history_from_web_content(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, bool pending_step_after_seed_was_restored, bool seed_web_content_on_invalid_snapshot, URL::URL const& current_url);

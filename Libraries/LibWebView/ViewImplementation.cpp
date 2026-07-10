@@ -153,8 +153,6 @@ void ViewImplementation::create_new_process_for_cross_site_navigation(Web::HTML:
 
     replace_web_content_process_for_top_level_traversal();
     auto preparation = m_top_level_traversable.prepare_for_process_swap_navigation(move(continuation));
-    if (preparation.should_update_navigation_action_state)
-        update_navigation_action_state();
 
     m_should_suppress_history_for_current_load = false;
     m_should_suppress_history_for_next_load = false;
