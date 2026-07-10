@@ -46,6 +46,11 @@ struct HistoryTraversalOutcome {
 };
 
 struct PendingSessionHistoryNavigation {
+    enum class CommitBehavior : u8 {
+        CommitFromWebContent,
+        RestorePreviousOnCancel,
+    };
+
     enum class WebContentRestoreMode : u8 {
         PreserveCurrentProcessState,
         RestoreFromUIProcess,
@@ -54,6 +59,9 @@ struct PendingSessionHistoryNavigation {
     URL::URL url;
     TraversableSessionHistory previous_session_history;
     WebContentRestoreMode web_content_restore_mode { WebContentRestoreMode::PreserveCurrentProcessState };
+    Variant<Empty, String, Web::HTML::POSTResource> document_resource {};
+    Web::Bindings::NavigationHistoryBehavior history_handling { Web::Bindings::NavigationHistoryBehavior::Auto };
+    CommitBehavior commit_behavior { CommitBehavior::RestorePreviousOnCancel };
 };
 
 struct PendingWebContentSessionHistorySeed {
@@ -105,6 +113,7 @@ struct WebContentSessionHistorySeedAckResult {
     StringView dump_reason;
     Optional<URL::URL> current_url {};
     Optional<i32> step_to_traverse {};
+    bool should_load_pending_navigation { false };
     bool should_complete_webdriver_pending_navigation { false };
     bool should_update_navigation_action_state { false };
 };
@@ -125,6 +134,7 @@ enum class NavigationCancelStatus : u8 {
 
 struct NavigationCancelResult {
     NavigationCancelStatus status { NavigationCancelStatus::Ignored };
+    Optional<URL::URL> current_url {};
 };
 
 struct NavigationFinishResult {
@@ -193,6 +203,7 @@ struct CurrentSessionHistoryEntryLoad {
 
 struct ProcessSwapNavigationPreparation {
     bool should_update_navigation_action_state { false };
+    bool should_seed_web_content_before_load { false };
 };
 
 struct WebContentCrashRecoveryPreparation {
@@ -244,6 +255,7 @@ public:
     HistoryStepCancelationCheckResult did_check_if_traverse_history_step_is_canceled(u64 request_id, i32 step, bool canceled);
     Optional<WebContentSessionHistorySeed> prepare_web_content_session_history_seed();
     CurrentSessionHistoryEntryLoad prepare_current_session_history_entry_load(URL::URL const& current_url);
+    Optional<CurrentSessionHistoryEntryLoad> pending_session_history_navigation_load() const;
     void did_send_web_content_session_history_seed();
     WebContentCrashRecoveryPreparation prepare_for_web_content_crash_recovery();
     void reset_session_history_for_testing();

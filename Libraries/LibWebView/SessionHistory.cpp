@@ -883,6 +883,48 @@ TraversableSessionHistory::UpdateResult TraversableSessionHistory::update_from_w
     return web_content_matches_mirror ? UpdateResult::CompleteSnapshot : UpdateResult::MergedPartialSnapshot;
 }
 
+TraversableSessionHistory::UpdateResult TraversableSessionHistory::update_from_web_content_after_pending_replace(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index)
+{
+    auto invalid_snapshot = [&] {
+        forget_web_content_state();
+        return UpdateResult::InvalidSnapshot;
+    };
+
+    if (entries.is_empty() || used_steps.is_empty() || current_used_step_index >= used_steps.size() || !entries_are_valid(entries) || !steps_are_valid(used_steps) || !entries_and_used_steps_are_consistent(entries, used_steps))
+        return invalid_snapshot();
+
+    if (m_entries.is_empty() || !m_current_used_step_index.has_value())
+        return invalid_snapshot();
+
+    if (m_entries.size() != entries.size() || !steps_match(m_used_steps, used_steps) || *m_current_used_step_index != current_used_step_index)
+        return invalid_snapshot();
+
+    auto local_current_top_level_entry_index = current_top_level_entry_index();
+    auto incoming_current_top_level_entry_index = top_level_entry_index_for_step(entries, used_steps[current_used_step_index]);
+    if (!local_current_top_level_entry_index.has_value() || !incoming_current_top_level_entry_index.has_value())
+        return invalid_snapshot();
+
+    if (*local_current_top_level_entry_index != *incoming_current_top_level_entry_index)
+        return invalid_snapshot();
+
+    for (size_t i = 0; i < m_entries.size(); ++i) {
+        if (i == *local_current_top_level_entry_index)
+            continue;
+        if (!Web::HTML::session_history_entry_descriptors_match_ignoring_document_state_id(m_entries[i], entries[i]))
+            return invalid_snapshot();
+    }
+
+    canonicalize_document_state_ids(entries);
+    m_entries = move(entries);
+    m_used_steps = move(used_steps);
+    m_current_used_step_index = current_used_step_index;
+    m_web_content_known_entries = m_entries;
+    m_web_content_known_used_steps = m_used_steps;
+    m_web_content_current_step = m_used_steps[*m_current_used_step_index];
+    m_web_content_uses_ui_step_coordinates = true;
+    return UpdateResult::CompleteSnapshot;
+}
+
 void TraversableSessionHistory::did_seed_web_content_from_ui_process(size_t current_top_level_entry_index)
 {
     VERIFY(current_top_level_entry_index < m_entries.size());

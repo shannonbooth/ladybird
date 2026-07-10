@@ -158,8 +158,14 @@ void ViewImplementation::create_new_process_for_cross_site_navigation(URL::URL c
     m_should_suppress_history_for_current_load = false;
     m_should_suppress_history_for_next_load = false;
     set_url(url);
+    if (preparation.should_seed_web_content_before_load) {
+        dump_session_history("process-swap-seed-before-load"sv);
+        seed_web_content_session_history_from_ui_process();
+        return;
+    }
+
     dump_session_history("process-swap-load"sv);
-    client().async_load_url_with_document_resource(page_id(), url, document_resource, history_handling);
+    load_pending_session_history_navigation();
     dump_session_history("after-process-swap-load"sv);
 }
 
@@ -1428,6 +1434,13 @@ bool ViewImplementation::did_cancel_navigation(URL::URL const& url)
         dump_session_history("did-cancel-ui-history-load"sv);
         return true;
     case NavigationCancelStatus::CompleteWebdriverPendingNavigation:
+        if (result.current_url.has_value()) {
+            auto current_url = *result.current_url;
+            auto const url_changed = m_url != current_url;
+            set_url(current_url);
+            if (url_changed && on_url_change)
+                on_url_change(m_url);
+        }
         m_webdriver_pending_navigation_url = m_url;
         m_webdriver_pending_navigation_completes_with_session_history_update = false;
         complete_webdriver_pending_navigation_if_url_matches(m_url);
@@ -1648,13 +1661,13 @@ void ViewImplementation::update_navigation_action_state()
     m_navigate_forward_action->set_enabled(m_top_level_traversable.session_history().can_go_forward());
 }
 
-void ViewImplementation::seed_web_content_session_history_from_ui_process()
+bool ViewImplementation::seed_web_content_session_history_from_ui_process()
 {
     auto seed = m_top_level_traversable.prepare_web_content_session_history_seed();
     if (!seed.has_value()) {
         update_navigation_action_state();
         dump_session_history("skip-webcontent-session-history-seed"sv);
-        return;
+        return false;
     }
 
     if (history_debug_enabled()) {
@@ -1669,6 +1682,20 @@ void ViewImplementation::seed_web_content_session_history_from_ui_process()
     m_top_level_traversable.did_send_web_content_session_history_seed();
     update_navigation_action_state();
     dump_session_history("sent-webcontent-session-history-seed"sv);
+    return true;
+}
+
+bool ViewImplementation::load_pending_session_history_navigation()
+{
+    auto load = m_top_level_traversable.pending_session_history_navigation_load();
+    if (!load.has_value())
+        return false;
+
+    if (load->document_resource.has<Empty>())
+        client().async_load_url(page_id(), load->url, load->history_handling);
+    else
+        client().async_load_url_with_document_resource(page_id(), load->url, load->document_resource, load->history_handling);
+    return true;
 }
 
 void ViewImplementation::load_current_session_history_entry_from_ui_process()
@@ -1752,6 +1779,8 @@ void ViewImplementation::did_set_top_level_session_history(Badge<WebContentClien
 
     if (ack.step_to_traverse.has_value())
         client().async_traverse_the_history_to_step(page_id(), *ack.step_to_traverse);
+    else if (ack.should_load_pending_navigation)
+        load_pending_session_history_navigation();
     else if (ack.should_complete_webdriver_pending_navigation)
         complete_webdriver_pending_navigation_if_url_matches(m_url);
 

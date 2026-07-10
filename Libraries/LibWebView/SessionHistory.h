@@ -61,6 +61,7 @@ public:
     void mark_current_entry_reload_pending();
     void clear_current_entry_reload_pending();
     UpdateResult update_from_web_content(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index);
+    UpdateResult update_from_web_content_after_pending_replace(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index);
     [[nodiscard]] bool did_seed_web_content_from_ui_process(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index);
     void did_seed_web_content_from_ui_process(size_t current_top_level_entry_index);
     [[nodiscard]] bool did_restore_web_content_to_current_step(i32 step);
