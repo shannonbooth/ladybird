@@ -1647,6 +1647,18 @@ TEST_CASE(seed_ack_proof_tracks_seed_snapshot_identity)
     entries_with_different_scroll_position[1].scroll_position_data.viewport_scroll_position = { 0, 100 };
     EXPECT_NE(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(entries_with_different_scroll_position, seed_steps, 1));
 
+    auto entries_with_different_navigation_api_key = seed_entries;
+    entries_with_different_navigation_api_key[1].navigation_api_key = MUST(String::from_utf8("key-b"sv));
+    EXPECT_NE(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(entries_with_different_navigation_api_key, seed_steps, 1));
+
+    auto entries_with_different_navigation_api_id = seed_entries;
+    entries_with_different_navigation_api_id[1].navigation_api_id = MUST(String::from_utf8("id-b"sv));
+    EXPECT_NE(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(entries_with_different_navigation_api_id, seed_steps, 1));
+
+    auto entries_with_different_navigation_api_state = seed_entries;
+    entries_with_different_navigation_api_state[1].navigation_api_state = state_record(9);
+    EXPECT_EQ(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(entries_with_different_navigation_api_state, seed_steps, 1));
+
     EXPECT_NE(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(seed_entries, seed_steps, 0));
 }
 

@@ -957,14 +957,12 @@ TraversableSessionHistory::SeedAckProof TraversableSessionHistory::compute_seed_
             current_entry.document_state = move(document_state);
             current_entry.classic_history_api_state.clear();
             current_entry.navigation_api_state.clear();
-            current_entry.navigation_api_key = {};
-            current_entry.navigation_api_id = {};
         }
     }
 
     IPC::MessageBuffer buffer;
     IPC::Encoder encoder { buffer };
-    MUST(encoder.encode("WebView::SessionHistorySeedAckProof-v3"sv));
+    MUST(encoder.encode("WebView::SessionHistorySeedAckProof-v4"sv));
     MUST(encoder.encode(normalized_entries));
     MUST(encoder.encode(used_steps));
     MUST(encoder.encode(current_used_step_index));
