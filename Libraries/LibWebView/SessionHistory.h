@@ -61,8 +61,8 @@ public:
     void clear_current_entry_reload_pending();
     UpdateResult update_from_web_content(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index);
     [[nodiscard]] bool update_current_entry_from_web_content(Web::HTML::SessionHistoryEntryUpdateKind, Entry);
-    [[nodiscard]] bool did_seed_web_content_from_ui_process(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index);
-    void did_seed_web_content_from_ui_process(size_t current_top_level_entry_index);
+    [[nodiscard]] bool web_content_seed_ack_matches_current_mirror(Vector<Entry> const& entries, Vector<i32> const& used_steps, size_t current_used_step_index) const;
+    void record_web_content_seeded_from_ui_process(i32 current_step);
     [[nodiscard]] bool did_restore_web_content_to_current_step(i32 step);
     [[nodiscard]] bool did_apply_web_content_traversal_to_step(i32 step);
     void forget_web_content_state();

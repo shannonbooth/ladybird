@@ -184,6 +184,13 @@ static void expect_current_entry(WebView::TraversableSessionHistory const& histo
     EXPECT_EQ(entry->url, parse_url(expected_url));
 }
 
+static void record_web_content_seeded_at_current_top_level_entry(WebView::TraversableSessionHistory& history)
+{
+    auto* entry = history.current_entry();
+    VERIFY(entry);
+    history.record_web_content_seeded_from_ui_process(entry->step);
+}
+
 static void expect_entry_state(Web::HTML::SessionHistoryEntryDescriptor const& entry, u8 expected_classic_history_api_state, u8 expected_navigation_api_state, StringView expected_navigation_api_key, StringView expected_navigation_api_id, Web::HTML::ScrollRestorationMode expected_scroll_restoration_mode)
 {
     EXPECT(entry.classic_history_api_state == state_record(expected_classic_history_api_state));
@@ -978,9 +985,7 @@ TEST_CASE(reseeded_partial_snapshot_preserves_ui_only_history)
 
     history.traverse_to(1);
     history.forget_web_content_state();
-    auto current_top_level_entry_index = history.current_top_level_entry_index();
-    VERIFY(current_top_level_entry_index.has_value());
-    history.did_seed_web_content_from_ui_process(*current_top_level_entry_index);
+    record_web_content_seeded_at_current_top_level_entry(history);
 
     auto update_result = history.update_from_web_content({
                                                              entry(0, URL::about_blank()),
@@ -1299,9 +1304,7 @@ TEST_CASE(seeded_web_content_must_restore_nested_current_step_before_traversing)
     expect_step_to_restore(history.current_step_to_restore_after_loading_top_level_entry(), 1);
 
     history.forget_web_content_state();
-    auto current_top_level_entry_index = history.current_top_level_entry_index();
-    VERIFY(current_top_level_entry_index.has_value());
-    history.did_seed_web_content_from_ui_process(*current_top_level_entry_index);
+    record_web_content_seeded_at_current_top_level_entry(history);
 
     auto web_content_current_step = history.web_content_current_step();
     VERIFY(web_content_current_step.has_value());
@@ -1349,16 +1352,19 @@ TEST_CASE(seed_ack_snapshot_preserves_nested_ui_current_step)
     expect_step_to_restore(history.current_step_to_restore_after_loading_top_level_entry(), 1);
 
     history.forget_web_content_state();
-    auto accepted = history.did_seed_web_content_from_ui_process({
-                                                                     entry(0, "https://a.example/"sv, {
-                                                                                                          nested_history("frame-1"sv, {
-                                                                                                                                          entry(0, "https://frame.example/a"sv),
-                                                                                                                                          entry(1, "https://frame.example/b"sv),
-                                                                                                                                      }),
-                                                                                                      }),
-                                                                     entry(2, "https://b.example/"sv),
-                                                                 },
-        { 0, 1, 2 }, 0);
+    Vector<WebView::TraversableSessionHistory::Entry> seed_entries {
+        entry(0, "https://a.example/"sv, {
+                                             nested_history("frame-1"sv, {
+                                                                             entry(0, "https://frame.example/a"sv),
+                                                                             entry(1, "https://frame.example/b"sv),
+                                                                         }),
+                                         }),
+        entry(2, "https://b.example/"sv),
+    };
+    Vector<i32> seed_steps { 0, 1, 2 };
+    auto accepted = history.web_content_seed_ack_matches_current_mirror(seed_entries, seed_steps, 0);
+    if (accepted)
+        history.record_web_content_seeded_from_ui_process(seed_steps[0]);
 
     EXPECT(accepted);
     EXPECT(!history.current_step_is_top_level_entry());
@@ -1381,11 +1387,12 @@ TEST_CASE(seed_ack_snapshot_rejects_mismatched_reconstructed_history)
     EXPECT_EQ(update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
 
     history.forget_web_content_state();
-    auto accepted = history.did_seed_web_content_from_ui_process({
-                                                                     entry(0, "https://a.example/"sv),
-                                                                     entry(1, "https://c.example/"sv),
-                                                                 },
-        { 0, 1 }, 1);
+    Vector<WebView::TraversableSessionHistory::Entry> seed_entries {
+        entry(0, "https://a.example/"sv),
+        entry(1, "https://c.example/"sv),
+    };
+    Vector<i32> seed_steps { 0, 1 };
+    auto accepted = history.web_content_seed_ack_matches_current_mirror(seed_entries, seed_steps, 1);
 
     EXPECT(!accepted);
     EXPECT(!history.web_content_current_step().has_value());
@@ -1411,9 +1418,7 @@ TEST_CASE(seeded_web_content_restore_updates_current_step)
     EXPECT_EQ(update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
 
     history.forget_web_content_state();
-    auto current_top_level_entry_index = history.current_top_level_entry_index();
-    VERIFY(current_top_level_entry_index.has_value());
-    history.did_seed_web_content_from_ui_process(*current_top_level_entry_index);
+    record_web_content_seeded_at_current_top_level_entry(history);
 
     auto web_content_current_step = history.web_content_current_step();
     VERIFY(web_content_current_step.has_value());
@@ -1444,9 +1449,7 @@ TEST_CASE(restored_web_content_step_must_match_current_ui_step)
 
     history.traverse_to(1);
     history.forget_web_content_state();
-    auto current_top_level_entry_index = history.current_top_level_entry_index();
-    VERIFY(current_top_level_entry_index.has_value());
-    history.did_seed_web_content_from_ui_process(*current_top_level_entry_index);
+    record_web_content_seeded_at_current_top_level_entry(history);
 
     EXPECT(!history.did_restore_web_content_to_current_step(2));
     auto web_content_current_step = history.web_content_current_step();
@@ -1530,9 +1533,7 @@ TEST_CASE(same_document_reseed_snapshot_preserves_document_state_ids)
     EXPECT_EQ(initial_update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
 
     history.forget_web_content_state();
-    auto current_top_level_entry_index = history.current_top_level_entry_index();
-    VERIFY(current_top_level_entry_index.has_value());
-    history.did_seed_web_content_from_ui_process(*current_top_level_entry_index);
+    record_web_content_seeded_at_current_top_level_entry(history);
 
     auto update_result = history.update_from_web_content({
                                                              entry(0, "https://a.example/"sv),
@@ -1572,12 +1573,16 @@ TEST_CASE(seed_ack_accepts_preserved_document_state_ids)
 
     history.forget_web_content_state();
 
-    EXPECT(history.did_seed_web_content_from_ui_process({
-                                                            entry(0, "https://a.example/"sv),
-                                                            entry(1, "https://a.example/replaced"sv, 1, "main"sv),
-                                                            entry(2, "https://a.example/pushed"sv, 1, "main"sv),
-                                                        },
-        { 0, 1, 2 }, 0));
+    Vector<WebView::TraversableSessionHistory::Entry> seed_entries {
+        entry(0, "https://a.example/"sv),
+        entry(1, "https://a.example/replaced"sv, 1, "main"sv),
+        entry(2, "https://a.example/pushed"sv, 1, "main"sv),
+    };
+    Vector<i32> seed_steps { 0, 1, 2 };
+    auto accepted = history.web_content_seed_ack_matches_current_mirror(seed_entries, seed_steps, 0);
+    EXPECT(accepted);
+    if (accepted)
+        history.record_web_content_seeded_from_ui_process(seed_steps[0]);
     EXPECT(history.web_content_history_matches_mirror());
     EXPECT_EQ(history.web_content_known_entries().size(), 3uz);
     EXPECT_EQ(history.web_content_current_step().value(), 0);
@@ -1595,11 +1600,12 @@ TEST_CASE(seed_ack_rejects_reconstructed_history_with_mismatched_state)
 
     history.forget_web_content_state();
 
-    EXPECT(!history.did_seed_web_content_from_ui_process({
-                                                             entry(0, "https://a.example/"sv, 9, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Manual),
-                                                             entry(1, "https://a.example/replaced"sv, 3, 4, "key-b"sv, "id-b"sv, Web::HTML::ScrollRestorationMode::Auto),
-                                                         },
-        { 0, 1 }, 0));
+    Vector<WebView::TraversableSessionHistory::Entry> seed_entries {
+        entry(0, "https://a.example/"sv, 9, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Manual),
+        entry(1, "https://a.example/replaced"sv, 3, 4, "key-b"sv, "id-b"sv, Web::HTML::ScrollRestorationMode::Auto),
+    };
+    Vector<i32> seed_steps { 0, 1 };
+    EXPECT(!history.web_content_seed_ack_matches_current_mirror(seed_entries, seed_steps, 0));
     EXPECT(!history.web_content_history_matches_mirror());
     EXPECT(history.web_content_known_entries().is_empty());
 }
