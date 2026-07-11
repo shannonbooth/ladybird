@@ -70,10 +70,27 @@ struct SessionHistoryEntryMutationResult {
     bool rejected { false };
 };
 
-static bool entry_matches_ignoring_navigation_api_state(TraversableSessionHistory::Entry const& stored_entry, TraversableSessionHistory::Entry const& updated_entry)
+static bool is_supported_current_entry_update_kind(Web::HTML::SessionHistoryEntryUpdateKind update_kind)
+{
+    switch (update_kind) {
+    case Web::HTML::SessionHistoryEntryUpdateKind::NavigationAPIState:
+    case Web::HTML::SessionHistoryEntryUpdateKind::ScrollRestorationMode:
+        return true;
+    }
+    return false;
+}
+
+static bool entry_matches_ignoring_targeted_field(TraversableSessionHistory::Entry const& stored_entry, TraversableSessionHistory::Entry const& updated_entry, Web::HTML::SessionHistoryEntryUpdateKind update_kind)
 {
     auto expected_entry = updated_entry;
-    expected_entry.navigation_api_state = stored_entry.navigation_api_state;
+    switch (update_kind) {
+    case Web::HTML::SessionHistoryEntryUpdateKind::NavigationAPIState:
+        expected_entry.navigation_api_state = stored_entry.navigation_api_state;
+        break;
+    case Web::HTML::SessionHistoryEntryUpdateKind::ScrollRestorationMode:
+        expected_entry.scroll_restoration_mode = stored_entry.scroll_restoration_mode;
+        break;
+    }
     return Web::HTML::session_history_entry_descriptors_match(stored_entry, expected_entry);
 }
 
@@ -82,24 +99,36 @@ static bool entry_has_target_identity(TraversableSessionHistory::Entry const& en
     return entry.step == updated_entry.step && entry.document_state.id == updated_entry.document_state.id;
 }
 
-static SessionHistoryEntryMutationResult apply_navigation_api_state_update(Vector<TraversableSessionHistory::Entry>& entries, TraversableSessionHistory::Entry const& updated_entry)
+static void apply_targeted_current_entry_update(TraversableSessionHistory::Entry& entry, TraversableSessionHistory::Entry const& updated_entry, Web::HTML::SessionHistoryEntryUpdateKind update_kind)
+{
+    switch (update_kind) {
+    case Web::HTML::SessionHistoryEntryUpdateKind::NavigationAPIState:
+        entry.navigation_api_state = updated_entry.navigation_api_state;
+        break;
+    case Web::HTML::SessionHistoryEntryUpdateKind::ScrollRestorationMode:
+        entry.scroll_restoration_mode = updated_entry.scroll_restoration_mode;
+        break;
+    }
+}
+
+static SessionHistoryEntryMutationResult apply_targeted_current_entry_update(Vector<TraversableSessionHistory::Entry>& entries, TraversableSessionHistory::Entry const& updated_entry, Web::HTML::SessionHistoryEntryUpdateKind update_kind)
 {
     SessionHistoryEntryMutationResult result;
-    if (updated_entry.step < 0 || updated_entry.document_state.id.namespace_id == 0 || updated_entry.document_state.id.local_id == 0)
+    if (!is_supported_current_entry_update_kind(update_kind) || updated_entry.step < 0 || updated_entry.document_state.id.namespace_id == 0 || updated_entry.document_state.id.local_id == 0)
         return { .rejected = true };
 
     for (auto& entry : entries) {
         if (entry_has_target_identity(entry, updated_entry)) {
             result.found = true;
-            if (!entry_matches_ignoring_navigation_api_state(entry, updated_entry)) {
+            if (!entry_matches_ignoring_targeted_field(entry, updated_entry, update_kind)) {
                 result.rejected = true;
                 continue;
             }
-            entry.navigation_api_state = updated_entry.navigation_api_state;
+            apply_targeted_current_entry_update(entry, updated_entry, update_kind);
         }
 
         for (auto& nested_history : entry.document_state.nested_histories) {
-            auto nested_result = apply_navigation_api_state_update(nested_history.entries, updated_entry);
+            auto nested_result = apply_targeted_current_entry_update(nested_history.entries, updated_entry, update_kind);
             result.found |= nested_result.found;
             result.rejected |= nested_result.rejected;
         }
@@ -832,16 +861,16 @@ TraversableSessionHistory::UpdateResult TraversableSessionHistory::update_from_w
     return web_content_matches_mirror ? UpdateResult::CompleteSnapshot : UpdateResult::MergedPartialSnapshot;
 }
 
-bool TraversableSessionHistory::update_current_entry_from_web_content(Entry updated_entry)
+bool TraversableSessionHistory::update_current_entry_from_web_content(Web::HTML::SessionHistoryEntryUpdateKind update_kind, Entry updated_entry)
 {
     auto entries = m_entries;
-    auto mutation_result = apply_navigation_api_state_update(entries, updated_entry);
+    auto mutation_result = apply_targeted_current_entry_update(entries, updated_entry, update_kind);
     if (!mutation_result.found || mutation_result.rejected)
         return false;
 
     auto web_content_known_entries = m_web_content_known_entries;
     if (!web_content_known_entries.is_empty()) {
-        auto known_mutation_result = apply_navigation_api_state_update(web_content_known_entries, updated_entry);
+        auto known_mutation_result = apply_targeted_current_entry_update(web_content_known_entries, updated_entry, update_kind);
         if (known_mutation_result.rejected)
             return false;
         if (!known_mutation_result.found && web_content_history_matches_mirror())

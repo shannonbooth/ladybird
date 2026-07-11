@@ -38,6 +38,11 @@ enum class ScrollRestorationMode {
     Manual,
 };
 
+enum class SessionHistoryEntryUpdateKind : u8 {
+    NavigationAPIState,
+    ScrollRestorationMode,
+};
+
 struct SessionHistoryNestedHistoryDescriptor;
 
 // IPC-friendly descriptors for the parts of session history entries and document states that can survive
