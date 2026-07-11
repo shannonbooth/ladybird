@@ -239,26 +239,6 @@ static DocumentState::NestedHistory create_nested_history_from_ui_process(Sessio
 static void populate_nested_histories_from_ui_process(DocumentState& document_state, Vector<SessionHistoryNestedHistoryDescriptor> nested_history_descriptors, SessionHistoryEntryReconstructionState& reconstruction_state)
 {
     auto& nested_histories = document_state.nested_histories();
-    if (nested_histories.size() == nested_history_descriptors.size()) {
-        // FIXME: This is temporary glue for the current load-then-seed ordering.
-        //        A replacement WebContent process can create live child navigables
-        //        before the UI process sends its canonical session-history tree.
-        //        Now that nested history ids are canonical NavigableIds, the UI id
-        //        must win; retarget the already-created child to match it. The
-        //        longer-term model should avoid creating a distinct temporary id
-        //        for a child the UI process already knows about.
-        for (size_t i = 0; i < nested_history_descriptors.size(); ++i) {
-            auto previous_id = nested_histories[i].id;
-            auto canonical_id = nested_history_descriptors[i].id;
-            if (previous_id == canonical_id)
-                continue;
-
-            for (auto& navigable : all_local_navigables()) {
-                if (navigable->id() == previous_id)
-                    navigable->set_id_for_session_history_reconstruction(canonical_id);
-            }
-        }
-    }
     nested_histories.clear();
     nested_histories.ensure_capacity(nested_history_descriptors.size());
     for (auto& nested_history_descriptor : nested_history_descriptors)
@@ -352,7 +332,7 @@ static bool expected_ongoing_navigation_was_superseded(GC::Ptr<LocalNavigable> n
     return navigable->ongoing_navigation() != *expected_navigation_id;
 }
 
-bool LocalTraversableNavigable::replace_top_level_session_history_entries_from_ui_process(Vector<SessionHistoryEntryDescriptor> entries_from_ui_process, size_t current_top_level_entry_index, bool allow_reconstructing_current_entry, bool current_entry_will_be_populated_by_traversal)
+bool LocalTraversableNavigable::replace_top_level_session_history_entries_from_ui_process(Vector<SessionHistoryEntryDescriptor> entries_from_ui_process, size_t current_top_level_entry_index, bool current_entry_will_be_populated_by_traversal)
 {
     if (entries_from_ui_process.is_empty() || current_top_level_entry_index >= entries_from_ui_process.size())
         return false;
@@ -402,46 +382,7 @@ bool LocalTraversableNavigable::replace_top_level_session_history_entries_from_u
             return false;
 
         auto latest_entry_matches_ui_seed = session_history_entry_matches_descriptor_ignoring_document_state_id(*latest_entry, current_entry_from_ui_process, MatchNestedHistories::No);
-
-        auto active_entry_is_latest_entry = latest_entry.ptr() == active_entry.ptr();
-        auto current_entry_url_matches_ui_seed = latest_entry->url() == current_entry_from_ui_process.url;
-
-        // NB: A UI-process fallback load starts a fresh WebContent process with a single top-level entry for the URL
-        //     being restored, then seeds the UI-owned traversable session history around that document. The fresh
-        //     entry has local step and Navigation API identity, so accept the seed when the process has no other
-        //     top-level history to protect.
-        auto can_restore_fresh_ui_history_load = entries_from_ui_process.size() > 1
-            && m_session_history_entries.size() == 1
-            && active_entry.ptr() == m_session_history_entries.first().ptr()
-            && active_entry_is_latest_entry
-            && current_entry_url_matches_ui_seed;
-
-        // NB: Crash recovery pre-seeds WebContent before loading the current entry, then reseeds after the document is
-        //     loaded so same-document state, Navigation API state, scroll restoration mode, and target name are
-        //     restored onto the fresh Document. At that point WebContent already has the UI-owned top-level history and
-        //     step coordinates, but the active entry can still have freshly loaded document state.
-        auto latest_entry_step = latest_entry->step_value();
-        auto can_restore_preseeded_ui_history_load = latest_entry_step.has_value()
-            && *latest_entry_step == current_entry_from_ui_process.step
-            && m_session_history_entries.size() == entries_from_ui_process.size()
-            && active_entry_is_latest_entry
-            && current_entry_url_matches_ui_seed;
-
-        // NB: UI-process fallback history loads can overlap when a newer traversal supersedes an older one before the
-        //     older load has finished. Other engines give pending history loads an identity so the latest traversal
-        //     stays authoritative; after the race has happened, WebContent can still have the latest live document in
-        //     an incomplete local top-level list, for example [b, c] while the UI process is restoring [a, b, c] at c.
-        //     If the live active entry has the UI seed's current URL, accept the UI-owned list around that document
-        //     instead of making the UI process adopt the incomplete WebContent list. The WebContent step, document state
-        //     id, and Navigation API identity are all process-local placeholders at this point, and are replaced by the
-        //     UI-owned values below.
-        auto can_restore_current_entry_after_superseded_ui_history_load = entries_from_ui_process.size() > m_session_history_entries.size()
-            && active_entry_is_latest_entry
-            && current_entry_url_matches_ui_seed;
-
-        auto can_reconstruct_current_entry = allow_reconstructing_current_entry
-            && (can_restore_fresh_ui_history_load || can_restore_preseeded_ui_history_load || can_restore_current_entry_after_superseded_ui_history_load);
-        if (!latest_entry_matches_ui_seed && !can_reconstruct_current_entry)
+        if (!latest_entry_matches_ui_seed)
             return false;
     }
 

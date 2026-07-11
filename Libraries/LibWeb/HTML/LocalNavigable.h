@@ -76,7 +76,6 @@ public:
     using NavigationParamsVariant = Variant<NullOrError, GC::Ref<NavigationParams>, GC::Ref<NonFetchSchemeNavigationParams>>;
 
     void initialize_navigable(NonnullRefPtr<DocumentState> document_state, GC::Ptr<LocalNavigable> parent, GC::Ref<DOM::Document> document);
-    void set_id_for_session_history_reconstruction(NavigableId id) { set_id(id); }
 
     // AD-HOC: A child navigable created for a document whose document state already carries a nested history
     //         without a live navigable is the successor of the navigable that nested history described: the

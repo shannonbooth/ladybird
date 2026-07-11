@@ -1686,7 +1686,7 @@ void ViewImplementation::seed_web_content_session_history_from_ui_process()
             history_log_entries(seed->entries, seed->current_top_level_entry_index));
     }
 
-    client().async_set_top_level_session_history(page_id(), move(seed->entries), seed->current_top_level_entry_index, false, seed->current_entry_will_be_populated_by_traversal);
+    client().async_set_top_level_session_history(page_id(), move(seed->entries), seed->current_top_level_entry_index, seed->current_entry_will_be_populated_by_traversal);
     m_top_level_traversable.did_send_web_content_session_history_seed();
     update_navigation_action_state();
     dump_session_history("sent-webcontent-session-history-seed"sv);
