@@ -63,6 +63,37 @@ struct PendingWebContentSessionHistorySeed {
     bool should_reseed_after_current_history_load { false };
     Optional<i32> step_after_loading_top_level_entry;
 
+    // NB: Multi-field updates must go through the named transitions below. Each transition states
+    //     which fields it preserves, so a transition that begins or supersedes a history operation
+    //     cannot accidentally drop — or accidentally keep — another operation's seed state.
+
+    // Forget any previous seed attempt entirely and arm a fresh send of the UI-owned entries.
+    void reset_to_send_entries(Optional<i32> step_to_restore_after_loading_top_level_entry)
+    {
+        clear();
+        step_after_loading_top_level_entry = step_to_restore_after_loading_top_level_entry;
+        should_send_entries = true;
+        ignore_updates_until_seed = true;
+    }
+
+    // Arm another send of the UI-owned entries without forgetting the in-flight operation:
+    // step_after_loading_top_level_entry (a restore that must still happen once the entries are
+    // applied) and should_reseed_after_current_history_load (a pending post-load reseed) both
+    // survive, and any stale ack is no longer awaited.
+    void resend_entries()
+    {
+        waiting_for_ack = false;
+        should_send_entries = true;
+        ignore_updates_until_seed = true;
+    }
+
+    // The entries went out; nothing further to send until WebContent acks this seed.
+    void mark_entries_sent()
+    {
+        waiting_for_ack = true;
+        should_send_entries = false;
+    }
+
     void clear() { *this = {}; }
 };
 
@@ -264,9 +295,15 @@ private:
     TraversableSessionHistory m_session_history;
     Web::HTML::VisibilityState m_system_visibility_state { Web::HTML::VisibilityState::Hidden };
     bool m_current_web_content_session_history_matches_mirror { false };
+    u64 m_next_traverse_history_step_cancelation_check_request_id { 0 };
+
+    // NB: The four members below together describe the single in-flight top-level history
+    //     operation: a navigation, a traversal, a UI-process history entry load, and/or the
+    //     WebContent seed serving it. A transition that begins or supersedes an operation must
+    //     decide the fate of all four; updating a subset leaves a superseded operation's state
+    //     armed, and a later IPC reply for that state will be misattributed to the new operation.
     Optional<PendingSessionHistoryNavigation> m_pending_session_history_navigation;
     Optional<PendingSessionHistoryTraversal> m_pending_session_history_traversal;
-    u64 m_next_traverse_history_step_cancelation_check_request_id { 0 };
     Optional<URL::URL> m_session_history_entry_url_loading_from_ui_process;
     PendingWebContentSessionHistorySeed m_pending_web_content_session_history_seed;
 };
