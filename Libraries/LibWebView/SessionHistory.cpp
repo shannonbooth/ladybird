@@ -76,9 +76,19 @@ static bool is_supported_current_entry_update_kind(Web::HTML::SessionHistoryEntr
     case Web::HTML::SessionHistoryEntryUpdateKind::NavigationAPIState:
     case Web::HTML::SessionHistoryEntryUpdateKind::ScrollRestorationMode:
     case Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending:
+    case Web::HTML::SessionHistoryEntryUpdateKind::DocumentStatePopulation:
         return true;
     }
     return false;
+}
+
+static void apply_document_state_population_update(Web::HTML::SessionHistoryDocumentStateDescriptor& document_state, Web::HTML::SessionHistoryDocumentStateDescriptor const& updated_document_state)
+{
+    document_state.history_policy_container = updated_document_state.history_policy_container;
+    document_state.request_referrer = updated_document_state.request_referrer;
+    document_state.origin = updated_document_state.origin;
+    document_state.resource = updated_document_state.resource;
+    document_state.ever_populated = updated_document_state.ever_populated;
 }
 
 static bool entry_matches_ignoring_targeted_field(TraversableSessionHistory::Entry const& stored_entry, TraversableSessionHistory::Entry const& updated_entry, Web::HTML::SessionHistoryEntryUpdateKind update_kind)
@@ -93,6 +103,9 @@ static bool entry_matches_ignoring_targeted_field(TraversableSessionHistory::Ent
         break;
     case Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending:
         expected_entry.document_state.reload_pending = stored_entry.document_state.reload_pending;
+        break;
+    case Web::HTML::SessionHistoryEntryUpdateKind::DocumentStatePopulation:
+        apply_document_state_population_update(expected_entry.document_state, stored_entry.document_state);
         break;
     }
     return Web::HTML::session_history_entry_descriptors_match(stored_entry, expected_entry);
@@ -110,8 +123,10 @@ static bool entry_has_target_document_state_identity(TraversableSessionHistory::
 
 static bool entry_should_receive_targeted_current_entry_update(TraversableSessionHistory::Entry const& entry, TraversableSessionHistory::Entry const& updated_entry, Web::HTML::SessionHistoryEntryUpdateKind update_kind)
 {
-    if (update_kind == Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending)
+    if (update_kind == Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending
+        || update_kind == Web::HTML::SessionHistoryEntryUpdateKind::DocumentStatePopulation) {
         return entry_has_target_document_state_identity(entry, updated_entry);
+    }
     return entry_has_target_identity(entry, updated_entry);
 }
 
@@ -126,6 +141,9 @@ static void apply_targeted_current_entry_update(TraversableSessionHistory::Entry
         break;
     case Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending:
         entry.document_state.reload_pending = updated_entry.document_state.reload_pending;
+        break;
+    case Web::HTML::SessionHistoryEntryUpdateKind::DocumentStatePopulation:
+        apply_document_state_population_update(entry.document_state, updated_entry.document_state);
         break;
     }
 }

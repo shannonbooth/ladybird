@@ -266,8 +266,10 @@ WebContentCurrentSessionHistoryEntryUpdateResult CanonicalTraversable::did_recei
     }
 
     auto web_content_session_history_matches_mirror_after_update = m_session_history.web_content_history_matches_mirror();
-    if (update_kind == Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending) {
-        // The UI process may optimistically mark reload-pending before WebContent confirms the same mutation.
+    if (update_kind == Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending
+        || update_kind == Web::HTML::SessionHistoryEntryUpdateKind::DocumentStatePopulation) {
+        // The UI process may optimistically mark reload-pending or track an unpopulated document state before
+        // WebContent confirms the same mutation.
         // Once the WebContent update is accepted and the known history state matches again, convergence is proven.
         m_current_web_content_session_history_matches_mirror = web_content_session_history_matches_mirror_after_update;
     } else {
