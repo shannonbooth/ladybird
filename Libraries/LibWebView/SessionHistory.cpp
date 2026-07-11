@@ -75,6 +75,7 @@ static bool is_supported_current_entry_update_kind(Web::HTML::SessionHistoryEntr
     switch (update_kind) {
     case Web::HTML::SessionHistoryEntryUpdateKind::NavigationAPIState:
     case Web::HTML::SessionHistoryEntryUpdateKind::ScrollRestorationMode:
+    case Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending:
         return true;
     }
     return false;
@@ -90,6 +91,9 @@ static bool entry_matches_ignoring_targeted_field(TraversableSessionHistory::Ent
     case Web::HTML::SessionHistoryEntryUpdateKind::ScrollRestorationMode:
         expected_entry.scroll_restoration_mode = stored_entry.scroll_restoration_mode;
         break;
+    case Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending:
+        expected_entry.document_state.reload_pending = stored_entry.document_state.reload_pending;
+        break;
     }
     return Web::HTML::session_history_entry_descriptors_match(stored_entry, expected_entry);
 }
@@ -97,6 +101,18 @@ static bool entry_matches_ignoring_targeted_field(TraversableSessionHistory::Ent
 static bool entry_has_target_identity(TraversableSessionHistory::Entry const& entry, TraversableSessionHistory::Entry const& updated_entry)
 {
     return entry.step == updated_entry.step && entry.document_state.id == updated_entry.document_state.id;
+}
+
+static bool entry_has_target_document_state_identity(TraversableSessionHistory::Entry const& entry, TraversableSessionHistory::Entry const& updated_entry)
+{
+    return entry.document_state.id == updated_entry.document_state.id;
+}
+
+static bool entry_should_receive_targeted_current_entry_update(TraversableSessionHistory::Entry const& entry, TraversableSessionHistory::Entry const& updated_entry, Web::HTML::SessionHistoryEntryUpdateKind update_kind)
+{
+    if (update_kind == Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending)
+        return entry_has_target_document_state_identity(entry, updated_entry);
+    return entry_has_target_identity(entry, updated_entry);
 }
 
 static void apply_targeted_current_entry_update(TraversableSessionHistory::Entry& entry, TraversableSessionHistory::Entry const& updated_entry, Web::HTML::SessionHistoryEntryUpdateKind update_kind)
@@ -107,6 +123,9 @@ static void apply_targeted_current_entry_update(TraversableSessionHistory::Entry
         break;
     case Web::HTML::SessionHistoryEntryUpdateKind::ScrollRestorationMode:
         entry.scroll_restoration_mode = updated_entry.scroll_restoration_mode;
+        break;
+    case Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending:
+        entry.document_state.reload_pending = updated_entry.document_state.reload_pending;
         break;
     }
 }
@@ -124,8 +143,10 @@ static SessionHistoryEntryMutationResult apply_targeted_current_entry_update(Vec
                 result.rejected = true;
                 continue;
             }
-            apply_targeted_current_entry_update(entry, updated_entry, update_kind);
         }
+
+        if (entry_should_receive_targeted_current_entry_update(entry, updated_entry, update_kind))
+            apply_targeted_current_entry_update(entry, updated_entry, update_kind);
 
         for (auto& nested_history : entry.document_state.nested_histories) {
             auto nested_result = apply_targeted_current_entry_update(nested_history.entries, updated_entry, update_kind);
@@ -535,8 +556,6 @@ void TraversableSessionHistory::replace_current_entry(URL::URL url, Web::HTML::C
 
 void TraversableSessionHistory::mark_current_entry_reload_pending()
 {
-    forget_web_content_state();
-
     auto current_top_level_entry_index = this->current_top_level_entry_index();
     if (!current_top_level_entry_index.has_value())
         return;

@@ -472,6 +472,80 @@ TEST_CASE(targeted_scroll_restoration_update_rejects_other_state_change)
     expect_entry_state(*current_entry, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
 }
 
+TEST_CASE(targeted_reload_pending_update_updates_same_document_entries)
+{
+    WebView::TraversableSessionHistory history;
+
+    auto initial_update_result = history.update_from_web_content({
+                                                                     entry(0, "https://a.example/"sv),
+                                                                     entry(1, "https://b.example/"sv),
+                                                                     entry(2, "https://c.example/"sv),
+                                                                     entry(3, "https://same-document.example/"sv, 6, "main"sv),
+                                                                     entry(5, "https://same-document.example/current"sv, 6, "main"sv),
+                                                                 },
+        { 0, 1, 2, 3, 5 }, 4);
+    EXPECT_EQ(initial_update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+
+    auto updated_entry = entry_with_reload_pending(5, "https://same-document.example/current"sv, 6, "main"sv, {});
+    EXPECT(history.update_current_entry_from_web_content(SessionHistoryEntryUpdateKind::DocumentStateReloadPending, move(updated_entry)));
+
+    auto* first_same_document_entry = history.entry_at(3);
+    VERIFY(first_same_document_entry);
+    EXPECT(first_same_document_entry->document_state.reload_pending);
+
+    auto* current_entry = history.current_entry();
+    VERIFY(current_entry);
+    EXPECT(current_entry->document_state.reload_pending);
+    EXPECT(history.web_content_history_matches_mirror());
+}
+
+TEST_CASE(targeted_reload_pending_update_clears_same_document_entries)
+{
+    WebView::TraversableSessionHistory history;
+
+    auto initial_update_result = history.update_from_web_content({
+                                                                     entry(0, "https://a.example/"sv),
+                                                                     entry(1, "https://b.example/"sv),
+                                                                     entry(2, "https://c.example/"sv),
+                                                                     entry_with_reload_pending(3, "https://same-document.example/"sv, 6, "main"sv, {}),
+                                                                     entry_with_reload_pending(5, "https://same-document.example/current"sv, 6, "main"sv, {}),
+                                                                 },
+        { 0, 1, 2, 3, 5 }, 4);
+    EXPECT_EQ(initial_update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+
+    auto updated_entry = entry(5, "https://same-document.example/current"sv, 6, "main"sv);
+    EXPECT(history.update_current_entry_from_web_content(SessionHistoryEntryUpdateKind::DocumentStateReloadPending, move(updated_entry)));
+
+    auto* first_same_document_entry = history.entry_at(3);
+    VERIFY(first_same_document_entry);
+    EXPECT(!first_same_document_entry->document_state.reload_pending);
+
+    auto* current_entry = history.current_entry();
+    VERIFY(current_entry);
+    EXPECT(!current_entry->document_state.reload_pending);
+    EXPECT(history.web_content_history_matches_mirror());
+}
+
+TEST_CASE(targeted_reload_pending_update_rejects_other_state_change)
+{
+    WebView::TraversableSessionHistory history;
+
+    auto initial_update_result = history.update_from_web_content({
+                                                                     entry(0, "https://a.example/"sv, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto),
+                                                                 },
+        { 0 }, 0);
+    EXPECT_EQ(initial_update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+
+    auto updated_entry = entry(0, "https://a.example/"sv, 1, 9, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
+    updated_entry.document_state.reload_pending = true;
+    EXPECT(!history.update_current_entry_from_web_content(SessionHistoryEntryUpdateKind::DocumentStateReloadPending, move(updated_entry)));
+
+    auto* current_entry = history.current_entry();
+    VERIFY(current_entry);
+    EXPECT(!current_entry->document_state.reload_pending);
+    expect_entry_state(*current_entry, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
+}
+
 TEST_CASE(targeted_nested_current_entry_update_updates_duplicate_nested_copies)
 {
     WebView::TraversableSessionHistory history;
@@ -1869,12 +1943,18 @@ TEST_CASE(mark_current_entry_reload_pending)
     auto current_entry = history.current_entry();
     VERIFY(current_entry);
     EXPECT(!current_entry->document_state.reload_pending);
+    EXPECT(history.web_content_history_matches_mirror());
 
     history.mark_current_entry_reload_pending();
 
     current_entry = history.current_entry();
     VERIFY(current_entry);
     EXPECT(current_entry->document_state.reload_pending);
+    EXPECT(!history.web_content_history_matches_mirror());
+
+    auto web_content_known_entries = history.web_content_known_entries();
+    EXPECT_EQ(web_content_known_entries.size(), 2uz);
+    EXPECT(!web_content_known_entries[1].document_state.reload_pending);
 }
 
 TEST_CASE(navigate_preserves_document_resource)

@@ -265,8 +265,15 @@ WebContentCurrentSessionHistoryEntryUpdateResult CanonicalTraversable::did_recei
         };
     }
 
-    m_current_web_content_session_history_matches_mirror = web_content_session_history_matched_mirror_before_update
-        && m_session_history.web_content_history_matches_mirror();
+    auto web_content_session_history_matches_mirror_after_update = m_session_history.web_content_history_matches_mirror();
+    if (update_kind == Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending) {
+        // The UI process may optimistically mark reload-pending before WebContent confirms the same mutation.
+        // Once the WebContent update is accepted and the known history state matches again, convergence is proven.
+        m_current_web_content_session_history_matches_mirror = web_content_session_history_matches_mirror_after_update;
+    } else {
+        m_current_web_content_session_history_matches_mirror = web_content_session_history_matched_mirror_before_update
+            && web_content_session_history_matches_mirror_after_update;
+    }
     return {
         .accepted = true,
         .dump_reason = "did-update-current-entry"sv,
