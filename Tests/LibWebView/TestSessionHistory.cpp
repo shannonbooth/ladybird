@@ -396,6 +396,82 @@ TEST_CASE(matching_snapshot_updates_session_history_entry_state)
     expect_entry_state(*current_entry, 3, 4, "key-b"sv, "id-b"sv, Web::HTML::ScrollRestorationMode::Manual);
 }
 
+TEST_CASE(targeted_current_entry_update_updates_navigation_api_state)
+{
+    WebView::TraversableSessionHistory history;
+
+    auto initial_update_result = history.update_from_web_content({
+                                                                     entry(0, "https://a.example/"sv, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto),
+                                                                 },
+        { 0 }, 0);
+    EXPECT_EQ(initial_update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+    EXPECT(history.web_content_history_matches_mirror());
+
+    auto updated_entry = entry(0, "https://a.example/"sv, 1, 9, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
+    EXPECT(history.update_current_entry_from_web_content(move(updated_entry)));
+
+    auto* current_entry = history.current_entry();
+    VERIFY(current_entry);
+    expect_entry_state(*current_entry, 1, 9, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
+    EXPECT(history.web_content_history_matches_mirror());
+}
+
+TEST_CASE(targeted_current_entry_update_rejects_structural_change)
+{
+    WebView::TraversableSessionHistory history;
+
+    auto initial_update_result = history.update_from_web_content({
+                                                                     entry(0, "https://a.example/"sv, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto),
+                                                                 },
+        { 0 }, 0);
+    EXPECT_EQ(initial_update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+
+    auto updated_entry = entry(0, "https://a.example/"sv, 1, 9, "key-b"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
+    EXPECT(!history.update_current_entry_from_web_content(move(updated_entry)));
+
+    auto* current_entry = history.current_entry();
+    VERIFY(current_entry);
+    expect_entry_state(*current_entry, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
+}
+
+TEST_CASE(targeted_nested_current_entry_update_updates_duplicate_nested_copies)
+{
+    WebView::TraversableSessionHistory history;
+
+    auto initial_update_result = history.update_from_web_content({
+                                                                     entry(0, "https://a.example/"sv),
+                                                                     entry(1, "https://b.example/"sv),
+                                                                     entry(2, "https://c.example/"sv),
+                                                                     entry(3, "https://nested.example/"sv, 6, "main"sv, {
+                                                                                                                            nested_history("frame-1"sv, {
+                                                                                                                                                            entry(3, "https://frame.example/a"sv, 7, ""sv),
+                                                                                                                                                            entry(4, "https://frame.example/b"sv, 8, ""sv),
+                                                                                                                                                        }),
+                                                                                                                        }),
+                                                                     entry(5, "https://nested.example/same-document"sv, 6, "main"sv, {
+                                                                                                                                         nested_history("frame-1"sv, {
+                                                                                                                                                                         entry(3, "https://frame.example/a"sv, 7, ""sv),
+                                                                                                                                                                         entry(4, "https://frame.example/b"sv, 8, ""sv),
+                                                                                                                                                                     }),
+                                                                                                                                     }),
+                                                                 },
+        { 0, 1, 2, 3, 4, 5 }, 5);
+    EXPECT_EQ(initial_update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+
+    auto updated_entry = entry(4, "https://frame.example/b"sv, 8, ""sv);
+    updated_entry.navigation_api_state = state_record(9);
+    EXPECT(history.update_current_entry_from_web_content(move(updated_entry)));
+
+    auto* first_same_document_entry = history.entry_at(3);
+    VERIFY(first_same_document_entry);
+    EXPECT(first_same_document_entry->document_state.nested_histories[0].entries[1].navigation_api_state == state_record(9));
+
+    auto* current_entry = history.current_entry();
+    VERIFY(current_entry);
+    EXPECT(current_entry->document_state.nested_histories[0].entries[1].navigation_api_state == state_record(9));
+    EXPECT(history.web_content_history_matches_mirror());
+}
+
 TEST_CASE(matching_snapshot_updates_session_history_entry_scroll_position)
 {
     WebView::TraversableSessionHistory history;
