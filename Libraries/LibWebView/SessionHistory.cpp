@@ -919,16 +919,16 @@ bool TraversableSessionHistory::update_current_entry_from_web_content(Web::HTML:
     return true;
 }
 
-void TraversableSessionHistory::did_seed_web_content_from_ui_process(size_t current_top_level_entry_index)
+void TraversableSessionHistory::record_web_content_seeded_from_ui_process(i32 current_step)
 {
-    VERIFY(current_top_level_entry_index < m_entries.size());
+    VERIFY(m_used_steps.contains_slow(current_step));
     m_web_content_known_entries = m_entries;
     m_web_content_known_used_steps = m_used_steps;
-    m_web_content_current_step = m_entries[current_top_level_entry_index].step;
+    m_web_content_current_step = current_step;
     m_web_content_uses_ui_step_coordinates = true;
 }
 
-bool TraversableSessionHistory::did_seed_web_content_from_ui_process(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index)
+bool TraversableSessionHistory::web_content_seed_ack_matches_current_mirror(Vector<Entry> const& entries, Vector<i32> const& used_steps, size_t current_used_step_index) const
 {
     if (m_entries.is_empty() || entries.is_empty() || used_steps.is_empty() || current_used_step_index >= used_steps.size() || !entries_are_valid(entries) || !steps_are_valid(used_steps) || !entries_and_used_steps_are_consistent(entries, used_steps))
         return false;
@@ -950,10 +950,6 @@ bool TraversableSessionHistory::did_seed_web_content_from_ui_process(Vector<Entr
     if (!seed_ack_entries_match(m_entries, entries, current_unknown_entry_index))
         return false;
 
-    m_web_content_known_entries = m_entries;
-    m_web_content_known_used_steps = m_used_steps;
-    m_web_content_current_step = used_steps[current_used_step_index];
-    m_web_content_uses_ui_step_coordinates = true;
     return true;
 }
 

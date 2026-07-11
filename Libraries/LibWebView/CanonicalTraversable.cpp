@@ -375,7 +375,7 @@ WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_cont
         return result;
     }
 
-    if (!m_session_history.did_seed_web_content_from_ui_process(move(entries), move(used_steps), current_used_step_index)) {
+    if (!m_session_history.web_content_seed_ack_matches_current_mirror(entries, used_steps, current_used_step_index)) {
         if (m_pending_web_content_session_history_seed.should_reseed_after_current_history_load) {
             m_pending_web_content_session_history_seed.waiting_for_ack = false;
             m_pending_web_content_session_history_seed.should_send_entries = true;
@@ -392,6 +392,8 @@ WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_cont
         result.dump_reason = "webcontent-session-history-seed-ack-mismatch"sv;
         return result;
     }
+
+    m_session_history.record_web_content_seeded_from_ui_process(used_steps[current_used_step_index]);
 
     m_pending_web_content_session_history_seed.waiting_for_ack = false;
     if (m_pending_web_content_session_history_seed.should_reseed_after_current_history_load) {
