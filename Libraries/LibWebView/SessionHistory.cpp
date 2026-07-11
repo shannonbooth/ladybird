@@ -8,6 +8,8 @@
 #include <AK/HashTable.h>
 #include <AK/NumericLimits.h>
 #include <AK/QuickSort.h>
+#include <LibIPC/Encoder.h>
+#include <LibIPC/Message.h>
 #include <LibWebView/SessionHistory.h>
 
 namespace WebView {
@@ -63,6 +65,19 @@ static bool entries_match(Vector<TraversableSessionHistory::Entry> const& a, Vec
         return false;
     }
     return true;
+}
+
+static constexpr u64 seed_ack_proof_offset_basis = 1469598103934665603ULL;
+static constexpr u64 seed_ack_proof_prime = 1099511628211ULL;
+
+static u64 compute_fnv1a_64(ReadonlyBytes bytes)
+{
+    auto hash = seed_ack_proof_offset_basis;
+    for (auto byte : bytes) {
+        hash ^= byte;
+        hash *= seed_ack_proof_prime;
+    }
+    return hash;
 }
 
 struct SessionHistoryEntryMutationResult {
@@ -917,6 +932,37 @@ bool TraversableSessionHistory::update_current_entry_from_web_content(Web::HTML:
     m_entries = move(entries);
     m_web_content_known_entries = move(web_content_known_entries);
     return true;
+}
+
+TraversableSessionHistory::SeedAckProof TraversableSessionHistory::compute_seed_ack_proof(Vector<Entry> const& entries, Vector<i32> const& used_steps, size_t current_used_step_index)
+{
+    auto normalized_entries = entries;
+    if (current_used_step_index < used_steps.size()) {
+        if (auto current_top_level_entry_index = top_level_entry_index_for_step(normalized_entries, used_steps[current_used_step_index]); current_top_level_entry_index.has_value()) {
+            // TEMPORARY: Preserve today's seed-ack contract while adding a compact proof. WebContent may synthesize
+            // default current-entry state during reconstruction, and the full snapshot validator still decides
+            // whether those differences are acceptable.
+            auto& current_entry = normalized_entries[*current_top_level_entry_index];
+            auto nested_histories = move(current_entry.document_state.nested_histories);
+            Web::HTML::SessionHistoryDocumentStateDescriptor document_state;
+            document_state.id = current_entry.document_state.id;
+            document_state.nested_histories = move(nested_histories);
+            current_entry.document_state = move(document_state);
+            current_entry.classic_history_api_state.clear();
+            current_entry.navigation_api_state.clear();
+            current_entry.navigation_api_key = {};
+            current_entry.navigation_api_id = {};
+            current_entry.scroll_position_data = {};
+        }
+    }
+
+    IPC::MessageBuffer buffer;
+    IPC::Encoder encoder { buffer };
+    MUST(encoder.encode("WebView::SessionHistorySeedAckProof-v2"sv));
+    MUST(encoder.encode(normalized_entries));
+    MUST(encoder.encode(used_steps));
+    MUST(encoder.encode(current_used_step_index));
+    return compute_fnv1a_64(buffer.data().span());
 }
 
 void TraversableSessionHistory::record_web_content_seeded_from_ui_process(i32 current_step)

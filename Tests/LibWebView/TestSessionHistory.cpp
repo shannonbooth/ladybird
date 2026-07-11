@@ -1586,6 +1586,24 @@ TEST_CASE(seed_ack_accepts_preserved_document_state_ids)
     EXPECT_EQ(history.web_content_current_step().value(), 0);
 }
 
+TEST_CASE(seed_ack_proof_tracks_seed_snapshot_identity)
+{
+    Vector<WebView::TraversableSessionHistory::Entry> seed_entries {
+        entry(0, "https://a.example/"sv, 1, "main"sv),
+        entry(1, "https://b.example/"sv, 2, "main"sv),
+    };
+    Vector<i32> seed_steps { 0, 1 };
+
+    auto proof = WebView::TraversableSessionHistory::compute_seed_ack_proof(seed_entries, seed_steps, 1);
+    EXPECT_EQ(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(seed_entries, seed_steps, 1));
+
+    auto entries_with_different_document_state_id = seed_entries;
+    entries_with_different_document_state_id[1].document_state.id = test_document_state_id(3);
+    EXPECT_NE(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(entries_with_different_document_state_id, seed_steps, 1));
+
+    EXPECT_NE(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(seed_entries, seed_steps, 0));
+}
+
 TEST_CASE(seed_ack_rejects_reconstructed_history_with_mismatched_state)
 {
     WebView::TraversableSessionHistory history;
