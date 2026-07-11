@@ -61,23 +61,26 @@ struct PendingWebContentSessionHistorySeed {
     bool ignore_updates_until_seed { false };
     bool waiting_for_ack { false };
     bool should_reseed_after_current_history_load { false };
-    Optional<i32> step_after_loading_top_level_entry;
+    // The history step WebContent must apply once it has accepted the seeded entries: a traversal
+    // target when the UI process drives the traversal, or a nested step to restore after a
+    // fallback load of the target's top-level entry.
+    Optional<i32> step_to_traverse_after_seed;
 
     // NB: Multi-field updates must go through the named transitions below. Each transition states
     //     which fields it preserves, so a transition that begins or supersedes a history operation
     //     cannot accidentally drop — or accidentally keep — another operation's seed state.
 
     // Forget any previous seed attempt entirely and arm a fresh send of the UI-owned entries.
-    void reset_to_send_entries(Optional<i32> step_to_restore_after_loading_top_level_entry)
+    void reset_to_send_entries(Optional<i32> step_to_traverse)
     {
         clear();
-        step_after_loading_top_level_entry = step_to_restore_after_loading_top_level_entry;
+        step_to_traverse_after_seed = step_to_traverse;
         should_send_entries = true;
         ignore_updates_until_seed = true;
     }
 
     // Arm another send of the UI-owned entries without forgetting the in-flight operation:
-    // step_after_loading_top_level_entry (a restore that must still happen once the entries are
+    // step_to_traverse_after_seed (a traversal that must still happen once the entries are
     // applied) and should_reseed_after_current_history_load (a pending post-load reseed) both
     // survive, and any stale ack is no longer awaited.
     void resend_entries()
@@ -102,8 +105,9 @@ struct PendingSessionHistoryTraversal {
         ApplyingInWebContent,
         CheckingCancelation,
         LoadingEntryFromUIProcess,
+        SeedingHistoryFromUIProcess,
         ReplacingWebContentProcess,
-        RestoringNestedStepAfterSeed,
+        ApplyingSeededHistoryStep,
     };
 
     i32 target_step { 0 };
@@ -175,6 +179,7 @@ enum class HistoryTraversalAction : u8 {
     TraverseInWebContent,
     CheckForCancelation,
     LoadCurrentEntryFromUIProcess,
+    SeedHistoryAndTraverseInWebContent,
 };
 
 struct HistoryTraversalDecision {
@@ -233,6 +238,10 @@ struct PageLoadPreparation {
     bool should_update_navigation_action_state { false };
 };
 
+struct WebContentCrashRecoveryPreparation {
+    bool should_restore_current_entry_from_ui_process { false };
+};
+
 class WEBVIEW_API CanonicalTraversable final
     : public CanonicalNavigable {
 public:
@@ -263,6 +272,7 @@ public:
     void prepare_for_non_history_page_load();
     void prepare_for_reload();
     void prepare_to_seed_web_content_session_history_from_ui_process();
+    void prepare_to_seed_web_content_session_history_from_ui_process_and_traverse_to_step(i32);
     WebContentSessionHistoryUpdateDecision did_receive_web_content_session_history_update(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url);
     WebContentSessionHistoryUpdateDecision did_receive_web_content_session_history_update_for_testing(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url);
     WebContentSessionHistorySeedAckResult did_receive_web_content_session_history_seed_ack(bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url);
@@ -272,13 +282,14 @@ public:
     RestorePendingSessionHistoryNavigationResult restore_pending_session_history_navigation();
     HistoryTraversalDecision traverse_the_history_by_delta(int delta, CheckForCancelation, URL::URL const& current_url, Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete);
     URL::URL prepare_to_load_session_history_traversal_target_from_ui_process(TraversableSessionHistory::TraversalTarget const&, URL::URL const& current_url);
+    URL::URL prepare_to_seed_session_history_and_traverse_to_step_from_ui_process(TraversableSessionHistory::TraversalTarget const&, URL::URL const& current_url);
     WebContentHistoryStepResult did_traverse_the_history_to_step(i32 step, bool step_was_available, Web::HTML::HistoryStepResult);
     HistoryStepCancelationCheckResult did_check_if_traverse_history_step_is_canceled(u64 request_id, i32 step, bool canceled);
     Optional<WebContentSessionHistorySeed> prepare_web_content_session_history_seed(bool allow_current_entry_reconstruction);
     CurrentSessionHistoryEntryLoad prepare_current_session_history_entry_load(URL::URL const& current_url);
     void did_send_web_content_session_history_seed();
     bool prepare_to_restore_current_session_history_entry_from_ui_process();
-    void did_crash_requiring_web_content_session_history_seed();
+    WebContentCrashRecoveryPreparation prepare_for_web_content_crash_recovery();
     void reset_session_history_for_testing();
     void mark_web_content_session_history_stale_for_testing();
 
@@ -287,8 +298,10 @@ public:
 
 private:
     void abandon_pending_web_content_session_history_seed();
+    void prepare_to_seed_web_content_session_history_from_ui_process(Optional<i32> step_to_traverse_after_seed);
+    void ensure_pending_session_history_traversal(TraversableSessionHistory::TraversalTarget const&, URL::URL const& current_url, PendingSessionHistoryTraversal::Stage);
     void remove_from_index(CanonicalNavigable&);
-    WebContentSessionHistoryUpdateResult update_session_history_from_web_content(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, bool pending_step_after_fallback_load_was_restored, bool seed_web_content_on_invalid_snapshot, URL::URL const& current_url);
+    WebContentSessionHistoryUpdateResult update_session_history_from_web_content(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, bool pending_step_to_traverse_after_seed_was_applied, bool seed_web_content_on_invalid_snapshot, URL::URL const& current_url);
     WebContentSessionHistoryUpdateResult adopt_web_content_session_history_after_rejected_seed(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url);
 
     HashMap<Web::HTML::NavigableId, WeakPtr<CanonicalNavigable>> m_navigable_index;
