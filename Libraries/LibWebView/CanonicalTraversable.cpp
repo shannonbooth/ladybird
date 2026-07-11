@@ -375,9 +375,16 @@ WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_cont
         return result;
     }
 
+    auto expected_ack_proof = m_pending_web_content_session_history_seed.expected_ack_proof;
+    Optional<i32> acknowledged_current_step;
+    if (current_used_step_index < used_steps.size())
+        acknowledged_current_step = used_steps[current_used_step_index];
+
     auto ack_snapshot_matches_current_mirror = m_session_history.web_content_seed_ack_matches_current_mirror(entries, used_steps, current_used_step_index);
-    auto ack_proof_matches_expected_seed = m_pending_web_content_session_history_seed.expected_ack_proof.has_value()
-        && *m_pending_web_content_session_history_seed.expected_ack_proof == seed_ack_proof;
+    auto ack_proof_matches_expected_seed = expected_ack_proof.has_value()
+        && expected_ack_proof->value == seed_ack_proof
+        && acknowledged_current_step.has_value()
+        && *acknowledged_current_step == expected_ack_proof->current_step;
     if (!ack_snapshot_matches_current_mirror || !ack_proof_matches_expected_seed) {
         if (m_pending_web_content_session_history_seed.should_reseed_after_current_history_load) {
             m_pending_web_content_session_history_seed.waiting_for_ack = false;
@@ -397,7 +404,7 @@ WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_cont
         return result;
     }
 
-    m_session_history.record_web_content_seeded_from_ui_process(used_steps[current_used_step_index]);
+    m_session_history.record_web_content_seeded_from_ui_process(expected_ack_proof->current_step);
 
     m_pending_web_content_session_history_seed.waiting_for_ack = false;
     m_pending_web_content_session_history_seed.expected_ack_proof.clear();
@@ -782,7 +789,10 @@ Optional<WebContentSessionHistorySeed> CanonicalTraversable::prepare_web_content
         return {};
     }
 
-    auto expected_ack_proof = TraversableSessionHistory::compute_seed_ack_proof(entries, used_steps, *current_used_step_index);
+    WebContentSessionHistorySeedAckProof expected_ack_proof {
+        .value = TraversableSessionHistory::compute_seed_ack_proof(entries, used_steps, *current_used_step_index),
+        .current_step = current_top_level_step,
+    };
 
     return WebContentSessionHistorySeed {
         .entries = move(entries),
@@ -792,7 +802,7 @@ Optional<WebContentSessionHistorySeed> CanonicalTraversable::prepare_web_content
     };
 }
 
-void CanonicalTraversable::did_send_web_content_session_history_seed(TraversableSessionHistory::SeedAckProof expected_ack_proof)
+void CanonicalTraversable::did_send_web_content_session_history_seed(WebContentSessionHistorySeedAckProof expected_ack_proof)
 {
     m_pending_web_content_session_history_seed.waiting_for_ack = true;
     m_pending_web_content_session_history_seed.should_send_entries = false;

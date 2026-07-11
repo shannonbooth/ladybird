@@ -7,6 +7,7 @@
 #include <LibTest/TestCase.h>
 #include <LibURL/Parser.h>
 #include <LibWeb/HTML/CrossProcessId.h>
+#include <LibWebView/CanonicalTraversable.h>
 #include <LibWebView/HistoryDebug.h>
 #include <LibWebView/SessionHistory.h>
 
@@ -1655,9 +1656,57 @@ TEST_CASE(seed_ack_proof_tracks_seed_snapshot_identity)
 
     auto entries_with_different_navigation_api_state = seed_entries;
     entries_with_different_navigation_api_state[1].navigation_api_state = state_record(9);
-    EXPECT_EQ(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(entries_with_different_navigation_api_state, seed_steps, 1));
+    EXPECT_EQ(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(entries_with_different_navigation_api_state, seed_steps, 1, &seed_entries[1]));
+
+    auto entries_with_different_classic_history_api_state = seed_entries;
+    entries_with_different_classic_history_api_state[1].classic_history_api_state = state_record(8);
+    EXPECT_EQ(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(entries_with_different_classic_history_api_state, seed_steps, 1, &seed_entries[1]));
+
+    auto seed_entries_with_state = seed_entries;
+    seed_entries_with_state[1].classic_history_api_state = state_record(3);
+    seed_entries_with_state[1].navigation_api_state = state_record(4);
+    auto proof_with_state = WebView::TraversableSessionHistory::compute_seed_ack_proof(seed_entries_with_state, seed_steps, 1);
+
+    auto entries_with_mismatched_classic_history_api_state = seed_entries_with_state;
+    entries_with_mismatched_classic_history_api_state[1].classic_history_api_state = state_record(5);
+    EXPECT_NE(proof_with_state, WebView::TraversableSessionHistory::compute_seed_ack_proof(entries_with_mismatched_classic_history_api_state, seed_steps, 1, &seed_entries_with_state[1]));
+
+    auto entries_with_mismatched_navigation_api_state = seed_entries_with_state;
+    entries_with_mismatched_navigation_api_state[1].navigation_api_state = state_record(6);
+    EXPECT_NE(proof_with_state, WebView::TraversableSessionHistory::compute_seed_ack_proof(entries_with_mismatched_navigation_api_state, seed_steps, 1, &seed_entries_with_state[1]));
 
     EXPECT_NE(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(seed_entries, seed_steps, 0));
+}
+
+TEST_CASE(seed_ack_rejects_pending_proof_for_different_current_step)
+{
+    WebView::CanonicalTraversable traversable;
+    auto update = traversable.did_receive_web_content_session_history_update({
+                                                                                 entry(0, "https://a.example/"sv, 1, "main"sv),
+                                                                                 entry(1, "https://b.example/"sv, 2, "main"sv),
+                                                                             },
+        { 0, 1 }, 1, parse_url("https://b.example/"sv));
+    EXPECT_EQ(update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+
+    traversable.prepare_to_seed_web_content_session_history_from_ui_process();
+    auto seed = traversable.prepare_web_content_session_history_seed(false);
+    VERIFY(seed.has_value());
+
+    auto seed_entries = seed->entries;
+    auto seed_steps = traversable.session_history().used_steps();
+    auto current_step = seed_entries[seed->current_top_level_entry_index].step;
+    auto current_used_step_index = seed_steps.find_first_index(current_step);
+    VERIFY(current_used_step_index.has_value());
+
+    auto expected_ack_proof = seed->expected_ack_proof;
+    expected_ack_proof.current_step = 0;
+    traversable.did_send_web_content_session_history_seed(expected_ack_proof);
+
+    auto ack = traversable.did_receive_web_content_session_history_seed_ack(true, move(seed_entries), move(seed_steps), *current_used_step_index, seed->expected_ack_proof.value, parse_url("https://b.example/"sv));
+    EXPECT_EQ(ack.dump_reason, "webcontent-session-history-seed-ack-mismatch"sv);
+    EXPECT(!traversable.current_web_content_session_history_matches_mirror());
+    EXPECT(traversable.session_history().web_content_known_entries().is_empty());
 }
 
 TEST_CASE(seed_ack_rejects_reconstructed_history_with_mismatched_state)
