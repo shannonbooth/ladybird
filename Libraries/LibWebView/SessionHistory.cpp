@@ -90,6 +90,7 @@ static bool is_supported_current_entry_update_kind(Web::HTML::SessionHistoryEntr
     switch (update_kind) {
     case Web::HTML::SessionHistoryEntryUpdateKind::NavigationAPIState:
     case Web::HTML::SessionHistoryEntryUpdateKind::ScrollRestorationMode:
+    case Web::HTML::SessionHistoryEntryUpdateKind::ScrollPositionData:
     case Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending:
     case Web::HTML::SessionHistoryEntryUpdateKind::DocumentStatePopulation:
         return true;
@@ -115,6 +116,9 @@ static bool entry_matches_ignoring_targeted_field(TraversableSessionHistory::Ent
         break;
     case Web::HTML::SessionHistoryEntryUpdateKind::ScrollRestorationMode:
         expected_entry.scroll_restoration_mode = stored_entry.scroll_restoration_mode;
+        break;
+    case Web::HTML::SessionHistoryEntryUpdateKind::ScrollPositionData:
+        expected_entry.scroll_position_data = stored_entry.scroll_position_data;
         break;
     case Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending:
         expected_entry.document_state.reload_pending = stored_entry.document_state.reload_pending;
@@ -153,6 +157,9 @@ static void apply_targeted_current_entry_update(TraversableSessionHistory::Entry
         break;
     case Web::HTML::SessionHistoryEntryUpdateKind::ScrollRestorationMode:
         entry.scroll_restoration_mode = updated_entry.scroll_restoration_mode;
+        break;
+    case Web::HTML::SessionHistoryEntryUpdateKind::ScrollPositionData:
+        entry.scroll_position_data = updated_entry.scroll_position_data;
         break;
     case Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending:
         entry.document_state.reload_pending = updated_entry.document_state.reload_pending;

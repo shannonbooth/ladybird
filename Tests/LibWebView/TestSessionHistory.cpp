@@ -489,6 +489,46 @@ TEST_CASE(targeted_scroll_restoration_update_rejects_other_state_change)
     expect_entry_state(*current_entry, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
 }
 
+TEST_CASE(targeted_current_entry_update_updates_scroll_position_data)
+{
+    WebView::TraversableSessionHistory history;
+
+    auto initial_entry = entry(0, "https://a.example/"sv, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
+    initial_entry.scroll_position_data.viewport_scroll_position = { 0, 100 };
+    auto initial_update_result = history.update_from_web_content({ initial_entry }, { 0 }, 0);
+    EXPECT_EQ(initial_update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+    EXPECT(history.web_content_history_matches_mirror());
+
+    auto updated_entry = initial_entry;
+    updated_entry.scroll_position_data.viewport_scroll_position = { 0, 300 };
+    EXPECT(history.update_current_entry_from_web_content(SessionHistoryEntryUpdateKind::ScrollPositionData, move(updated_entry)));
+
+    auto* current_entry = history.current_entry();
+    VERIFY(current_entry);
+    expect_entry_viewport_scroll_position(*current_entry, { 0, 300 });
+    EXPECT(history.web_content_history_matches_mirror());
+}
+
+TEST_CASE(targeted_scroll_position_update_rejects_other_state_change)
+{
+    WebView::TraversableSessionHistory history;
+
+    auto initial_entry = entry(0, "https://a.example/"sv, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
+    initial_entry.scroll_position_data.viewport_scroll_position = { 0, 100 };
+    auto initial_update_result = history.update_from_web_content({ initial_entry }, { 0 }, 0);
+    EXPECT_EQ(initial_update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+
+    auto updated_entry = initial_entry;
+    updated_entry.navigation_api_state = state_record(9);
+    updated_entry.scroll_position_data.viewport_scroll_position = { 0, 300 };
+    EXPECT(!history.update_current_entry_from_web_content(SessionHistoryEntryUpdateKind::ScrollPositionData, move(updated_entry)));
+
+    auto* current_entry = history.current_entry();
+    VERIFY(current_entry);
+    expect_entry_viewport_scroll_position(*current_entry, { 0, 100 });
+    expect_entry_state(*current_entry, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
+}
+
 TEST_CASE(targeted_reload_pending_update_updates_same_document_entries)
 {
     WebView::TraversableSessionHistory history;
