@@ -3214,12 +3214,12 @@ void LocalNavigable::reload(Optional<StorageSerializationRecord> navigation_api_
 
     // AD-HOC: Report the reload-pending document state to the UI process before the reload history step finishes,
     //         so the UI-owned session history mirror remains synchronized during an in-flight reload.
-    auto reload_pending_set_update_was_sent = report_current_session_history_entry_reload_pending_update(*traversable, *active_session_history_entry());
+    report_current_session_history_entry_reload_pending_update(*traversable, *active_session_history_entry());
 
     // 4. Append the following session history traversal steps to traversable:
-    traversable->append_session_history_traversal_steps(GC::create_function(heap(), [traversable, user_involvement, reload_pending_set_update_was_sent](NonnullRefPtr<Core::Promise<Empty>> signal) {
+    traversable->append_session_history_traversal_steps(GC::create_function(heap(), [traversable, user_involvement](NonnullRefPtr<Core::Promise<Empty>> signal) {
         // 1. Apply the reload history step to traversable given userInvolvement.
-        traversable->apply_the_reload_history_step(user_involvement, reload_pending_set_update_was_sent, GC::create_function(traversable->heap(), [signal](HistoryStepResult) {
+        traversable->apply_the_reload_history_step(user_involvement, GC::create_function(traversable->heap(), [signal](HistoryStepResult) {
             signal->resolve({});
         }));
     }));
