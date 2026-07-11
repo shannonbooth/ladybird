@@ -1703,8 +1703,9 @@ void ViewImplementation::seed_web_content_session_history_from_ui_process(AllowC
             history_log_entries(seed->entries, seed->current_top_level_entry_index));
     }
 
+    auto expected_ack_proof = seed->expected_ack_proof;
     client().async_set_top_level_session_history(page_id(), move(seed->entries), seed->current_top_level_entry_index, seed->allow_current_entry_reconstruction);
-    m_top_level_traversable.did_send_web_content_session_history_seed();
+    m_top_level_traversable.did_send_web_content_session_history_seed(expected_ack_proof);
     update_navigation_action_state();
     dump_session_history("sent-webcontent-session-history-seed"sv);
 }
@@ -1749,19 +1750,20 @@ NonnullRefPtr<Core::Promise<Empty>> ViewImplementation::reset_session_history_fo
     return *m_pending_session_history_reset_for_testing;
 }
 
-void ViewImplementation::did_set_top_level_session_history(Badge<WebContentClient>, bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index)
+void ViewImplementation::did_set_top_level_session_history(Badge<WebContentClient>, bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index, TraversableSessionHistory::SeedAckProof seed_ack_proof)
 {
     if (history_debug_enabled()) {
-        dbgln("[History] UI received WebContent session history seed ack page={} pid={} accepted={} current_used_step={} entries={} used_steps={}",
+        dbgln("[History] UI received WebContent session history seed ack page={} pid={} accepted={} current_used_step={} proof={} entries={} used_steps={}",
             page_id(),
             client().pid(),
             accepted,
             current_used_step_index,
+            seed_ack_proof,
             history_log_entries(entries),
             history_log_steps(used_steps, current_used_step_index));
     }
 
-    auto ack = m_top_level_traversable.did_receive_web_content_session_history_seed_ack(accepted, move(entries), move(used_steps), current_used_step_index, m_url);
+    auto ack = m_top_level_traversable.did_receive_web_content_session_history_seed_ack(accepted, move(entries), move(used_steps), current_used_step_index, seed_ack_proof, m_url);
     if (ack.ignored) {
         dump_session_history(ack.dump_reason);
         return;

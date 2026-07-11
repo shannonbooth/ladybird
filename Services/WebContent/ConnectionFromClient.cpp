@@ -82,6 +82,7 @@
 #include <LibWeb/Selection/Selection.h>
 #include <LibWebView/Attribute.h>
 #include <LibWebView/DictionaryLookup.h>
+#include <LibWebView/SessionHistory.h>
 #include <LibWebView/ViewImplementation.h>
 #include <WebContent/CompositorConnection.h>
 #include <WebContent/ConnectionFromClient.h>
@@ -356,9 +357,10 @@ void ConnectionFromClient::set_top_level_session_history(u64 page_id, Vector<Web
     if (auto page = this->page(page_id); page.has_value()) {
         auto accepted = page->page().top_level_traversable()->replace_top_level_session_history_entries_from_ui_process(move(entries), current_top_level_entry_index, allow_reconstructing_current_entry);
         auto session_history_snapshot = page->page().top_level_traversable()->create_session_history_snapshot();
-        async_did_set_top_level_session_history(page_id, accepted, move(session_history_snapshot.top_level_session_history_entries), move(session_history_snapshot.used_session_history_steps), session_history_snapshot.current_used_step_index);
+        auto seed_ack_proof = WebView::TraversableSessionHistory::compute_seed_ack_proof(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
+        async_did_set_top_level_session_history(page_id, accepted, move(session_history_snapshot.top_level_session_history_entries), move(session_history_snapshot.used_session_history_steps), session_history_snapshot.current_used_step_index, seed_ack_proof);
     } else {
-        async_did_set_top_level_session_history(page_id, false, {}, {}, 0);
+        async_did_set_top_level_session_history(page_id, false, {}, {}, 0, 0);
     }
 }
 
