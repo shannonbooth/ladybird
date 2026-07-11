@@ -102,6 +102,21 @@ static bool report_current_session_history_entry_reload_pending_update(LocalTrav
     return true;
 }
 
+static bool report_current_session_history_entry_scroll_position_update(LocalTraversableNavigable& traversable, SessionHistoryEntry const& entry)
+{
+    if (!traversable.page().client().should_report_session_history_updates())
+        return false;
+
+    if (!entry.step_value().has_value())
+        return false;
+
+    SessionHistoryEntryDescriptorCreationState creation_state { [&] {
+        return traversable.page().client().allocate_cross_process_id();
+    } };
+    traversable.page().client().page_did_update_current_session_history_entry(SessionHistoryEntryUpdateKind::ScrollPositionData, create_session_history_entry_descriptor(entry, creation_state));
+    return true;
+}
+
 struct NavigationParamsFetchStateHolder : public JS::Cell {
     GC_CELL(NavigationParamsFetchStateHolder, JS::Cell);
     GC_DECLARE_ALLOCATOR(NavigationParamsFetchStateHolder);
@@ -894,7 +909,7 @@ void LocalNavigable::activate_history_entry(RefPtr<SessionHistoryEntry> entry, G
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#save-persisted-state
-void LocalNavigable::save_persisted_state_to_active_session_history_entry()
+void LocalNavigable::save_persisted_state_to_active_session_history_entry(ReportCurrentEntryUpdate report_current_entry_update)
 {
     auto entry = active_session_history_entry();
     if (!entry)
@@ -904,7 +919,10 @@ void LocalNavigable::save_persisted_state_to_active_session_history_entry()
     //    restorable scrollable regions.
     auto scroll_position_data = entry->scroll_position_data();
     scroll_position_data.viewport_scroll_position = viewport_scroll_offset();
+    auto scroll_position_data_changed = scroll_position_data != entry->scroll_position_data();
     entry->set_scroll_position_data(move(scroll_position_data));
+    if (report_current_entry_update == ReportCurrentEntryUpdate::Yes && scroll_position_data_changed)
+        report_current_session_history_entry_scroll_position_update(*traversable_navigable(), *entry);
 
     // FIXME: 2. Optionally, update entry's persisted user state.
 }

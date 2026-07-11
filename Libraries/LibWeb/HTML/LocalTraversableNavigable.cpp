@@ -1636,7 +1636,7 @@ void ApplyHistoryStepState::enter_waiting_for_non_changing_jobs()
 LocalTraversableNavigable::SessionHistorySnapshot LocalTraversableNavigable::create_session_history_snapshot(SaveActiveEntryPersistedState save_active_entry_persisted_state)
 {
     if (save_active_entry_persisted_state == SaveActiveEntryPersistedState::Yes)
-        save_persisted_state_to_active_session_history_entry();
+        save_persisted_state_to_active_session_history_entry(LocalNavigable::ReportCurrentEntryUpdate::No);
 
     Vector<SessionHistoryEntryDescriptor> top_level_session_history_entries;
     top_level_session_history_entries.ensure_capacity(session_history_entries().size());
