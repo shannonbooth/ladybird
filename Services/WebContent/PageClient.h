@@ -82,6 +82,7 @@ public:
     };
     void request_webdriver_history_traversal(int delta, Function<void(WebDriverHistoryTraversalResult)>);
     void did_complete_webdriver_history_traversal(u64 request_id, bool accepted, bool will_replace_web_content_process, bool will_change_top_level_entry);
+    void notify_webdriver_window_replacement_started();
     Web::WebDriver::Response request_webdriver_load_url_from_ui(URL::URL const&);
     Web::WebDriver::Response request_webdriver_traverse_history_from_ui(int delta);
     Web::WebDriver::Response request_webdriver_mark_web_content_session_history_stale();

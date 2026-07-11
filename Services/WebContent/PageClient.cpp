@@ -1118,6 +1118,15 @@ void PageClient::did_complete_webdriver_history_traversal(u64 request_id, bool a
     });
 }
 
+void PageClient::notify_webdriver_window_replacement_started()
+{
+    // NB: WebDriver treats a WebContent connection closing without this notification as the window
+    //     closing, which ends the session. The UI process calls this on a WebContent process it is
+    //     about to replace so the WebDriver session survives the handoff to the replacement process.
+    if (m_webdriver)
+        m_webdriver->page_did_start_window_replacement({}, page().top_level_traversable()->window_handle());
+}
+
 Web::WebDriver::Response PageClient::request_webdriver_load_url_from_ui(URL::URL const& url)
 {
     return client().did_request_webdriver_load_url_from_ui(m_id, url);

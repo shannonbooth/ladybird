@@ -202,6 +202,12 @@ void ConnectionFromClient::connect_to_webdriver(u64 page_id, ByteString webdrive
     }
 }
 
+void ConnectionFromClient::notify_webdriver_window_replacement_started(u64 page_id)
+{
+    if (auto page = this->page(page_id); page.has_value())
+        page->notify_webdriver_window_replacement_started();
+}
+
 void ConnectionFromClient::complete_webdriver_navigation_completion(u64 page_id, u64 request_id, Web::WebDriver::Response response)
 {
     if (auto page = this->page(page_id); page.has_value())
