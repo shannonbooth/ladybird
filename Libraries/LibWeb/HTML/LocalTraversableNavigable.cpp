@@ -63,12 +63,11 @@ static bool report_current_session_history_entry_document_state_population_updat
     if (!entry.step_value().has_value())
         return false;
 
-    auto had_preexisting_document_state_id = entry.document_state()->cross_process_id().has_value();
     SessionHistoryEntryDescriptorCreationState creation_state { [&] {
         return traversable.page().client().allocate_cross_process_id();
     } };
     traversable.page().client().page_did_update_current_session_history_entry(SessionHistoryEntryUpdateKind::DocumentStatePopulation, create_session_history_entry_descriptor(entry, creation_state));
-    return had_preexisting_document_state_id;
+    return true;
 }
 
 LocalTraversableNavigable::LocalTraversableNavigable(GC::Ref<Page> page)
@@ -838,12 +837,6 @@ class ApplyHistoryStepState : public GC::Cell {
         NeedsFullSnapshot,
     };
 
-    enum class TemporaryTargetedDocumentStatePopulationUpdateState {
-        NotNeeded,
-        CoveredCompletion,
-        NeedsFullSnapshot,
-    };
-
 public:
     static constexpr int TIMEOUT_MS = 15000;
 
@@ -978,7 +971,7 @@ private:
     void note_reload_pending_clear_update_needed();
     void send_reload_pending_clear_update_if_needed();
     bool reload_pending_updates_covered_completion() const;
-    void note_document_state_population_update(LocalNavigable const&, bool update_only, bool targeted_update_can_cover_completion);
+    void note_document_state_population_update(LocalNavigable const&, bool update_only, bool update_was_sent);
     bool document_state_population_update_can_cover_completion(LocalNavigable const&, bool update_only) const;
     bool document_state_population_update_covered_completion() const;
     bool targeted_current_entry_updates_covered_completion() const;
@@ -1002,11 +995,8 @@ private:
     //        completion proof and we no longer need per-step fallback bookkeeping before
     //        suppressing the full snapshot.
     TemporaryTargetedReloadPendingUpdateState m_temporary_targeted_reload_pending_update_state { TemporaryTargetedReloadPendingUpdateState::NotNeeded };
-    // FIXME: Temporary bridge while document-state population after load moves from full
-    //        snapshots to targeted current-entry updates. Remove this once the UI-owned
-    //        session history entry is created with WebContent's stable document_state.id,
-    //        so completion no longer needs per-step fallback bookkeeping.
-    TemporaryTargetedDocumentStatePopulationUpdateState m_temporary_targeted_document_state_population_update_state { TemporaryTargetedDocumentStatePopulationUpdateState::NotNeeded };
+    bool m_document_state_population_update_covered_completion { false };
+    bool m_document_state_population_update_needs_full_snapshot { false };
     GC::Ref<Platform::Timer> m_timeout;
 
     Vector<GC::Ref<LocalNavigable>> m_changing_navigables;
@@ -1052,19 +1042,23 @@ bool ApplyHistoryStepState::reload_pending_updates_covered_completion() const
     return m_temporary_targeted_reload_pending_update_state == TemporaryTargetedReloadPendingUpdateState::CoveredCompletion;
 }
 
-void ApplyHistoryStepState::note_document_state_population_update(LocalNavigable const& navigable, bool update_only, bool targeted_update_can_cover_completion)
+void ApplyHistoryStepState::note_document_state_population_update(LocalNavigable const& navigable, bool update_only, bool update_was_sent)
 {
-    if (m_temporary_targeted_document_state_population_update_state != TemporaryTargetedDocumentStatePopulationUpdateState::NotNeeded) {
-        m_temporary_targeted_document_state_population_update_state = TemporaryTargetedDocumentStatePopulationUpdateState::NeedsFullSnapshot;
+    if (m_document_state_population_update_needs_full_snapshot)
+        return;
+
+    if (m_document_state_population_update_covered_completion) {
+        m_document_state_population_update_covered_completion = false;
+        m_document_state_population_update_needs_full_snapshot = true;
         return;
     }
 
-    if (!targeted_update_can_cover_completion || !document_state_population_update_can_cover_completion(navigable, update_only)) {
-        m_temporary_targeted_document_state_population_update_state = TemporaryTargetedDocumentStatePopulationUpdateState::NeedsFullSnapshot;
+    if (!update_was_sent || !document_state_population_update_can_cover_completion(navigable, update_only)) {
+        m_document_state_population_update_needs_full_snapshot = true;
         return;
     }
 
-    m_temporary_targeted_document_state_population_update_state = TemporaryTargetedDocumentStatePopulationUpdateState::CoveredCompletion;
+    m_document_state_population_update_covered_completion = true;
 }
 
 bool ApplyHistoryStepState::document_state_population_update_can_cover_completion(LocalNavigable const& navigable, bool update_only) const
@@ -1092,24 +1086,20 @@ bool ApplyHistoryStepState::document_state_population_update_can_cover_completio
 
 bool ApplyHistoryStepState::document_state_population_update_covered_completion() const
 {
-    return m_temporary_targeted_document_state_population_update_state == TemporaryTargetedDocumentStatePopulationUpdateState::CoveredCompletion;
+    return m_document_state_population_update_covered_completion;
 }
 
 bool ApplyHistoryStepState::targeted_current_entry_updates_covered_completion() const
 {
     auto reload_pending_update_is_involved = m_temporary_targeted_reload_pending_update_state != TemporaryTargetedReloadPendingUpdateState::NotNeeded;
-    auto document_state_population_update_is_involved = m_temporary_targeted_document_state_population_update_state != TemporaryTargetedDocumentStatePopulationUpdateState::NotNeeded;
 
-    if (!reload_pending_update_is_involved && !document_state_population_update_is_involved)
+    if (m_document_state_population_update_needs_full_snapshot)
         return false;
 
     if (reload_pending_update_is_involved && !reload_pending_updates_covered_completion())
         return false;
 
-    if (document_state_population_update_is_involved && !document_state_population_update_covered_completion())
-        return false;
-
-    return true;
+    return reload_pending_update_is_involved || document_state_population_update_covered_completion();
 }
 
 void ApplyHistoryStepState::start()
@@ -1536,8 +1526,8 @@ void ApplyHistoryStepState::process_continuations()
             }
 
             if (has_fresh_document) {
-                auto targeted_update_can_cover_completion = report_current_session_history_entry_document_state_population_update(*m_traversable, *target_entry);
-                note_document_state_population_update(*navigable, update_only, targeted_update_can_cover_completion);
+                auto update_was_sent = report_current_session_history_entry_document_state_population_update(*m_traversable, *target_entry);
+                note_document_state_population_update(*navigable, update_only, update_was_sent);
             }
 
             // 1. Let previousEntry be navigable's active session history entry.
