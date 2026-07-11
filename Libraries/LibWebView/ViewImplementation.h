@@ -423,7 +423,7 @@ protected:
     u64 page_id() const;
 
     void set_url(URL::URL);
-    void did_start_navigation(URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, bool is_redirect, Web::Bindings::NavigationHistoryBehavior);
+    void did_start_navigation(URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::HTML::CrossProcessId, bool is_redirect, Web::Bindings::NavigationHistoryBehavior);
     bool did_cancel_navigation(URL::URL const&);
     void did_finish_navigation(URL::URL const&);
     void set_loading_state(bool);

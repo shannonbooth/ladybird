@@ -2685,11 +2685,6 @@ void LocalNavigable::begin_navigation(NavigateParams params)
                     }
                 }
 
-                // AD-HOC: Tell the UI that we started loading.
-                if (is_top_level_traversable()) {
-                    active_browsing_context()->page().client().page_did_start_loading(navigation_id, url, document_resource, false, history_handling);
-                }
-
                 // AD-HOC: Subsequent steps will fail if the navigable doesn't have an active window.
                 if (!active_window()) {
                     set_delaying_load_events(false);
@@ -2725,6 +2720,13 @@ void LocalNavigable::begin_navigation(NavigateParams params)
 
                     // 2. Set documentState's about base URL to initiatorBaseURLSnapshot.
                     document_state->set_about_base_url(initiator_base_url_snapshot);
+                }
+
+                // AD-HOC: Tell the UI that we started loading.
+                if (is_top_level_navigation) {
+                    auto document_state_id = page_client.allocate_cross_process_id();
+                    document_state->set_cross_process_id(document_state_id);
+                    page_client.page_did_start_loading(navigation_id, url, document_resource, document_state_id, false, history_handling);
                 }
 
                 // 6. Let historyEntry be a new session history entry, with its URL set to url and its document state set to documentState.

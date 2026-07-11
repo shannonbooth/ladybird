@@ -1515,13 +1515,13 @@ void ViewImplementation::initialize_client(CreateNewClient create_new_client)
         client().async_did_connect_devtools_client(page_id());
 }
 
-void ViewImplementation::did_start_navigation(URL::URL const& url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, bool is_redirect, Web::Bindings::NavigationHistoryBehavior history_handling)
+void ViewImplementation::did_start_navigation(URL::URL const& url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::HTML::CrossProcessId document_state_id, bool is_redirect, Web::Bindings::NavigationHistoryBehavior history_handling)
 {
     set_loading_state(true);
     if (m_should_suppress_history_for_next_load || m_should_suppress_history_for_current_load)
         return;
 
-    auto result = m_top_level_traversable.did_start_navigation(url, move(document_resource), is_redirect, history_handling, m_is_showing_crash_page);
+    auto result = m_top_level_traversable.did_start_navigation(url, move(document_resource), document_state_id, is_redirect, history_handling, m_is_showing_crash_page);
     if (result.did_clear_crash_page)
         m_is_showing_crash_page = false;
     if (result.should_update_webdriver_pending_navigation_url && m_webdriver_pending_navigation_url.has_value())
