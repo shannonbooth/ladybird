@@ -1275,6 +1275,8 @@ static StringView session_history_entry_update_kind_to_string(Web::HTML::Session
         return "scroll-restoration-mode"sv;
     case Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending:
         return "document-state-reload-pending"sv;
+    case Web::HTML::SessionHistoryEntryUpdateKind::DocumentStatePopulation:
+        return "document-state-population"sv;
     }
     return "unknown"sv;
 }

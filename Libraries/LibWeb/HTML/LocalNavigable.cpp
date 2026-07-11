@@ -89,6 +89,9 @@ static void report_current_session_history_entry_reload_pending_update(LocalTrav
     if (!traversable.page().client().should_report_session_history_updates())
         return;
 
+    if (!entry.step_value().has_value())
+        return;
+
     traversable.save_persisted_state_to_active_session_history_entry();
 
     SessionHistoryEntryDescriptorCreationState creation_state { [&] {

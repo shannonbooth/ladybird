@@ -42,6 +42,7 @@ enum class SessionHistoryEntryUpdateKind : u8 {
     NavigationAPIState,
     ScrollRestorationMode,
     DocumentStateReloadPending,
+    DocumentStatePopulation,
 };
 
 struct SessionHistoryNestedHistoryDescriptor;
