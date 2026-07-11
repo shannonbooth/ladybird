@@ -3878,6 +3878,14 @@ void Document::completely_finish_loading()
     }
     m_completely_loaded_deferred = false;
 
+    // A restore of this document's persisted scroll position may have been deferred until the
+    // document was laid out; apply it now that the document has completely loaded.
+    if (m_viewport_scroll_position_to_restore_after_load.has_value()) {
+        auto viewport_scroll_position = m_viewport_scroll_position_to_restore_after_load.release_value();
+        navigable->perform_scroll_of_viewport_scrolling_box(viewport_scroll_position);
+        navigable->clamp_viewport_scroll_offset();
+    }
+
     ScopeGuard notify_observers = [this] {
         notify_each_document_observer([&](auto const& document_observer) {
             return document_observer.document_completely_loaded();
@@ -6269,8 +6277,10 @@ void Document::update_for_history_step_application(NonnullRefPtr<HTML::SessionHi
             VERIFY(!update_navigation_api || entries_for_navigation_api.has_value());
 
             // 2. Restore persisted state given entry.
+            // NB: This document is new, so it may not have loaded (and laid out) the content the
+            //     entry's scroll position points into yet.
             if (auto navigable = this->navigable())
-                navigable->restore_persisted_state_from_session_history_entry(*entry);
+                navigable->restore_persisted_state_from_session_history_entry(*entry, HTML::LocalNavigable::ScrollRestorationTiming::DeferUntilCompletelyLoaded);
 
             // 3. Initialize the navigation API entries for a new document given navigation, entriesForNavigationAPI, and entry.
             if (update_navigation_api)

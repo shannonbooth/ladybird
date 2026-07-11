@@ -556,6 +556,13 @@ public:
     HTML::DocumentReadyState readiness() const { return m_readiness; }
     void update_readiness(HTML::DocumentReadyState);
 
+    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#restore-scroll-position-data
+    // A scroll position restore that arrived before this document finished loading, deferred so it
+    // is not clamped against the not-yet-laid-out content. Any scroll performed before the deferred
+    // restore is applied supersedes it.
+    void set_viewport_scroll_position_to_restore_after_load(CSSPixelPoint position) { m_viewport_scroll_position_to_restore_after_load = position; }
+    void clear_viewport_scroll_position_to_restore_after_load() { m_viewport_scroll_position_to_restore_after_load.clear(); }
+
     String last_modified() const;
 
     [[nodiscard]] GC::Ptr<HTML::Window> window() const { return m_window; }
@@ -1469,6 +1476,8 @@ private:
     // https://html.spec.whatwg.org/multipage/document-lifecycle.html#completely-loaded-time
     Optional<AK::UnixDateTime> m_completely_loaded_time;
     bool m_completely_loaded_deferred { false };
+
+    Optional<CSSPixelPoint> m_viewport_scroll_position_to_restore_after_load;
 
     // https://html.spec.whatwg.org/multipage/dom.html#concept-document-navigation-id
     Optional<String> m_navigation_id;

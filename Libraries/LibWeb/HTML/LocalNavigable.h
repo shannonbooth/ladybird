@@ -120,9 +120,19 @@ public:
     RefPtr<SessionHistoryEntry> get_the_target_history_entry(int target_step) const;
     RefPtr<SessionHistoryEntry> get_the_target_history_entry_if_present(int target_step) const;
 
+    // The spec allows restoring scroll position data "at a later time". A restore targeting a
+    // document that is still loading its own contents must be deferred until the document has been
+    // laid out, or the offset is clamped away; a restore into an already-rendered document must
+    // happen immediately, because the spec sequences it before steps that scroll further (for
+    // example scrolling to the fragment).
+    enum class ScrollRestorationTiming : u8 {
+        Immediate,
+        DeferUntilCompletelyLoaded,
+    };
+
     void save_persisted_state_to_active_session_history_entry();
-    void restore_persisted_state_from_session_history_entry(SessionHistoryEntry const&);
-    void restore_scroll_position_data(SessionHistoryEntry const&);
+    void restore_persisted_state_from_session_history_entry(SessionHistoryEntry const&, ScrollRestorationTiming = ScrollRestorationTiming::Immediate);
+    void restore_scroll_position_data(SessionHistoryEntry const&, ScrollRestorationTiming = ScrollRestorationTiming::Immediate);
 
     virtual Utf16String target_name() const override;
 

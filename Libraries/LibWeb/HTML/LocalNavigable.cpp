@@ -892,7 +892,7 @@ void LocalNavigable::save_persisted_state_to_active_session_history_entry()
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#restore-persisted-user-state
-void LocalNavigable::restore_persisted_state_from_session_history_entry(SessionHistoryEntry const& entry)
+void LocalNavigable::restore_persisted_state_from_session_history_entry(SessionHistoryEntry const& entry, ScrollRestorationTiming scroll_restoration_timing)
 {
     // 1. If entry's scroll restoration mode is "auto", and entry's document's relevant global object's navigation
     //    API's suppress normal scroll restoration during ongoing navigation is false, then restore scroll position
@@ -900,7 +900,7 @@ void LocalNavigable::restore_persisted_state_from_session_history_entry(SessionH
     if (entry.scroll_restoration_mode() == ScrollRestorationMode::Auto) {
         if (auto window = active_window()) {
             if (!window->navigation()->suppress_normal_scroll_restoration_during_ongoing_navigation())
-                restore_scroll_position_data(entry);
+                restore_scroll_position_data(entry, scroll_restoration_timing);
         }
     }
 
@@ -909,13 +909,24 @@ void LocalNavigable::restore_persisted_state_from_session_history_entry(SessionH
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#restore-scroll-position-data
-void LocalNavigable::restore_scroll_position_data(SessionHistoryEntry const& entry)
+void LocalNavigable::restore_scroll_position_data(SessionHistoryEntry const& entry, ScrollRestorationTiming scroll_restoration_timing)
 {
     auto const& scroll_position_data = entry.scroll_position_data();
     if (!scroll_position_data.viewport_scroll_position.has_value())
         return;
 
     // FIXME: If the document has been scrolled by the user, return.
+
+    // A document populated by apply-the-history-step has its history step applied before it has
+    // finished loading; scrolling now would clamp the offset against the not-yet-laid-out content,
+    // so such restores are deferred until the document has completely loaded.
+    if (scroll_restoration_timing == ScrollRestorationTiming::DeferUntilCompletelyLoaded) {
+        if (auto document = active_document(); document && document->readiness() != DocumentReadyState::Complete) {
+            document->set_viewport_scroll_position_to_restore_after_load(*scroll_position_data.viewport_scroll_position);
+            return;
+        }
+    }
+
     perform_scroll_of_viewport_scrolling_box(*scroll_position_data.viewport_scroll_position);
     clamp_viewport_scroll_offset();
 }
@@ -3620,6 +3631,9 @@ void LocalNavigable::perform_scroll_of_viewport_scrolling_box(CSSPixelPoint new_
         scroll_offset_did_change();
 
         if (auto document = active_document()) {
+            // A scroll that lands before a deferred scroll position restore is applied supersedes
+            // the restore, whose position is stale now that the viewport has moved.
+            document->clear_viewport_scroll_position_to_restore_after_load();
             document->set_needs_repaint(Badge<HTML::LocalNavigable> {}, InvalidateDisplayList::No);
             document->set_needs_to_refresh_scroll_state(true);
             document->inform_all_viewport_clients_about_the_current_viewport_rect();
