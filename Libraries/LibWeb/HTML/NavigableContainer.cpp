@@ -103,6 +103,30 @@ void NavigableContainer::create_new_child_navigable()
     // 8. Initialize the navigable navigable given documentState and parentNavigable.
     navigable->initialize_navigable(document_state, parent_navigable, *document);
 
+    // AD-HOC: If the parent's document state already carries a nested history with no live navigable, this
+    //         child is the successor of the navigable that nested history described: the parent's document was
+    //         populated from a session history entry whose previous incarnation had child navigables (a history
+    //         traversal, or entries seeded from the UI process). Children are created in document order, matching
+    //         the order in which their predecessors created their nested histories, so adopt the first unclaimed
+    //         nested history's id. This must happen before the child's id is reported to the UI process below.
+    //         Children created after the document has completely loaded are new; they never adopt.
+    if (auto parent_active_entry = parent_navigable->active_session_history_entry(); parent_active_entry && !this->document().is_completely_loaded()) {
+        for (auto const& nested_history : parent_active_entry->document_state()->nested_histories()) {
+            auto nested_history_has_live_navigable = false;
+            for (auto& local_navigable : all_local_navigables()) {
+                if (local_navigable->id() == nested_history.id) {
+                    nested_history_has_live_navigable = true;
+                    break;
+                }
+            }
+            if (nested_history_has_live_navigable)
+                continue;
+
+            navigable->adopt_nested_history_id(nested_history.id);
+            break;
+        }
+    }
+
     // 9. Set element's content navigable to navigable.
     m_content_navigable = navigable;
 
@@ -123,6 +147,13 @@ void NavigableContainer::create_new_child_navigable()
 
         // 1-6. Append nestedHistory to parentDocState's nested histories.
         VERIFY(append_nested_history_for_child_navigable(*parent_navigable, *navigable, *history_entry));
+
+        // AD-HOC: A child that adopted its nested history is populated by the update for navigable
+        //         creation/destruction below, from the entry its adopted history describes for the current step.
+        //         That claim supersedes any navigations queued while the child awaited its session history entry,
+        //         in particular its initial src/srcdoc navigation.
+        if (navigable->nested_history_was_adopted_on_creation())
+            navigable->discard_pending_navigations({});
 
         // 7. Update for navigable creation/destruction given traversable
         traversable->update_for_navigable_creation_or_destruction(GC::create_function(traversable->heap(), [signal](HistoryStepResult) {

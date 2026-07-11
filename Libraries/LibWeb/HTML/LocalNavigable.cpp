@@ -563,6 +563,16 @@ Vector<NonnullRefPtr<SessionHistoryEntry>>* append_nested_history_for_child_navi
 
     history_entry.set_step((*target_step_entry_iterator)->step());
 
+    // AD-HOC: A child that adopted its nested history's id on creation reuses that nested history's entries;
+    //         the following update for navigable creation/destruction then applies the entry those describe for
+    //         the current step, restoring the child to the contents the history asked for.
+    if (child_navigable.nested_history_was_adopted_on_creation()) {
+        for (auto& nested_history : parent_doc_state->nested_histories()) {
+            if (nested_history.id == child_navigable.id())
+                return &nested_history.entries;
+        }
+    }
+
     DocumentState::NestedHistory nested_history {
         .id = child_navigable.id(),
         .entries { history_entry },

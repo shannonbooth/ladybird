@@ -78,6 +78,24 @@ public:
     void initialize_navigable(NonnullRefPtr<DocumentState> document_state, GC::Ptr<LocalNavigable> parent, GC::Ref<DOM::Document> document);
     void set_id_for_session_history_reconstruction(NavigableId id) { set_id(id); }
 
+    // AD-HOC: A child navigable created for a document whose document state already carries a nested history
+    //         without a live navigable is the successor of the navigable that nested history described: the
+    //         document was populated from a session history entry whose previous incarnation had children (a
+    //         history traversal, or entries seeded from the UI process). Such a child adopts the nested history's
+    //         id — and, with it, the session history the entry describes.
+    void adopt_nested_history_id(NavigableId id)
+    {
+        set_id(id);
+        m_nested_history_was_adopted_on_creation = true;
+    }
+    bool nested_history_was_adopted_on_creation() const { return m_nested_history_was_adopted_on_creation; }
+
+    // AD-HOC: When an adopted nested history claims this navigable's contents, navigations queued while the
+    //         navigable awaited its session history entry — such as its initial src/srcdoc navigation — are
+    //         superseded by the entry the history describes, matching the navigate algorithm's rule that a
+    //         traversal aborts the navigable's other ongoing navigations.
+    void discard_pending_navigations(Badge<NavigableContainer>) { m_pending_navigations.clear(); }
+
     void register_navigation_observer(Badge<NavigationObserver>, NavigationObserver&);
     void unregister_navigation_observer(Badge<NavigationObserver>, NavigationObserver&);
 
@@ -364,6 +382,8 @@ private:
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#is-closing
     bool m_closing { false };
+
+    bool m_nested_history_was_adopted_on_creation { false };
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#delaying-load-events-mode
     Optional<DOM::DocumentLoadEventDelayer> m_delaying_the_load_event;
