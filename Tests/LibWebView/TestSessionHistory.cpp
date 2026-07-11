@@ -933,6 +933,41 @@ TEST_CASE(traversal_target_for_top_level_step)
     EXPECT(traversal_target->changes_top_level_entry);
 }
 
+TEST_CASE(traversal_target_for_delta_resolves_relative_to_given_step)
+{
+    WebView::TraversableSessionHistory history;
+    history.navigate(parse_url("https://a.example/"sv));
+    history.navigate(parse_url("https://b.example/"sv));
+    history.navigate(parse_url("https://c.example/"sv));
+
+    auto target_a = history.traversal_target_for_delta_from_step(1, -1);
+    VERIFY(target_a.has_value());
+    EXPECT_EQ(target_a->target_step_index, 0uz);
+    EXPECT_EQ(target_a->target_step, 0);
+    VERIFY(target_a->target_top_level_entry);
+    EXPECT_EQ(target_a->target_top_level_entry->url, parse_url("https://a.example/"sv));
+
+    auto target_c = history.traversal_target_for_delta_from_step(1, 1);
+    VERIFY(target_c.has_value());
+    EXPECT_EQ(target_c->target_step_index, 2uz);
+    EXPECT_EQ(target_c->target_step, 2);
+    VERIFY(target_c->target_top_level_entry);
+    EXPECT_EQ(target_c->target_top_level_entry->url, parse_url("https://c.example/"sv));
+
+    // The step the delta resolves from does not have to be the current session history step.
+    auto equivalent_target = history.traversal_target_for_delta(-1);
+    auto target_from_current_step = history.traversal_target_for_delta_from_step(2, -1);
+    VERIFY(equivalent_target.has_value());
+    VERIFY(target_from_current_step.has_value());
+    EXPECT_EQ(target_from_current_step->target_step, equivalent_target->target_step);
+    EXPECT_EQ(target_from_current_step->target_step_index, equivalent_target->target_step_index);
+
+    EXPECT(!history.traversal_target_for_delta_from_step(0, -1).has_value());
+    EXPECT(!history.traversal_target_for_delta_from_step(2, 1).has_value());
+    EXPECT(!history.traversal_target_for_delta_from_step(1, 0).has_value());
+    EXPECT(!history.traversal_target_for_delta_from_step(7, -1).has_value());
+}
+
 TEST_CASE(traversal_target_for_nested_step_in_current_top_level_entry)
 {
     WebView::TraversableSessionHistory history;
