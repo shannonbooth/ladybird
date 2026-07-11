@@ -241,7 +241,7 @@ WebContentSessionHistoryUpdateDecision CanonicalTraversable::did_receive_web_con
     };
 }
 
-WebContentCurrentSessionHistoryEntryUpdateResult CanonicalTraversable::did_receive_web_content_current_entry_update(Web::HTML::SessionHistoryEntryDescriptor entry)
+WebContentCurrentSessionHistoryEntryUpdateResult CanonicalTraversable::did_receive_web_content_current_entry_update(Web::HTML::SessionHistoryEntryUpdateKind update_kind, Web::HTML::SessionHistoryEntryDescriptor entry)
 {
     if (m_pending_web_content_session_history_seed.waiting_for_ack)
         return { .dump_reason = "ignored-current-entry-update-before-ui-seed-ack"sv };
@@ -255,7 +255,7 @@ WebContentCurrentSessionHistoryEntryUpdateResult CanonicalTraversable::did_recei
     auto const web_content_session_history_matched_mirror_before_update = m_current_web_content_session_history_matches_mirror
         && m_session_history.web_content_history_matches_mirror();
 
-    if (!m_session_history.update_current_entry_from_web_content(move(entry))) {
+    if (!m_session_history.update_current_entry_from_web_content(update_kind, move(entry))) {
         m_current_web_content_session_history_matches_mirror = false;
         m_session_history.forget_web_content_state();
         return {

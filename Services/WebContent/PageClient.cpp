@@ -1083,9 +1083,9 @@ void PageClient::page_did_update_session_history(Vector<Web::HTML::SessionHistor
     client().async_did_update_session_history(m_id, entries, used_steps, current_used_step_index);
 }
 
-void PageClient::page_did_update_current_session_history_entry(Web::HTML::SessionHistoryEntryDescriptor const& entry)
+void PageClient::page_did_update_current_session_history_entry(Web::HTML::SessionHistoryEntryUpdateKind update_kind, Web::HTML::SessionHistoryEntryDescriptor const& entry)
 {
-    client().async_did_update_current_session_history_entry(m_id, entry);
+    client().async_did_update_current_session_history_entry(m_id, update_kind, entry);
 }
 
 String PageClient::page_did_request_ui_process_session_history_for_testing()

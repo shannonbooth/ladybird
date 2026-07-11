@@ -10,6 +10,8 @@
 #include <LibWebView/HistoryDebug.h>
 #include <LibWebView/SessionHistory.h>
 
+using Web::HTML::SessionHistoryEntryUpdateKind;
+
 static Web::HTML::CrossProcessId navigable_id(StringView id)
 {
     if (id == "frame-1"sv)
@@ -408,7 +410,7 @@ TEST_CASE(targeted_current_entry_update_updates_navigation_api_state)
     EXPECT(history.web_content_history_matches_mirror());
 
     auto updated_entry = entry(0, "https://a.example/"sv, 1, 9, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
-    EXPECT(history.update_current_entry_from_web_content(move(updated_entry)));
+    EXPECT(history.update_current_entry_from_web_content(SessionHistoryEntryUpdateKind::NavigationAPIState, move(updated_entry)));
 
     auto* current_entry = history.current_entry();
     VERIFY(current_entry);
@@ -427,7 +429,45 @@ TEST_CASE(targeted_current_entry_update_rejects_structural_change)
     EXPECT_EQ(initial_update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
 
     auto updated_entry = entry(0, "https://a.example/"sv, 1, 9, "key-b"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
-    EXPECT(!history.update_current_entry_from_web_content(move(updated_entry)));
+    EXPECT(!history.update_current_entry_from_web_content(SessionHistoryEntryUpdateKind::NavigationAPIState, move(updated_entry)));
+
+    auto* current_entry = history.current_entry();
+    VERIFY(current_entry);
+    expect_entry_state(*current_entry, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
+}
+
+TEST_CASE(targeted_current_entry_update_updates_scroll_restoration_mode)
+{
+    WebView::TraversableSessionHistory history;
+
+    auto initial_update_result = history.update_from_web_content({
+                                                                     entry(0, "https://a.example/"sv, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto),
+                                                                 },
+        { 0 }, 0);
+    EXPECT_EQ(initial_update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+    EXPECT(history.web_content_history_matches_mirror());
+
+    auto updated_entry = entry(0, "https://a.example/"sv, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Manual);
+    EXPECT(history.update_current_entry_from_web_content(SessionHistoryEntryUpdateKind::ScrollRestorationMode, move(updated_entry)));
+
+    auto* current_entry = history.current_entry();
+    VERIFY(current_entry);
+    expect_entry_state(*current_entry, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Manual);
+    EXPECT(history.web_content_history_matches_mirror());
+}
+
+TEST_CASE(targeted_scroll_restoration_update_rejects_other_state_change)
+{
+    WebView::TraversableSessionHistory history;
+
+    auto initial_update_result = history.update_from_web_content({
+                                                                     entry(0, "https://a.example/"sv, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto),
+                                                                 },
+        { 0 }, 0);
+    EXPECT_EQ(initial_update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+
+    auto updated_entry = entry(0, "https://a.example/"sv, 1, 9, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Manual);
+    EXPECT(!history.update_current_entry_from_web_content(SessionHistoryEntryUpdateKind::ScrollRestorationMode, move(updated_entry)));
 
     auto* current_entry = history.current_entry();
     VERIFY(current_entry);
@@ -460,7 +500,7 @@ TEST_CASE(targeted_nested_current_entry_update_updates_duplicate_nested_copies)
 
     auto updated_entry = entry(4, "https://frame.example/b"sv, 8, ""sv);
     updated_entry.navigation_api_state = state_record(9);
-    EXPECT(history.update_current_entry_from_web_content(move(updated_entry)));
+    EXPECT(history.update_current_entry_from_web_content(SessionHistoryEntryUpdateKind::NavigationAPIState, move(updated_entry)));
 
     auto* first_same_document_entry = history.entry_at(3);
     VERIFY(first_same_document_entry);

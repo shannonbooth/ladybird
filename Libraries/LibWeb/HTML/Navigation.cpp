@@ -51,7 +51,7 @@ static void report_current_session_history_entry_update_for_navigation_api_state
     SessionHistoryEntryDescriptorCreationState creation_state { [&] {
         return traversable->page().client().allocate_cross_process_id();
     } };
-    traversable->page().client().page_did_update_current_session_history_entry(create_session_history_entry_descriptor(entry, creation_state));
+    traversable->page().client().page_did_update_current_session_history_entry(SessionHistoryEntryUpdateKind::NavigationAPIState, create_session_history_entry_descriptor(entry, creation_state));
 }
 
 NavigationAPIMethodTracker::NavigationAPIMethodTracker(GC::Ref<Navigation> navigation,

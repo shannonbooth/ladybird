@@ -1266,18 +1266,30 @@ void ViewImplementation::did_update_session_history(Badge<WebContentClient>, Vec
     dump_session_history("did-update-session-history"sv);
 }
 
-void ViewImplementation::did_update_current_session_history_entry(Badge<WebContentClient>, Web::HTML::SessionHistoryEntryDescriptor entry)
+static StringView session_history_entry_update_kind_to_string(Web::HTML::SessionHistoryEntryUpdateKind update_kind)
+{
+    switch (update_kind) {
+    case Web::HTML::SessionHistoryEntryUpdateKind::NavigationAPIState:
+        return "navigation-api-state"sv;
+    case Web::HTML::SessionHistoryEntryUpdateKind::ScrollRestorationMode:
+        return "scroll-restoration-mode"sv;
+    }
+    return "unknown"sv;
+}
+
+void ViewImplementation::did_update_current_session_history_entry(Badge<WebContentClient>, Web::HTML::SessionHistoryEntryUpdateKind update_kind, Web::HTML::SessionHistoryEntryDescriptor entry)
 {
     if (history_debug_enabled()) {
         Vector<Web::HTML::SessionHistoryEntryDescriptor> entries;
         entries.append(entry);
-        dbgln("[History] UI received WebContent current session history entry update page={} pid={} entry={}",
+        dbgln("[History] UI received WebContent current session history entry update page={} pid={} update_kind={} entry={}",
             page_id(),
             client().pid(),
+            session_history_entry_update_kind_to_string(update_kind),
             history_log_entries(entries));
     }
 
-    auto update = m_top_level_traversable.did_receive_web_content_current_entry_update(move(entry));
+    auto update = m_top_level_traversable.did_receive_web_content_current_entry_update(update_kind, move(entry));
     if (update.should_request_session_history_update)
         client().async_request_session_history_update(page_id());
     if (update.should_update_navigation_action_state)
