@@ -38,6 +38,19 @@ namespace Web::HTML {
 
 GC_DEFINE_ALLOCATOR(LocalTraversableNavigable);
 
+static void report_current_session_history_entry_reload_pending_update(LocalTraversableNavigable& traversable, SessionHistoryEntry const& entry)
+{
+    if (!traversable.page().client().should_report_session_history_updates())
+        return;
+
+    traversable.save_persisted_state_to_active_session_history_entry();
+
+    SessionHistoryEntryDescriptorCreationState creation_state { [&] {
+        return traversable.page().client().allocate_cross_process_id();
+    } };
+    traversable.page().client().page_did_update_current_session_history_entry(SessionHistoryEntryUpdateKind::DocumentStateReloadPending, create_session_history_entry_descriptor(entry, creation_state));
+}
+
 LocalTraversableNavigable::LocalTraversableNavigable(GC::Ref<Page> page)
     : LocalNavigable(
           page,
@@ -2340,11 +2353,7 @@ void LocalTraversableNavigable::apply_the_reload_history_step(UserNavigationInvo
                 //     session history entry as an in-flight reload.
                 if (auto current_entry = current_session_history_entry(); current_entry && current_entry->document_state()->reload_pending()) {
                     current_entry->document_state()->set_reload_pending(false);
-
-                    if (page().client().should_report_session_history_updates()) {
-                        auto session_history_snapshot = create_session_history_snapshot();
-                        page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
-                    }
+                    report_current_session_history_entry_reload_pending_update(*this, *current_entry);
                 }
             }
             on_complete->function()(result);

@@ -84,6 +84,19 @@ namespace Web::HTML {
 
 GC_DEFINE_ALLOCATOR(LocalNavigable);
 
+static void report_current_session_history_entry_reload_pending_update(LocalTraversableNavigable& traversable, SessionHistoryEntry const& entry)
+{
+    if (!traversable.page().client().should_report_session_history_updates())
+        return;
+
+    traversable.save_persisted_state_to_active_session_history_entry();
+
+    SessionHistoryEntryDescriptorCreationState creation_state { [&] {
+        return traversable.page().client().allocate_cross_process_id();
+    } };
+    traversable.page().client().page_did_update_current_session_history_entry(SessionHistoryEntryUpdateKind::DocumentStateReloadPending, create_session_history_entry_descriptor(entry, creation_state));
+}
+
 struct NavigationParamsFetchStateHolder : public JS::Cell {
     GC_CELL(NavigationParamsFetchStateHolder, JS::Cell);
     GC_DECLARE_ALLOCATOR(NavigationParamsFetchStateHolder);
@@ -3183,10 +3196,7 @@ void LocalNavigable::reload(Optional<SerializationRecord> navigation_api_state, 
 
     // AD-HOC: Report the reload-pending document state to the UI process before the reload history step finishes,
     //         so the UI-owned session history mirror remains synchronized during an in-flight reload.
-    if (traversable->page().client().should_report_session_history_updates()) {
-        auto session_history_snapshot = traversable->create_session_history_snapshot();
-        traversable->page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
-    }
+    report_current_session_history_entry_reload_pending_update(*traversable, *active_session_history_entry());
 
     // 4. Append the following session history traversal steps to traversable:
     traversable->append_session_history_traversal_steps(GC::create_function(heap(), [traversable, user_involvement](NonnullRefPtr<Core::Promise<Empty>> signal) {

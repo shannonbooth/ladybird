@@ -1273,6 +1273,8 @@ static StringView session_history_entry_update_kind_to_string(Web::HTML::Session
         return "navigation-api-state"sv;
     case Web::HTML::SessionHistoryEntryUpdateKind::ScrollRestorationMode:
         return "scroll-restoration-mode"sv;
+    case Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending:
+        return "document-state-reload-pending"sv;
     }
     return "unknown"sv;
 }
