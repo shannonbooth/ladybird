@@ -50,6 +50,7 @@ public:
     size_t size() const { return m_entries.size(); }
     size_t used_step_count() const { return m_used_steps.size(); }
     Optional<size_t> current_used_step_index() const { return m_current_used_step_index; }
+    Optional<i32> current_step() const;
     Optional<size_t> current_top_level_entry_index() const;
 
     void clear();
@@ -93,6 +94,7 @@ public:
 
 private:
     [[nodiscard]] Optional<size_t> target_step_index_for_delta_from_index(size_t current_step_index, int delta) const;
+    void set_current_entry_document_state_reload_pending(bool);
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#tn-session-history-entries
     Vector<Entry> m_entries;

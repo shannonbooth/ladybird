@@ -535,7 +535,10 @@ void TraversableSessionHistory::mark_current_entry_reload_pending()
     // https://html.spec.whatwg.org/multipage/browsing-the-web.html#reload
     // Set navigable's active session history entry's document state's reload
     // pending to true.
-    m_entries[*current_top_level_entry_index].document_state.reload_pending = true;
+    // NB: Entries created by the same document share one document state, and WebContent reconstructs
+    //     that sharing from equal document state ids when seeded. Set the flag on every entry sharing
+    //     the current entry's document state, as setting it on the one shared object would.
+    set_current_entry_document_state_reload_pending(true);
 }
 
 void TraversableSessionHistory::clear_current_entry_reload_pending()
@@ -544,7 +547,30 @@ void TraversableSessionHistory::clear_current_entry_reload_pending()
     if (!current_top_level_entry_index.has_value())
         return;
 
-    m_entries[*current_top_level_entry_index].document_state.reload_pending = false;
+    set_current_entry_document_state_reload_pending(false);
+}
+
+void TraversableSessionHistory::set_current_entry_document_state_reload_pending(bool reload_pending)
+{
+    auto current_top_level_entry_index = this->current_top_level_entry_index();
+    VERIFY(current_top_level_entry_index.has_value());
+
+    auto& current_entry = m_entries[*current_top_level_entry_index];
+    current_entry.document_state.reload_pending = reload_pending;
+    if (current_entry.document_state.id == 0)
+        return;
+
+    for (auto& entry : m_entries) {
+        if (entry.document_state.id == current_entry.document_state.id)
+            entry.document_state.reload_pending = reload_pending;
+    }
+}
+
+Optional<i32> TraversableSessionHistory::current_step() const
+{
+    if (!m_current_used_step_index.has_value())
+        return {};
+    return m_used_steps[*m_current_used_step_index];
 }
 
 Optional<size_t> TraversableSessionHistory::current_top_level_entry_index() const
