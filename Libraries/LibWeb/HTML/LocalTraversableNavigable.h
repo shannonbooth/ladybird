@@ -78,7 +78,7 @@ public:
 
     void apply_the_traverse_history_step(int, GC::Ptr<SourceSnapshotParams>, GC::Ptr<LocalNavigable>, UserNavigationInvolvement, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete);
     void resume_applying_the_traverse_history_step(int, UserNavigationInvolvement, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete);
-    void apply_the_reload_history_step(UserNavigationInvolvement, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete);
+    void apply_the_reload_history_step(UserNavigationInvolvement, bool reload_pending_set_update_was_sent, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete);
     enum class SynchronousNavigation : bool {
         Yes,
         No,
@@ -163,7 +163,8 @@ private:
         GC::Ptr<DOM::Document> pending_document,
         GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable,
         Optional<String> expected_ongoing_navigation_id,
-        GC::Ref<OnApplyHistoryStepComplete> on_complete);
+        GC::Ref<OnApplyHistoryStepComplete> on_complete,
+        bool reload_pending_set_update_was_sent = false);
 
     void apply_the_history_step_after_unload_check(
         int step,
@@ -176,7 +177,8 @@ private:
         GC::Ptr<DOM::Document> pending_document,
         GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable,
         Optional<String> expected_ongoing_navigation_id,
-        GC::Ref<OnApplyHistoryStepComplete> on_complete);
+        GC::Ref<OnApplyHistoryStepComplete> on_complete,
+        bool reload_pending_set_update_was_sent = false);
 
     using OnHistoryStepPrechecksComplete = GC::Function<void(HistoryStepResult, int target_step, LocalNavigable::NavigationAPIAbortBehavior)>;
     void run_the_history_step_prechecks(
