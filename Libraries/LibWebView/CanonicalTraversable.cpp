@@ -334,13 +334,6 @@ WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_cont
     }
 
     if (!m_session_history.did_seed_web_content_from_ui_process(move(entries), move(used_steps), current_used_step_index)) {
-        if (m_pending_web_content_session_history_seed.should_reseed_after_current_history_load) {
-            m_pending_web_content_session_history_seed.resend_entries();
-            m_current_web_content_session_history_matches_mirror = false;
-            result.dump_reason = "webcontent-session-history-preload-seed-ack-mismatch"sv;
-            return result;
-        }
-
         abandon_pending_web_content_session_history_seed();
         m_current_web_content_session_history_matches_mirror = false;
         m_session_history.forget_web_content_state();
@@ -350,13 +343,6 @@ WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_cont
     }
 
     m_pending_web_content_session_history_seed.waiting_for_ack = false;
-    if (m_pending_web_content_session_history_seed.should_reseed_after_current_history_load) {
-        m_pending_web_content_session_history_seed.resend_entries();
-        m_current_web_content_session_history_matches_mirror = false;
-        result.dump_reason = "webcontent-session-history-preload-seed-ack"sv;
-        return result;
-    }
-
     m_pending_web_content_session_history_seed.ignore_updates_until_seed = false;
     m_current_web_content_session_history_matches_mirror = !m_pending_web_content_session_history_seed.step_to_traverse_after_seed.has_value()
         && !m_pending_session_history_navigation.has_value();
@@ -477,9 +463,7 @@ NavigationFinishResult CanonicalTraversable::did_finish_navigation(URL::URL cons
 
     if (auto const* current_entry = m_session_history.current_entry(); current_entry && current_entry->url == url) {
         m_session_history.clear_current_entry_reload_pending();
-        auto allow_current_entry_reconstruction = m_pending_web_content_session_history_seed.should_reseed_after_current_history_load;
-        m_pending_web_content_session_history_seed.should_reseed_after_current_history_load = false;
-        return { .should_seed_web_content = true, .allow_current_entry_reconstruction = allow_current_entry_reconstruction };
+        return { .should_seed_web_content = true };
     }
 
     // NB: The first finish notification from a fresh WebContent process can still report about:blank before the
@@ -584,28 +568,15 @@ HistoryTraversalDecision CanonicalTraversable::traverse_the_history_by_delta(int
         };
     }
 
-    // NB: A target step that is a top-level entry can be applied by WebContent from a seed of the UI-owned entries:
-    //     seed first, then have WebContent apply the traverse history step, which populates the target document from
-    //     the seeded entry. A nested-only target step still needs its top-level entry loaded first, because a fresh
-    //     seed carries no live child navigables to traverse.
-    if (target->target_step_is_top_level_entry) {
-        pending_traversal.stage = PendingSessionHistoryTraversal::Stage::SeedingHistoryFromUIProcess;
-        m_pending_session_history_traversal = move(pending_traversal);
-        prepare_to_seed_session_history_and_traverse_to_step_from_ui_process(*target, current_url_for_process_selection);
-        return {
-            .outcome = { .status = HistoryTraversalStatus::Started, .will_replace_web_content_process = will_replace_web_content_process, .will_change_top_level_entry = target->changes_top_level_entry },
-            .action = HistoryTraversalAction::SeedHistoryAndTraverseInWebContent,
-            .webdriver_pending_navigation_url = target->target_top_level_entry->url,
-            .webdriver_pending_navigation_completes_with_session_history_update = true,
-        };
-    }
-
-    pending_traversal.stage = PendingSessionHistoryTraversal::Stage::LoadingEntryFromUIProcess;
+    // NB: A UI-driven traversal seeds the UI-owned entries first, then has WebContent apply the traverse history
+    //     step, which populates the target — and, through nested history adoption, any child navigables the target
+    //     entry describes — from the seeded entries.
+    pending_traversal.stage = PendingSessionHistoryTraversal::Stage::SeedingHistoryFromUIProcess;
     m_pending_session_history_traversal = move(pending_traversal);
-    prepare_to_load_session_history_traversal_target_from_ui_process(*target, current_url);
+    prepare_to_seed_session_history_and_traverse_to_step_from_ui_process(*target, current_url_for_process_selection);
     return {
         .outcome = { .status = HistoryTraversalStatus::Started, .will_replace_web_content_process = will_replace_web_content_process, .will_change_top_level_entry = target->changes_top_level_entry },
-        .action = HistoryTraversalAction::LoadCurrentEntryFromUIProcess,
+        .action = HistoryTraversalAction::SeedHistoryAndTraverseInWebContent,
         .webdriver_pending_navigation_url = target->target_top_level_entry->url,
         .webdriver_pending_navigation_completes_with_session_history_update = true,
     };
@@ -626,18 +597,6 @@ void CanonicalTraversable::ensure_pending_session_history_traversal(TraversableS
     }
 
     m_pending_session_history_traversal->stage = stage;
-}
-
-URL::URL CanonicalTraversable::prepare_to_load_session_history_traversal_target_from_ui_process(TraversableSessionHistory::TraversalTarget const& target, URL::URL const& current_url)
-{
-    ensure_pending_session_history_traversal(target, current_url, PendingSessionHistoryTraversal::Stage::LoadingEntryFromUIProcess);
-
-    auto target_url = target.target_top_level_entry->url;
-    auto previous_session_history = m_session_history;
-    m_session_history.traverse_to(target.target_step_index);
-    prepare_to_seed_web_content_session_history_from_ui_process();
-    m_pending_session_history_navigation = PendingSessionHistoryNavigation { target_url, move(previous_session_history) };
-    return target_url;
 }
 
 URL::URL CanonicalTraversable::prepare_to_seed_session_history_and_traverse_to_step_from_ui_process(TraversableSessionHistory::TraversalTarget const& target, URL::URL const& current_url)
@@ -763,7 +722,7 @@ HistoryStepCancelationCheckResult CanonicalTraversable::did_check_if_traverse_hi
     };
 }
 
-Optional<WebContentSessionHistorySeed> CanonicalTraversable::prepare_web_content_session_history_seed(bool allow_current_entry_reconstruction)
+Optional<WebContentSessionHistorySeed> CanonicalTraversable::prepare_web_content_session_history_seed()
 {
     auto current_top_level_entry_index = m_session_history.current_top_level_entry_index();
     if (!current_top_level_entry_index.has_value()) {
@@ -781,33 +740,16 @@ Optional<WebContentSessionHistorySeed> CanonicalTraversable::prepare_web_content
         return {};
     }
 
-    auto is_restoring_traversal_target = m_pending_session_history_traversal.has_value()
-        && (m_pending_session_history_traversal->stage == PendingSessionHistoryTraversal::Stage::LoadingEntryFromUIProcess
-            || m_pending_session_history_traversal->stage == PendingSessionHistoryTraversal::Stage::SeedingHistoryFromUIProcess
-            || m_pending_session_history_traversal->stage == PendingSessionHistoryTraversal::Stage::ReplacingWebContentProcess
-            || m_pending_session_history_traversal->stage == PendingSessionHistoryTraversal::Stage::ApplyingSeededHistoryStep);
-    auto allow_reconstructing_current_entry = is_restoring_traversal_target
-        || m_pending_web_content_session_history_seed.step_to_traverse_after_seed.has_value()
-        || allow_current_entry_reconstruction;
-
     return WebContentSessionHistorySeed {
         .entries = move(entries),
         .current_top_level_entry_index = *current_top_level_entry_index,
-        .allow_current_entry_reconstruction = allow_reconstructing_current_entry,
+        .current_entry_will_be_populated_by_traversal = m_pending_web_content_session_history_seed.step_to_traverse_after_seed.has_value(),
     };
 }
 
 void CanonicalTraversable::did_send_web_content_session_history_seed()
 {
     m_pending_web_content_session_history_seed.mark_entries_sent();
-}
-
-bool CanonicalTraversable::prepare_to_restore_current_session_history_entry_from_ui_process()
-{
-    auto should_seed = !m_pending_web_content_session_history_seed.step_to_traverse_after_seed.has_value();
-    if (should_seed)
-        m_pending_web_content_session_history_seed.should_reseed_after_current_history_load = true;
-    return should_seed;
 }
 
 CurrentSessionHistoryEntryLoad CanonicalTraversable::prepare_current_session_history_entry_load(URL::URL const& current_url)
@@ -829,16 +771,43 @@ WebContentCrashRecoveryPreparation CanonicalTraversable::prepare_for_web_content
 {
     m_session_history_entry_url_loading_from_ui_process.clear();
 
-    // NB: A crash during a traversal to a top-level entry recovers by seeding the replacement process and having it
-    //     apply the traversal's target step, which populates the target document from the seeded entry. A nested-only
-    //     target step cannot recover that way — a fresh seed carries no live child navigables to traverse — so it
-    //     falls back to reloading the current entry like any other crash.
+    // NB: A crash during a traversal recovers by seeding the replacement process and having it apply the
+    //     traversal's target step, which populates the target — and, through nested history adoption, any child
+    //     navigables the target entry describes — from the seeded entries.
     if (m_pending_session_history_traversal.has_value()) {
-        if (auto target = m_session_history.traversal_target_for_step(m_pending_session_history_traversal->target_step); target.has_value() && target->target_step_is_top_level_entry) {
+        if (m_session_history.traversal_target_for_step(m_pending_session_history_traversal->target_step).has_value()) {
             m_pending_session_history_traversal->stage = PendingSessionHistoryTraversal::Stage::SeedingHistoryFromUIProcess;
-            prepare_to_seed_web_content_session_history_from_ui_process_and_traverse_to_step(target->target_step);
+            prepare_to_seed_web_content_session_history_from_ui_process_and_traverse_to_step(m_pending_session_history_traversal->target_step);
             return {};
         }
+    }
+
+    return prepare_to_seed_and_traverse_to_current_step();
+}
+
+WebContentCrashRecoveryPreparation CanonicalTraversable::prepare_to_reload_from_crash_page()
+{
+    m_session_history_entry_url_loading_from_ui_process.clear();
+
+    // NB: The traversal the crash interrupted, if any, was abandoned when the crash page loaded; reloading
+    //     restores the current entry, not the interrupted traversal's target.
+    m_pending_session_history_traversal.clear();
+
+    return prepare_to_seed_and_traverse_to_current_step();
+}
+
+WebContentCrashRecoveryPreparation CanonicalTraversable::prepare_to_seed_and_traverse_to_current_step()
+{
+    // NB: A replacement process recovers the current entry the same way a traversal restores a target: seed the
+    //     UI-owned entries, then have WebContent apply the current step, populating the current entry — and its
+    //     nested histories — from the seed. Recovering the current entry is a reload of it, so mark it reload
+    //     pending; applying the step then repopulates it even when that means resubmitting a POST resource,
+    //     which populate otherwise refuses. Only an empty history has nothing to seed; the current URL is then
+    //     reloaded outright.
+    if (auto current_step = m_session_history.current_step(); current_step.has_value()) {
+        m_session_history.mark_current_entry_reload_pending();
+        prepare_to_seed_web_content_session_history_from_ui_process_and_traverse_to_step(*current_step);
+        return {};
     }
 
     prepare_to_seed_web_content_session_history_from_ui_process();
@@ -878,8 +847,6 @@ StringView CanonicalTraversable::pending_session_history_traversal_stage_to_stri
         return "applying-in-webcontent"sv;
     case PendingSessionHistoryTraversal::Stage::CheckingCancelation:
         return "checking-cancelation"sv;
-    case PendingSessionHistoryTraversal::Stage::LoadingEntryFromUIProcess:
-        return "loading-entry-from-ui-process"sv;
     case PendingSessionHistoryTraversal::Stage::SeedingHistoryFromUIProcess:
         return "seeding-history-from-ui-process"sv;
     case PendingSessionHistoryTraversal::Stage::ReplacingWebContentProcess:

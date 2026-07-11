@@ -306,8 +306,15 @@ void ViewImplementation::reload()
         m_is_showing_crash_page = false;
         m_should_suppress_history_for_current_load = false;
         m_should_suppress_history_for_next_load = false;
-        m_top_level_traversable.prepare_to_seed_web_content_session_history_from_ui_process();
-        restore_current_session_history_entry_from_ui_process();
+        // NB: The crash page is a live document that is not part of the session history, so the current entry is
+        //     recovered the same way a crash is: a replacement process is seeded and traverses to the current step.
+        replace_web_content_process_for_top_level_traversal();
+        auto crash_recovery = m_top_level_traversable.prepare_to_reload_from_crash_page();
+        m_webdriver_pending_navigation_url = m_url;
+        m_webdriver_pending_navigation_completes_with_session_history_update = !crash_recovery.should_restore_current_entry_from_ui_process;
+        seed_web_content_session_history_from_ui_process();
+        if (crash_recovery.should_restore_current_entry_from_ui_process)
+            load_current_session_history_entry_from_ui_process();
         return;
     }
 
@@ -349,12 +356,6 @@ HistoryTraversalOutcome ViewImplementation::traverse_the_history_by_delta(
     case HistoryTraversalAction::CheckForCancelation:
         client().async_check_if_traverse_history_step_is_canceled(page_id(), *decision.cancelation_check_request_id, *decision.target_step);
         dump_session_history("traverse-fallback-check-cancelation"sv);
-        return decision.outcome;
-    case HistoryTraversalAction::LoadCurrentEntryFromUIProcess:
-        update_navigation_action_state();
-        set_url(*decision.webdriver_pending_navigation_url);
-        dump_session_history("traverse-fallback-load"sv);
-        load_current_session_history_entry_from_ui_process();
         return decision.outcome;
     case HistoryTraversalAction::SeedHistoryAndTraverseInWebContent:
         update_navigation_action_state();
@@ -1469,7 +1470,7 @@ void ViewImplementation::did_finish_navigation(URL::URL const& url)
 
     auto result = m_top_level_traversable.did_finish_navigation(url);
     if (result.should_seed_web_content)
-        seed_web_content_session_history_from_ui_process(result.allow_current_entry_reconstruction ? AllowCurrentEntryReconstruction::Yes : AllowCurrentEntryReconstruction::No);
+        seed_web_content_session_history_from_ui_process();
     else if (result.dump_reason.has_value())
         dump_session_history(*result.dump_reason);
 }
@@ -1602,7 +1603,6 @@ JsonValue ViewImplementation::webdriver_session_history() const
     serialized.set("waitingToSeedWebContent"sv, m_top_level_traversable.pending_web_content_session_history_seed().should_send_entries);
     serialized.set("waitingForWebContentSeedAck"sv, m_top_level_traversable.pending_web_content_session_history_seed().waiting_for_ack);
     serialized.set("ignoringWebContentUpdatesUntilSeed"sv, m_top_level_traversable.pending_web_content_session_history_seed().ignore_updates_until_seed);
-    serialized.set("reseedAfterCurrentHistoryLoad"sv, m_top_level_traversable.pending_web_content_session_history_seed().should_reseed_after_current_history_load);
     serialized.set("hasOnlyTopLevelUsedSteps"sv, m_top_level_traversable.session_history().has_only_top_level_used_steps());
     serialized.set("webContentUsesUIStepCoordinates"sv, m_top_level_traversable.session_history().web_content_uses_ui_step_coordinates());
     auto web_content_known_entries = m_top_level_traversable.session_history().web_content_known_entries();
@@ -1669,9 +1669,9 @@ void ViewImplementation::update_navigation_action_state()
     m_navigate_forward_action->set_enabled(m_top_level_traversable.session_history().can_go_forward());
 }
 
-void ViewImplementation::seed_web_content_session_history_from_ui_process(AllowCurrentEntryReconstruction allow_current_entry_reconstruction)
+void ViewImplementation::seed_web_content_session_history_from_ui_process()
 {
-    auto seed = m_top_level_traversable.prepare_web_content_session_history_seed(allow_current_entry_reconstruction == AllowCurrentEntryReconstruction::Yes);
+    auto seed = m_top_level_traversable.prepare_web_content_session_history_seed();
     if (!seed.has_value()) {
         update_navigation_action_state();
         dump_session_history("skip-webcontent-session-history-seed"sv);
@@ -1686,19 +1686,10 @@ void ViewImplementation::seed_web_content_session_history_from_ui_process(AllowC
             history_log_entries(seed->entries, seed->current_top_level_entry_index));
     }
 
-    client().async_set_top_level_session_history(page_id(), move(seed->entries), seed->current_top_level_entry_index, seed->allow_current_entry_reconstruction);
+    client().async_set_top_level_session_history(page_id(), move(seed->entries), seed->current_top_level_entry_index, false, seed->current_entry_will_be_populated_by_traversal);
     m_top_level_traversable.did_send_web_content_session_history_seed();
     update_navigation_action_state();
     dump_session_history("sent-webcontent-session-history-seed"sv);
-}
-
-void ViewImplementation::restore_current_session_history_entry_from_ui_process()
-{
-    m_webdriver_pending_navigation_url = m_url;
-    auto should_seed = m_top_level_traversable.prepare_to_restore_current_session_history_entry_from_ui_process();
-    if (should_seed)
-        seed_web_content_session_history_from_ui_process();
-    load_current_session_history_entry_from_ui_process();
 }
 
 void ViewImplementation::load_current_session_history_entry_from_ui_process()
@@ -1708,21 +1699,6 @@ void ViewImplementation::load_current_session_history_entry_from_ui_process()
         client().async_load_url(page_id(), load.url, load.history_handling);
     else
         client().async_load_url_with_document_resource(page_id(), load.url, load.document_resource, load.history_handling);
-}
-
-void ViewImplementation::load_session_history_traversal_target_from_ui_process(TraversableSessionHistory::TraversalTarget const& target, StringView dump_reason)
-{
-    auto target_url = m_top_level_traversable.prepare_to_load_session_history_traversal_target_from_ui_process(target, m_url);
-    update_navigation_action_state();
-
-    m_webdriver_pending_navigation_url = target_url;
-    // NB: A UI-process fallback traversal is only fully observable once the replacement WebContent process has
-    //     accepted the UI-owned history seed. Completing WebDriver at load finish would let tests, and callers doing
-    //     immediate history inspection, observe the fresh process before it has consumed the authoritative history.
-    m_webdriver_pending_navigation_completes_with_session_history_update = true;
-    set_url(target_url);
-    dump_session_history(dump_reason);
-    load_current_session_history_entry_from_ui_process();
 }
 
 void ViewImplementation::seed_session_history_and_traverse_to_step_from_ui_process(TraversableSessionHistory::TraversalTarget const& target, StringView dump_reason)
@@ -1743,16 +1719,6 @@ void ViewImplementation::seed_session_history_and_traverse_to_step_from_ui_proce
         replace_web_content_process_for_top_level_traversal();
     dump_session_history(dump_reason);
     seed_web_content_session_history_from_ui_process();
-}
-
-void ViewImplementation::restore_session_history_traversal_target_from_ui_process(TraversableSessionHistory::TraversalTarget const& target, StringView dump_reason)
-{
-    if (target.target_step_is_top_level_entry) {
-        seed_session_history_and_traverse_to_step_from_ui_process(target, dump_reason);
-        return;
-    }
-
-    load_session_history_traversal_target_from_ui_process(target, dump_reason);
 }
 
 NonnullRefPtr<Core::Promise<Empty>> ViewImplementation::reset_session_history_for_testing()
@@ -1811,7 +1777,7 @@ void ViewImplementation::did_traverse_the_history_to_step(Badge<WebContentClient
     }
 
     if (step_result.fallback_target.has_value()) {
-        restore_session_history_traversal_target_from_ui_process(*step_result.fallback_target, step_result.dump_reason);
+        seed_session_history_and_traverse_to_step_from_ui_process(*step_result.fallback_target, step_result.dump_reason);
         return;
     }
 
@@ -1845,7 +1811,7 @@ void ViewImplementation::did_check_if_traverse_history_step_is_canceled(
     if (check_result.target.has_value()) {
         if (check_result.on_cancelation_check_complete)
             check_result.on_cancelation_check_complete(move(check_result.outcome));
-        restore_session_history_traversal_target_from_ui_process(*check_result.target, check_result.dump_reason);
+        seed_session_history_and_traverse_to_step_from_ui_process(*check_result.target, check_result.dump_reason);
         return;
     }
 
@@ -1895,7 +1861,7 @@ void ViewImplementation::dump_session_history(StringView reason, SessionHistoryD
         pending_navigation_restore_mode = CanonicalTraversable::pending_session_history_navigation_web_content_restore_mode_to_string(m_top_level_traversable.pending_session_history_navigation()->web_content_restore_mode);
     }
 
-    dbgln("[History] UI session history page={} pid={} reason={} url='{}' webcontent_matches={} webcontent_uses_ui_steps={} loading_from_ui={} waiting_to_seed={} waiting_for_seed_ack={} ignore_until_seed={} reseed_after_current_load={} pending_webcontent_step={} pending_navigation_url={} pending_navigation_restore={} pending_traversal_target={} pending_traversal_stage={} webcontent_current_step={} back={} forward={} entries={} webcontent_known_entries={} webcontent_known_used_steps={}",
+    dbgln("[History] UI session history page={} pid={} reason={} url='{}' webcontent_matches={} webcontent_uses_ui_steps={} loading_from_ui={} waiting_to_seed={} waiting_for_seed_ack={} ignore_until_seed={} pending_webcontent_step={} pending_navigation_url={} pending_navigation_restore={} pending_traversal_target={} pending_traversal_stage={} webcontent_current_step={} back={} forward={} entries={} webcontent_known_entries={} webcontent_known_used_steps={}",
         page_id(),
         client().pid(),
         reason,
@@ -1906,7 +1872,6 @@ void ViewImplementation::dump_session_history(StringView reason, SessionHistoryD
         m_top_level_traversable.pending_web_content_session_history_seed().should_send_entries,
         m_top_level_traversable.pending_web_content_session_history_seed().waiting_for_ack,
         m_top_level_traversable.pending_web_content_session_history_seed().ignore_updates_until_seed,
-        m_top_level_traversable.pending_web_content_session_history_seed().should_reseed_after_current_history_load,
         m_top_level_traversable.pending_web_content_session_history_seed().step_to_traverse_after_seed,
         pending_navigation_url,
         pending_navigation_restore_mode,
@@ -1967,14 +1932,22 @@ void ViewImplementation::handle_web_content_process_crash(LoadErrorPage load_err
         builder.appendff("<p>The web page <a href=\"{}\">{}</a> has crashed.<br><br>You can reload the page to try again.</p>", escaped_url, escaped_url);
         builder.append(ERROR_HTML_FOOTER);
         load_crash_page_html(builder.string_view(), m_url);
-    } else if (crash_recovery.should_restore_current_entry_from_ui_process) {
-        m_should_suppress_history_for_current_load = false;
-        m_should_suppress_history_for_next_load = false;
-        restore_current_session_history_entry_from_ui_process();
     } else {
         m_should_suppress_history_for_current_load = false;
         m_should_suppress_history_for_next_load = false;
+        // NB: Crash recovery is only observable once the replacement process has consumed the seeded history
+        //     and applied the recovered step; WebDriver waits on that completion. A crash during a traversal
+        //     keeps that traversal's pending navigation instead.
+        if (!m_webdriver_pending_navigation_url.has_value()) {
+            m_webdriver_pending_navigation_url = m_url;
+            m_webdriver_pending_navigation_completes_with_session_history_update = true;
+        }
         seed_web_content_session_history_from_ui_process();
+        if (crash_recovery.should_restore_current_entry_from_ui_process) {
+            m_webdriver_pending_navigation_url = m_url;
+            m_webdriver_pending_navigation_completes_with_session_history_update = false;
+            load_current_session_history_entry_from_ui_process();
+        }
     }
 }
 
