@@ -1192,11 +1192,13 @@ void ApplyHistoryStepState::start()
                 if (!potentially_target_specific_source_snapshot_params)
                     potentially_target_specific_source_snapshot_params = navigable->active_document()->snapshot_source_snapshot_params();
 
-                // 5. Set targetEntry's document state's reload pending to false.
-                target_entry->document_state()->set_reload_pending(false);
-
-                // 6. Let allowPOST be targetEntry's document state's reload pending.
+                // 5. Let allowPOST be targetEntry's document state's reload pending.
                 auto allow_POST = target_entry->document_state()->reload_pending();
+
+                // 6. Set targetEntry's document state's reload pending to false.
+                // NB: This must happen after allowPOST snapshots the flag, or a reload-pending entry
+                //     with a POST resource can never be repopulated.
+                target_entry->document_state()->set_reload_pending(false);
 
                 // https://github.com/whatwg/html/issues/9869
                 // Population runs in a deferred task, during which sync navigations can mutate

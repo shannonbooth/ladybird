@@ -2298,6 +2298,12 @@ void LocalNavigable::populate_session_history_entry_document(
                 *initiator_origin,
                 user_involvement));
         }
+        // AD-HOC: None of the above apply to a fetch-scheme entry whose POST resource may not be resubmitted
+        //         (allowPOST is false); such an entry cannot be populated. Continue with null navigation params
+        //         so the caller's completion steps still run, instead of leaving the population hanging.
+        else {
+            wrap_navigation_params(NullOrError {});
+        }
     } else {
         wrap_navigation_params(move(navigation_params));
     }
