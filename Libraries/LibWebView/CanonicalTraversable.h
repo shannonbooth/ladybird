@@ -110,6 +110,8 @@ struct WebContentSessionHistoryUpdateDecision {
 struct WebContentSessionHistoryMutationResult {
     bool accepted { false };
     StringView dump_reason;
+    // When set, the UI-owned target entry must be loaded from the UI process instead.
+    Optional<TraversableSessionHistory::TraversalTarget> fallback_target {};
     bool should_request_session_history_update { false };
     bool should_update_navigation_action_state { false };
     Optional<URL::URL> current_url {};
@@ -177,7 +179,6 @@ struct WebContentHistoryStepResult {
     Optional<TraversableSessionHistory::TraversalTarget> fallback_target {};
     bool should_restore_pending_navigation { false };
     bool should_update_navigation_action_state { false };
-    Optional<URL::URL> current_url {};
     bool should_complete_webdriver_pending_navigation { false };
     bool should_update_webdriver_pending_navigation_to_current_url { false };
     bool should_reset_webdriver_pending_navigation_completion { false };

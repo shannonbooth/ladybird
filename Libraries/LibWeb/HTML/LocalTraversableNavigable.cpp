@@ -1986,6 +1986,8 @@ void ApplyHistoryStepState::complete()
     m_phase = Phase::Completed;
     m_timeout->stop();
 
+    auto completion_result = HistoryStepResult::Applied;
+
     // AD-HOC: Commit the target step only if no newer apply history step has committed one. A synchronous navigation
     //         jumping the queue while this step was paused has a newer target step; moving the current step back past
     //         it would let the next push assign a step number that an existing entry already holds.
@@ -2011,6 +2013,8 @@ void ApplyHistoryStepState::complete()
         auto applied_traversal_update_covered_completion = false;
         if (m_report_applied_traversal == LocalTraversableNavigable::ReportAppliedTraversal::Yes)
             applied_traversal_update_covered_completion = m_traversable->report_applied_session_history_traversal(used_target_step);
+        if (applied_traversal_update_covered_completion)
+            completion_result = HistoryStepResult::AppliedBySessionHistoryMutation;
 
         // Targeted mutations cover the simple completion paths that WebContent can prove back to the UI process. If
         // one of them covered this history-step completion, do not also send a full snapshot. The snapshot path below
@@ -2045,7 +2049,7 @@ void ApplyHistoryStepState::complete()
 
     // 21. Return "applied".
     if (m_on_complete)
-        m_on_complete->function()(HistoryStepResult::Applied);
+        m_on_complete->function()(completion_result);
 }
 
 void ApplyHistoryStepState::finish_without_applying()
@@ -2750,6 +2754,10 @@ void LocalTraversableNavigable::traverse_the_history_to_step(int step, GC::Ref<G
 
         apply_the_traverse_history_step(step, nullptr, nullptr, UserNavigationInvolvement::BrowserUI,
             GC::create_function(heap(), [signal, on_complete](HistoryStepResult result) {
+                if (result == HistoryStepResult::AppliedBySessionHistoryMutation) {
+                    signal->resolve({});
+                    return;
+                }
                 on_complete->function()(true, result);
                 signal->resolve({});
             }),
