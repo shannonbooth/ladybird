@@ -237,47 +237,39 @@ WebContentSessionHistoryUpdateDecision CanonicalTraversable::did_receive_web_con
     };
 }
 
-WebContentCurrentSessionHistoryEntryUpdateResult CanonicalTraversable::did_receive_web_content_current_entry_update(Web::HTML::SessionHistoryEntryUpdateKind update_kind, Web::HTML::SessionHistoryEntryDescriptor entry)
+WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation mutation)
 {
     if (m_pending_web_content_session_history_seed.waiting_for_ack)
-        return { .dump_reason = "ignored-current-entry-update-before-ui-seed-ack"sv };
+        return { .dump_reason = "ignored-session-history-mutation-before-ui-seed-ack"sv };
 
     if (m_pending_web_content_session_history_seed.ignore_updates_until_seed)
-        return { .dump_reason = "ignored-current-entry-update-before-ui-seed"sv };
+        return { .dump_reason = "ignored-session-history-mutation-before-ui-seed"sv };
 
     if (m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value())
-        return { .dump_reason = "ignored-current-entry-update-before-restored-history-step"sv };
+        return { .dump_reason = "ignored-session-history-mutation-before-restored-history-step"sv };
 
-    auto mutation_result = m_session_history.apply_web_content_mutation(
-        TraversableSessionHistory::WebContentMutation::current_entry_update(update_kind, move(entry)));
-    if (!mutation_result.accepted) {
-        m_session_history.forget_web_content_state();
+    if (mutation.mutation.has<Web::HTML::CurrentSessionHistoryEntryUpdate>()) {
+        auto current_entry_update = move(mutation.mutation.get<Web::HTML::CurrentSessionHistoryEntryUpdate>());
+        auto mutation_result = m_session_history.apply_web_content_mutation(
+            TraversableSessionHistory::WebContentMutation::current_entry_update(current_entry_update.update_kind, move(current_entry_update.entry)));
+        if (!mutation_result.accepted) {
+            m_session_history.forget_web_content_state();
+            return {
+                .dump_reason = "rejected-current-entry-update"sv,
+                .should_request_session_history_update = true,
+                .should_update_navigation_action_state = true,
+            };
+        }
+
         return {
-            .dump_reason = "rejected-current-entry-update"sv,
-            .should_request_session_history_update = true,
-            .should_update_navigation_action_state = true,
+            .accepted = true,
+            .dump_reason = "did-update-current-entry"sv,
         };
     }
 
-    return {
-        .accepted = true,
-        .dump_reason = "did-update-current-entry"sv,
-    };
-}
-
-WebContentSameDocumentSessionHistoryNavigationResult CanonicalTraversable::did_apply_top_level_web_content_same_document_navigation(Web::HTML::SessionHistoryEntryDescriptor entry, Optional<i32> replaced_step, i32 current_step)
-{
-    if (m_pending_web_content_session_history_seed.waiting_for_ack)
-        return { .dump_reason = "ignored-same-document-navigation-before-ui-seed-ack"sv };
-
-    if (m_pending_web_content_session_history_seed.ignore_updates_until_seed)
-        return { .dump_reason = "ignored-same-document-navigation-before-ui-seed"sv };
-
-    if (m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value())
-        return { .dump_reason = "ignored-same-document-navigation-before-restored-history-step"sv };
-
+    auto same_document_navigation = move(mutation.mutation.get<Web::HTML::SameDocumentSessionHistoryNavigation>());
     auto mutation_result = m_session_history.apply_web_content_mutation(
-        TraversableSessionHistory::WebContentMutation::top_level_same_document_navigation(move(entry), replaced_step, current_step));
+        TraversableSessionHistory::WebContentMutation::top_level_same_document_navigation(move(same_document_navigation.entry), same_document_navigation.replaced_step, same_document_navigation.current_step));
     if (!mutation_result.accepted) {
         m_session_history.forget_web_content_state();
         return {

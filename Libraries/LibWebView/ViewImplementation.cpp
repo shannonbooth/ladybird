@@ -1283,40 +1283,32 @@ static StringView session_history_entry_update_kind_to_string(Web::HTML::Session
     return "unknown"sv;
 }
 
-void ViewImplementation::did_update_current_session_history_entry(Badge<WebContentClient>, Web::HTML::SessionHistoryEntryUpdateKind update_kind, Web::HTML::SessionHistoryEntryDescriptor entry)
+void ViewImplementation::did_apply_session_history_mutation(Badge<WebContentClient>, Web::HTML::WebContentSessionHistoryMutation mutation)
 {
     if (history_debug_enabled()) {
-        Vector<Web::HTML::SessionHistoryEntryDescriptor> entries;
-        entries.append(entry);
-        dbgln("[History] UI received WebContent current session history entry update page={} pid={} update_kind={} entry={}",
-            page_id(),
-            client().pid(),
-            session_history_entry_update_kind_to_string(update_kind),
-            history_log_entries(entries));
+        if (mutation.mutation.has<Web::HTML::CurrentSessionHistoryEntryUpdate>()) {
+            auto const& current_entry_update = mutation.mutation.get<Web::HTML::CurrentSessionHistoryEntryUpdate>();
+            Vector<Web::HTML::SessionHistoryEntryDescriptor> entries;
+            entries.append(current_entry_update.entry);
+            dbgln("[History] UI received WebContent session history mutation page={} pid={} type=current-entry-update update_kind={} entry={}",
+                page_id(),
+                client().pid(),
+                session_history_entry_update_kind_to_string(current_entry_update.update_kind),
+                history_log_entries(entries));
+        } else {
+            auto const& same_document_navigation = mutation.mutation.get<Web::HTML::SameDocumentSessionHistoryNavigation>();
+            Vector<Web::HTML::SessionHistoryEntryDescriptor> entries;
+            entries.append(same_document_navigation.entry);
+            dbgln("[History] UI received WebContent session history mutation page={} pid={} type=top-level-same-document-navigation replaced_step={} current_step={} entry={}",
+                page_id(),
+                client().pid(),
+                same_document_navigation.replaced_step,
+                same_document_navigation.current_step,
+                history_log_entries(entries));
+        }
     }
 
-    auto update = m_top_level_traversable.did_receive_web_content_current_entry_update(update_kind, move(entry));
-    if (update.should_request_session_history_update)
-        client().async_request_session_history_update(page_id());
-    if (update.should_update_navigation_action_state)
-        update_navigation_action_state();
-    dump_session_history(update.dump_reason);
-}
-
-void ViewImplementation::did_apply_top_level_same_document_session_history_navigation(Badge<WebContentClient>, Web::HTML::SessionHistoryEntryDescriptor entry, Optional<i32> replaced_step, i32 current_step)
-{
-    if (history_debug_enabled()) {
-        Vector<Web::HTML::SessionHistoryEntryDescriptor> entries;
-        entries.append(entry);
-        dbgln("[History] UI received WebContent top-level same-document session history navigation page={} pid={} replaced_step={} current_step={} entry={}",
-            page_id(),
-            client().pid(),
-            replaced_step,
-            current_step,
-            history_log_entries(entries));
-    }
-
-    auto update = m_top_level_traversable.did_apply_top_level_web_content_same_document_navigation(move(entry), replaced_step, current_step);
+    auto update = m_top_level_traversable.did_receive_web_content_session_history_mutation(move(mutation));
     if (update.should_request_session_history_update)
         client().async_request_session_history_update(page_id());
     if (update.should_update_navigation_action_state)
