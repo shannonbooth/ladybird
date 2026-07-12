@@ -1288,16 +1288,11 @@ void ApplyHistoryStepState::queue_document_state_population_updates()
 
 void ApplyHistoryStepState::activate_same_document_navigation_update(LocalNavigable& navigable, SessionHistoryEntry& entry)
 {
-    if (!m_pending_same_document_navigation_mutation.has_value()) {
-        m_session_history_mutation_batch_failed = true;
-        return;
-    }
+    VERIFY(m_pending_same_document_navigation_mutation.has_value());
 
     auto update = m_pending_same_document_navigation_mutation.release_value();
-    if (update.navigable.ptr() != &navigable || update.entry.ptr() != &entry) {
-        m_session_history_mutation_batch_failed = true;
-        return;
-    }
+    VERIFY(update.navigable.ptr() == &navigable);
+    VERIFY(update.entry.ptr() == &entry);
 
     m_same_document_navigation_updates.append(move(update));
 }
@@ -1305,22 +1300,20 @@ void ApplyHistoryStepState::activate_same_document_navigation_update(LocalNaviga
 void ApplyHistoryStepState::queue_same_document_navigation_updates(i32 current_step)
 {
     auto updates = move(m_same_document_navigation_updates);
-    for (auto& update : updates)
-        queue_session_history_mutation(m_traversable->create_same_document_session_history_navigation_mutation(update, current_step));
+    for (auto& update : updates) {
+        auto mutation = m_traversable->create_same_document_session_history_navigation_mutation(update, current_step);
+        VERIFY(mutation.has_value());
+        m_session_history_mutation_batch.append(mutation.release_value());
+    }
 }
 
 void ApplyHistoryStepState::activate_cross_document_navigation_update(LocalNavigable& navigable, SessionHistoryEntry& entry)
 {
-    if (!m_pending_cross_document_navigation_mutation.has_value()) {
-        m_session_history_mutation_batch_failed = true;
-        return;
-    }
+    VERIFY(m_pending_cross_document_navigation_mutation.has_value());
 
     auto update = m_pending_cross_document_navigation_mutation.release_value();
-    if (update.navigable.ptr() != &navigable || update.entry.ptr() != &entry) {
-        m_session_history_mutation_batch_failed = true;
-        return;
-    }
+    VERIFY(update.navigable.ptr() == &navigable);
+    VERIFY(update.entry.ptr() == &entry);
 
     m_cross_document_navigation_updates.append(move(update));
 }
@@ -1328,8 +1321,11 @@ void ApplyHistoryStepState::activate_cross_document_navigation_update(LocalNavig
 void ApplyHistoryStepState::queue_cross_document_navigation_updates(i32 current_step)
 {
     auto updates = move(m_cross_document_navigation_updates);
-    for (auto& update : updates)
-        queue_session_history_mutation(m_traversable->create_cross_document_session_history_navigation_mutation(update, current_step));
+    for (auto& update : updates) {
+        auto mutation = m_traversable->create_cross_document_session_history_navigation_mutation(update, current_step);
+        VERIFY(mutation.has_value());
+        m_session_history_mutation_batch.append(mutation.release_value());
+    }
 }
 
 void ApplyHistoryStepState::queue_current_entry_nested_histories_update(i32 current_step)
@@ -1994,12 +1990,11 @@ void ApplyHistoryStepState::complete()
         if (!m_navigation_type.has_value())
             queue_current_entry_nested_histories_update(used_target_step);
 
-        auto session_history_mutation_failed = !send_session_history_mutation_batch(used_target_step);
+        auto session_history_mutation_needs_recovery = !send_session_history_mutation_batch(used_target_step);
 
-        // If WebContent cannot prove the targeted mutation, do not send a full completion snapshot here. Tell the UI
-        // process to mark its WebContent mirror state unproven and request an explicit snapshot through the existing
-        // recovery path instead.
-        if (session_history_mutation_failed)
+        // Remaining legacy mutation paths can still fail to materialize a targeted update. Keep that recovery path
+        // isolated from push/replace navigation mutations, which are operation-provided candidates and must exist.
+        if (session_history_mutation_needs_recovery)
             m_traversable->report_session_history_mutation_failure();
 
         VERIFY(m_traversable->m_session_history_entries.size() > 0);
