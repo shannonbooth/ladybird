@@ -1096,6 +1096,11 @@ void PageClient::page_did_apply_session_history_mutation(Web::HTML::WebContentSe
     client().async_did_apply_session_history_mutation(m_id, mutation);
 }
 
+void PageClient::page_did_apply_session_history_mutation_batch(Web::HTML::WebContentSessionHistoryMutationBatch const& batch)
+{
+    client().async_did_apply_session_history_mutation_batch(m_id, batch);
+}
+
 String PageClient::page_did_request_ui_process_session_history_for_testing()
 {
     return client().did_request_ui_process_session_history_for_testing(m_id);

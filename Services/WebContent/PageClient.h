@@ -243,6 +243,7 @@ private:
     virtual void page_did_fail_to_apply_session_history_mutation() override;
     virtual void page_did_update_session_history(Vector<Web::HTML::SessionHistoryEntryDescriptor> const&, Vector<i32> const& used_steps, size_t current_used_step_index) override;
     virtual void page_did_apply_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation const&) override;
+    virtual void page_did_apply_session_history_mutation_batch(Web::HTML::WebContentSessionHistoryMutationBatch const&) override;
     virtual String page_did_request_ui_process_session_history_for_testing() override;
     virtual String page_did_update_session_history_and_request_ui_process_session_history_for_testing(Vector<Web::HTML::SessionHistoryEntryDescriptor> const&, Vector<i32> const& used_steps, size_t current_used_step_index) override;
     virtual bool page_did_request_traverse_the_history_by_delta(int delta, Web::HistoryTraversalPrecheck) override;
