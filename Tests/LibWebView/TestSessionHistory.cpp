@@ -206,6 +206,13 @@ static bool apply_top_level_same_document_navigation(WebView::TraversableSession
         .accepted;
 }
 
+static bool apply_nested_same_document_navigation(WebView::TraversableSessionHistory& history, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor entry, Optional<i32> replaced_step, i32 current_step)
+{
+    return history.apply_web_content_mutation(
+                      WebView::TraversableSessionHistory::WebContentMutation::nested_same_document_navigation(parent_document_state_id, navigable_id, move(entry), replaced_step, current_step))
+        .accepted;
+}
+
 static bool apply_top_level_cross_document_navigation(WebView::TraversableSessionHistory& history, Web::HTML::SessionHistoryEntryDescriptor entry, i32 current_step)
 {
     return history.apply_web_content_mutation(
@@ -903,6 +910,96 @@ TEST_CASE(targeted_top_level_same_document_navigation_rejects_unproven_web_conte
     EXPECT(!apply_top_level_same_document_navigation(history, move(pushed_entry), {}, 2));
     EXPECT_EQ(history.size(), 2uz);
     expect_current_entry(history, 1, "https://b.example/"sv);
+}
+
+TEST_CASE(targeted_nested_same_document_navigation_appends_entry)
+{
+    WebView::TraversableSessionHistory history;
+    auto update_result = history.update_from_web_content({
+                                                             entry(0, "https://top.example/"sv, 1, "main"sv, {
+                                                                                                                 nested_history("frame-1"sv, {
+                                                                                                                                                 entry(0, "https://frame.example/"sv, 2, "frame"sv),
+                                                                                                                                             }),
+                                                                                                             }),
+                                                         },
+        { 0 }, 0);
+    EXPECT_EQ(update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+    EXPECT(history.web_content_history_matches_mirror());
+
+    auto pushed_entry = entry(1, "https://frame.example/#pushed"sv, 2, "frame"sv);
+    EXPECT(apply_nested_same_document_navigation(history, test_document_state_id(1), navigable_id("frame-1"sv), move(pushed_entry), {}, 1));
+
+    EXPECT_EQ(history.size(), 1uz);
+    EXPECT_EQ(history.used_step_count(), 2uz);
+    expect_used_step(history, 0, 0);
+    expect_used_step(history, 1, 1);
+    expect_current_entry(history, 0, "https://top.example/"sv);
+
+    auto* current_entry = history.current_entry();
+    VERIFY(current_entry);
+    expect_nested_history(*current_entry, 0, "frame-1"sv, 2);
+    expect_nested_entry(current_entry->document_state.nested_histories[0], 0, 0, "https://frame.example/"sv);
+    expect_nested_entry(current_entry->document_state.nested_histories[0], 1, 1, "https://frame.example/#pushed"sv);
+    EXPECT(history.web_content_history_matches_mirror());
+}
+
+TEST_CASE(accepted_nested_same_document_navigation_does_not_request_snapshot)
+{
+    WebView::CanonicalTraversable traversable;
+
+    auto initial_update = traversable.did_receive_web_content_session_history_update({
+                                                                                        entry(0, "https://top.example/"sv, 1, "main"sv, {
+                                                                                                                                            nested_history("frame-1"sv, {
+                                                                                                                                                                            entry(0, "https://frame.example/"sv, 2, "frame"sv),
+                                                                                                                                                                        }),
+                                                                                                                                        }),
+                                                                                    },
+        { 0 }, 0, parse_url("https://top.example/"sv));
+    EXPECT_EQ(initial_update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+
+    auto pushed_entry = entry(1, "https://frame.example/#pushed"sv, 2, "frame"sv);
+    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::nested_same_document_navigation({
+        .parent_document_state_id = test_document_state_id(1),
+        .navigable_id = navigable_id("frame-1"sv),
+        .entry = move(pushed_entry),
+        .replaced_step = {},
+        .current_step = 1,
+    }));
+    EXPECT(update.accepted);
+    EXPECT_EQ(update.dump_reason, "did-apply-nested-same-document-navigation"sv);
+    EXPECT(!update.should_request_session_history_update);
+    EXPECT(update.should_update_navigation_action_state);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+}
+
+TEST_CASE(rejected_nested_same_document_navigation_requests_snapshot)
+{
+    WebView::CanonicalTraversable traversable;
+
+    auto initial_update = traversable.did_receive_web_content_session_history_update({
+                                                                                        entry(0, "https://top.example/"sv, 1, "main"sv, {
+                                                                                                                                            nested_history("frame-1"sv, {
+                                                                                                                                                                            entry(0, "https://frame.example/"sv, 2, "frame"sv),
+                                                                                                                                                                        }),
+                                                                                                                                        }),
+                                                                                    },
+        { 0 }, 0, parse_url("https://top.example/"sv));
+    EXPECT_EQ(initial_update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+
+    auto pushed_entry = entry(1, "https://frame.example/#pushed"sv, 2, "frame"sv);
+    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::nested_same_document_navigation({
+        .parent_document_state_id = test_document_state_id(99),
+        .navigable_id = navigable_id("frame-1"sv),
+        .entry = move(pushed_entry),
+        .replaced_step = {},
+        .current_step = 1,
+    }));
+    EXPECT(!update.accepted);
+    EXPECT_EQ(update.dump_reason, "rejected-nested-same-document-navigation"sv);
+    EXPECT(update.should_request_session_history_update);
+    EXPECT(update.should_update_navigation_action_state);
+    EXPECT(!traversable.current_web_content_session_history_matches_mirror());
 }
 
 TEST_CASE(targeted_top_level_cross_document_navigation_proves_predicted_push)

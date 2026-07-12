@@ -106,6 +106,38 @@ bool LocalTraversableNavigable::report_top_level_same_document_session_history_n
     return true;
 }
 
+bool LocalTraversableNavigable::report_nested_same_document_session_history_navigation(LocalNavigable const& target_navigable, SessionHistoryEntry const& entry, Optional<i32> replaced_step, i32 current_step)
+{
+    if (!page().client().should_report_session_history_updates())
+        return false;
+
+    if (!entry.step_value().has_value())
+        return false;
+
+    auto parent = target_navigable.parent();
+    if (!parent)
+        return false;
+
+    auto parent_entry = as<LocalNavigable>(*parent).active_session_history_entry();
+    if (!parent_entry || !parent_entry->step_value().has_value())
+        return false;
+
+    save_persisted_state_to_active_session_history_entry(LocalNavigable::ReportCurrentEntryUpdate::No);
+
+    SessionHistoryEntryDescriptorCreationState creation_state { [&] {
+        return page().client().allocate_cross_process_id();
+    } };
+    auto parent_descriptor = create_session_history_entry_descriptor(*parent_entry, creation_state);
+    page().client().page_did_apply_session_history_mutation(WebContentSessionHistoryMutation::nested_same_document_navigation({
+        .parent_document_state_id = parent_descriptor.document_state.id,
+        .navigable_id = target_navigable.id(),
+        .entry = create_session_history_entry_descriptor(entry, creation_state),
+        .replaced_step = replaced_step,
+        .current_step = current_step,
+    }));
+    return true;
+}
+
 bool LocalTraversableNavigable::report_top_level_cross_document_session_history_navigation(SessionHistoryEntry const& entry, i32 current_step)
 {
     if (!page().client().should_report_session_history_updates())
@@ -2760,7 +2792,14 @@ bool LocalTraversableNavigable::try_to_synchronously_commit_same_document_naviga
             return true;
         }
 
-        report_structural_session_history_update(StructuralSessionHistoryUpdateReason::NestedSameDocumentNavigation);
+        Optional<i32> replaced_step;
+        if (entry_to_replace) {
+            auto entry_to_replace_step = entry_to_replace->step_value();
+            if (entry_to_replace_step.has_value())
+                replaced_step = *entry_to_replace_step;
+        }
+        if (!report_nested_same_document_session_history_navigation(*target_navigable, target_entry, replaced_step, m_current_session_history_step))
+            report_structural_session_history_update(StructuralSessionHistoryUpdateReason::NestedSameDocumentNavigation);
     }
 
     VERIFY(session_history_entries().size() > 0);
