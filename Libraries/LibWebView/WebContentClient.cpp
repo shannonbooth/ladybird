@@ -1822,10 +1822,10 @@ Messages::WebContentClient::DidRequestSiteIsolationProcessTreeForTestingResponse
     return { SiteIsolationManager::the().dump_process_tree(*this, page_id) };
 }
 
-void WebContentClient::did_set_top_level_session_history(u64 page_id, bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index, u64 seed_ack_proof)
+void WebContentClient::did_set_top_level_session_history(u64 page_id, bool accepted, i32 current_step, u64 seed_ack_proof)
 {
     if (auto view = view_for_page_id(page_id); view.has_value())
-        view->did_set_top_level_session_history({}, accepted, move(entries), move(used_steps), current_used_step_index, seed_ack_proof);
+        view->did_set_top_level_session_history({}, accepted, current_step, seed_ack_proof);
 }
 
 void WebContentClient::did_traverse_the_history_to_step(u64 page_id, i32 step, bool step_was_available, Web::HTML::HistoryStepResult result)

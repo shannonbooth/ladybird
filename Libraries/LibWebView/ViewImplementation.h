@@ -264,7 +264,7 @@ public:
 
     void did_apply_session_history_mutation(Badge<WebContentClient>, Web::HTML::WebContentSessionHistoryMutation);
     void did_apply_session_history_mutation_batch(Badge<WebContentClient>, Web::HTML::WebContentSessionHistoryMutationBatch);
-    void did_set_top_level_session_history(Badge<WebContentClient>, bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, TraversableSessionHistory::SeedAckProof);
+    void did_set_top_level_session_history(Badge<WebContentClient>, bool accepted, i32 current_step, TraversableSessionHistory::SeedAckProof);
     void did_traverse_the_history_to_step(Badge<WebContentClient>, i32 step, bool step_was_available, Web::HTML::HistoryStepResult);
     void did_check_if_traverse_history_step_is_canceled(
         Badge<WebContentClient>, u64 request_id, i32 step, bool canceled);

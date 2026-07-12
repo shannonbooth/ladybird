@@ -179,8 +179,7 @@ public:
     void clear_current_entry_reload_pending();
     UpdateResult update_from_web_content(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index);
     [[nodiscard]] WebContentMutationResult apply_web_content_mutation(WebContentMutation);
-    [[nodiscard]] static SeedAckProof compute_seed_ack_proof(Vector<Entry> const&, Vector<i32> const& used_steps, size_t current_used_step_index, Entry const* current_entry_seed_descriptor = nullptr);
-    [[nodiscard]] bool web_content_seed_ack_matches_current_mirror(Vector<Entry> const& entries, Vector<i32> const& used_steps, size_t current_used_step_index) const;
+    [[nodiscard]] static SeedAckProof compute_seed_ack_proof(Vector<Entry> const&, size_t current_top_level_entry_index);
     void record_web_content_seeded_from_ui_process(i32 current_step);
     void record_web_content_history_preserved();
     void forget_web_content_state();

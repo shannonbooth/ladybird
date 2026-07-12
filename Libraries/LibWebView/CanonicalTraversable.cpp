@@ -470,7 +470,7 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
     return batch_result;
 }
 
-WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_content_session_history_seed_ack(bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index, TraversableSessionHistory::SeedAckProof seed_ack_proof)
+WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_content_session_history_seed_ack(bool accepted, i32 current_step, TraversableSessionHistory::SeedAckProof seed_ack_proof)
 {
     if (!m_pending_web_content_session_history_seed.waiting_for_ack)
         return { .ignored = true, .dump_reason = "ignored-webcontent-session-history-seed-ack"sv };
@@ -487,16 +487,10 @@ WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_cont
     }
 
     auto expected_ack_proof = m_pending_web_content_session_history_seed.expected_ack_proof;
-    Optional<i32> acknowledged_current_step;
-    if (current_used_step_index < used_steps.size())
-        acknowledged_current_step = used_steps[current_used_step_index];
-
-    auto ack_snapshot_matches_current_mirror = m_session_history.web_content_seed_ack_matches_current_mirror(entries, used_steps, current_used_step_index);
     auto ack_proof_matches_expected_seed = expected_ack_proof.has_value()
         && expected_ack_proof->value == seed_ack_proof
-        && acknowledged_current_step.has_value()
-        && *acknowledged_current_step == expected_ack_proof->current_step;
-    if (!ack_snapshot_matches_current_mirror || !ack_proof_matches_expected_seed) {
+        && current_step == expected_ack_proof->current_step;
+    if (!ack_proof_matches_expected_seed) {
         if (m_pending_web_content_session_history_seed.should_reseed_after_current_history_load) {
             m_pending_web_content_session_history_seed.waiting_for_ack = false;
             m_pending_web_content_session_history_seed.should_send_entries = true;
@@ -887,7 +881,7 @@ Optional<WebContentSessionHistorySeed> CanonicalTraversable::prepare_web_content
     }
 
     WebContentSessionHistorySeedAckProof expected_ack_proof {
-        .value = TraversableSessionHistory::compute_seed_ack_proof(entries, used_steps, *current_used_step_index),
+        .value = TraversableSessionHistory::compute_seed_ack_proof(entries, *current_top_level_entry_index),
         .current_step = current_top_level_step,
     };
 

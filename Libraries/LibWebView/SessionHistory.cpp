@@ -319,57 +319,6 @@ static Optional<SameDocumentNavigationMutationResult> apply_top_level_same_docum
     };
 }
 
-static bool seed_ack_nested_histories_match(Vector<Web::HTML::SessionHistoryNestedHistoryDescriptor> const&, Vector<Web::HTML::SessionHistoryNestedHistoryDescriptor> const&, Optional<size_t>);
-
-static bool current_unknown_entry_seed_ack_matches(TraversableSessionHistory::Entry const& a, TraversableSessionHistory::Entry const& b)
-{
-    if (a.step != b.step || a.url != b.url)
-        return false;
-    if (a.document_state.id != b.document_state.id)
-        return false;
-    if (!a.classic_history_api_state.is_empty() && a.classic_history_api_state != b.classic_history_api_state)
-        return false;
-    if (!a.navigation_api_state.is_empty() && a.navigation_api_state != b.navigation_api_state)
-        return false;
-    if (!a.navigation_api_key.is_empty() && a.navigation_api_key != b.navigation_api_key)
-        return false;
-    if (!a.navigation_api_id.is_empty() && a.navigation_api_id != b.navigation_api_id)
-        return false;
-    if (a.scroll_restoration_mode != b.scroll_restoration_mode)
-        return false;
-    if (a.scroll_position_data.viewport_scroll_position.has_value() && a.scroll_position_data != b.scroll_position_data)
-        return false;
-    return seed_ack_nested_histories_match(a.document_state.nested_histories, b.document_state.nested_histories, {});
-}
-
-static bool seed_ack_entries_match(Vector<TraversableSessionHistory::Entry> const& a, Vector<TraversableSessionHistory::Entry> const& b, Optional<size_t> current_unknown_entry_index)
-{
-    if (a.size() != b.size())
-        return false;
-
-    for (size_t i = 0; i < a.size(); ++i) {
-        if (current_unknown_entry_index.has_value() && i == *current_unknown_entry_index && current_unknown_entry_seed_ack_matches(a[i], b[i]))
-            continue;
-        if (Web::HTML::session_history_entry_descriptors_match(a[i], b[i]))
-            continue;
-        return false;
-    }
-    return true;
-}
-
-static bool seed_ack_nested_histories_match(Vector<Web::HTML::SessionHistoryNestedHistoryDescriptor> const& a, Vector<Web::HTML::SessionHistoryNestedHistoryDescriptor> const& b, Optional<size_t> current_unknown_entry_index)
-{
-    if (a.size() != b.size())
-        return false;
-
-    for (size_t i = 0; i < a.size(); ++i) {
-        if (a[i].id == b[i].id && seed_ack_entries_match(a[i].entries, b[i].entries, current_unknown_entry_index))
-            continue;
-        return false;
-    }
-    return true;
-}
-
 static bool steps_match(Vector<i32> const& a, Vector<i32> const& b)
 {
     if (a.size() != b.size())
@@ -1609,34 +1558,15 @@ TraversableSessionHistory::WebContentMutationResult TraversableSessionHistory::a
     VERIFY_NOT_REACHED();
 }
 
-TraversableSessionHistory::SeedAckProof TraversableSessionHistory::compute_seed_ack_proof(Vector<Entry> const& entries, Vector<i32> const& used_steps, size_t current_used_step_index, Entry const* current_entry_seed_descriptor)
+TraversableSessionHistory::SeedAckProof TraversableSessionHistory::compute_seed_ack_proof(Vector<Entry> const& entries, size_t current_top_level_entry_index)
 {
-    auto normalized_entries = entries;
-    if (current_used_step_index < used_steps.size()) {
-        if (auto current_top_level_entry_index = top_level_entry_index_for_step(normalized_entries, used_steps[current_used_step_index]); current_top_level_entry_index.has_value()) {
-            // TEMPORARY: Preserve today's seed-ack contract while adding a compact proof. WebContent may synthesize
-            // default current-entry serialized state when the seed descriptor has no record, and the full snapshot
-            // validator still decides whether those differences are acceptable.
-            auto& current_entry = normalized_entries[*current_top_level_entry_index];
-            auto const& seed_entry = current_entry_seed_descriptor ? *current_entry_seed_descriptor : current_entry;
-            auto nested_histories = move(current_entry.document_state.nested_histories);
-            Web::HTML::SessionHistoryDocumentStateDescriptor document_state;
-            document_state.id = current_entry.document_state.id;
-            document_state.nested_histories = move(nested_histories);
-            current_entry.document_state = move(document_state);
-            if (seed_entry.classic_history_api_state.is_empty())
-                current_entry.classic_history_api_state.clear();
-            if (seed_entry.navigation_api_state.is_empty())
-                current_entry.navigation_api_state.clear();
-        }
-    }
+    VERIFY(current_top_level_entry_index < entries.size());
 
     IPC::MessageBuffer buffer;
     IPC::Encoder encoder { buffer };
-    MUST(encoder.encode("WebView::SessionHistorySeedAckProof-v5"sv));
-    MUST(encoder.encode(normalized_entries));
-    MUST(encoder.encode(used_steps));
-    MUST(encoder.encode(current_used_step_index));
+    MUST(encoder.encode("WebView::SessionHistorySeedAckProof-v6"sv));
+    MUST(encoder.encode(entries));
+    MUST(encoder.encode(current_top_level_entry_index));
     return compute_fnv1a_64(buffer.data().span());
 }
 
@@ -1653,31 +1583,6 @@ void TraversableSessionHistory::record_web_content_seeded_from_ui_process(i32 cu
 void TraversableSessionHistory::record_web_content_history_preserved()
 {
     m_web_content_history_match_is_proven = web_content_known_history_matches_mirror();
-}
-
-bool TraversableSessionHistory::web_content_seed_ack_matches_current_mirror(Vector<Entry> const& entries, Vector<i32> const& used_steps, size_t current_used_step_index) const
-{
-    if (m_entries.is_empty() || entries.is_empty() || used_steps.is_empty() || current_used_step_index >= used_steps.size() || !entries_are_valid(entries) || !steps_are_valid(used_steps) || !entries_and_used_steps_are_consistent(entries, used_steps))
-        return false;
-
-    auto current_top_level_entry_index = this->current_top_level_entry_index();
-    if (!current_top_level_entry_index.has_value())
-        return false;
-
-    if (used_steps[current_used_step_index] != m_entries[*current_top_level_entry_index].step)
-        return false;
-
-    if (!steps_match(m_used_steps, used_steps))
-        return false;
-
-    Optional<size_t> current_unknown_entry_index;
-    if (!m_entries[*current_top_level_entry_index].document_state.ever_populated)
-        current_unknown_entry_index = *current_top_level_entry_index;
-
-    if (!seed_ack_entries_match(m_entries, entries, current_unknown_entry_index))
-        return false;
-
-    return true;
 }
 
 bool TraversableSessionHistory::did_restore_web_content_to_current_step(i32 step)

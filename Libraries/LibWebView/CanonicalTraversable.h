@@ -238,7 +238,7 @@ public:
     void prepare_to_seed_web_content_session_history_from_ui_process();
     WebContentSessionHistoryMutationResult did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation);
     WebContentSessionHistoryMutationResult did_receive_web_content_session_history_mutation_batch(Web::HTML::WebContentSessionHistoryMutationBatch);
-    WebContentSessionHistorySeedAckResult did_receive_web_content_session_history_seed_ack(bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, TraversableSessionHistory::SeedAckProof);
+    WebContentSessionHistorySeedAckResult did_receive_web_content_session_history_seed_ack(bool accepted, i32 current_step, TraversableSessionHistory::SeedAckProof);
     NavigationStartResult did_start_navigation(URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::HTML::CrossProcessId document_state_id, bool is_redirect, Web::Bindings::NavigationHistoryBehavior, bool is_showing_crash_page);
     NavigationCancelResult did_cancel_navigation(URL::URL const&, bool has_webdriver_pending_navigation);
     NavigationFinishResult did_finish_navigation(URL::URL const&);
