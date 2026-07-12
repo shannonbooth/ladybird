@@ -1025,6 +1025,57 @@ bool TraversableSessionHistory::apply_top_level_same_document_navigation_from_we
     return true;
 }
 
+TraversableSessionHistory::WebContentMutationResult TraversableSessionHistory::apply_web_content_mutation(WebContentMutation mutation, bool web_content_history_match_was_previously_proven)
+{
+    switch (mutation.type) {
+    case WebContentMutationType::CurrentEntryUpdate: {
+        auto const matched_mirror_before_mutation = web_content_history_match_was_previously_proven && web_content_history_matches_mirror();
+        if (!update_current_entry_from_web_content(mutation.current_entry_update_kind, move(mutation.entry)))
+            return {};
+
+        auto const matches_mirror_after_mutation = web_content_history_matches_mirror();
+        if (mutation.current_entry_update_kind == Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending
+            || mutation.current_entry_update_kind == Web::HTML::SessionHistoryEntryUpdateKind::DocumentStatePopulation) {
+            // The UI process may optimistically mark reload-pending or track an unpopulated document state before
+            // WebContent confirms the same mutation. Once the WebContent update is accepted and the known history
+            // state matches again, convergence is proven.
+            return {
+                .accepted = true,
+                .web_content_history_matches_mirror = matches_mirror_after_mutation,
+            };
+        }
+
+        return {
+            .accepted = true,
+            .web_content_history_matches_mirror = matched_mirror_before_mutation && matches_mirror_after_mutation,
+        };
+    }
+    case WebContentMutationType::TopLevelSameDocumentNavigation:
+        if (!apply_top_level_same_document_navigation_from_web_content(move(mutation.entry), mutation.replaced_step, mutation.current_step))
+            return {};
+        return {
+            .accepted = true,
+            .web_content_history_matches_mirror = web_content_history_matches_mirror(),
+        };
+    case WebContentMutationType::AppliedTraversal:
+        if (!did_apply_web_content_traversal_to_step(mutation.current_step))
+            return {};
+        return {
+            .accepted = true,
+            .web_content_history_matches_mirror = web_content_history_matches_mirror(),
+        };
+    case WebContentMutationType::RestoredCurrentStep:
+        if (!did_restore_web_content_to_current_step(mutation.current_step))
+            return {};
+        return {
+            .accepted = true,
+            .web_content_history_matches_mirror = web_content_history_matches_mirror(),
+        };
+    }
+
+    VERIFY_NOT_REACHED();
+}
+
 TraversableSessionHistory::SeedAckProof TraversableSessionHistory::compute_seed_ack_proof(Vector<Entry> const& entries, Vector<i32> const& used_steps, size_t current_used_step_index, Entry const* current_entry_seed_descriptor)
 {
     auto normalized_entries = entries;
