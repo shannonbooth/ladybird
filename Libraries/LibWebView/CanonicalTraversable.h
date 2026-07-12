@@ -112,6 +112,8 @@ struct WebContentSessionHistoryMutationResult {
     StringView dump_reason;
     bool should_request_session_history_update { false };
     bool should_update_navigation_action_state { false };
+    Optional<URL::URL> current_url {};
+    bool should_complete_webdriver_pending_navigation { false };
 };
 
 struct WebContentSessionHistorySeedAckResult {

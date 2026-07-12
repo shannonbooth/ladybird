@@ -259,9 +259,13 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
                 return { .dump_reason = "rejected-restored-current-session-history-step"sv };
             }
 
+            m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.clear();
+            m_pending_session_history_traversal.clear();
             return {
                 .accepted = true,
                 .dump_reason = "did-restore-current-session-history-step"sv,
+                .should_update_navigation_action_state = true,
+                .should_complete_webdriver_pending_navigation = true,
             };
         }
 
@@ -275,9 +279,17 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
             return { .dump_reason = "rejected-applied-session-history-traversal"sv };
         }
 
+        auto should_complete_webdriver_pending_navigation = m_pending_session_history_traversal->webdriver_pending_navigation_completes_with_session_history_update;
+        Optional<URL::URL> current_url;
+        if (auto const* current_entry = m_session_history.current_entry())
+            current_url = current_entry->url;
+        m_pending_session_history_traversal.clear();
         return {
             .accepted = true,
             .dump_reason = "did-apply-session-history-traversal"sv,
+            .should_update_navigation_action_state = true,
+            .current_url = move(current_url),
+            .should_complete_webdriver_pending_navigation = should_complete_webdriver_pending_navigation,
         };
     }
 
@@ -295,9 +307,13 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
             return { .dump_reason = "rejected-restored-current-session-history-step"sv };
         }
 
+        m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.clear();
+        m_pending_session_history_traversal.clear();
         return {
             .accepted = true,
             .dump_reason = "did-restore-current-session-history-step"sv,
+            .should_update_navigation_action_state = true,
+            .should_complete_webdriver_pending_navigation = true,
         };
     }
 
