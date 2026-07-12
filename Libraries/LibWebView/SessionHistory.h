@@ -173,7 +173,6 @@ public:
     void mark_web_content_history_match_unproven();
     Vector<Entry> entries() const;
     Vector<i32> used_steps() const;
-    Optional<i32> web_content_current_step() const;
     WebContentMirrorState web_content_mirror_state() const { return m_web_content_mirror_state; }
     bool web_content_history_matches_mirror() const;
 
@@ -215,9 +214,6 @@ private:
     // https://html.spec.whatwg.org/multipage/document-sequences.html#tn-current-session-history-step
     Optional<size_t> m_current_used_step_index;
 
-    // Debug/inspection scalar for WebContent's last reported current step. This must not be
-    // used as proof that WebContent has the UI process' complete session history mirror.
-    Optional<i32> m_web_content_current_step;
     WebContentMirrorState m_web_content_mirror_state { WebContentMirrorState::Unknown };
 };
 

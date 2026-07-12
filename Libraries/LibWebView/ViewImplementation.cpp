@@ -1765,11 +1765,6 @@ JsonValue ViewImplementation::webdriver_session_history() const
     serialized.set("reseedAfterCurrentHistoryLoad"sv, m_top_level_traversable.pending_web_content_session_history_seed().should_reseed_after_current_history_load);
     serialized.set("hasOnlyTopLevelUsedSteps"sv, m_top_level_traversable.session_history().has_only_top_level_used_steps());
     serialized.set("webContentMirrorState"sv, m_top_level_traversable.session_history().web_content_mirror_state() == TraversableSessionHistory::WebContentMirrorState::CompleteMirror ? "complete"sv : "unknown"sv);
-    auto web_content_current_step = m_top_level_traversable.session_history().web_content_current_step();
-    if (web_content_current_step.has_value())
-        serialized.set("webContentCurrentStep"sv, *web_content_current_step);
-    else
-        serialized.set("webContentCurrentStep"sv, JsonValue {});
 
     if (auto current_used_step_index = m_top_level_traversable.session_history().current_used_step_index(); current_used_step_index.has_value())
         serialized.set("currentUsedStepIndex"sv, *current_used_step_index);
@@ -1989,7 +1984,6 @@ void ViewImplementation::dump_session_history(StringView reason, SessionHistoryD
         return;
 
     auto web_content_mirror_state = m_top_level_traversable.session_history().web_content_mirror_state() == TraversableSessionHistory::WebContentMirrorState::CompleteMirror ? "complete"sv : "unknown"sv;
-    auto web_content_current_step = m_top_level_traversable.session_history().web_content_current_step();
 
     auto pending_navigation_url = "none"sv;
     auto pending_navigation_restore_mode = "none"sv;
@@ -2000,7 +1994,7 @@ void ViewImplementation::dump_session_history(StringView reason, SessionHistoryD
         pending_navigation_restore_mode = CanonicalTraversable::pending_session_history_navigation_web_content_restore_mode_to_string(m_top_level_traversable.pending_session_history_navigation()->web_content_restore_mode);
     }
 
-    dbgln("[History] UI session history page={} pid={} reason={} url='{}' webcontent_matches={} webcontent_mirror_state={} loading_from_ui={} waiting_to_seed={} waiting_for_seed_ack={} ignore_until_seed={} reseed_after_current_load={} pending_webcontent_step={} pending_navigation_url={} pending_navigation_restore={} pending_traversal_target={} pending_traversal_stage={} webcontent_current_step={} back={} forward={} entries={}",
+    dbgln("[History] UI session history page={} pid={} reason={} url='{}' webcontent_matches={} webcontent_mirror_state={} loading_from_ui={} waiting_to_seed={} waiting_for_seed_ack={} ignore_until_seed={} reseed_after_current_load={} pending_webcontent_step={} pending_navigation_url={} pending_navigation_restore={} pending_traversal_target={} pending_traversal_stage={} back={} forward={} entries={}",
         page_id(),
         client().pid(),
         reason,
@@ -2017,7 +2011,6 @@ void ViewImplementation::dump_session_history(StringView reason, SessionHistoryD
         pending_navigation_restore_mode,
         m_top_level_traversable.pending_session_history_traversal().has_value() ? Optional<i32> { m_top_level_traversable.pending_session_history_traversal()->target_step } : Optional<i32> {},
         m_top_level_traversable.pending_session_history_traversal().has_value() ? CanonicalTraversable::pending_session_history_traversal_stage_to_string(m_top_level_traversable.pending_session_history_traversal()->stage) : "none"sv,
-        web_content_current_step,
         m_navigate_back_action->enabled(),
         m_navigate_forward_action->enabled(),
         history_log_entries(m_top_level_traversable.session_history()));
