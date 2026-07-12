@@ -1327,6 +1327,18 @@ void ViewImplementation::did_apply_session_history_mutation(Badge<WebContentClie
                 client().pid(),
                 cross_document_navigation.current_step,
                 history_log_entries(entries));
+        } else if (mutation.mutation.has<Web::HTML::AppliedSessionHistoryTraversal>()) {
+            auto const& traversal = mutation.mutation.get<Web::HTML::AppliedSessionHistoryTraversal>();
+            dbgln("[History] UI received WebContent session history mutation page={} pid={} type=applied-traversal current_step={}",
+                page_id(),
+                client().pid(),
+                traversal.current_step);
+        } else if (mutation.mutation.has<Web::HTML::RestoredCurrentSessionHistoryStep>()) {
+            auto const& restored_step = mutation.mutation.get<Web::HTML::RestoredCurrentSessionHistoryStep>();
+            dbgln("[History] UI received WebContent session history mutation page={} pid={} type=restored-current-step current_step={}",
+                page_id(),
+                client().pid(),
+                restored_step.current_step);
         } else {
             auto const& same_document_navigation = mutation.mutation.get<Web::HTML::SameDocumentSessionHistoryNavigation>();
             Vector<Web::HTML::SessionHistoryEntryDescriptor> entries;

@@ -245,6 +245,62 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
     if (m_pending_web_content_session_history_seed.ignore_updates_until_seed)
         return { .dump_reason = "ignored-session-history-mutation-before-ui-seed"sv };
 
+    if (mutation.mutation.has<Web::HTML::AppliedSessionHistoryTraversal>()) {
+        auto traversal = mutation.mutation.get<Web::HTML::AppliedSessionHistoryTraversal>();
+
+        if (m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value()) {
+            if (*m_pending_web_content_session_history_seed.step_after_loading_top_level_entry != traversal.current_step)
+                return { .dump_reason = "ignored-stale-webcontent-applied-traversal"sv };
+
+            auto mutation_result = m_session_history.apply_web_content_mutation(
+                TraversableSessionHistory::WebContentMutation::restored_current_step(traversal.current_step));
+            if (!mutation_result.accepted) {
+                m_session_history.mark_web_content_history_match_unproven();
+                return { .dump_reason = "rejected-restored-current-session-history-step"sv };
+            }
+
+            return {
+                .accepted = true,
+                .dump_reason = "did-restore-current-session-history-step"sv,
+            };
+        }
+
+        if (!m_pending_session_history_traversal.has_value() || m_pending_session_history_traversal->target_step != traversal.current_step)
+            return { .dump_reason = "ignored-stale-webcontent-applied-traversal"sv };
+
+        auto mutation_result = m_session_history.apply_web_content_mutation(
+            TraversableSessionHistory::WebContentMutation::applied_traversal(traversal.current_step));
+        if (!mutation_result.accepted) {
+            m_session_history.mark_web_content_history_match_unproven();
+            return { .dump_reason = "rejected-applied-session-history-traversal"sv };
+        }
+
+        return {
+            .accepted = true,
+            .dump_reason = "did-apply-session-history-traversal"sv,
+        };
+    }
+
+    if (mutation.mutation.has<Web::HTML::RestoredCurrentSessionHistoryStep>()) {
+        auto restored_step = mutation.mutation.get<Web::HTML::RestoredCurrentSessionHistoryStep>();
+
+        if (!m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value()
+            || *m_pending_web_content_session_history_seed.step_after_loading_top_level_entry != restored_step.current_step)
+            return { .dump_reason = "ignored-stale-webcontent-restored-history-step"sv };
+
+        auto mutation_result = m_session_history.apply_web_content_mutation(
+            TraversableSessionHistory::WebContentMutation::restored_current_step(restored_step.current_step));
+        if (!mutation_result.accepted) {
+            m_session_history.mark_web_content_history_match_unproven();
+            return { .dump_reason = "rejected-restored-current-session-history-step"sv };
+        }
+
+        return {
+            .accepted = true,
+            .dump_reason = "did-restore-current-session-history-step"sv,
+        };
+    }
+
     if (m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value())
         return { .dump_reason = "ignored-session-history-mutation-before-restored-history-step"sv };
 
@@ -648,11 +704,16 @@ HistoryTraversalDecision CanonicalTraversable::traverse_the_history_by_delta(int
     //        sending anything. Once the UI process owns apply-the-history-step and issues per-navigable load commands,
     //        placement is decided per command and this prediction goes away.
     auto will_replace_web_content_process = SiteIsolationManager::the().navigation_requires_process_swap(current_url, target->target_top_level_entry->url);
+    auto webdriver_pending_navigation_completes_with_session_history_update = false;
+    if (auto const* current_entry = m_session_history.current_entry()) {
+        webdriver_pending_navigation_completes_with_session_history_update = current_entry->document_state.id == target->target_top_level_entry->document_state.id;
+    }
     auto pending_traversal = PendingSessionHistoryTraversal {
         .target_step = target->target_step,
         .target_step_index = target->target_step_index,
         .will_change_top_level_entry = target->changes_top_level_entry,
         .will_replace_web_content_process = will_replace_web_content_process,
+        .webdriver_pending_navigation_completes_with_session_history_update = webdriver_pending_navigation_completes_with_session_history_update,
         .on_cancelation_check_complete = nullptr,
     };
 
@@ -665,10 +726,6 @@ HistoryTraversalDecision CanonicalTraversable::traverse_the_history_by_delta(int
 
     if (web_content_can_apply_traversal && !will_replace_web_content_process) {
         m_pending_session_history_traversal = move(pending_traversal);
-        auto webdriver_pending_navigation_completes_with_session_history_update = false;
-        if (auto const* current_entry = m_session_history.current_entry()) {
-            webdriver_pending_navigation_completes_with_session_history_update = current_entry->document_state.id == target->target_top_level_entry->document_state.id;
-        }
         return {
             .outcome = { .status = HistoryTraversalStatus::Started, .will_replace_web_content_process = will_replace_web_content_process, .will_change_top_level_entry = target->changes_top_level_entry },
             .action = HistoryTraversalAction::TraverseInWebContent,
@@ -758,7 +815,7 @@ WebContentHistoryStepResult CanonicalTraversable::did_traverse_the_history_to_st
             return { .dump_reason = "webcontent-history-step-applied-without-ui-target"sv, .should_update_navigation_action_state = true };
         }
 
-        auto should_complete_webdriver_pending_navigation = !m_pending_session_history_traversal->will_change_top_level_entry;
+        auto should_complete_webdriver_pending_navigation = m_pending_session_history_traversal->webdriver_pending_navigation_completes_with_session_history_update;
         Optional<URL::URL> current_url;
         if (auto const* current_entry = m_session_history.current_entry())
             current_url = current_entry->url;
