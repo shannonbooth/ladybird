@@ -197,6 +197,13 @@ static bool apply_current_entry_update(WebView::TraversableSessionHistory& histo
         .accepted;
 }
 
+static bool apply_current_entry_nested_histories_update(WebView::TraversableSessionHistory& history, Web::HTML::CrossProcessId document_state_id, Vector<Web::HTML::SessionHistoryNestedHistoryDescriptor> nested_histories, i32 current_step)
+{
+    return history.apply_web_content_mutation(
+                      WebView::TraversableSessionHistory::WebContentMutation::current_entry_nested_histories_update(document_state_id, move(nested_histories), current_step))
+        .accepted;
+}
+
 static bool apply_top_level_same_document_navigation(WebView::TraversableSessionHistory& history, Web::HTML::SessionHistoryEntryDescriptor entry, Optional<i32> replaced_step, i32 current_step)
 {
     return history.apply_web_content_mutation(
@@ -533,6 +540,127 @@ TEST_CASE(rejected_targeted_current_entry_update_requests_snapshot)
     auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::current_entry_update(SessionHistoryEntryUpdateKind::NavigationAPIState, move(updated_entry)));
     EXPECT(!update.accepted);
     EXPECT_EQ(update.dump_reason, "rejected-current-entry-update"sv);
+    EXPECT(update.should_request_session_history_update);
+    EXPECT(update.should_update_navigation_action_state);
+    EXPECT(!traversable.current_web_content_session_history_matches_mirror());
+}
+
+TEST_CASE(current_entry_nested_histories_update_recomputes_used_steps)
+{
+    WebView::TraversableSessionHistory history;
+
+    auto initial_update_result = history.update_from_web_content({
+                                                                     entry(0, "https://top.example/"sv, 1, "main"sv, {
+                                                                                                                         nested_history("frame-1"sv, {
+                                                                                                                                                         entry(0, "https://frame.example/a"sv, 2, "frame"sv),
+                                                                                                                                                         entry(1, "https://frame.example/b"sv, 2, "frame"sv),
+                                                                                                                                                     }),
+                                                                                                                     }),
+                                                                 },
+        { 0, 1 }, 1);
+    EXPECT_EQ(initial_update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+    EXPECT(history.web_content_history_matches_mirror());
+
+    EXPECT(apply_current_entry_nested_histories_update(history, test_document_state_id(1), {}, 0));
+
+    EXPECT_EQ(history.used_step_count(), 1uz);
+    expect_used_step(history, 0, 0);
+    expect_current_entry(history, 0, "https://top.example/"sv);
+    auto* current_entry = history.current_entry();
+    VERIFY(current_entry);
+    EXPECT(current_entry->document_state.nested_histories.is_empty());
+    EXPECT(history.web_content_history_matches_mirror());
+}
+
+TEST_CASE(accepted_current_entry_nested_histories_update_does_not_request_snapshot)
+{
+    WebView::CanonicalTraversable traversable;
+
+    auto initial_update = traversable.did_receive_web_content_session_history_update({
+                                                                                        entry(0, "https://top.example/"sv, 1, "main"sv),
+                                                                                    },
+        { 0 }, 0, parse_url("https://top.example/"sv));
+    EXPECT_EQ(initial_update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+
+    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::current_entry_nested_histories_update({
+        .document_state_id = test_document_state_id(1),
+        .nested_histories = {
+            nested_history("frame-1"sv, {
+                                            entry(0, "https://frame.example/"sv, 2, "frame"sv),
+                                        }),
+        },
+        .current_step = 0,
+    }));
+    EXPECT(update.accepted);
+    EXPECT_EQ(update.dump_reason, "did-update-current-entry-nested-histories"sv);
+    EXPECT(!update.should_request_session_history_update);
+    EXPECT(update.should_update_navigation_action_state);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+
+    auto* current_entry = traversable.session_history().current_entry();
+    VERIFY(current_entry);
+    expect_nested_history(*current_entry, 0, "frame-1"sv, 1);
+}
+
+TEST_CASE(accepted_current_entry_nested_histories_update_requests_snapshot_when_unproven)
+{
+    WebView::CanonicalTraversable traversable;
+
+    auto initial_update = traversable.did_receive_web_content_session_history_update({
+                                                                                        entry(0, "https://example.test/a"sv, 1, "main"sv),
+                                                                                        entry(1, "https://example.test/b"sv, 2, "main"sv),
+                                                                                    },
+        { 0, 1 }, 1, parse_url("https://example.test/b"sv));
+    EXPECT_EQ(initial_update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+
+    auto partial_update = traversable.did_receive_web_content_session_history_update({
+                                                                                        entry(0, URL::about_blank()),
+                                                                                        entry(1, "https://example.test/b"sv, 2, "main"sv),
+                                                                                        entry(2, "https://example.test/c"sv, 3, "main"sv),
+                                                                                    },
+        { 0, 1, 2 }, 2, parse_url("https://example.test/c"sv));
+    EXPECT_EQ(partial_update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::MergedPartialSnapshot);
+    EXPECT(!traversable.current_web_content_session_history_matches_mirror());
+
+    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::current_entry_nested_histories_update({
+        .document_state_id = test_document_state_id(3),
+        .nested_histories = {
+            nested_history("frame-1"sv, {
+                                            entry(3, "https://frame.example/"sv, 4, "frame"sv),
+                                        }),
+        },
+        .current_step = 3,
+    }));
+    EXPECT(update.accepted);
+    EXPECT_EQ(update.dump_reason, "did-update-current-entry-nested-histories"sv);
+    EXPECT(update.should_request_session_history_update);
+    EXPECT(update.should_update_navigation_action_state);
+    EXPECT(!traversable.current_web_content_session_history_matches_mirror());
+}
+
+TEST_CASE(rejected_current_entry_nested_histories_update_requests_snapshot)
+{
+    WebView::CanonicalTraversable traversable;
+
+    auto initial_update = traversable.did_receive_web_content_session_history_update({
+                                                                                        entry(0, "https://top.example/"sv, 1, "main"sv),
+                                                                                    },
+        { 0 }, 0, parse_url("https://top.example/"sv));
+    EXPECT_EQ(initial_update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+
+    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::current_entry_nested_histories_update({
+        .document_state_id = test_document_state_id(99),
+        .nested_histories = {
+            nested_history("frame-1"sv, {
+                                            entry(0, "https://frame.example/"sv, 2, "frame"sv),
+                                        }),
+        },
+        .current_step = 0,
+    }));
+    EXPECT(!update.accepted);
+    EXPECT_EQ(update.dump_reason, "rejected-current-entry-nested-histories-update"sv);
     EXPECT(update.should_request_session_history_update);
     EXPECT(update.should_update_navigation_action_state);
     EXPECT(!traversable.current_web_content_session_history_matches_mirror());

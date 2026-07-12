@@ -132,14 +132,25 @@ struct CurrentSessionHistoryEntryUpdate {
     SessionHistoryEntryDescriptor entry;
 };
 
+struct CurrentSessionHistoryEntryNestedHistoriesUpdate {
+    CrossProcessId document_state_id;
+    Vector<SessionHistoryNestedHistoryDescriptor> nested_histories;
+    i32 current_step { 0 };
+};
+
 struct WebContentSessionHistoryMutation {
-    using Mutation = Variant<CurrentSessionHistoryEntryUpdate, SameDocumentSessionHistoryNavigation, NestedSameDocumentSessionHistoryNavigation, NestedCrossDocumentSessionHistoryNavigation, TopLevelCrossDocumentSessionHistoryNavigation, AppliedSessionHistoryTraversal, RestoredCurrentSessionHistoryStep>;
+    using Mutation = Variant<CurrentSessionHistoryEntryUpdate, CurrentSessionHistoryEntryNestedHistoriesUpdate, SameDocumentSessionHistoryNavigation, NestedSameDocumentSessionHistoryNavigation, NestedCrossDocumentSessionHistoryNavigation, TopLevelCrossDocumentSessionHistoryNavigation, AppliedSessionHistoryTraversal, RestoredCurrentSessionHistoryStep>;
 
     Mutation mutation;
 
     static WebContentSessionHistoryMutation current_entry_update(SessionHistoryEntryUpdateKind update_kind, SessionHistoryEntryDescriptor entry)
     {
         return { CurrentSessionHistoryEntryUpdate { update_kind, move(entry) } };
+    }
+
+    static WebContentSessionHistoryMutation current_entry_nested_histories_update(CurrentSessionHistoryEntryNestedHistoriesUpdate update)
+    {
+        return { move(update) };
     }
 
     static WebContentSessionHistoryMutation top_level_same_document_navigation(SameDocumentSessionHistoryNavigation navigation)
@@ -297,6 +308,12 @@ WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::CurrentSessionHistoryEntryUpda
 
 template<>
 WEB_API ErrorOr<Web::HTML::CurrentSessionHistoryEntryUpdate> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::CurrentSessionHistoryEntryNestedHistoriesUpdate const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::CurrentSessionHistoryEntryNestedHistoriesUpdate> decode(Decoder&);
 
 template<>
 WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::SameDocumentSessionHistoryNavigation const&);

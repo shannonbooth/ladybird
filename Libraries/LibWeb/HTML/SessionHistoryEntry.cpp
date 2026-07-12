@@ -339,6 +339,29 @@ ErrorOr<Web::HTML::CurrentSessionHistoryEntryUpdate> IPC::decode(Decoder& decode
 }
 
 template<>
+ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::CurrentSessionHistoryEntryNestedHistoriesUpdate const& update)
+{
+    TRY(encoder.encode(update.document_state_id));
+    TRY(encoder.encode(update.nested_histories));
+    TRY(encoder.encode(update.current_step));
+    return {};
+}
+
+template<>
+ErrorOr<Web::HTML::CurrentSessionHistoryEntryNestedHistoriesUpdate> IPC::decode(Decoder& decoder)
+{
+    auto document_state_id = TRY(decoder.decode<Web::HTML::CrossProcessId>());
+    auto nested_histories = TRY(decoder.decode<Vector<Web::HTML::SessionHistoryNestedHistoryDescriptor>>());
+    auto current_step = TRY(decoder.decode<i32>());
+
+    return Web::HTML::CurrentSessionHistoryEntryNestedHistoriesUpdate {
+        .document_state_id = document_state_id,
+        .nested_histories = move(nested_histories),
+        .current_step = current_step,
+    };
+}
+
+template<>
 ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::SameDocumentSessionHistoryNavigation const& navigation)
 {
     TRY(encoder.encode(navigation.entry));

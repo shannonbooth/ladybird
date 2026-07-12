@@ -209,6 +209,7 @@ private:
         NestedSameDocumentNavigation,
     };
     bool report_structural_session_history_update(StructuralSessionHistoryUpdateReason, SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::Yes);
+    bool report_current_entry_nested_histories_update(i32 current_step, SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::Yes);
     bool report_top_level_same_document_session_history_navigation(SessionHistoryEntry const&, Optional<i32> replaced_step, i32 current_step);
     bool report_nested_same_document_session_history_navigation(LocalNavigable const&, SessionHistoryEntry const&, Optional<i32> replaced_step, i32 current_step);
     bool report_nested_cross_document_session_history_navigation(LocalNavigable const&, SessionHistoryEntry const&, i32 current_step);
