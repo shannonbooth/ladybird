@@ -260,7 +260,6 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
                 m_pending_session_history_traversal.clear();
                 return {
                     .dump_reason = "rejected-restored-current-session-history-step"sv,
-                    .should_request_session_history_update = true,
                     .should_update_navigation_action_state = true,
                 };
             }
@@ -290,7 +289,6 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
                 m_session_history.forget_web_content_state();
                 return {
                     .dump_reason = "rejected-webcontent-applied-traversal"sv,
-                    .should_request_session_history_update = true,
                     .should_update_navigation_action_state = true,
                 };
             }
@@ -333,7 +331,6 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
             m_pending_session_history_traversal.clear();
             return {
                 .dump_reason = "rejected-restored-current-session-history-step"sv,
-                .should_request_session_history_update = true,
                 .should_update_navigation_action_state = true,
             };
         }
@@ -356,10 +353,9 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
         auto mutation_result = m_session_history.apply_web_content_mutation(
             TraversableSessionHistory::WebContentMutation::current_entry_update(current_entry_update.update_kind, move(current_entry_update.entry)));
         if (!mutation_result.accepted) {
-            m_session_history.forget_web_content_state();
+            m_session_history.mark_web_content_history_match_unproven();
             return {
                 .dump_reason = "rejected-current-entry-update"sv,
-                .should_request_session_history_update = true,
                 .should_update_navigation_action_state = true,
             };
         }
@@ -378,7 +374,6 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
             m_session_history.forget_web_content_state();
             return {
                 .dump_reason = "rejected-current-entry-nested-history-update"sv,
-                .should_request_session_history_update = true,
                 .should_update_navigation_action_state = true,
             };
         }
@@ -386,7 +381,6 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
         return {
             .accepted = true,
             .dump_reason = "did-update-current-entry-nested-history"sv,
-            .should_request_session_history_update = !mutation_result.web_content_history_matches_mirror,
             .should_update_navigation_action_state = true,
         };
     }
@@ -399,7 +393,6 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
             m_session_history.forget_web_content_state();
             return {
                 .dump_reason = "rejected-current-entry-nested-history-removal"sv,
-                .should_request_session_history_update = true,
                 .should_update_navigation_action_state = true,
             };
         }
@@ -407,7 +400,6 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
         return {
             .accepted = true,
             .dump_reason = "did-remove-current-entry-nested-history"sv,
-            .should_request_session_history_update = !mutation_result.web_content_history_matches_mirror,
             .should_update_navigation_action_state = true,
         };
     }
@@ -420,7 +412,6 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
             m_session_history.forget_web_content_state();
             return {
                 .dump_reason = "rejected-nested-same-document-navigation"sv,
-                .should_request_session_history_update = true,
                 .should_update_navigation_action_state = true,
             };
         }
@@ -440,7 +431,6 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
             m_session_history.forget_web_content_state();
             return {
                 .dump_reason = "rejected-nested-cross-document-navigation"sv,
-                .should_request_session_history_update = true,
                 .should_update_navigation_action_state = true,
             };
         }
@@ -461,19 +451,18 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
             m_session_history.forget_web_content_state();
             return {
                 .dump_reason = "rejected-top-level-cross-document-navigation"sv,
-                .should_request_session_history_update = true,
                 .should_update_navigation_action_state = true,
             };
         }
 
-        if (mutation_result.web_content_history_matches_mirror && m_pending_session_history_navigation.has_value() && m_pending_session_history_navigation->url == navigation_url)
+        if (mutation_result.web_content_history_matches_mirror && m_pending_session_history_navigation.has_value())
             m_pending_session_history_navigation.clear();
 
         return {
             .accepted = true,
             .dump_reason = "did-apply-top-level-cross-document-navigation"sv,
-            .should_request_session_history_update = !mutation_result.web_content_history_matches_mirror,
             .should_update_navigation_action_state = true,
+            .current_url = move(navigation_url),
         };
     }
 
@@ -484,7 +473,6 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
         m_session_history.forget_web_content_state();
         return {
             .dump_reason = "rejected-same-document-navigation"sv,
-            .should_request_session_history_update = true,
             .should_update_navigation_action_state = true,
         };
     }
@@ -511,7 +499,6 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
         if (mutation_result.fallback_target.has_value())
             return mutation_result;
 
-        batch_result.should_request_session_history_update |= mutation_result.should_request_session_history_update;
         batch_result.should_update_navigation_action_state |= mutation_result.should_update_navigation_action_state;
         batch_result.should_complete_webdriver_pending_navigation |= mutation_result.should_complete_webdriver_pending_navigation;
         if (mutation_result.current_url.has_value())
