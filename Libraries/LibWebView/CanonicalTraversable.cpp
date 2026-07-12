@@ -548,7 +548,7 @@ NavigationStartResult CanonicalTraversable::did_start_navigation(URL::URL const&
         if (*m_session_history_entry_url_loading_from_ui_process != url)
             return { .dump_reason = "ignored-stale-ui-history-load-start"sv };
 
-        auto should_keep_preseeded_web_content_history = m_pending_web_content_session_history_seed.waiting_for_ack || m_session_history.web_content_uses_ui_step_coordinates();
+        auto should_keep_preseeded_web_content_history = m_pending_web_content_session_history_seed.waiting_for_ack || m_session_history.web_content_has_known_current_step();
         m_session_history_entry_url_loading_from_ui_process.clear();
         if (!should_keep_preseeded_web_content_history) {
             m_session_history.forget_web_content_state();
@@ -916,7 +916,7 @@ CurrentSessionHistoryEntryLoad CanonicalTraversable::prepare_current_session_his
     }
 
     m_session_history_entry_url_loading_from_ui_process = current_entry->url;
-    auto history_handling = m_pending_web_content_session_history_seed.waiting_for_ack || m_session_history.web_content_uses_ui_step_coordinates()
+    auto history_handling = m_pending_web_content_session_history_seed.waiting_for_ack || m_session_history.web_content_has_known_current_step()
         ? Web::Bindings::NavigationHistoryBehavior::Replace
         : Web::Bindings::NavigationHistoryBehavior::Auto;
     return { .url = current_entry->url, .document_resource = current_entry->document_state.resource, .history_handling = history_handling };

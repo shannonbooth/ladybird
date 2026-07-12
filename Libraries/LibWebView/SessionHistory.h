@@ -173,7 +173,7 @@ public:
     Vector<Entry> web_content_known_entries() const;
     Vector<i32> web_content_known_used_steps() const;
     Optional<i32> web_content_current_step() const;
-    bool web_content_uses_ui_step_coordinates() const { return m_web_content_uses_ui_step_coordinates; }
+    bool web_content_has_known_current_step() const { return m_web_content_current_step.has_value(); }
     bool web_content_history_matches_mirror() const;
 
     [[nodiscard]] bool can_go_back() const;
@@ -221,9 +221,6 @@ private:
     Vector<Entry> m_web_content_known_entries;
     Vector<i32> m_web_content_known_used_steps;
     Optional<i32> m_web_content_current_step;
-    // False when WebContent's known history state is stale or unknown, so the UI
-    // must load/reseed instead of delegating traversal by step.
-    bool m_web_content_uses_ui_step_coordinates { false };
 
     bool m_web_content_history_match_is_proven { false };
 };

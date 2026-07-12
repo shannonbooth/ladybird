@@ -875,7 +875,7 @@ TEST_CASE(targeted_top_level_same_document_navigation_bootstraps_partial_current
     auto committed_entry = entry(1, "https://b.example/"sv, 2, "main"sv);
     EXPECT(apply_top_level_cross_document_navigation(history, move(committed_entry), 1));
     EXPECT(!history.web_content_history_matches_mirror());
-    EXPECT(history.web_content_uses_ui_step_coordinates());
+    EXPECT_EQ(history.web_content_current_step().value(), 1);
     EXPECT(history.web_content_known_entries().is_empty());
 
     auto replacement_entry = entry(1, "https://b.example/#replacement"sv, 2, "main"sv);
@@ -886,7 +886,7 @@ TEST_CASE(targeted_top_level_same_document_navigation_bootstraps_partial_current
     expect_entry(history, 0, 0, "https://a.example/"sv);
     expect_current_entry(history, 1, "https://b.example/#replacement"sv);
     EXPECT(!history.web_content_history_matches_mirror());
-    EXPECT(history.web_content_uses_ui_step_coordinates());
+    EXPECT_EQ(history.web_content_current_step().value(), 1);
 
     auto known_entries_after_replace = history.web_content_known_entries();
     EXPECT_EQ(known_entries_after_replace.size(), 1uz);
@@ -902,7 +902,7 @@ TEST_CASE(targeted_top_level_same_document_navigation_bootstraps_partial_current
     expect_entry(history, 1, 1, "https://b.example/#replacement"sv);
     expect_current_entry(history, 2, "https://b.example/#pushed"sv);
     EXPECT(!history.web_content_history_matches_mirror());
-    EXPECT(history.web_content_uses_ui_step_coordinates());
+    EXPECT_EQ(history.web_content_current_step().value(), 2);
 
     auto known_entries_after_push = history.web_content_known_entries();
     EXPECT_EQ(known_entries_after_push.size(), 2uz);

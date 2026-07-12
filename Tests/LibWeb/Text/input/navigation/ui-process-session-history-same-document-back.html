@@ -26,7 +26,7 @@
         println(`${label}: ui-relevant-entries=${relevantEntryQueries(uiHistory.entries, ["?same-document-back-replaced", "?same-document-back-pushed"])}`);
         println(`${label}: ui-webcontent-known-relevant-entries=${relevantEntryQueries(uiHistory.webContentKnownEntries, ["?same-document-back-replaced", "?same-document-back-pushed"])}`);
         println(`${label}: ui-forward-button=${uiHistory.forwardButtonEnabled}`);
-        println(`${label}: ui-uses-ui-step-coordinates=${uiHistory.webContentUsesUIStepCoordinates}`);
+        println(`${label}: ui-has-known-webcontent-step=${uiHistory.webContentHasKnownCurrentStep}`);
     }
 
     asyncTest(async done => {

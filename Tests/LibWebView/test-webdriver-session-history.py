@@ -966,7 +966,7 @@ def summarize_history_snapshot(snapshot):
             "waitingForWebContentSeedAck": ui["waitingForWebContentSeedAck"],
             "ignoringWebContentUpdatesUntilSeed": ui["ignoringWebContentUpdatesUntilSeed"],
             "reseedAfterCurrentHistoryLoad": ui["reseedAfterCurrentHistoryLoad"],
-            "webContentUsesUIStepCoordinates": ui["webContentUsesUIStepCoordinates"],
+            "webContentHasKnownCurrentStep": ui["webContentHasKnownCurrentStep"],
             "webContentKnownUsedSteps": history_step_values(ui["webContentKnownUsedSteps"]),
             "webContentCurrentStep": ui["webContentCurrentStep"],
             "pendingWebContentHistoryStepAfterFallbackLoad": ui["pendingWebContentHistoryStepAfterFallbackLoad"],
