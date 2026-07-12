@@ -1832,6 +1832,45 @@ TEST_CASE(seed_ack_rejects_pending_proof_for_different_current_step)
     EXPECT(traversable.session_history().web_content_known_entries().is_empty());
 }
 
+TEST_CASE(web_content_traversal_with_partial_history_does_not_claim_full_match)
+{
+    WebView::CanonicalTraversable traversable;
+
+    auto initial_update = traversable.did_receive_web_content_session_history_update({
+                                                                                        entry(0, "https://example.test/a"sv, 1, "main"sv),
+                                                                                        entry(1, "https://example.test/b"sv, 2, "main"sv),
+                                                                                    },
+        { 0, 1 }, 1, parse_url("https://example.test/b"sv));
+    EXPECT_EQ(initial_update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+
+    auto partial_update = traversable.did_receive_web_content_session_history_update({
+                                                                                        entry(0, URL::about_blank()),
+                                                                                        entry(1, "https://example.test/b"sv, 2, "main"sv),
+                                                                                        entry(2, "https://example.test/c"sv, 3, "main"sv),
+                                                                                    },
+        { 0, 1, 2 }, 2, parse_url("https://example.test/c"sv));
+    EXPECT_EQ(partial_update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::MergedPartialSnapshot);
+    EXPECT(!traversable.current_web_content_session_history_matches_mirror());
+    expect_current_entry(traversable.session_history(), 2, "https://example.test/c"sv);
+
+    auto traversal = traversable.traverse_the_history_by_delta(-1, WebView::CheckForCancelation::No, parse_url("https://example.test/c"sv), {});
+    EXPECT_EQ(traversal.action, WebView::HistoryTraversalAction::TraverseInWebContent);
+    VERIFY(traversal.target_step.has_value());
+    EXPECT_EQ(*traversal.target_step, 1);
+
+    auto step_result = traversable.did_traverse_the_history_to_step(1, true, Web::HTML::HistoryStepResult::Applied);
+    EXPECT_EQ(step_result.dump_reason, "webcontent-history-step-applied"sv);
+    EXPECT(!step_result.fallback_target.has_value());
+    EXPECT(!traversable.current_web_content_session_history_matches_mirror());
+    EXPECT(!traversable.session_history().web_content_history_matches_mirror());
+    expect_current_entry(traversable.session_history(), 1, "https://example.test/b"sv);
+
+    auto web_content_current_step = traversable.session_history().web_content_current_step();
+    VERIFY(web_content_current_step.has_value());
+    EXPECT_EQ(*web_content_current_step, 1);
+}
+
 TEST_CASE(seed_ack_rejects_reconstructed_history_with_mismatched_state)
 {
     WebView::TraversableSessionHistory history;

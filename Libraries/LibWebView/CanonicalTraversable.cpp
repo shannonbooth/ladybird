@@ -721,7 +721,7 @@ WebContentHistoryStepResult CanonicalTraversable::did_traverse_the_history_to_st
             return { .dump_reason = "webcontent-history-step-applied-without-ui-target"sv, .should_update_navigation_action_state = true };
         }
 
-        m_current_web_content_session_history_matches_mirror = true;
+        m_current_web_content_session_history_matches_mirror = m_session_history.web_content_history_matches_mirror();
         auto should_complete_webdriver_pending_navigation = !m_pending_session_history_traversal->will_change_top_level_entry;
         Optional<URL::URL> current_url;
         if (auto const* current_entry = m_session_history.current_entry())
@@ -735,7 +735,8 @@ WebContentHistoryStepResult CanonicalTraversable::did_traverse_the_history_to_st
 
     if (step_was_available && result == Web::HTML::HistoryStepResult::Applied) {
         m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.clear();
-        m_current_web_content_session_history_matches_mirror = m_session_history.did_restore_web_content_to_current_step(step);
+        auto restored = m_session_history.did_restore_web_content_to_current_step(step);
+        m_current_web_content_session_history_matches_mirror = restored && m_session_history.web_content_history_matches_mirror();
         m_pending_session_history_traversal.clear();
         return { .dump_reason = "webcontent-history-step-restored"sv, .should_update_navigation_action_state = true, .should_complete_webdriver_pending_navigation = true };
     }
