@@ -3000,7 +3000,7 @@ void LocalTraversableNavigable::resume_applying_the_traverse_history_step(int st
     //       same-document traversal. Hence, we can pass false and null for those arguments.
     // NB: The committed navigate event remains ongoing until the same-document entry update runs
     //     the navigate event intercept commit handler steps.
-    apply_the_history_step(step, false, {}, {}, user_involvement, Bindings::NavigationType::Traverse, SynchronousNavigation::No, LocalNavigable::NavigationAPIAbortBehavior::Preserve, nullptr, nullptr, {}, on_complete);
+    apply_the_history_step(step, false, {}, {}, user_involvement, Bindings::NavigationType::Traverse, SynchronousNavigation::No, LocalNavigable::NavigationAPIAbortBehavior::Preserve, nullptr, nullptr, {}, on_complete, ReportAppliedTraversal::Yes);
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#close-a-top-level-traversable
