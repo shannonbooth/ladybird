@@ -206,7 +206,6 @@ private:
     enum class StructuralSessionHistoryUpdateReason : u8 {
         TestReset,
         HistoryStepCompletion,
-        NestedSameDocumentNavigation,
     };
     bool report_structural_session_history_update(StructuralSessionHistoryUpdateReason, SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::Yes);
     bool report_current_entry_nested_histories_update(i32 current_step, SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::Yes);
