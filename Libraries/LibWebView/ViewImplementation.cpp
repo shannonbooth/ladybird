@@ -1377,9 +1377,6 @@ void ViewImplementation::did_apply_session_history_mutation(Badge<WebContentClie
         if (m_webdriver_pending_navigation_url.has_value() && *m_webdriver_pending_navigation_url != current_url)
             m_webdriver_pending_navigation_url = current_url;
     }
-    if (update.should_request_session_history_update)
-        client().async_request_session_history_update(page_id());
-
     if (update.fallback_target.has_value()) {
         load_session_history_traversal_target_from_ui_process(*update.fallback_target, update.dump_reason);
         return;
@@ -1410,9 +1407,6 @@ void ViewImplementation::did_apply_session_history_mutation_batch(Badge<WebConte
         if (m_webdriver_pending_navigation_url.has_value() && *m_webdriver_pending_navigation_url != current_url)
             m_webdriver_pending_navigation_url = current_url;
     }
-    if (update.should_request_session_history_update)
-        client().async_request_session_history_update(page_id());
-
     if (update.fallback_target.has_value()) {
         load_session_history_traversal_target_from_ui_process(*update.fallback_target, update.dump_reason);
         return;
