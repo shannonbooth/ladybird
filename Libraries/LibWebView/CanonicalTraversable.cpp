@@ -647,8 +647,7 @@ NavigationFinishResult CanonicalTraversable::did_finish_navigation(URL::URL cons
     }
 
     // NB: The first finish notification from a fresh WebContent process can still report about:blank before the
-    //     traversed-to entry is ready. Keep the pending seed state intact so partial snapshots remain ignored
-    //     until we can seed the full UI-owned history.
+    //     traversed-to entry is ready. Keep the pending seed state intact until we can seed the full UI-owned history.
     return { .dump_reason = "skip-seed-webcontent-session-history"sv };
 }
 

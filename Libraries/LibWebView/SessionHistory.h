@@ -32,21 +32,6 @@ public:
         bool changes_top_level_entry { false };
     };
 
-    enum class UpdateResult {
-        // WebContent sent the same complete top-level traversable session
-        // history that the UI process stores authoritatively.
-        CompleteSnapshot,
-
-        // WebContent sent a valid partial view of session history. The UI
-        // process merged it into the authoritative history mirror, but
-        // WebContent cannot be assumed to know or use every UI history step.
-        MergedPartialSnapshot,
-
-        // WebContent sent a snapshot that cannot describe the current UI-owned
-        // traversable session history.
-        InvalidSnapshot,
-    };
-
     enum class WebContentMutationType {
         CurrentEntryUpdate,
         CurrentEntryNestedHistoryUpdate,
@@ -177,7 +162,6 @@ public:
     void replace_current_entry(URL::URL, Web::HTML::CrossProcessId document_state_id, Variant<Empty, String, Web::HTML::POSTResource>);
     void mark_current_entry_reload_pending();
     void clear_current_entry_reload_pending();
-    UpdateResult update_from_web_content(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index);
     [[nodiscard]] WebContentMutationResult apply_web_content_mutation(WebContentMutation);
     [[nodiscard]] static SeedAckProof compute_seed_ack_proof(Vector<Entry> const&, size_t current_top_level_entry_index);
     void record_web_content_seeded_from_ui_process(i32 current_step);
@@ -237,9 +221,8 @@ private:
     Vector<Entry> m_web_content_known_entries;
     Vector<i32> m_web_content_known_used_steps;
     Optional<i32> m_web_content_current_step;
-    // False when a partial snapshot was translated into the UI-owned step
-    // coordinate space. In that state WebContent still uses its original step
-    // numbers, so the UI must reseed/load instead of delegating traversal by step.
+    // False when WebContent's known history state is stale or unknown, so the UI
+    // must load/reseed instead of delegating traversal by step.
     bool m_web_content_uses_ui_step_coordinates { false };
 
     bool m_web_content_history_match_is_proven { false };
