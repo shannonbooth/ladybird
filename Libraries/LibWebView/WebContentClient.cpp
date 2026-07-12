@@ -1797,12 +1797,6 @@ void WebContentClient::did_change_screen_wake_lock_state(u64 page_id, Web::Scree
         view->did_change_screen_wake_lock_state({}, wake_lock_state);
 }
 
-void WebContentClient::did_update_session_history(u64 page_id, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index)
-{
-    if (auto view = view_for_page_id(page_id); view.has_value())
-        view->did_update_session_history({}, move(entries), move(used_steps), current_used_step_index);
-}
-
 void WebContentClient::did_apply_session_history_mutation(u64 page_id, Web::HTML::WebContentSessionHistoryMutation mutation)
 {
     if (auto view = view_for_page_id(page_id); view.has_value())

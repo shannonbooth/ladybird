@@ -1081,11 +1081,6 @@ bool PageClient::should_report_session_history_updates() const
     return !Web::HTML::Window::in_test_mode() || s_should_report_session_history_updates_in_test_mode;
 }
 
-void PageClient::page_did_update_session_history(Vector<Web::HTML::SessionHistoryEntryDescriptor> const& entries, Vector<i32> const& used_steps, size_t current_used_step_index)
-{
-    client().async_did_update_session_history(m_id, entries, used_steps, current_used_step_index);
-}
-
 void PageClient::page_did_apply_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation const& mutation)
 {
     client().async_did_apply_session_history_mutation(m_id, mutation);

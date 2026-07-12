@@ -76,21 +76,6 @@ Optional<WebContentSessionHistoryMutation> LocalTraversableNavigable::create_cur
     return WebContentSessionHistoryMutation::current_entry_update(update_kind, create_session_history_entry_descriptor(entry, creation_state));
 }
 
-bool LocalTraversableNavigable::send_full_session_history_snapshot(SaveActiveEntryPersistedState save_active_entry_persisted_state)
-{
-    auto session_history_snapshot = create_session_history_snapshot(save_active_entry_persisted_state);
-    page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
-    return true;
-}
-
-bool LocalTraversableNavigable::report_session_history_reset_for_testing()
-{
-    if (!page().client().should_report_session_history_updates())
-        return false;
-
-    return send_full_session_history_snapshot();
-}
-
 Optional<LocalTraversableNavigable::CurrentEntryNestedHistoryMutation> LocalTraversableNavigable::create_current_entry_nested_history_update_mutation(SessionHistoryEntry const& parent_entry, CrossProcessId nested_history_id)
 {
     if (!parent_entry.step_value().has_value())
@@ -790,8 +775,6 @@ void LocalTraversableNavigable::reset_session_history_for_testing(GC::Ref<GC::Fu
 
         auto entries_for_navigation_api = get_session_history_entries_for_the_navigation_api(*this, m_current_session_history_step);
         active_window()->navigation()->initialize_the_navigation_api_entries_for_reconstructed_session_history(entries_for_navigation_api, active_entry);
-
-        report_session_history_reset_for_testing();
 
         signal->resolve({});
         on_complete->function()();
