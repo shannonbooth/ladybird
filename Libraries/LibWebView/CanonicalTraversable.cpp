@@ -475,6 +475,25 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
     };
 }
 
+WebContentSessionHistoryMutationResult CanonicalTraversable::did_fail_to_apply_web_content_session_history_mutation()
+{
+    if (m_pending_web_content_session_history_seed.waiting_for_ack)
+        return { .dump_reason = "ignored-session-history-mutation-failure-before-ui-seed-ack"sv };
+
+    if (m_pending_web_content_session_history_seed.ignore_updates_until_seed)
+        return { .dump_reason = "ignored-session-history-mutation-failure-before-ui-seed"sv };
+
+    if (m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value())
+        return { .dump_reason = "ignored-session-history-mutation-failure-before-restored-history-step"sv };
+
+    m_session_history.forget_web_content_state();
+    return {
+        .dump_reason = "webcontent-session-history-mutation-failed"sv,
+        .should_request_session_history_update = true,
+        .should_update_navigation_action_state = true,
+    };
+}
+
 WebContentSessionHistoryUpdateDecision CanonicalTraversable::did_receive_web_content_session_history_update_for_testing(Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url)
 {
     // NB: dumpUIProcessSessionHistory() first sends WebContent's current snapshot to the UI process, then returns

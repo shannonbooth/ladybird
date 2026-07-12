@@ -1266,6 +1266,16 @@ void ViewImplementation::did_update_session_history(Badge<WebContentClient>, Vec
     dump_session_history("did-update-session-history"sv);
 }
 
+void ViewImplementation::did_fail_to_apply_session_history_mutation(Badge<WebContentClient>)
+{
+    auto update = m_top_level_traversable.did_fail_to_apply_web_content_session_history_mutation();
+    if (update.should_request_session_history_update)
+        client().async_request_session_history_update(page_id());
+    if (update.should_update_navigation_action_state)
+        update_navigation_action_state();
+    dump_session_history(update.dump_reason);
+}
+
 static StringView session_history_entry_update_kind_to_string(Web::HTML::SessionHistoryEntryUpdateKind update_kind)
 {
     switch (update_kind) {
