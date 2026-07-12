@@ -416,7 +416,6 @@ protected:
     void complete_webdriver_navigation_completion(u64 request_id, Web::WebDriver::Response);
     void complete_webdriver_pending_navigation_if_url_matches(URL::URL const&);
     void update_navigation_action_state();
-    void apply_web_content_session_history_update(WebContentSessionHistoryUpdateResult const&);
     enum class SessionHistoryDumpMode {
         IfDebuggingEnabled,
         Always,

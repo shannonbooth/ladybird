@@ -76,24 +76,6 @@ void CanonicalTraversable::remove_from_index(CanonicalNavigable& navigable)
     });
 }
 
-static Optional<size_t> current_top_level_history_entry_index_for_step(Vector<Web::HTML::SessionHistoryEntryDescriptor> const& entries, Optional<i32> current_step)
-{
-    if (!current_step.has_value())
-        return {};
-
-    Optional<size_t> current_entry_index;
-    for (size_t i = 0; i < entries.size(); ++i) {
-        if (!entries[i].document_state.navigable_target_name.is_empty())
-            continue;
-
-        if (entries[i].step <= *current_step)
-            current_entry_index = i;
-        if (entries[i].step >= *current_step)
-            break;
-    }
-    return current_entry_index;
-}
-
 void CanonicalTraversable::abandon_pending_web_content_session_history_seed()
 {
     m_session_history_entry_url_loading_from_ui_process.clear();
@@ -488,70 +470,7 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
     return batch_result;
 }
 
-WebContentSessionHistoryUpdateDecision CanonicalTraversable::did_receive_web_content_session_history_update_for_testing(Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url)
-{
-    // NB: dumpUIProcessSessionHistory() first sends WebContent's current snapshot to the UI process, then returns
-    //     the UI mirror. If a stale seed ack is still pending, normal async snapshots are intentionally ignored, so
-    //     use the same convergence path as a rejected seed ack to make this testing hook deterministic.
-    if (m_pending_web_content_session_history_seed.waiting_for_ack) {
-        auto update = adopt_web_content_session_history_after_rejected_seed(move(entries), move(used_steps), current_used_step_index, current_url);
-        if (update.update_result == TraversableSessionHistory::UpdateResult::InvalidSnapshot)
-            return { .ignore_reason = "ignored-session-history-for-testing-before-ui-seed-ack"sv };
-        return { .update = move(update) };
-    }
-
-    return {
-        .update = update_session_history_from_web_content(move(entries), move(used_steps), current_used_step_index, true, current_url),
-    };
-}
-
-WebContentSessionHistoryUpdateResult CanonicalTraversable::update_session_history_from_web_content(Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index, bool seed_web_content_on_invalid_snapshot, URL::URL const& current_url)
-{
-    auto update_result = m_session_history.update_from_web_content(move(entries), move(used_steps), current_used_step_index);
-
-    WebContentSessionHistoryUpdateResult result {
-        .update_result = update_result,
-    };
-
-    if (update_result != TraversableSessionHistory::UpdateResult::InvalidSnapshot) {
-        if (update_result == TraversableSessionHistory::UpdateResult::CompleteSnapshot)
-            m_pending_session_history_navigation.clear();
-        if (auto* current_entry = m_session_history.current_entry())
-            result.current_url = current_entry->url;
-    } else if (seed_web_content_on_invalid_snapshot) {
-        if (auto const* current_entry = m_session_history.current_entry(); current_entry && current_entry->url == current_url) {
-            prepare_to_seed_web_content_session_history_from_ui_process();
-            result.should_seed_web_content = true;
-        }
-    }
-
-    return result;
-}
-
-WebContentSessionHistoryUpdateResult CanonicalTraversable::adopt_web_content_session_history_after_rejected_seed(Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url)
-{
-    if (entries.is_empty())
-        return {};
-
-    auto entries_from_web_content = entries;
-    auto used_steps_from_web_content = used_steps;
-    auto update = update_session_history_from_web_content(move(entries), move(used_steps), current_used_step_index, false, current_url);
-    if (update.update_result == TraversableSessionHistory::UpdateResult::InvalidSnapshot && current_used_step_index < used_steps_from_web_content.size()) {
-        auto current_top_level_entry_index = current_top_level_history_entry_index_for_step(entries_from_web_content, used_steps_from_web_content[current_used_step_index]);
-        if (current_top_level_entry_index.has_value() && entries_from_web_content[*current_top_level_entry_index].url == current_url) {
-            m_session_history.clear();
-            update = update_session_history_from_web_content(move(entries_from_web_content), move(used_steps_from_web_content), current_used_step_index, false, current_url);
-        }
-    }
-    if (update.update_result == TraversableSessionHistory::UpdateResult::InvalidSnapshot)
-        return update;
-
-    m_pending_web_content_session_history_seed.clear();
-    m_pending_session_history_traversal.clear();
-    return update;
-}
-
-WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_content_session_history_seed_ack(bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index, TraversableSessionHistory::SeedAckProof seed_ack_proof, URL::URL const& current_url)
+WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_content_session_history_seed_ack(bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index, TraversableSessionHistory::SeedAckProof seed_ack_proof)
 {
     if (!m_pending_web_content_session_history_seed.waiting_for_ack)
         return { .ignored = true, .dump_reason = "ignored-webcontent-session-history-seed-ack"sv };
@@ -560,15 +479,6 @@ WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_cont
     result.should_update_navigation_action_state = true;
 
     if (!accepted) {
-        auto update = adopt_web_content_session_history_after_rejected_seed(move(entries), move(used_steps), current_used_step_index, current_url);
-        if (update.update_result != TraversableSessionHistory::UpdateResult::InvalidSnapshot) {
-            result.dump_reason = "webcontent-session-history-seed-rejected-with-current-snapshot"sv;
-            result.current_url = move(update.current_url);
-            // NB: Applying the adopted snapshot's current URL already refreshes the navigation actions.
-            result.should_update_navigation_action_state = false;
-            return result;
-        }
-
         abandon_pending_web_content_session_history_seed();
         m_session_history.forget_web_content_state();
         m_pending_session_history_traversal.clear();
