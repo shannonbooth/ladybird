@@ -408,8 +408,8 @@ ErrorOr<Web::HTML::SameDocumentSessionHistoryNavigation> IPC::decode(Decoder& de
 {
     auto url = TRY(decoder.decode<URL::URL>());
     auto document_state = TRY(decoder.decode<Web::HTML::SessionHistoryDocumentStateDescriptor>());
-    auto classic_history_api_state = TRY(decoder.decode<Web::HTML::SerializationRecord>());
-    auto navigation_api_state = TRY(decoder.decode<Web::HTML::SerializationRecord>());
+    auto classic_history_api_state = TRY(decoder.decode<Web::HTML::StorageSerializationRecord>());
+    auto navigation_api_state = TRY(decoder.decode<Web::HTML::StorageSerializationRecord>());
     auto navigation_api_key = TRY(decoder.decode<String>());
     auto navigation_api_id = TRY(decoder.decode<String>());
     auto scroll_restoration_mode = TRY(decoder.decode<Web::HTML::ScrollRestorationMode>());
@@ -456,8 +456,8 @@ ErrorOr<Web::HTML::NestedSameDocumentSessionHistoryNavigation> IPC::decode(Decod
     auto navigable_id = TRY(decoder.decode<Web::HTML::CrossProcessId>());
     auto url = TRY(decoder.decode<URL::URL>());
     auto document_state = TRY(decoder.decode<Web::HTML::SessionHistoryDocumentStateDescriptor>());
-    auto classic_history_api_state = TRY(decoder.decode<Web::HTML::SerializationRecord>());
-    auto navigation_api_state = TRY(decoder.decode<Web::HTML::SerializationRecord>());
+    auto classic_history_api_state = TRY(decoder.decode<Web::HTML::StorageSerializationRecord>());
+    auto navigation_api_state = TRY(decoder.decode<Web::HTML::StorageSerializationRecord>());
     auto navigation_api_key = TRY(decoder.decode<String>());
     auto navigation_api_id = TRY(decoder.decode<String>());
     auto scroll_restoration_mode = TRY(decoder.decode<Web::HTML::ScrollRestorationMode>());
@@ -505,8 +505,8 @@ ErrorOr<Web::HTML::NestedCrossDocumentSessionHistoryNavigation> IPC::decode(Deco
     auto navigable_id = TRY(decoder.decode<Web::HTML::CrossProcessId>());
     auto url = TRY(decoder.decode<URL::URL>());
     auto document_state = TRY(decoder.decode<Web::HTML::SessionHistoryDocumentStateDescriptor>());
-    auto classic_history_api_state = TRY(decoder.decode<Web::HTML::SerializationRecord>());
-    auto navigation_api_state = TRY(decoder.decode<Web::HTML::SerializationRecord>());
+    auto classic_history_api_state = TRY(decoder.decode<Web::HTML::StorageSerializationRecord>());
+    auto navigation_api_state = TRY(decoder.decode<Web::HTML::StorageSerializationRecord>());
     auto navigation_api_key = TRY(decoder.decode<String>());
     auto navigation_api_id = TRY(decoder.decode<String>());
     auto scroll_restoration_mode = TRY(decoder.decode<Web::HTML::ScrollRestorationMode>());
@@ -548,8 +548,8 @@ ErrorOr<Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation> IPC::decode(De
 {
     auto url = TRY(decoder.decode<URL::URL>());
     auto document_state = TRY(decoder.decode<Web::HTML::SessionHistoryDocumentStateDescriptor>());
-    auto classic_history_api_state = TRY(decoder.decode<Web::HTML::SerializationRecord>());
-    auto navigation_api_state = TRY(decoder.decode<Web::HTML::SerializationRecord>());
+    auto classic_history_api_state = TRY(decoder.decode<Web::HTML::StorageSerializationRecord>());
+    auto navigation_api_state = TRY(decoder.decode<Web::HTML::StorageSerializationRecord>());
     auto navigation_api_key = TRY(decoder.decode<String>());
     auto navigation_api_id = TRY(decoder.decode<String>());
     auto scroll_restoration_mode = TRY(decoder.decode<Web::HTML::ScrollRestorationMode>());
@@ -589,6 +589,7 @@ ErrorOr<Web::HTML::RestoredCurrentSessionHistoryStep> IPC::decode(Decoder& decod
 template<>
 ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::WebContentSessionHistoryMutation const& mutation)
 {
+    TRY(encoder.encode(mutation.operation_id));
     TRY(encoder.encode(mutation.mutation));
     return {};
 }
@@ -596,9 +597,11 @@ ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::WebContentSessionHistoryM
 template<>
 ErrorOr<Web::HTML::WebContentSessionHistoryMutation> IPC::decode(Decoder& decoder)
 {
+    auto operation_id = TRY(decoder.decode<Web::HTML::SessionHistoryOperationId>());
     auto mutation = TRY(decoder.decode<Web::HTML::WebContentSessionHistoryMutation::Mutation>());
 
     return Web::HTML::WebContentSessionHistoryMutation {
+        .operation_id = operation_id,
         .mutation = move(mutation),
     };
 }
@@ -606,6 +609,7 @@ ErrorOr<Web::HTML::WebContentSessionHistoryMutation> IPC::decode(Decoder& decode
 template<>
 ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::WebContentSessionHistoryMutationBatch const& batch)
 {
+    TRY(encoder.encode(batch.operation_id));
     TRY(encoder.encode(batch.mutations));
     TRY(encoder.encode(batch.final_current_step));
     return {};
@@ -614,12 +618,58 @@ ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::WebContentSessionHistoryM
 template<>
 ErrorOr<Web::HTML::WebContentSessionHistoryMutationBatch> IPC::decode(Decoder& decoder)
 {
+    auto operation_id = TRY(decoder.decode<Web::HTML::SessionHistoryOperationId>());
     auto mutations = TRY(decoder.decode<Vector<Web::HTML::WebContentSessionHistoryMutation>>());
     auto final_current_step = TRY(decoder.decode<i32>());
 
     return Web::HTML::WebContentSessionHistoryMutationBatch {
+        .operation_id = operation_id,
         .mutations = move(mutations),
         .final_current_step = final_current_step,
+    };
+}
+
+template<>
+ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::ApplySessionHistoryStepCommand const& command)
+{
+    TRY(encoder.encode(command.command_id));
+    TRY(encoder.encode(command.apply_after_mutation_id));
+    TRY(encoder.encode(command.history_traversal_request_id));
+    TRY(encoder.encode(command.kind));
+    TRY(encoder.encode(command.target_step));
+    TRY(encoder.encode(command.target_step_index));
+    TRY(encoder.encode(command.target_entry));
+    TRY(encoder.encode(command.target_top_level_entry));
+    TRY(encoder.encode(command.target_step_is_top_level_entry));
+    TRY(encoder.encode(command.changes_top_level_entry));
+    return {};
+}
+
+template<>
+ErrorOr<Web::HTML::ApplySessionHistoryStepCommand> IPC::decode(Decoder& decoder)
+{
+    auto command_id = TRY(decoder.decode<Web::HTML::SessionHistoryOperationId>());
+    auto apply_after_mutation_id = TRY(decoder.decode<Web::HTML::SessionHistoryOperationId>());
+    auto history_traversal_request_id = TRY(decoder.decode<Optional<u64>>());
+    auto kind = TRY(decoder.decode<Web::HTML::ApplySessionHistoryStepKind>());
+    auto target_step = TRY(decoder.decode<i32>());
+    auto target_step_index = TRY(decoder.decode<size_t>());
+    auto target_entry = TRY(decoder.decode<Web::HTML::SessionHistoryEntryDescriptor>());
+    auto target_top_level_entry = TRY(decoder.decode<Web::HTML::SessionHistoryEntryDescriptor>());
+    auto target_step_is_top_level_entry = TRY(decoder.decode<bool>());
+    auto changes_top_level_entry = TRY(decoder.decode<bool>());
+
+    return Web::HTML::ApplySessionHistoryStepCommand {
+        .command_id = command_id,
+        .apply_after_mutation_id = apply_after_mutation_id,
+        .history_traversal_request_id = move(history_traversal_request_id),
+        .kind = kind,
+        .target_step = target_step,
+        .target_step_index = target_step_index,
+        .target_entry = move(target_entry),
+        .target_top_level_entry = move(target_top_level_entry),
+        .target_step_is_top_level_entry = target_step_is_top_level_entry,
+        .changes_top_level_entry = changes_top_level_entry,
     };
 }
 
