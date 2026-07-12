@@ -64,7 +64,7 @@ bool LocalTraversableNavigable::report_current_session_history_entry_update(Sess
     SessionHistoryEntryDescriptorCreationState creation_state { [&] {
         return page().client().allocate_cross_process_id();
     } };
-    page().client().page_did_update_current_session_history_entry(update_kind, create_session_history_entry_descriptor(entry, creation_state));
+    page().client().page_did_apply_session_history_mutation(WebContentSessionHistoryMutation::current_entry_update(update_kind, create_session_history_entry_descriptor(entry, creation_state)));
     return true;
 }
 
@@ -98,11 +98,11 @@ bool LocalTraversableNavigable::report_top_level_same_document_session_history_n
     SessionHistoryEntryDescriptorCreationState creation_state { [&] {
         return page().client().allocate_cross_process_id();
     } };
-    page().client().page_did_apply_top_level_same_document_session_history_navigation({
+    page().client().page_did_apply_session_history_mutation(WebContentSessionHistoryMutation::top_level_same_document_navigation({
         .entry = create_session_history_entry_descriptor(entry, creation_state),
         .replaced_step = replaced_step,
         .current_step = current_step,
-    });
+    }));
     return true;
 }
 
