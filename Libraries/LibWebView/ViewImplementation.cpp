@@ -1353,8 +1353,17 @@ void ViewImplementation::did_apply_session_history_mutation(Badge<WebContentClie
     }
 
     auto update = m_top_level_traversable.did_receive_web_content_session_history_mutation(move(mutation));
+    if (update.current_url.has_value()) {
+        auto current_url = *update.current_url;
+        set_url(current_url);
+
+        if (m_webdriver_pending_navigation_url.has_value() && *m_webdriver_pending_navigation_url != current_url)
+            m_webdriver_pending_navigation_url = current_url;
+    }
     if (update.should_request_session_history_update)
         client().async_request_session_history_update(page_id());
+    if (update.should_complete_webdriver_pending_navigation)
+        complete_webdriver_pending_navigation_if_url_matches(m_url);
     if (update.should_update_navigation_action_state)
         update_navigation_action_state();
     dump_session_history(update.dump_reason);

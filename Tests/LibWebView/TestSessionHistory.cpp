@@ -2347,18 +2347,21 @@ TEST_CASE(applied_traversal_mutation_updates_current_step_before_completion_resu
     }));
     EXPECT(mutation.accepted);
     EXPECT_EQ(mutation.dump_reason, "did-apply-session-history-traversal"sv);
-    EXPECT(!mutation.should_update_navigation_action_state);
+    EXPECT(mutation.should_update_navigation_action_state);
+    VERIFY(mutation.current_url.has_value());
+    EXPECT_EQ(*mutation.current_url, parse_url("https://example.test/b"sv));
+    EXPECT(!mutation.should_complete_webdriver_pending_navigation);
     expect_current_entry(traversable.session_history(), 1, "https://example.test/b"sv);
     EXPECT(traversable.current_web_content_session_history_matches_mirror());
 
     auto step_result = traversable.did_traverse_the_history_to_step(1, true, Web::HTML::HistoryStepResult::Applied);
-    EXPECT_EQ(step_result.dump_reason, "webcontent-history-step-applied"sv);
+    EXPECT_EQ(step_result.dump_reason, "ignored-stale-webcontent-history-step-result"sv);
     EXPECT(!step_result.fallback_target.has_value());
     EXPECT(!step_result.should_complete_webdriver_pending_navigation);
     expect_current_entry(traversable.session_history(), 1, "https://example.test/b"sv);
 }
 
-TEST_CASE(applied_same_document_traversal_completes_webdriver_from_history_step)
+TEST_CASE(applied_same_document_traversal_completes_webdriver_from_mutation)
 {
     WebView::CanonicalTraversable traversable;
 
@@ -2381,13 +2384,17 @@ TEST_CASE(applied_same_document_traversal_completes_webdriver_from_history_step)
     }));
     EXPECT(mutation.accepted);
     EXPECT_EQ(mutation.dump_reason, "did-apply-session-history-traversal"sv);
+    EXPECT(mutation.should_update_navigation_action_state);
+    VERIFY(mutation.current_url.has_value());
+    EXPECT_EQ(*mutation.current_url, parse_url("https://example.test/state?replace"sv));
+    EXPECT(mutation.should_complete_webdriver_pending_navigation);
     expect_current_entry(traversable.session_history(), 0, "https://example.test/state?replace"sv);
     EXPECT(traversable.current_web_content_session_history_matches_mirror());
 
     auto step_result = traversable.did_traverse_the_history_to_step(0, true, Web::HTML::HistoryStepResult::Applied);
-    EXPECT_EQ(step_result.dump_reason, "webcontent-history-step-applied"sv);
+    EXPECT_EQ(step_result.dump_reason, "ignored-stale-webcontent-history-step-result"sv);
     EXPECT(!step_result.fallback_target.has_value());
-    EXPECT(step_result.should_complete_webdriver_pending_navigation);
+    EXPECT(!step_result.should_complete_webdriver_pending_navigation);
     expect_current_entry(traversable.session_history(), 0, "https://example.test/state?replace"sv);
 }
 
@@ -2449,11 +2456,12 @@ TEST_CASE(applied_traversal_mutation_restores_seeded_current_step)
     }));
     EXPECT(mutation.accepted);
     EXPECT_EQ(mutation.dump_reason, "did-restore-current-session-history-step"sv);
-    EXPECT(!mutation.should_update_navigation_action_state);
+    EXPECT(mutation.should_update_navigation_action_state);
+    EXPECT(mutation.should_complete_webdriver_pending_navigation);
     EXPECT(traversable.current_web_content_session_history_matches_mirror());
 
     auto step_result = traversable.did_traverse_the_history_to_step(1, true, Web::HTML::HistoryStepResult::Applied);
-    EXPECT_EQ(step_result.dump_reason, "webcontent-history-step-restored"sv);
+    EXPECT_EQ(step_result.dump_reason, "ignored-stale-webcontent-history-step-result"sv);
     EXPECT(traversable.current_web_content_session_history_matches_mirror());
 }
 
