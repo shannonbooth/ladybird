@@ -357,6 +357,27 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
         };
     }
 
+    if (mutation.mutation.has<Web::HTML::CurrentSessionHistoryEntryNestedHistoriesUpdate>()) {
+        auto nested_histories_update = move(mutation.mutation.get<Web::HTML::CurrentSessionHistoryEntryNestedHistoriesUpdate>());
+        auto mutation_result = m_session_history.apply_web_content_mutation(
+            TraversableSessionHistory::WebContentMutation::current_entry_nested_histories_update(nested_histories_update.document_state_id, move(nested_histories_update.nested_histories), nested_histories_update.current_step));
+        if (!mutation_result.accepted) {
+            m_session_history.forget_web_content_state();
+            return {
+                .dump_reason = "rejected-current-entry-nested-histories-update"sv,
+                .should_request_session_history_update = true,
+                .should_update_navigation_action_state = true,
+            };
+        }
+
+        return {
+            .accepted = true,
+            .dump_reason = "did-update-current-entry-nested-histories"sv,
+            .should_request_session_history_update = !mutation_result.web_content_history_matches_mirror,
+            .should_update_navigation_action_state = true,
+        };
+    }
+
     if (mutation.mutation.has<Web::HTML::NestedSameDocumentSessionHistoryNavigation>()) {
         auto nested_navigation = move(mutation.mutation.get<Web::HTML::NestedSameDocumentSessionHistoryNavigation>());
         auto mutation_result = m_session_history.apply_web_content_mutation(

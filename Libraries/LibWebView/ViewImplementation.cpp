@@ -1295,6 +1295,14 @@ void ViewImplementation::did_apply_session_history_mutation(Badge<WebContentClie
                 client().pid(),
                 session_history_entry_update_kind_to_string(current_entry_update.update_kind),
                 history_log_entries(entries));
+        } else if (mutation.mutation.has<Web::HTML::CurrentSessionHistoryEntryNestedHistoriesUpdate>()) {
+            auto const& nested_histories_update = mutation.mutation.get<Web::HTML::CurrentSessionHistoryEntryNestedHistoriesUpdate>();
+            dbgln("[History] UI received WebContent session history mutation page={} pid={} type=current-entry-nested-histories-update document_state_id={} current_step={} nested_history_count={}",
+                page_id(),
+                client().pid(),
+                nested_histories_update.document_state_id,
+                nested_histories_update.current_step,
+                nested_histories_update.nested_histories.size());
         } else if (mutation.mutation.has<Web::HTML::NestedSameDocumentSessionHistoryNavigation>()) {
             auto const& nested_navigation = mutation.mutation.get<Web::HTML::NestedSameDocumentSessionHistoryNavigation>();
             Vector<Web::HTML::SessionHistoryEntryDescriptor> entries;

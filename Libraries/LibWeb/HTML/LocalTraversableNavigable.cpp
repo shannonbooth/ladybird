@@ -85,6 +85,30 @@ bool LocalTraversableNavigable::report_structural_session_history_update(Structu
     return true;
 }
 
+bool LocalTraversableNavigable::report_current_entry_nested_histories_update(i32 current_step, SaveActiveEntryPersistedState save_active_entry_persisted_state)
+{
+    if (!page().client().should_report_session_history_updates())
+        return false;
+
+    auto current_entry = current_session_history_entry();
+    if (!current_entry || !current_entry->step_value().has_value())
+        return false;
+
+    if (save_active_entry_persisted_state == SaveActiveEntryPersistedState::Yes)
+        save_persisted_state_to_active_session_history_entry();
+
+    SessionHistoryEntryDescriptorCreationState creation_state { [&] {
+        return page().client().allocate_cross_process_id();
+    } };
+    auto descriptor = create_session_history_entry_descriptor(*current_entry, creation_state);
+    page().client().page_did_apply_session_history_mutation(WebContentSessionHistoryMutation::current_entry_nested_histories_update({
+        .document_state_id = descriptor.document_state.id,
+        .nested_histories = move(descriptor.document_state.nested_histories),
+        .current_step = current_step,
+    }));
+    return true;
+}
+
 bool LocalTraversableNavigable::report_top_level_same_document_session_history_navigation(SessionHistoryEntry const& entry, Optional<i32> replaced_step, i32 current_step)
 {
     if (!page().client().should_report_session_history_updates())
@@ -2015,12 +2039,15 @@ void ApplyHistoryStepState::complete()
             applied_traversal_update_covered_completion = m_traversable->report_applied_session_history_traversal(used_target_step);
         if (applied_traversal_update_covered_completion)
             completion_result = HistoryStepResult::AppliedBySessionHistoryMutation;
+        auto nested_histories_update_covered_completion = false;
+        if (!m_navigation_type.has_value())
+            nested_histories_update_covered_completion = m_traversable->report_current_entry_nested_histories_update(used_target_step);
 
         // Targeted mutations cover the simple completion paths that WebContent can prove back to the UI process. If
         // one of them covered this history-step completion, do not also send a full snapshot. The snapshot path below
         // remains the recovery path for structural changes outside the targeted mutation set.
         if (targeted_current_entry_updates_need_full_session_history_snapshot()
-            || (!applied_traversal_update_covered_completion && completion_needs_full_session_history_snapshot())) {
+            || (!applied_traversal_update_covered_completion && !nested_histories_update_covered_completion && completion_needs_full_session_history_snapshot())) {
             auto save_active_entry_persisted_state = LocalTraversableNavigable::SaveActiveEntryPersistedState::Yes;
             // NB: During history traversal, the active entry can point at the target
             //     entry before the active document's queued history-step update has
