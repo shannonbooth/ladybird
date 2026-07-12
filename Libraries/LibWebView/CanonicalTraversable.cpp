@@ -287,6 +287,26 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
         };
     }
 
+    if (mutation.mutation.has<Web::HTML::NestedCrossDocumentSessionHistoryNavigation>()) {
+        auto nested_navigation = move(mutation.mutation.get<Web::HTML::NestedCrossDocumentSessionHistoryNavigation>());
+        auto mutation_result = m_session_history.apply_web_content_mutation(
+            TraversableSessionHistory::WebContentMutation::nested_cross_document_navigation(nested_navigation.parent_document_state_id, nested_navigation.navigable_id, move(nested_navigation.entry), nested_navigation.current_step));
+        if (!mutation_result.accepted) {
+            m_session_history.forget_web_content_state();
+            return {
+                .dump_reason = "rejected-nested-cross-document-navigation"sv,
+                .should_request_session_history_update = true,
+                .should_update_navigation_action_state = true,
+            };
+        }
+
+        return {
+            .accepted = true,
+            .dump_reason = "did-apply-nested-cross-document-navigation"sv,
+            .should_update_navigation_action_state = true,
+        };
+    }
+
     if (mutation.mutation.has<Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation>()) {
         auto cross_document_navigation = move(mutation.mutation.get<Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation>());
         auto navigation_url = cross_document_navigation.entry.url;

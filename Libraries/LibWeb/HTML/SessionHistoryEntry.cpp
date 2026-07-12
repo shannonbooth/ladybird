@@ -391,6 +391,32 @@ ErrorOr<Web::HTML::NestedSameDocumentSessionHistoryNavigation> IPC::decode(Decod
 }
 
 template<>
+ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::NestedCrossDocumentSessionHistoryNavigation const& navigation)
+{
+    TRY(encoder.encode(navigation.parent_document_state_id));
+    TRY(encoder.encode(navigation.navigable_id));
+    TRY(encoder.encode(navigation.entry));
+    TRY(encoder.encode(navigation.current_step));
+    return {};
+}
+
+template<>
+ErrorOr<Web::HTML::NestedCrossDocumentSessionHistoryNavigation> IPC::decode(Decoder& decoder)
+{
+    auto parent_document_state_id = TRY(decoder.decode<Web::HTML::CrossProcessId>());
+    auto navigable_id = TRY(decoder.decode<Web::HTML::CrossProcessId>());
+    auto entry = TRY(decoder.decode<Web::HTML::SessionHistoryEntryDescriptor>());
+    auto current_step = TRY(decoder.decode<i32>());
+
+    return Web::HTML::NestedCrossDocumentSessionHistoryNavigation {
+        .parent_document_state_id = parent_document_state_id,
+        .navigable_id = navigable_id,
+        .entry = move(entry),
+        .current_step = current_step,
+    };
+}
+
+template<>
 ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation const& navigation)
 {
     TRY(encoder.encode(navigation.entry));
