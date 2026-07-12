@@ -387,7 +387,14 @@ ErrorOr<Web::HTML::CurrentSessionHistoryEntryNestedHistoryRemoval> IPC::decode(D
 template<>
 ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::SameDocumentSessionHistoryNavigation const& navigation)
 {
-    TRY(encoder.encode(navigation.entry));
+    TRY(encoder.encode(navigation.url));
+    TRY(encoder.encode(navigation.document_state));
+    TRY(encoder.encode(navigation.classic_history_api_state));
+    TRY(encoder.encode(navigation.navigation_api_state));
+    TRY(encoder.encode(navigation.navigation_api_key));
+    TRY(encoder.encode(navigation.navigation_api_id));
+    TRY(encoder.encode(navigation.scroll_restoration_mode));
+    TRY(encoder.encode(navigation.scroll_position_data));
     TRY(encoder.encode(navigation.replaced_step));
     TRY(encoder.encode(navigation.current_step));
     return {};
@@ -396,12 +403,26 @@ ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::SameDocumentSessionHistor
 template<>
 ErrorOr<Web::HTML::SameDocumentSessionHistoryNavigation> IPC::decode(Decoder& decoder)
 {
-    auto entry = TRY(decoder.decode<Web::HTML::SessionHistoryEntryDescriptor>());
+    auto url = TRY(decoder.decode<URL::URL>());
+    auto document_state = TRY(decoder.decode<Web::HTML::SessionHistoryDocumentStateDescriptor>());
+    auto classic_history_api_state = TRY(decoder.decode<Web::HTML::SerializationRecord>());
+    auto navigation_api_state = TRY(decoder.decode<Web::HTML::SerializationRecord>());
+    auto navigation_api_key = TRY(decoder.decode<String>());
+    auto navigation_api_id = TRY(decoder.decode<String>());
+    auto scroll_restoration_mode = TRY(decoder.decode<Web::HTML::ScrollRestorationMode>());
+    auto scroll_position_data = TRY(decoder.decode<Web::HTML::SessionHistoryEntryScrollPositionData>());
     auto replaced_step = TRY(decoder.decode<Optional<i32>>());
     auto current_step = TRY(decoder.decode<i32>());
 
     return Web::HTML::SameDocumentSessionHistoryNavigation {
-        .entry = move(entry),
+        .url = move(url),
+        .document_state = move(document_state),
+        .classic_history_api_state = move(classic_history_api_state),
+        .navigation_api_state = move(navigation_api_state),
+        .navigation_api_key = move(navigation_api_key),
+        .navigation_api_id = move(navigation_api_id),
+        .scroll_restoration_mode = scroll_restoration_mode,
+        .scroll_position_data = move(scroll_position_data),
         .replaced_step = move(replaced_step),
         .current_step = current_step,
     };
@@ -465,7 +486,14 @@ ErrorOr<Web::HTML::NestedCrossDocumentSessionHistoryNavigation> IPC::decode(Deco
 template<>
 ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation const& navigation)
 {
-    TRY(encoder.encode(navigation.entry));
+    TRY(encoder.encode(navigation.url));
+    TRY(encoder.encode(navigation.document_state));
+    TRY(encoder.encode(navigation.classic_history_api_state));
+    TRY(encoder.encode(navigation.navigation_api_state));
+    TRY(encoder.encode(navigation.navigation_api_key));
+    TRY(encoder.encode(navigation.navigation_api_id));
+    TRY(encoder.encode(navigation.scroll_restoration_mode));
+    TRY(encoder.encode(navigation.scroll_position_data));
     TRY(encoder.encode(navigation.current_step));
     return {};
 }
@@ -473,11 +501,25 @@ ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::TopLevelCrossDocumentSess
 template<>
 ErrorOr<Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation> IPC::decode(Decoder& decoder)
 {
-    auto entry = TRY(decoder.decode<Web::HTML::SessionHistoryEntryDescriptor>());
+    auto url = TRY(decoder.decode<URL::URL>());
+    auto document_state = TRY(decoder.decode<Web::HTML::SessionHistoryDocumentStateDescriptor>());
+    auto classic_history_api_state = TRY(decoder.decode<Web::HTML::SerializationRecord>());
+    auto navigation_api_state = TRY(decoder.decode<Web::HTML::SerializationRecord>());
+    auto navigation_api_key = TRY(decoder.decode<String>());
+    auto navigation_api_id = TRY(decoder.decode<String>());
+    auto scroll_restoration_mode = TRY(decoder.decode<Web::HTML::ScrollRestorationMode>());
+    auto scroll_position_data = TRY(decoder.decode<Web::HTML::SessionHistoryEntryScrollPositionData>());
     auto current_step = TRY(decoder.decode<i32>());
 
     return Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation {
-        .entry = move(entry),
+        .url = move(url),
+        .document_state = move(document_state),
+        .classic_history_api_state = move(classic_history_api_state),
+        .navigation_api_state = move(navigation_api_state),
+        .navigation_api_key = move(navigation_api_key),
+        .navigation_api_id = move(navigation_api_id),
+        .scroll_restoration_mode = scroll_restoration_mode,
+        .scroll_position_data = move(scroll_position_data),
         .current_step = current_step,
     };
 }

@@ -154,8 +154,16 @@ Optional<WebContentSessionHistoryMutation> LocalTraversableNavigable::create_top
     SessionHistoryEntryDescriptorCreationState creation_state { [&] {
         return page().client().allocate_cross_process_id();
     } };
+    auto descriptor = create_session_history_entry_descriptor(entry, creation_state);
     return WebContentSessionHistoryMutation::top_level_same_document_navigation({
-        .entry = create_session_history_entry_descriptor(entry, creation_state),
+        .url = move(descriptor.url),
+        .document_state = move(descriptor.document_state),
+        .classic_history_api_state = move(descriptor.classic_history_api_state),
+        .navigation_api_state = move(descriptor.navigation_api_state),
+        .navigation_api_key = move(descriptor.navigation_api_key),
+        .navigation_api_id = move(descriptor.navigation_api_id),
+        .scroll_restoration_mode = descriptor.scroll_restoration_mode,
+        .scroll_position_data = move(descriptor.scroll_position_data),
         .replaced_step = replaced_step,
         .current_step = current_step,
     });
@@ -271,8 +279,16 @@ Optional<WebContentSessionHistoryMutation> LocalTraversableNavigable::create_top
     SessionHistoryEntryDescriptorCreationState creation_state { [&] {
         return page().client().allocate_cross_process_id();
     } };
+    auto descriptor = create_session_history_entry_descriptor(entry, creation_state);
     return WebContentSessionHistoryMutation::top_level_cross_document_navigation({
-        .entry = create_session_history_entry_descriptor(entry, creation_state),
+        .url = move(descriptor.url),
+        .document_state = move(descriptor.document_state),
+        .classic_history_api_state = move(descriptor.classic_history_api_state),
+        .navigation_api_state = move(descriptor.navigation_api_state),
+        .navigation_api_key = move(descriptor.navigation_api_key),
+        .navigation_api_id = move(descriptor.navigation_api_id),
+        .scroll_restoration_mode = descriptor.scroll_restoration_mode,
+        .scroll_position_data = move(descriptor.scroll_position_data),
         .current_step = current_step,
     });
 }

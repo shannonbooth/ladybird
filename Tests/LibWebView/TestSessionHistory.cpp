@@ -192,11 +192,40 @@ static bool apply_current_entry_nested_history_removal(WebView::TraversableSessi
         .accepted;
 }
 
+static Web::HTML::SameDocumentSessionHistoryNavigation same_document_navigation_details(Web::HTML::SessionHistoryEntryDescriptor entry, Optional<i32> replaced_step, i32 current_step)
+{
+    return {
+        .url = move(entry.url),
+        .document_state = move(entry.document_state),
+        .classic_history_api_state = move(entry.classic_history_api_state),
+        .navigation_api_state = move(entry.navigation_api_state),
+        .navigation_api_key = move(entry.navigation_api_key),
+        .navigation_api_id = move(entry.navigation_api_id),
+        .scroll_restoration_mode = entry.scroll_restoration_mode,
+        .scroll_position_data = move(entry.scroll_position_data),
+        .replaced_step = replaced_step,
+        .current_step = current_step,
+    };
+}
+
+static Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation top_level_cross_document_navigation_details(Web::HTML::SessionHistoryEntryDescriptor entry, i32 current_step)
+{
+    return {
+        .url = move(entry.url),
+        .document_state = move(entry.document_state),
+        .classic_history_api_state = move(entry.classic_history_api_state),
+        .navigation_api_state = move(entry.navigation_api_state),
+        .navigation_api_key = move(entry.navigation_api_key),
+        .navigation_api_id = move(entry.navigation_api_id),
+        .scroll_restoration_mode = entry.scroll_restoration_mode,
+        .scroll_position_data = move(entry.scroll_position_data),
+        .current_step = current_step,
+    };
+}
+
 static bool apply_top_level_same_document_navigation(WebView::TraversableSessionHistory& history, Web::HTML::SessionHistoryEntryDescriptor entry, Optional<i32> replaced_step, i32 current_step)
 {
-    return history.apply_web_content_mutation(
-                      WebView::TraversableSessionHistory::WebContentMutation::top_level_same_document_navigation(move(entry), replaced_step, current_step))
-        .accepted;
+    return history.apply_top_level_same_document_navigation(same_document_navigation_details(move(entry), replaced_step, current_step));
 }
 
 static bool apply_nested_same_document_navigation(WebView::TraversableSessionHistory& history, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor entry, Optional<i32> replaced_step, i32 current_step)
@@ -215,9 +244,7 @@ static bool apply_nested_cross_document_navigation(WebView::TraversableSessionHi
 
 static bool apply_top_level_cross_document_navigation(WebView::TraversableSessionHistory& history, Web::HTML::SessionHistoryEntryDescriptor entry, i32 current_step)
 {
-    return history.apply_web_content_mutation(
-                      WebView::TraversableSessionHistory::WebContentMutation::top_level_cross_document_navigation(move(entry), current_step))
-        .accepted;
+    return history.apply_top_level_cross_document_navigation_commit(top_level_cross_document_navigation_details(move(entry), current_step));
 }
 
 static bool apply_restored_current_step(WebView::TraversableSessionHistory& history, i32 step)
@@ -269,9 +296,14 @@ static void initialize_history_from_ui_entries(WebView::TraversableSessionHistor
         auto nested_histories = move(entry.document_state.nested_histories);
         entry.document_state.nested_histories.clear();
 
-        if (history.is_empty())
+        auto const* current_entry = history.current_entry();
+        auto is_same_document_navigation = current_entry && current_entry->document_state.id == entry.document_state.id;
+        if (is_same_document_navigation) {
+            VERIFY(apply_top_level_same_document_navigation(history, entry, {}, entry.step));
+        } else {
             history.navigate(entry.url, entry.document_state.id, entry.document_state.resource);
-        VERIFY(apply_top_level_cross_document_navigation(history, entry, entry.step));
+            VERIFY(apply_top_level_cross_document_navigation(history, entry, entry.step));
+        }
 
         for (auto& nested_history : nested_histories) {
             auto current_step_after_nested_update = greatest_step_in_nested_history(nested_history).value_or(entry.step);
@@ -1283,10 +1315,8 @@ TEST_CASE(accepted_top_level_cross_document_navigation_keeps_mirror_proven)
     committed_entry.document_state.id = document_state_id;
     committed_entry.document_state.ever_populated = true;
     committed_entry.document_state.origin = parse_url("https://b.example/"sv).origin();
-    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::top_level_cross_document_navigation({
-        .entry = move(committed_entry),
-        .current_step = 1,
-    }));
+    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::top_level_cross_document_navigation(
+        top_level_cross_document_navigation_details(move(committed_entry), 1)));
     EXPECT(update.accepted);
     EXPECT_EQ(update.dump_reason, "did-apply-top-level-cross-document-navigation"sv);
     EXPECT(update.should_update_navigation_action_state);
@@ -1314,10 +1344,8 @@ TEST_CASE(accepted_top_level_cross_document_navigation_with_committed_document_s
     auto committed_entry = entry(1, "https://b.example/"sv, 2, "main"sv);
     committed_entry.document_state.ever_populated = true;
     committed_entry.document_state.origin = parse_url("https://b.example/"sv).origin();
-    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::top_level_cross_document_navigation({
-        .entry = move(committed_entry),
-        .current_step = 1,
-    }));
+    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::top_level_cross_document_navigation(
+        top_level_cross_document_navigation_details(move(committed_entry), 1)));
     EXPECT(update.accepted);
     EXPECT_EQ(update.dump_reason, "did-apply-top-level-cross-document-navigation"sv);
     EXPECT(update.should_update_navigation_action_state);
@@ -1345,10 +1373,8 @@ TEST_CASE(accepted_top_level_cross_document_navigation_with_redirected_url_keeps
     auto committed_entry = entry(1, "https://b.example/"sv, 2, "main"sv);
     committed_entry.document_state.ever_populated = true;
     committed_entry.document_state.origin = parse_url("https://b.example/"sv).origin();
-    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::top_level_cross_document_navigation({
-        .entry = move(committed_entry),
-        .current_step = 1,
-    }));
+    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::top_level_cross_document_navigation(
+        top_level_cross_document_navigation_details(move(committed_entry), 1)));
     EXPECT(update.accepted);
     EXPECT_EQ(update.dump_reason, "did-apply-top-level-cross-document-navigation"sv);
     EXPECT(update.should_update_navigation_action_state);
@@ -1375,10 +1401,8 @@ TEST_CASE(rejected_top_level_cross_document_navigation_marks_mirror_stale)
     auto committed_entry = entry(2, "https://c.example/"sv);
     committed_entry.document_state.id = document_state_id;
     committed_entry.document_state.ever_populated = true;
-    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::top_level_cross_document_navigation({
-        .entry = move(committed_entry),
-        .current_step = 1,
-    }));
+    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::top_level_cross_document_navigation(
+        top_level_cross_document_navigation_details(move(committed_entry), 2)));
     EXPECT(!update.accepted);
     EXPECT_EQ(update.dump_reason, "rejected-top-level-cross-document-navigation"sv);
     EXPECT(update.should_update_navigation_action_state);
