@@ -480,6 +480,45 @@ TEST_CASE(targeted_current_entry_update_rejects_structural_change)
     expect_entry_state(*current_entry, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
 }
 
+TEST_CASE(accepted_targeted_current_entry_update_does_not_request_snapshot)
+{
+    WebView::CanonicalTraversable traversable;
+
+    auto initial_update = traversable.did_receive_web_content_session_history_update({
+                                                                                        entry(0, "https://a.example/"sv, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto),
+                                                                                    },
+        { 0 }, 0, parse_url("https://a.example/"sv));
+    EXPECT_EQ(initial_update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+
+    auto updated_entry = entry(0, "https://a.example/"sv, 1, 9, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
+    auto update = traversable.did_receive_web_content_current_entry_update(SessionHistoryEntryUpdateKind::NavigationAPIState, move(updated_entry));
+    EXPECT(update.accepted);
+    EXPECT_EQ(update.dump_reason, "did-update-current-entry"sv);
+    EXPECT(!update.should_request_session_history_update);
+    EXPECT(!update.should_update_navigation_action_state);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+}
+
+TEST_CASE(rejected_targeted_current_entry_update_requests_snapshot)
+{
+    WebView::CanonicalTraversable traversable;
+
+    auto initial_update = traversable.did_receive_web_content_session_history_update({
+                                                                                        entry(0, "https://a.example/"sv, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto),
+                                                                                    },
+        { 0 }, 0, parse_url("https://a.example/"sv));
+    EXPECT_EQ(initial_update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+
+    auto updated_entry = entry(0, "https://a.example/"sv, 1, 9, "key-b"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
+    auto update = traversable.did_receive_web_content_current_entry_update(SessionHistoryEntryUpdateKind::NavigationAPIState, move(updated_entry));
+    EXPECT(!update.accepted);
+    EXPECT_EQ(update.dump_reason, "rejected-current-entry-update"sv);
+    EXPECT(update.should_request_session_history_update);
+    EXPECT(update.should_update_navigation_action_state);
+    EXPECT(!traversable.current_web_content_session_history_matches_mirror());
+}
+
 TEST_CASE(targeted_current_entry_update_updates_scroll_restoration_mode)
 {
     WebView::TraversableSessionHistory history;

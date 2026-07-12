@@ -928,6 +928,12 @@ public:
         Completed,
     };
 
+    enum class TargetedCurrentEntryUpdateState : u8 {
+        None,
+        CoversCompletion,
+        NeedsFullSnapshot,
+    };
+
 private:
     void visit_edges(Cell::Visitor& visitor) override
     {
@@ -979,13 +985,14 @@ private:
     void clear_ongoing_traversal_for_changing_navigable(GC::Ptr<LocalNavigable>);
     void clear_ongoing_traversals_for_changing_navigables();
 
-    void note_reload_pending_clear_update_needed();
+    void note_reload_pending_clear_update_needed(SessionHistoryEntry&);
     void send_reload_pending_clear_update_if_needed();
     bool reload_pending_updates_covered_completion() const;
     void note_document_state_population_update(LocalNavigable const&, bool update_only, bool update_was_sent);
     bool document_state_population_update_can_cover_completion(LocalNavigable const&, bool update_only) const;
     bool document_state_population_update_covered_completion() const;
     bool targeted_current_entry_updates_covered_completion() const;
+    bool completion_needs_full_session_history_snapshot() const;
 
     Phase m_phase { Phase::WaitingForDocumentPopulation };
     u64 m_generation { 0 };
@@ -1002,10 +1009,9 @@ private:
     Optional<String> m_expected_ongoing_navigation_id;
     GC::Ptr<OnApplyHistoryStepComplete> m_on_complete;
     bool m_reload_pending_clear_update_needed { false };
-    bool m_reload_pending_update_covered_completion { false };
-    bool m_reload_pending_update_needs_full_snapshot { false };
-    bool m_document_state_population_update_covered_completion { false };
-    bool m_document_state_population_update_needs_full_snapshot { false };
+    RefPtr<SessionHistoryEntry> m_reload_pending_clear_entry;
+    TargetedCurrentEntryUpdateState m_reload_pending_update_state { TargetedCurrentEntryUpdateState::None };
+    TargetedCurrentEntryUpdateState m_document_state_population_update_state { TargetedCurrentEntryUpdateState::None };
     GC::Ref<Platform::Timer> m_timeout;
 
     Vector<GC::Ref<LocalNavigable>> m_changing_navigables;
@@ -1023,19 +1029,20 @@ private:
 
 GC_DEFINE_ALLOCATOR(ApplyHistoryStepState);
 
-void ApplyHistoryStepState::note_reload_pending_clear_update_needed()
+void ApplyHistoryStepState::note_reload_pending_clear_update_needed(SessionHistoryEntry& entry)
 {
-    if (m_reload_pending_update_needs_full_snapshot)
+    if (m_reload_pending_update_state == TargetedCurrentEntryUpdateState::NeedsFullSnapshot)
         return;
 
-    if (m_reload_pending_clear_update_needed || m_reload_pending_update_covered_completion) {
+    if (m_reload_pending_clear_update_needed || m_reload_pending_update_state == TargetedCurrentEntryUpdateState::CoversCompletion) {
         m_reload_pending_clear_update_needed = false;
-        m_reload_pending_update_covered_completion = false;
-        m_reload_pending_update_needs_full_snapshot = true;
+        m_reload_pending_clear_entry = nullptr;
+        m_reload_pending_update_state = TargetedCurrentEntryUpdateState::NeedsFullSnapshot;
         return;
     }
 
     m_reload_pending_clear_update_needed = true;
+    m_reload_pending_clear_entry = entry;
 }
 
 void ApplyHistoryStepState::send_reload_pending_clear_update_if_needed()
@@ -1044,36 +1051,36 @@ void ApplyHistoryStepState::send_reload_pending_clear_update_if_needed()
         return;
 
     m_reload_pending_clear_update_needed = false;
-    if (auto current_entry = m_traversable->current_session_history_entry(); current_entry && report_current_session_history_entry_reload_pending_update(*m_traversable, *current_entry)) {
-        m_reload_pending_update_covered_completion = true;
+    auto reload_pending_clear_entry = move(m_reload_pending_clear_entry);
+    if (reload_pending_clear_entry && report_current_session_history_entry_reload_pending_update(*m_traversable, *reload_pending_clear_entry)) {
+        m_reload_pending_update_state = TargetedCurrentEntryUpdateState::CoversCompletion;
         return;
     }
 
-    m_reload_pending_update_needs_full_snapshot = true;
+    m_reload_pending_update_state = TargetedCurrentEntryUpdateState::NeedsFullSnapshot;
 }
 
 bool ApplyHistoryStepState::reload_pending_updates_covered_completion() const
 {
-    return m_reload_pending_update_covered_completion;
+    return m_reload_pending_update_state == TargetedCurrentEntryUpdateState::CoversCompletion;
 }
 
 void ApplyHistoryStepState::note_document_state_population_update(LocalNavigable const& navigable, bool update_only, bool update_was_sent)
 {
-    if (m_document_state_population_update_needs_full_snapshot)
+    if (m_document_state_population_update_state == TargetedCurrentEntryUpdateState::NeedsFullSnapshot)
         return;
 
-    if (m_document_state_population_update_covered_completion) {
-        m_document_state_population_update_covered_completion = false;
-        m_document_state_population_update_needs_full_snapshot = true;
+    if (m_document_state_population_update_state == TargetedCurrentEntryUpdateState::CoversCompletion) {
+        m_document_state_population_update_state = TargetedCurrentEntryUpdateState::NeedsFullSnapshot;
         return;
     }
 
     if (!update_was_sent || !document_state_population_update_can_cover_completion(navigable, update_only)) {
-        m_document_state_population_update_needs_full_snapshot = true;
+        m_document_state_population_update_state = TargetedCurrentEntryUpdateState::NeedsFullSnapshot;
         return;
     }
 
-    m_document_state_population_update_covered_completion = true;
+    m_document_state_population_update_state = TargetedCurrentEntryUpdateState::CoversCompletion;
 }
 
 bool ApplyHistoryStepState::document_state_population_update_can_cover_completion(LocalNavigable const& navigable, bool update_only) const
@@ -1101,18 +1108,25 @@ bool ApplyHistoryStepState::document_state_population_update_can_cover_completio
 
 bool ApplyHistoryStepState::document_state_population_update_covered_completion() const
 {
-    return m_document_state_population_update_covered_completion;
+    return m_document_state_population_update_state == TargetedCurrentEntryUpdateState::CoversCompletion;
 }
 
 bool ApplyHistoryStepState::targeted_current_entry_updates_covered_completion() const
 {
-    if (m_reload_pending_update_needs_full_snapshot || m_document_state_population_update_needs_full_snapshot)
+    if (m_reload_pending_update_state == TargetedCurrentEntryUpdateState::NeedsFullSnapshot
+        || m_document_state_population_update_state == TargetedCurrentEntryUpdateState::NeedsFullSnapshot) {
         return false;
+    }
 
     if (m_reload_pending_clear_update_needed)
         return false;
 
     return reload_pending_updates_covered_completion() || document_state_population_update_covered_completion();
+}
+
+bool ApplyHistoryStepState::completion_needs_full_session_history_snapshot() const
+{
+    return !targeted_current_entry_updates_covered_completion();
 }
 
 void ApplyHistoryStepState::start()
@@ -1355,7 +1369,7 @@ void ApplyHistoryStepState::start()
                 auto was_reload_pending = target_entry->document_state()->reload_pending();
                 target_entry->document_state()->set_reload_pending(false);
                 if (m_navigation_type == Bindings::NavigationType::Reload && was_reload_pending)
-                    note_reload_pending_clear_update_needed();
+                    note_reload_pending_clear_update_needed(*target_entry);
 
                 // 6. Let allowPOST be targetEntry's document state's reload pending.
                 auto allow_POST = target_entry->document_state()->reload_pending();
@@ -1723,7 +1737,10 @@ void ApplyHistoryStepState::complete()
         if (m_navigation_type == Bindings::NavigationType::Reload)
             send_reload_pending_clear_update_if_needed();
 
-        if (!targeted_current_entry_updates_covered_completion() && m_traversable->page().client().should_report_session_history_updates()) {
+        // Current-entry/document-state updates are the non-structural completion path. If one of those targeted
+        // updates covered this history-step completion, do not also send a full snapshot. The snapshot path below is
+        // reserved for structural changes, recovery, or cases where the targeted proof was not sufficient.
+        if (completion_needs_full_session_history_snapshot() && m_traversable->page().client().should_report_session_history_updates()) {
             auto save_active_entry_persisted_state = LocalTraversableNavigable::SaveActiveEntryPersistedState::Yes;
             // NB: During history traversal, the active entry can point at the target
             //     entry before the active document's queued history-step update has
