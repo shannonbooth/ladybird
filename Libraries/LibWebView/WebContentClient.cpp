@@ -1786,6 +1786,12 @@ void WebContentClient::did_update_current_session_history_entry(u64 page_id, Web
         view->did_update_current_session_history_entry({}, update_kind, move(entry));
 }
 
+void WebContentClient::did_apply_top_level_same_document_session_history_navigation(u64 page_id, Web::HTML::SessionHistoryEntryDescriptor entry, Optional<i32> replaced_step, i32 current_step)
+{
+    if (auto view = view_for_page_id(page_id); view.has_value())
+        view->did_apply_top_level_same_document_session_history_navigation({}, move(entry), replaced_step, current_step);
+}
+
 Messages::WebContentClient::DidRequestUiProcessSessionHistoryForTestingResponse WebContentClient::did_request_ui_process_session_history_for_testing(u64 page_id)
 {
     if (auto view = view_for_page_id(page_id); view.has_value())
