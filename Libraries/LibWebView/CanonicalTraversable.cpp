@@ -275,12 +275,26 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
             };
         }
 
-        if (!m_pending_session_history_traversal.has_value() || m_pending_session_history_traversal->target_step != traversal.current_step)
-            return { .dump_reason = "ignored-stale-webcontent-applied-traversal"sv };
+        auto should_complete_webdriver_pending_navigation = false;
+        auto has_pending_session_history_traversal = m_pending_session_history_traversal.has_value();
+        if (has_pending_session_history_traversal) {
+            if (m_pending_session_history_traversal->target_step != traversal.current_step)
+                return { .dump_reason = "ignored-stale-webcontent-applied-traversal"sv };
+            should_complete_webdriver_pending_navigation = m_pending_session_history_traversal->webdriver_pending_navigation_completes_with_session_history_update;
+        }
 
         auto mutation_result = m_session_history.apply_web_content_mutation(
             TraversableSessionHistory::WebContentMutation::applied_traversal(traversal.current_step));
         if (!mutation_result.accepted) {
+            if (!has_pending_session_history_traversal) {
+                m_session_history.forget_web_content_state();
+                return {
+                    .dump_reason = "rejected-webcontent-applied-traversal"sv,
+                    .should_request_session_history_update = true,
+                    .should_update_navigation_action_state = true,
+                };
+            }
+
             if (auto target = m_session_history.traversal_target_for_step(traversal.current_step); target.has_value())
                 return { .dump_reason = "webcontent-applied-traversal-mutation-with-stale-mirror-fallback-load"sv, .fallback_target = *target };
             m_session_history.forget_web_content_state();
@@ -291,7 +305,6 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
             };
         }
 
-        auto should_complete_webdriver_pending_navigation = m_pending_session_history_traversal->webdriver_pending_navigation_completes_with_session_history_update;
         Optional<URL::URL> current_url;
         if (auto const* current_entry = m_session_history.current_entry())
             current_url = current_entry->url;
