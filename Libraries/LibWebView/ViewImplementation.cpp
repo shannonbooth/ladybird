@@ -1294,24 +1294,6 @@ void ViewImplementation::did_change_screen_wake_lock_state(Badge<WebContentClien
 
 static Optional<size_t> current_top_level_history_entry_index_for_step(Vector<Web::HTML::SessionHistoryEntryDescriptor> const&, Optional<i32> current_step);
 
-void ViewImplementation::apply_web_content_session_history_update(WebContentSessionHistoryUpdateResult const& update)
-{
-    if (update.current_url.has_value()) {
-        auto current_url = *update.current_url;
-        set_url(current_url);
-
-        if (m_webdriver_pending_navigation_url.has_value() && *m_webdriver_pending_navigation_url != current_url)
-            m_webdriver_pending_navigation_url = current_url;
-        if (m_webdriver_pending_navigation_completes_with_session_history_update)
-            complete_webdriver_pending_navigation_if_url_matches(m_url);
-    }
-
-    if (update.should_seed_web_content)
-        seed_web_content_session_history_from_ui_process();
-
-    update_navigation_action_state();
-}
-
 static StringView session_history_entry_update_kind_to_string(Web::HTML::SessionHistoryEntryUpdateKind update_kind)
 {
     switch (update_kind) {
@@ -1941,15 +1923,10 @@ void ViewImplementation::did_set_top_level_session_history(Badge<WebContentClien
             history_log_steps(used_steps, current_used_step_index));
     }
 
-    auto ack = m_top_level_traversable.did_receive_web_content_session_history_seed_ack(accepted, move(entries), move(used_steps), current_used_step_index, seed_ack_proof, m_url);
+    auto ack = m_top_level_traversable.did_receive_web_content_session_history_seed_ack(accepted, move(entries), move(used_steps), current_used_step_index, seed_ack_proof);
     if (ack.ignored) {
         dump_session_history(ack.dump_reason);
         return;
-    }
-
-    if (ack.current_url.has_value()) {
-        WebContentSessionHistoryUpdateResult update { .current_url = *ack.current_url };
-        apply_web_content_session_history_update(update);
     }
 
     if (ack.step_to_traverse.has_value())

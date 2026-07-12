@@ -95,18 +95,6 @@ struct PendingSessionHistoryTraversal {
 //     carries the reason string for the session-history debug dump, so the producer is the
 //     single place that decides both the state transition and how it is logged.
 
-struct WebContentSessionHistoryUpdateResult {
-    TraversableSessionHistory::UpdateResult update_result { TraversableSessionHistory::UpdateResult::InvalidSnapshot };
-    Optional<URL::URL> current_url {};
-    bool should_seed_web_content { false };
-};
-
-struct WebContentSessionHistoryUpdateDecision {
-    // When set, the snapshot was ignored and the UI mirror was left untouched.
-    Optional<StringView> ignore_reason {};
-    WebContentSessionHistoryUpdateResult update {};
-};
-
 struct WebContentSessionHistoryMutationResult {
     bool accepted { false };
     StringView dump_reason;
@@ -120,7 +108,6 @@ struct WebContentSessionHistoryMutationResult {
 struct WebContentSessionHistorySeedAckResult {
     bool ignored { false };
     StringView dump_reason;
-    Optional<URL::URL> current_url {};
     Optional<i32> step_to_traverse {};
     bool should_complete_webdriver_pending_navigation { false };
     bool should_update_navigation_action_state { false };
@@ -251,8 +238,7 @@ public:
     void prepare_to_seed_web_content_session_history_from_ui_process();
     WebContentSessionHistoryMutationResult did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation);
     WebContentSessionHistoryMutationResult did_receive_web_content_session_history_mutation_batch(Web::HTML::WebContentSessionHistoryMutationBatch);
-    WebContentSessionHistoryUpdateDecision did_receive_web_content_session_history_update_for_testing(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url);
-    WebContentSessionHistorySeedAckResult did_receive_web_content_session_history_seed_ack(bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, TraversableSessionHistory::SeedAckProof, URL::URL const& current_url);
+    WebContentSessionHistorySeedAckResult did_receive_web_content_session_history_seed_ack(bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, TraversableSessionHistory::SeedAckProof);
     NavigationStartResult did_start_navigation(URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::HTML::CrossProcessId document_state_id, bool is_redirect, Web::Bindings::NavigationHistoryBehavior, bool is_showing_crash_page);
     NavigationCancelResult did_cancel_navigation(URL::URL const&, bool has_webdriver_pending_navigation);
     NavigationFinishResult did_finish_navigation(URL::URL const&);
@@ -275,8 +261,6 @@ public:
 private:
     void abandon_pending_web_content_session_history_seed();
     void remove_from_index(CanonicalNavigable&);
-    WebContentSessionHistoryUpdateResult update_session_history_from_web_content(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, bool seed_web_content_on_invalid_snapshot, URL::URL const& current_url);
-    WebContentSessionHistoryUpdateResult adopt_web_content_session_history_after_rejected_seed(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url);
 
     HashMap<Web::HTML::CrossProcessId, WeakPtr<CanonicalNavigable>> m_navigable_index;
     TraversableSessionHistory m_session_history;
