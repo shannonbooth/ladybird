@@ -107,6 +107,13 @@ struct NestedSameDocumentSessionHistoryNavigation {
     i32 current_step { 0 };
 };
 
+struct NestedCrossDocumentSessionHistoryNavigation {
+    CrossProcessId parent_document_state_id;
+    CrossProcessId navigable_id;
+    SessionHistoryEntryDescriptor entry;
+    i32 current_step { 0 };
+};
+
 struct TopLevelCrossDocumentSessionHistoryNavigation {
     SessionHistoryEntryDescriptor entry;
     i32 current_step { 0 };
@@ -118,7 +125,7 @@ struct CurrentSessionHistoryEntryUpdate {
 };
 
 struct WebContentSessionHistoryMutation {
-    using Mutation = Variant<CurrentSessionHistoryEntryUpdate, SameDocumentSessionHistoryNavigation, NestedSameDocumentSessionHistoryNavigation, TopLevelCrossDocumentSessionHistoryNavigation>;
+    using Mutation = Variant<CurrentSessionHistoryEntryUpdate, SameDocumentSessionHistoryNavigation, NestedSameDocumentSessionHistoryNavigation, NestedCrossDocumentSessionHistoryNavigation, TopLevelCrossDocumentSessionHistoryNavigation>;
 
     Mutation mutation;
 
@@ -133,6 +140,11 @@ struct WebContentSessionHistoryMutation {
     }
 
     static WebContentSessionHistoryMutation nested_same_document_navigation(NestedSameDocumentSessionHistoryNavigation navigation)
+    {
+        return { move(navigation) };
+    }
+
+    static WebContentSessionHistoryMutation nested_cross_document_navigation(NestedCrossDocumentSessionHistoryNavigation navigation)
     {
         return { move(navigation) };
     }
@@ -279,6 +291,12 @@ WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::NestedSameDocumentSessionHisto
 
 template<>
 WEB_API ErrorOr<Web::HTML::NestedSameDocumentSessionHistoryNavigation> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::NestedCrossDocumentSessionHistoryNavigation const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::NestedCrossDocumentSessionHistoryNavigation> decode(Decoder&);
 
 template<>
 WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation const&);

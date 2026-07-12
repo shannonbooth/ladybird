@@ -1373,6 +1373,17 @@ void ViewImplementation::did_apply_session_history_mutation(Badge<WebContentClie
                 nested_navigation.replaced_step,
                 nested_navigation.current_step,
                 history_log_entries(entries));
+        } else if (mutation.mutation.has<Web::HTML::NestedCrossDocumentSessionHistoryNavigation>()) {
+            auto const& nested_navigation = mutation.mutation.get<Web::HTML::NestedCrossDocumentSessionHistoryNavigation>();
+            Vector<Web::HTML::SessionHistoryEntryDescriptor> entries;
+            entries.append(nested_navigation.entry);
+            dbgln("[History] UI received WebContent session history mutation page={} pid={} type=nested-cross-document-navigation parent_document_state_id={} navigable_id={} current_step={} entry={}",
+                page_id(),
+                client().pid(),
+                nested_navigation.parent_document_state_id,
+                nested_navigation.navigable_id,
+                nested_navigation.current_step,
+                history_log_entries(entries));
         } else if (mutation.mutation.has<Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation>()) {
             auto const& cross_document_navigation = mutation.mutation.get<Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation>();
             Vector<Web::HTML::SessionHistoryEntryDescriptor> entries;
