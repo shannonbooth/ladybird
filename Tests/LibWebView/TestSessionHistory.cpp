@@ -195,32 +195,28 @@ static void record_web_content_seeded_at_current_top_level_entry(WebView::Traver
 static bool apply_current_entry_update(WebView::TraversableSessionHistory& history, SessionHistoryEntryUpdateKind update_kind, Web::HTML::SessionHistoryEntryDescriptor entry)
 {
     return history.apply_web_content_mutation(
-                      WebView::TraversableSessionHistory::WebContentMutation::current_entry_update(update_kind, move(entry)),
-                      history.web_content_history_matches_mirror())
+                      WebView::TraversableSessionHistory::WebContentMutation::current_entry_update(update_kind, move(entry)))
         .accepted;
 }
 
 static bool apply_top_level_same_document_navigation(WebView::TraversableSessionHistory& history, Web::HTML::SessionHistoryEntryDescriptor entry, Optional<i32> replaced_step, i32 current_step)
 {
     return history.apply_web_content_mutation(
-                      WebView::TraversableSessionHistory::WebContentMutation::top_level_same_document_navigation(move(entry), replaced_step, current_step),
-                      history.web_content_history_matches_mirror())
+                      WebView::TraversableSessionHistory::WebContentMutation::top_level_same_document_navigation(move(entry), replaced_step, current_step))
         .accepted;
 }
 
 static bool apply_restored_current_step(WebView::TraversableSessionHistory& history, i32 step)
 {
     return history.apply_web_content_mutation(
-                      WebView::TraversableSessionHistory::WebContentMutation::restored_current_step(step),
-                      history.web_content_history_matches_mirror())
+                      WebView::TraversableSessionHistory::WebContentMutation::restored_current_step(step))
         .accepted;
 }
 
 static bool apply_traversal_current_step(WebView::TraversableSessionHistory& history, i32 step)
 {
     return history.apply_web_content_mutation(
-                      WebView::TraversableSessionHistory::WebContentMutation::applied_traversal(step),
-                      history.web_content_history_matches_mirror())
+                      WebView::TraversableSessionHistory::WebContentMutation::applied_traversal(step))
         .accepted;
 }
 
@@ -1903,6 +1899,30 @@ TEST_CASE(web_content_traversal_with_partial_history_does_not_claim_full_match)
     auto web_content_current_step = traversable.session_history().web_content_current_step();
     VERIFY(web_content_current_step.has_value());
     EXPECT_EQ(*web_content_current_step, 1);
+}
+
+TEST_CASE(preserved_web_content_history_only_reproves_matching_known_state)
+{
+    WebView::TraversableSessionHistory history;
+
+    auto update_result = history.update_from_web_content({
+                                                             entry(0, "https://a.example/"sv, 1, "main"sv),
+                                                             entry(1, "https://b.example/"sv, 2, "main"sv),
+                                                         },
+        { 0, 1 }, 1);
+    EXPECT_EQ(update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+    EXPECT(history.web_content_history_matches_mirror());
+
+    history.mark_web_content_history_match_unproven();
+    EXPECT(!history.web_content_history_matches_mirror());
+
+    history.record_web_content_history_preserved();
+    EXPECT(history.web_content_history_matches_mirror());
+
+    history.navigate(parse_url("https://c.example/"sv), allocate_test_ui_process_document_state_id());
+    history.mark_web_content_history_match_unproven();
+    history.record_web_content_history_preserved();
+    EXPECT(!history.web_content_history_matches_mirror());
 }
 
 TEST_CASE(seed_ack_rejects_reconstructed_history_with_mismatched_state)

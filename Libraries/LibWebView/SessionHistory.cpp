@@ -659,6 +659,7 @@ void TraversableSessionHistory::mark_current_entry_reload_pending()
     // Set navigable's active session history entry's document state's reload
     // pending to true.
     m_entries[*current_top_level_entry_index].document_state.reload_pending = true;
+    mark_web_content_history_match_unproven();
 }
 
 void TraversableSessionHistory::clear_current_entry_reload_pending()
@@ -668,6 +669,7 @@ void TraversableSessionHistory::clear_current_entry_reload_pending()
         return;
 
     m_entries[*current_top_level_entry_index].document_state.reload_pending = false;
+    mark_web_content_history_match_unproven();
 }
 
 Optional<size_t> TraversableSessionHistory::current_top_level_entry_index() const
@@ -702,6 +704,7 @@ TraversableSessionHistory::UpdateResult TraversableSessionHistory::update_from_w
         m_web_content_known_used_steps = m_used_steps;
         m_web_content_current_step = m_used_steps[*m_current_used_step_index];
         m_web_content_uses_ui_step_coordinates = true;
+        m_web_content_history_match_is_proven = web_content_known_history_matches_mirror();
         return UpdateResult::CompleteSnapshot;
     }
 
@@ -715,6 +718,7 @@ TraversableSessionHistory::UpdateResult TraversableSessionHistory::update_from_w
             m_web_content_known_used_steps = m_used_steps;
             m_web_content_current_step = m_used_steps[*m_current_used_step_index];
             m_web_content_uses_ui_step_coordinates = true;
+            m_web_content_history_match_is_proven = web_content_known_history_matches_mirror();
             return UpdateResult::CompleteSnapshot;
         }
     }
@@ -738,6 +742,7 @@ TraversableSessionHistory::UpdateResult TraversableSessionHistory::update_from_w
         m_web_content_known_used_steps = m_used_steps;
         m_web_content_current_step = m_used_steps[*m_current_used_step_index];
         m_web_content_uses_ui_step_coordinates = true;
+        m_web_content_history_match_is_proven = web_content_known_history_matches_mirror();
         return UpdateResult::CompleteSnapshot;
     }
 
@@ -971,6 +976,7 @@ TraversableSessionHistory::UpdateResult TraversableSessionHistory::update_from_w
         m_web_content_uses_ui_step_coordinates = web_content_uses_ui_step_coordinates;
     }
     m_web_content_current_step = *translated_current_step;
+    m_web_content_history_match_is_proven = web_content_matches_mirror && web_content_known_history_matches_mirror();
 
     return web_content_matches_mirror ? UpdateResult::CompleteSnapshot : UpdateResult::MergedPartialSnapshot;
 }
@@ -987,7 +993,7 @@ bool TraversableSessionHistory::update_current_entry_from_web_content(Web::HTML:
         auto known_mutation_result = apply_targeted_current_entry_update(web_content_known_entries, updated_entry, update_kind);
         if (known_mutation_result.rejected)
             return false;
-        if (!known_mutation_result.found && web_content_history_matches_mirror())
+        if (!known_mutation_result.found && web_content_known_history_matches_mirror())
             return false;
     }
 
@@ -1025,34 +1031,37 @@ bool TraversableSessionHistory::apply_top_level_same_document_navigation_from_we
     return true;
 }
 
-TraversableSessionHistory::WebContentMutationResult TraversableSessionHistory::apply_web_content_mutation(WebContentMutation mutation, bool web_content_history_match_was_previously_proven)
+TraversableSessionHistory::WebContentMutationResult TraversableSessionHistory::apply_web_content_mutation(WebContentMutation mutation)
 {
     switch (mutation.type) {
     case WebContentMutationType::CurrentEntryUpdate: {
-        auto const matched_mirror_before_mutation = web_content_history_match_was_previously_proven && web_content_history_matches_mirror();
+        auto const matched_mirror_before_mutation = web_content_history_matches_mirror();
         if (!update_current_entry_from_web_content(mutation.current_entry_update_kind, move(mutation.entry)))
             return {};
 
-        auto const matches_mirror_after_mutation = web_content_history_matches_mirror();
+        auto const matches_mirror_after_mutation = web_content_known_history_matches_mirror();
         if (mutation.current_entry_update_kind == Web::HTML::SessionHistoryEntryUpdateKind::DocumentStateReloadPending
             || mutation.current_entry_update_kind == Web::HTML::SessionHistoryEntryUpdateKind::DocumentStatePopulation) {
             // The UI process may optimistically mark reload-pending or track an unpopulated document state before
             // WebContent confirms the same mutation. Once the WebContent update is accepted and the known history
             // state matches again, convergence is proven.
+            m_web_content_history_match_is_proven = matches_mirror_after_mutation;
             return {
                 .accepted = true,
-                .web_content_history_matches_mirror = matches_mirror_after_mutation,
+                .web_content_history_matches_mirror = web_content_history_matches_mirror(),
             };
         }
 
+        m_web_content_history_match_is_proven = matched_mirror_before_mutation && matches_mirror_after_mutation;
         return {
             .accepted = true,
-            .web_content_history_matches_mirror = matched_mirror_before_mutation && matches_mirror_after_mutation,
+            .web_content_history_matches_mirror = web_content_history_matches_mirror(),
         };
     }
     case WebContentMutationType::TopLevelSameDocumentNavigation:
         if (!apply_top_level_same_document_navigation_from_web_content(move(mutation.entry), mutation.replaced_step, mutation.current_step))
             return {};
+        m_web_content_history_match_is_proven = web_content_known_history_matches_mirror();
         return {
             .accepted = true,
             .web_content_history_matches_mirror = web_content_history_matches_mirror(),
@@ -1060,6 +1069,7 @@ TraversableSessionHistory::WebContentMutationResult TraversableSessionHistory::a
     case WebContentMutationType::AppliedTraversal:
         if (!did_apply_web_content_traversal_to_step(mutation.current_step))
             return {};
+        m_web_content_history_match_is_proven = web_content_known_history_matches_mirror();
         return {
             .accepted = true,
             .web_content_history_matches_mirror = web_content_history_matches_mirror(),
@@ -1067,6 +1077,7 @@ TraversableSessionHistory::WebContentMutationResult TraversableSessionHistory::a
     case WebContentMutationType::RestoredCurrentStep:
         if (!did_restore_web_content_to_current_step(mutation.current_step))
             return {};
+        m_web_content_history_match_is_proven = web_content_known_history_matches_mirror();
         return {
             .accepted = true,
             .web_content_history_matches_mirror = web_content_history_matches_mirror(),
@@ -1114,6 +1125,12 @@ void TraversableSessionHistory::record_web_content_seeded_from_ui_process(i32 cu
     m_web_content_known_used_steps = m_used_steps;
     m_web_content_current_step = current_step;
     m_web_content_uses_ui_step_coordinates = true;
+    m_web_content_history_match_is_proven = web_content_known_history_matches_mirror();
+}
+
+void TraversableSessionHistory::record_web_content_history_preserved()
+{
+    m_web_content_history_match_is_proven = web_content_known_history_matches_mirror();
 }
 
 bool TraversableSessionHistory::web_content_seed_ack_matches_current_mirror(Vector<Entry> const& entries, Vector<i32> const& used_steps, size_t current_used_step_index) const
@@ -1179,7 +1196,7 @@ bool TraversableSessionHistory::did_apply_web_content_traversal_to_step(i32 step
     return true;
 }
 
-bool TraversableSessionHistory::web_content_history_matches_mirror() const
+bool TraversableSessionHistory::web_content_known_history_matches_mirror() const
 {
     if (!m_web_content_current_step.has_value() || !m_current_used_step_index.has_value())
         return false;
@@ -1190,12 +1207,23 @@ bool TraversableSessionHistory::web_content_history_matches_mirror() const
     return entries_match(m_entries, m_web_content_known_entries) && steps_match(m_used_steps, m_web_content_known_used_steps);
 }
 
+bool TraversableSessionHistory::web_content_history_matches_mirror() const
+{
+    return m_web_content_history_match_is_proven && web_content_known_history_matches_mirror();
+}
+
 void TraversableSessionHistory::forget_web_content_state()
 {
     m_web_content_known_entries.clear();
     m_web_content_known_used_steps.clear();
     m_web_content_current_step.clear();
     m_web_content_uses_ui_step_coordinates = false;
+    m_web_content_history_match_is_proven = false;
+}
+
+void TraversableSessionHistory::mark_web_content_history_match_unproven()
+{
+    m_web_content_history_match_is_proven = false;
 }
 
 Vector<TraversableSessionHistory::Entry> TraversableSessionHistory::entries() const
