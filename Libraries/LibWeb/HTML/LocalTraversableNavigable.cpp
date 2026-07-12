@@ -277,6 +277,16 @@ Optional<WebContentSessionHistoryMutation> LocalTraversableNavigable::create_top
     });
 }
 
+Optional<WebContentSessionHistoryMutation> LocalTraversableNavigable::create_cross_document_session_history_navigation_mutation(CrossDocumentSessionHistoryNavigationMutation const& navigation, i32 current_step)
+{
+    if (!navigation.navigable || !navigation.entry)
+        return {};
+
+    if (navigation.navigable->is_top_level_traversable())
+        return create_top_level_cross_document_session_history_navigation_mutation(*navigation.entry, current_step);
+    return create_nested_cross_document_session_history_navigation_mutation(*navigation.navigable, *navigation.entry, current_step);
+}
+
 bool LocalTraversableNavigable::report_applied_session_history_traversal(i32 current_step)
 {
     if (!page().client().should_report_session_history_updates())
@@ -1071,7 +1081,8 @@ public:
         Optional<String> expected_ongoing_navigation_id,
         GC::Ref<OnApplyHistoryStepComplete> on_complete,
         LocalTraversableNavigable::ReportAppliedTraversal report_applied_traversal,
-        Optional<LocalTraversableNavigable::SameDocumentSessionHistoryNavigationMutation> same_document_navigation_mutation)
+        Optional<LocalTraversableNavigable::SameDocumentSessionHistoryNavigationMutation> same_document_navigation_mutation,
+        Optional<LocalTraversableNavigable::CrossDocumentSessionHistoryNavigationMutation> cross_document_navigation_mutation)
         : m_generation(++traversable->m_apply_history_step_generation_counter)
         , m_traversable(traversable)
         , m_step(step)
@@ -1087,6 +1098,7 @@ public:
         , m_on_complete(on_complete)
         , m_report_applied_traversal(report_applied_traversal)
         , m_pending_same_document_navigation_mutation(move(same_document_navigation_mutation))
+        , m_pending_cross_document_navigation_mutation(move(cross_document_navigation_mutation))
         , m_timeout(Platform::Timer::create_single_shot(heap(), TIMEOUT_MS, GC::create_function(heap(), [this] {
             if (m_phase != Phase::Completed) {
                 dbgln("FIXME: ApplyHistoryStepState timed out in phase {} step={} changing={}/{} completed={}/{} cont={}/{} non_changing={}/{} url={}",
@@ -1139,11 +1151,6 @@ public:
     };
 
 private:
-    struct NestedCrossDocumentNavigationUpdate {
-        GC::Ptr<LocalNavigable> navigable;
-        RefPtr<SessionHistoryEntry> entry;
-    };
-
     void visit_edges(Cell::Visitor& visitor) override
     {
         Base::visit_edges(visitor);
@@ -1155,12 +1162,14 @@ private:
         visitor.visit(m_timeout);
         if (m_pending_same_document_navigation_mutation.has_value())
             visitor.visit(m_pending_same_document_navigation_mutation->navigable);
+        if (m_pending_cross_document_navigation_mutation.has_value())
+            visitor.visit(m_pending_cross_document_navigation_mutation->navigable);
         visitor.visit(m_changing_navigables);
         visitor.visit(m_non_changing_navigables);
         visitor.visit(m_continuations);
         for (auto& update : m_same_document_navigation_updates)
             visitor.visit(update.navigable);
-        for (auto& update : m_nested_cross_document_navigation_updates)
+        for (auto& update : m_cross_document_navigation_updates)
             visitor.visit(update.navigable);
         for (auto& navigable : m_navigables_that_must_wait_before_handling_sync_navigation)
             visitor.visit(navigable);
@@ -1204,12 +1213,10 @@ private:
     void queue_reload_pending_clear_updates();
     void note_document_state_population_update_needed(SessionHistoryEntry&);
     void queue_document_state_population_updates();
-    void note_top_level_cross_document_navigation_update_needed(LocalNavigable const&, bool update_only, SessionHistoryEntry&);
-    void queue_top_level_cross_document_navigation_updates(i32 current_step);
     void activate_same_document_navigation_update(LocalNavigable&, SessionHistoryEntry&);
     void queue_same_document_navigation_updates(i32 current_step);
-    void note_nested_cross_document_navigation_update_needed(LocalNavigable&, bool update_only, SessionHistoryEntry&);
-    void queue_nested_cross_document_navigation_updates(i32 current_step);
+    void activate_cross_document_navigation_update(LocalNavigable&, SessionHistoryEntry&);
+    void queue_cross_document_navigation_updates(i32 current_step);
     void queue_current_entry_nested_histories_update(i32 current_step);
     void queue_applied_traversal_update(i32 current_step);
     void queue_session_history_mutation(Optional<WebContentSessionHistoryMutation>);
@@ -1231,13 +1238,13 @@ private:
     GC::Ptr<OnApplyHistoryStepComplete> m_on_complete;
     LocalTraversableNavigable::ReportAppliedTraversal m_report_applied_traversal { LocalTraversableNavigable::ReportAppliedTraversal::No };
     Optional<LocalTraversableNavigable::SameDocumentSessionHistoryNavigationMutation> m_pending_same_document_navigation_mutation;
+    Optional<LocalTraversableNavigable::CrossDocumentSessionHistoryNavigationMutation> m_pending_cross_document_navigation_mutation;
     Vector<WebContentSessionHistoryMutation> m_session_history_mutation_batch;
     bool m_session_history_mutation_batch_failed { false };
     Vector<RefPtr<SessionHistoryEntry>> m_reload_pending_clear_entries;
     Vector<RefPtr<SessionHistoryEntry>> m_document_state_population_entries;
-    Vector<RefPtr<SessionHistoryEntry>> m_top_level_cross_document_navigation_entries;
     Vector<LocalTraversableNavigable::SameDocumentSessionHistoryNavigationMutation> m_same_document_navigation_updates;
-    Vector<NestedCrossDocumentNavigationUpdate> m_nested_cross_document_navigation_updates;
+    Vector<LocalTraversableNavigable::CrossDocumentSessionHistoryNavigationMutation> m_cross_document_navigation_updates;
     GC::Ref<Platform::Timer> m_timeout;
 
     Vector<GC::Ref<LocalNavigable>> m_changing_navigables;
@@ -1279,28 +1286,6 @@ void ApplyHistoryStepState::queue_document_state_population_updates()
         queue_session_history_mutation(entry ? m_traversable->create_current_session_history_entry_update_mutation(SessionHistoryEntryUpdateKind::DocumentStatePopulation, *entry) : Optional<WebContentSessionHistoryMutation> {});
 }
 
-void ApplyHistoryStepState::note_top_level_cross_document_navigation_update_needed(LocalNavigable const& navigable, bool update_only, SessionHistoryEntry& entry)
-{
-    if (!m_pending_document
-        || !m_navigation_type.has_value()
-        || (*m_navigation_type != Bindings::NavigationType::Push && *m_navigation_type != Bindings::NavigationType::Replace)
-        || m_synchronous_navigation == LocalTraversableNavigable::SynchronousNavigation::Yes
-        || update_only
-        || !navigable.is_top_level_traversable()) {
-        m_session_history_mutation_batch_failed = true;
-        return;
-    }
-
-    m_top_level_cross_document_navigation_entries.append(entry);
-}
-
-void ApplyHistoryStepState::queue_top_level_cross_document_navigation_updates(i32 current_step)
-{
-    auto entries = move(m_top_level_cross_document_navigation_entries);
-    for (auto& entry : entries)
-        queue_session_history_mutation(entry ? m_traversable->create_top_level_cross_document_session_history_navigation_mutation(*entry, current_step) : Optional<WebContentSessionHistoryMutation> {});
-}
-
 void ApplyHistoryStepState::activate_same_document_navigation_update(LocalNavigable& navigable, SessionHistoryEntry& entry)
 {
     if (!m_pending_same_document_navigation_mutation.has_value()) {
@@ -1324,34 +1309,27 @@ void ApplyHistoryStepState::queue_same_document_navigation_updates(i32 current_s
         queue_session_history_mutation(m_traversable->create_same_document_session_history_navigation_mutation(update, current_step));
 }
 
-void ApplyHistoryStepState::note_nested_cross_document_navigation_update_needed(LocalNavigable& navigable, bool update_only, SessionHistoryEntry& entry)
+void ApplyHistoryStepState::activate_cross_document_navigation_update(LocalNavigable& navigable, SessionHistoryEntry& entry)
 {
-    if (!m_pending_document
-        || !m_navigation_type.has_value()
-        || (*m_navigation_type != Bindings::NavigationType::Push && *m_navigation_type != Bindings::NavigationType::Replace)
-        || m_synchronous_navigation == LocalTraversableNavigable::SynchronousNavigation::Yes
-        || update_only
-        || navigable.is_top_level_traversable()
-        || !navigable.parent()) {
+    if (!m_pending_cross_document_navigation_mutation.has_value()) {
         m_session_history_mutation_batch_failed = true;
         return;
     }
 
-    m_nested_cross_document_navigation_updates.append({
-        .navigable = navigable,
-        .entry = entry,
-    });
+    auto update = m_pending_cross_document_navigation_mutation.release_value();
+    if (update.navigable.ptr() != &navigable || update.entry.ptr() != &entry) {
+        m_session_history_mutation_batch_failed = true;
+        return;
+    }
+
+    m_cross_document_navigation_updates.append(move(update));
 }
 
-void ApplyHistoryStepState::queue_nested_cross_document_navigation_updates(i32 current_step)
+void ApplyHistoryStepState::queue_cross_document_navigation_updates(i32 current_step)
 {
-    auto updates = move(m_nested_cross_document_navigation_updates);
-    for (auto& update : updates) {
-        if (update.navigable && update.entry)
-            queue_session_history_mutation(m_traversable->create_nested_cross_document_session_history_navigation_mutation(*update.navigable, *update.entry, current_step));
-        else
-            queue_session_history_mutation({});
-    }
+    auto updates = move(m_cross_document_navigation_updates);
+    for (auto& update : updates)
+        queue_session_history_mutation(m_traversable->create_cross_document_session_history_navigation_mutation(update, current_step));
 }
 
 void ApplyHistoryStepState::queue_current_entry_nested_histories_update(i32 current_step)
@@ -1814,10 +1792,7 @@ void ApplyHistoryStepState::process_continuations()
             if (has_fresh_document) {
                 if (m_navigation_type.has_value()
                     && (*m_navigation_type == Bindings::NavigationType::Push || *m_navigation_type == Bindings::NavigationType::Replace)) {
-                    if (navigable->is_top_level_traversable())
-                        note_top_level_cross_document_navigation_update_needed(*navigable, update_only, *target_entry);
-                    else
-                        note_nested_cross_document_navigation_update_needed(*navigable, update_only, *target_entry);
+                    activate_cross_document_navigation_update(*navigable, *target_entry);
                 } else {
                     note_document_state_population_update_needed(*target_entry);
                 }
@@ -2011,10 +1986,9 @@ void ApplyHistoryStepState::complete()
         if (m_report_applied_traversal == LocalTraversableNavigable::ReportAppliedTraversal::Yes)
             queue_applied_traversal_update(used_target_step);
         queue_document_state_population_updates();
-        queue_top_level_cross_document_navigation_updates(used_target_step);
+        queue_cross_document_navigation_updates(used_target_step);
         auto has_same_document_navigation_mutation = !m_same_document_navigation_updates.is_empty();
         queue_same_document_navigation_updates(used_target_step);
-        queue_nested_cross_document_navigation_updates(used_target_step);
         if (m_report_applied_traversal == LocalTraversableNavigable::ReportAppliedTraversal::Yes || has_same_document_navigation_mutation)
             completion_result = HistoryStepResult::AppliedBySessionHistoryMutation;
         if (!m_navigation_type.has_value())
@@ -2139,14 +2113,15 @@ void LocalTraversableNavigable::apply_the_history_step(
     Optional<String> expected_ongoing_navigation_id,
     GC::Ref<OnApplyHistoryStepComplete> on_complete,
     ReportAppliedTraversal report_applied_traversal,
-    Optional<SameDocumentSessionHistoryNavigationMutation> same_document_navigation_mutation)
+    Optional<SameDocumentSessionHistoryNavigationMutation> same_document_navigation_mutation,
+    Optional<CrossDocumentSessionHistoryNavigationMutation> cross_document_navigation_mutation)
 {
     // FIXME: 1. Assert: This is running within traversable's session history traversal queue.
 
     VERIFY(!m_apply_history_step_state || m_paused_apply_history_step_state);
 
     run_the_history_step_prechecks(step, check_for_cancelation, source_snapshot_params, initiator_to_check, user_involvement, navigation_type, navigation_api_abort_behavior,
-        GC::create_function(heap(), [this, step, source_snapshot_params, user_involvement, navigation_type, synchronous_navigation, pending_document, expected_ongoing_navigation_navigable, expected_ongoing_navigation_id = move(expected_ongoing_navigation_id), on_complete, report_applied_traversal, same_document_navigation_mutation = move(same_document_navigation_mutation)](HistoryStepResult result, int target_step, LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior) mutable {
+        GC::create_function(heap(), [this, step, source_snapshot_params, user_involvement, navigation_type, synchronous_navigation, pending_document, expected_ongoing_navigation_navigable, expected_ongoing_navigation_id = move(expected_ongoing_navigation_id), on_complete, report_applied_traversal, same_document_navigation_mutation = move(same_document_navigation_mutation), cross_document_navigation_mutation = move(cross_document_navigation_mutation)](HistoryStepResult result, int target_step, LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior) mutable {
             if (result != HistoryStepResult::Applied) {
                 on_complete->function()(result);
                 return;
@@ -2154,7 +2129,7 @@ void LocalTraversableNavigable::apply_the_history_step(
 
             // 6. Let changingNavigables be the result of get all navigables whose current session history entry will
             //    change or reload given traversable and targetStep.
-            apply_the_history_step_after_unload_check(step, target_step, source_snapshot_params, user_involvement, navigation_type, synchronous_navigation, navigation_api_abort_behavior, pending_document, expected_ongoing_navigation_navigable, move(expected_ongoing_navigation_id), on_complete, report_applied_traversal, move(same_document_navigation_mutation));
+            apply_the_history_step_after_unload_check(step, target_step, source_snapshot_params, user_involvement, navigation_type, synchronous_navigation, navigation_api_abort_behavior, pending_document, expected_ongoing_navigation_navigable, move(expected_ongoing_navigation_id), on_complete, report_applied_traversal, move(same_document_navigation_mutation), move(cross_document_navigation_mutation));
         }));
 }
 
@@ -2235,7 +2210,8 @@ void LocalTraversableNavigable::apply_the_history_step_after_unload_check(
     Optional<String> expected_ongoing_navigation_id,
     GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete,
     ReportAppliedTraversal report_applied_traversal,
-    Optional<SameDocumentSessionHistoryNavigationMutation> same_document_navigation_mutation)
+    Optional<SameDocumentSessionHistoryNavigationMutation> same_document_navigation_mutation,
+    Optional<CrossDocumentSessionHistoryNavigationMutation> cross_document_navigation_mutation)
 {
     if (expected_ongoing_navigation_was_superseded(expected_ongoing_navigation_navigable, expected_ongoing_navigation_id)) {
         on_complete->function()(HistoryStepResult::Applied);
@@ -2244,7 +2220,7 @@ void LocalTraversableNavigable::apply_the_history_step_after_unload_check(
 
     auto state = heap().allocate<ApplyHistoryStepState>(*this, step, target_step, source_snapshot_params,
         user_involvement, navigation_type, synchronous_navigation, navigation_api_abort_behavior, pending_document,
-        expected_ongoing_navigation_navigable, move(expected_ongoing_navigation_id), on_complete, report_applied_traversal, move(same_document_navigation_mutation));
+        expected_ongoing_navigation_navigable, move(expected_ongoing_navigation_id), on_complete, report_applied_traversal, move(same_document_navigation_mutation), move(cross_document_navigation_mutation));
 
     VERIFY(!m_apply_history_step_state || m_paused_apply_history_step_state);
     m_apply_history_step_state = state;
@@ -2821,11 +2797,11 @@ void LocalTraversableNavigable::apply_the_reload_history_step(UserNavigationInvo
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#apply-the-push/replace-history-step
-void LocalTraversableNavigable::apply_the_push_or_replace_history_step(int step, HistoryHandlingBehavior history_handling, UserNavigationInvolvement user_involvement, SynchronousNavigation synchronous_navigation, GC::Ptr<DOM::Document> pending_document, GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable, Optional<String> expected_ongoing_navigation_id, GC::Ref<OnApplyHistoryStepComplete> on_complete, Optional<SameDocumentSessionHistoryNavigationMutation> same_document_navigation_mutation)
+void LocalTraversableNavigable::apply_the_push_or_replace_history_step(int step, HistoryHandlingBehavior history_handling, UserNavigationInvolvement user_involvement, SynchronousNavigation synchronous_navigation, GC::Ptr<DOM::Document> pending_document, GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable, Optional<String> expected_ongoing_navigation_id, GC::Ref<OnApplyHistoryStepComplete> on_complete, Optional<SameDocumentSessionHistoryNavigationMutation> same_document_navigation_mutation, Optional<CrossDocumentSessionHistoryNavigationMutation> cross_document_navigation_mutation)
 {
     // 1. Return the result of applying the history step step to traversable given false, null, null, userInvolvement, and historyHandling.
     auto navigation_type = history_handling == HistoryHandlingBehavior::Replace ? Bindings::NavigationType::Replace : Bindings::NavigationType::Push;
-    apply_the_history_step(step, false, {}, {}, user_involvement, navigation_type, synchronous_navigation, LocalNavigable::NavigationAPIAbortBehavior::Abort, pending_document, expected_ongoing_navigation_navigable, move(expected_ongoing_navigation_id), on_complete, ReportAppliedTraversal::No, move(same_document_navigation_mutation));
+    apply_the_history_step(step, false, {}, {}, user_involvement, navigation_type, synchronous_navigation, LocalNavigable::NavigationAPIAbortBehavior::Abort, pending_document, expected_ongoing_navigation_navigable, move(expected_ongoing_navigation_id), on_complete, ReportAppliedTraversal::No, move(same_document_navigation_mutation), move(cross_document_navigation_mutation));
 }
 
 static Optional<int> update_session_history_entries_for_same_document_navigation(LocalTraversableNavigable& traversable, GC::Ref<LocalNavigable> target_navigable, NonnullRefPtr<SessionHistoryEntry> target_entry, RefPtr<SessionHistoryEntry> entry_to_replace)
