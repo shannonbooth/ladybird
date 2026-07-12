@@ -92,6 +92,12 @@ struct SessionHistoryEntryDescriptor {
     SessionHistoryEntryScrollPositionData scroll_position_data;
 };
 
+struct SameDocumentSessionHistoryNavigation {
+    SessionHistoryEntryDescriptor entry;
+    Optional<i32> replaced_step;
+    i32 current_step { 0 };
+};
+
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#nested-history
 struct SessionHistoryNestedHistoryDescriptor {
     CrossProcessId id;

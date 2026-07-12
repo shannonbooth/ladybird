@@ -1369,6 +1369,27 @@ void ViewImplementation::did_update_current_session_history_entry(Badge<WebConte
     dump_session_history(update.dump_reason);
 }
 
+void ViewImplementation::did_apply_top_level_same_document_session_history_navigation(Badge<WebContentClient>, Web::HTML::SessionHistoryEntryDescriptor entry, Optional<i32> replaced_step, i32 current_step)
+{
+    if (history_debug_enabled()) {
+        Vector<Web::HTML::SessionHistoryEntryDescriptor> entries;
+        entries.append(entry);
+        dbgln("[History] UI received WebContent top-level same-document session history navigation page={} pid={} replaced_step={} current_step={} entry={}",
+            page_id(),
+            client().pid(),
+            replaced_step,
+            current_step,
+            history_log_entries(entries));
+    }
+
+    auto update = m_top_level_traversable.did_apply_top_level_web_content_same_document_navigation(move(entry), replaced_step, current_step);
+    if (update.should_request_session_history_update)
+        client().async_request_session_history_update(page_id());
+    if (update.should_update_navigation_action_state)
+        update_navigation_action_state();
+    dump_session_history(update.dump_reason);
+}
+
 void ViewImplementation::did_update_session_history_for_testing(Badge<WebContentClient>, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index)
 {
     auto update = m_top_level_traversable.did_receive_web_content_session_history_update_for_testing(move(entries), move(used_steps), current_used_step_index, m_url);

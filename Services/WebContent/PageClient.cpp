@@ -1091,6 +1091,11 @@ void PageClient::page_did_update_current_session_history_entry(Web::HTML::Sessio
     client().async_did_update_current_session_history_entry(m_id, update_kind, entry);
 }
 
+void PageClient::page_did_apply_top_level_same_document_session_history_navigation(Web::HTML::SameDocumentSessionHistoryNavigation const& navigation)
+{
+    client().async_did_apply_top_level_same_document_session_history_navigation(m_id, navigation.entry, navigation.replaced_step, navigation.current_step);
+}
+
 String PageClient::page_did_request_ui_process_session_history_for_testing()
 {
     return client().did_request_ui_process_session_history_for_testing(m_id);

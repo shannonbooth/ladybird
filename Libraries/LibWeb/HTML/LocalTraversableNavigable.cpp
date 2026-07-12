@@ -70,6 +70,27 @@ static bool report_current_session_history_entry_document_state_population_updat
     return true;
 }
 
+static bool report_top_level_same_document_session_history_navigation(LocalTraversableNavigable& traversable, SessionHistoryEntry const& entry, Optional<i32> replaced_step, i32 current_step)
+{
+    if (!traversable.page().client().should_report_session_history_updates())
+        return false;
+
+    if (!entry.step_value().has_value())
+        return false;
+
+    traversable.save_persisted_state_to_active_session_history_entry(LocalNavigable::ReportCurrentEntryUpdate::No);
+
+    SessionHistoryEntryDescriptorCreationState creation_state { [&] {
+        return traversable.page().client().allocate_cross_process_id();
+    } };
+    traversable.page().client().page_did_apply_top_level_same_document_session_history_navigation({
+        .entry = create_session_history_entry_descriptor(entry, creation_state),
+        .replaced_step = replaced_step,
+        .current_step = current_step,
+    });
+    return true;
+}
+
 LocalTraversableNavigable::LocalTraversableNavigable(GC::Ref<Page> page)
     : LocalNavigable(
           page,
@@ -2610,6 +2631,19 @@ bool LocalTraversableNavigable::try_to_synchronously_commit_same_document_naviga
     }
 
     if (page().client().should_report_session_history_updates()) {
+        if (target_navigable.ptr() == this) {
+            Optional<i32> replaced_step;
+            if (entry_to_replace) {
+                auto entry_to_replace_step = entry_to_replace->step_value();
+                if (entry_to_replace_step.has_value())
+                    replaced_step = *entry_to_replace_step;
+            }
+            report_top_level_same_document_session_history_navigation(*this, target_entry, replaced_step, m_current_session_history_step);
+            VERIFY(session_history_entries().size() > 0);
+            page().client().page_did_change_url(current_session_history_entry()->url());
+            return true;
+        }
+
         auto session_history_snapshot = create_session_history_snapshot(SaveActiveEntryPersistedState::Yes);
         page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
     }
