@@ -1473,21 +1473,18 @@ void WebContentClient::did_change_needs_beforeunload_check(u64 page_id, bool nee
         view->did_change_needs_beforeunload_check({}, needs_beforeunload_check);
 }
 
-Messages::WebContentClient::DidRequestTraverseTheHistoryByDeltaResponse WebContentClient::did_request_traverse_the_history_by_delta(u64 page_id, Optional<u64> history_traversal_request_id, Web::HTML::SessionHistoryOperationId last_session_history_mutation_id, i32 delta, Web::HistoryTraversalPrecheck history_traversal_precheck)
+Messages::WebContentClient::DidRequestTraverseTheHistoryByDeltaResponse WebContentClient::did_request_traverse_the_history_by_delta(u64 page_id, Optional<u64> history_traversal_request_id, Web::HTML::SessionHistoryOperationId last_session_history_mutation_id, i32 delta)
 {
     if (auto view = view_for_page_id(page_id); view.has_value()) {
         auto view_id = view->view_id();
         // This request is already a synchronous IPC from WebContent, so defer
         // the UI traversal before it possibly calls back into WebContent for
         // cancelation checks.
-        Core::deferred_invoke([view_id, history_traversal_request_id, last_session_history_mutation_id, delta, history_traversal_precheck] {
+        Core::deferred_invoke([view_id, history_traversal_request_id, last_session_history_mutation_id, delta] {
             auto view = ViewImplementation::find_view_by_id(view_id);
             if (!view.has_value())
                 return;
-            auto check_for_cancelation = CheckForCancelation::IfWebContentCannotTraverseTarget;
-            if (history_traversal_precheck == Web::HistoryTraversalPrecheck::Needed)
-                check_for_cancelation = CheckForCancelation::Yes;
-            (void)view->traverse_the_history_by_delta(delta, check_for_cancelation, nullptr, history_traversal_request_id, last_session_history_mutation_id);
+            (void)view->traverse_the_history_by_delta(delta, CheckForCancelation::Yes, nullptr, history_traversal_request_id, last_session_history_mutation_id);
         });
         return true;
     }

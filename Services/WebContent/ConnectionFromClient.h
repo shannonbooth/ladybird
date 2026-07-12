@@ -97,8 +97,9 @@ private:
     virtual void set_page_parent_context(u64 page_id, Optional<Web::Compositor::CompositorContextId>) override;
     virtual void set_remote_child_frame_compositor_context(u64 page_id, Web::HTML::CrossProcessId frame_id, Optional<Web::Compositor::CompositorContextId>) override;
     virtual void apply_session_history_step(u64 page_id, Web::HTML::ApplySessionHistoryStepCommand) override;
+    virtual void set_session_history_state(u64 page_id, Web::HTML::CommittedSessionHistoryState) override;
     virtual void discard_history_traversal_request(u64 page_id, u64 history_traversal_request_id) override;
-    virtual void install_top_level_session_history_seed(u64 page_id, u64 seed_id, Vector<Web::HTML::SessionHistoryEntryDescriptor>, size_t current_top_level_entry_index, bool allow_reconstructing_current_entry) override;
+    virtual void install_top_level_session_history_seed(u64 page_id, u64 seed_id, Web::HTML::SessionHistoryEntryDescriptor current_entry, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries_for_navigation_api, Web::HTML::CommittedSessionHistoryState session_history_state, bool allow_reconstructing_current_entry) override;
     virtual void reset_session_history_for_testing(u64 page_id) override;
     virtual void set_viewport(u64 page_id, Web::DevicePixelSize, double device_pixel_ratio, Web::ViewportIsFullscreen is_fullscreen) override;
     virtual void key_event(u64 page_id, Web::KeyEvent) override;

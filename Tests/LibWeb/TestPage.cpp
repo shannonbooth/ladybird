@@ -37,12 +37,11 @@ public:
         visitor.visit(m_page);
     }
 
-    virtual bool page_did_request_traverse_the_history_by_delta(Optional<u64>, Web::HTML::SessionHistoryOperationId last_session_history_mutation_id, int delta, Web::HistoryTraversalPrecheck history_traversal_precheck) override
+    virtual bool page_did_request_traverse_the_history_by_delta(Optional<u64>, Web::HTML::SessionHistoryOperationId last_session_history_mutation_id, int delta) override
     {
         ++traversal_request_count;
         last_mutation_id = last_session_history_mutation_id;
         last_traversal_delta = delta;
-        last_history_traversal_precheck = history_traversal_precheck;
         return accept_traversal_request;
     }
 
@@ -50,7 +49,6 @@ public:
     size_t traversal_request_count { 0 };
     Web::HTML::SessionHistoryOperationId last_mutation_id { 0 };
     Optional<int> last_traversal_delta;
-    Optional<Web::HistoryTraversalPrecheck> last_history_traversal_precheck;
     GC::Ptr<Web::Page> m_page;
 };
 
@@ -68,6 +66,4 @@ TEST_CASE(browser_traversal_requests_embedder)
     EXPECT_EQ(client->traversal_request_count, 1uz);
     VERIFY(client->last_traversal_delta.has_value());
     EXPECT_EQ(*client->last_traversal_delta, -1);
-    VERIFY(client->last_history_traversal_precheck.has_value());
-    EXPECT_EQ(*client->last_history_traversal_precheck, Web::HistoryTraversalPrecheck::Needed);
 }

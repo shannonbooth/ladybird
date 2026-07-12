@@ -37,7 +37,6 @@ public:
         CurrentEntryUpdate,
         ChildNavigableCreated,
         ChildNavigableDestroyed,
-        RestoredCurrentStep,
     };
 
     struct WebContentMutation {
@@ -77,14 +76,6 @@ public:
                 .current_step = current_step,
             };
         }
-
-        static WebContentMutation restored_current_step(i32 step)
-        {
-            return {
-                .type = WebContentMutationType::RestoredCurrentStep,
-                .current_step = step,
-            };
-        }
     };
 
     struct WebContentMutationResult {
@@ -99,7 +90,6 @@ public:
 
     enum class WebContentMirrorProof {
         AcceptedSeedInstall,
-        RestoredCurrentStep,
         ReloadPendingClear,
         TopLevelCommitFromCompleteMirror,
         TopLevelCommitFromAcceptedSeed,
@@ -143,7 +133,6 @@ public:
     [[nodiscard]] bool has_only_top_level_used_steps() const;
     [[nodiscard]] bool current_step_is_top_level_entry() const;
     [[nodiscard]] Optional<i32> current_step_to_restore_after_loading_top_level_entry() const;
-    [[nodiscard]] bool web_content_can_traverse_to(TraversalTarget const&) const;
     [[nodiscard]] Optional<TraversalTarget> traversal_target_for_delta(int delta) const;
     [[nodiscard]] Optional<TraversalTarget> traversal_target_for_step(i32 step) const;
     [[nodiscard]] Optional<size_t> target_step_index_for_delta(int delta) const;
@@ -157,7 +146,6 @@ public:
 
 private:
     [[nodiscard]] bool update_current_entry_from_web_content(Web::HTML::SessionHistoryEntryUpdateKind, Entry);
-    [[nodiscard]] bool did_restore_web_content_to_current_step(i32 step);
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#tn-session-history-entries
     Vector<Entry> m_entries;

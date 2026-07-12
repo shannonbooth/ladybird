@@ -66,10 +66,7 @@ public:
     bool is_created_by_web_content() const { return m_is_created_by_web_content; }
     void set_is_created_by_web_content(bool value) { m_is_created_by_web_content = value; }
 
-    struct HistoryObjectLengthAndIndex {
-        u64 script_history_length;
-        u64 script_history_index;
-    };
+    using HistoryObjectLengthAndIndex = SessionHistoryLengthAndIndex;
     HistoryObjectLengthAndIndex get_the_history_object_length_and_index(int) const;
 
     enum class SynchronousNavigation : bool {
@@ -117,7 +114,8 @@ public:
     void discard_history_traversal_request(u64 history_traversal_request_id);
     SessionHistoryOperationId last_emitted_session_history_mutation_id() const { return m_last_emitted_session_history_mutation_id; }
     void apply_session_history_step(Web::HTML::ApplySessionHistoryStepCommand, GC::Ref<GC::Function<void(bool step_was_available, HistoryStepResult)>> on_complete);
-    bool try_to_install_top_level_session_history_entries_from_ui_process(Vector<SessionHistoryEntryDescriptor>, size_t current_top_level_entry_index, bool allow_reconstructing_current_entry);
+    void set_session_history_state_from_ui_process(CommittedSessionHistoryState);
+    bool try_to_install_top_level_session_history_entries_from_ui_process(SessionHistoryEntryDescriptor current_entry, Vector<SessionHistoryEntryDescriptor> entries_for_navigation_api, bool allow_reconstructing_current_entry);
     void reset_session_history_for_testing(GC::Ref<GC::Function<void()>> on_complete);
 
     void close_top_level_traversable();
@@ -247,6 +245,9 @@ private:
     Optional<WebContentSessionHistoryMutation> create_cross_document_session_history_navigation_mutation(CrossDocumentSessionHistoryNavigationMutation const&, i32 current_step);
     bool report_session_history_mutation(WebContentSessionHistoryMutation);
     bool report_session_history_mutation_batch(Vector<WebContentSessionHistoryMutation>, i32 final_current_step);
+    HistoryObjectLengthAndIndex history_object_length_and_index_with_pending_changes() const;
+    void record_pending_history_object_length_and_index_change(SessionHistoryOperationId);
+    void update_active_documents_history_object_length_and_index(HistoryObjectLengthAndIndex);
     bool report_top_level_same_document_session_history_navigation(SessionHistoryEntry const&, Optional<i32> replaced_step, i32 current_step);
     bool report_nested_same_document_session_history_navigation(LocalNavigable const&, SessionHistoryEntry const&, Optional<i32> replaced_step, i32 current_step);
     bool report_nested_cross_document_session_history_navigation(LocalNavigable const&, SessionHistoryEntry const&, i32 current_step);
@@ -256,6 +257,15 @@ private:
     int m_current_session_history_step { 0 };
     SessionHistoryOperationId m_next_session_history_operation_id { 1 };
     SessionHistoryOperationId m_last_emitted_session_history_mutation_id { 0 };
+    Optional<CommittedSessionHistoryState> m_committed_session_history_state_from_ui_process;
+    struct PendingHistoryObjectLengthAndIndexChange {
+        SessionHistoryOperationId operation_id { 0 };
+        i64 script_history_length_delta { 0 };
+        i64 script_history_index_delta { 0 };
+    };
+    Vector<PendingHistoryObjectLengthAndIndexChange> m_pending_history_object_length_and_index_changes;
+    Optional<int> m_override_history_object_length_and_index_step;
+    Optional<HistoryObjectLengthAndIndex> m_override_history_object_length_and_index;
 
     // Concurrent apply-history-step runs share the step numbering below. Runs are serialized through the session
     // history traversal queue — but a synchronous navigation can jump the queue while another run is paused (see the

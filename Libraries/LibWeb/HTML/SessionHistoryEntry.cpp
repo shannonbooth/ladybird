@@ -570,23 +570,6 @@ ErrorOr<Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation> IPC::decode(De
 }
 
 template<>
-ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::RestoredCurrentSessionHistoryStep const& step)
-{
-    TRY(encoder.encode(step.current_step));
-    return {};
-}
-
-template<>
-ErrorOr<Web::HTML::RestoredCurrentSessionHistoryStep> IPC::decode(Decoder& decoder)
-{
-    auto current_step = TRY(decoder.decode<i32>());
-
-    return Web::HTML::RestoredCurrentSessionHistoryStep {
-        .current_step = current_step,
-    };
-}
-
-template<>
 ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::WebContentSessionHistoryMutation const& mutation)
 {
     TRY(encoder.encode(mutation.operation_id));
@@ -630,6 +613,52 @@ ErrorOr<Web::HTML::WebContentSessionHistoryMutationBatch> IPC::decode(Decoder& d
 }
 
 template<>
+ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::SessionHistoryLengthAndIndex const& length_and_index)
+{
+    TRY(encoder.encode(length_and_index.script_history_length));
+    TRY(encoder.encode(length_and_index.script_history_index));
+    return {};
+}
+
+template<>
+ErrorOr<Web::HTML::SessionHistoryLengthAndIndex> IPC::decode(Decoder& decoder)
+{
+    auto script_history_length = TRY(decoder.decode<u64>());
+    auto script_history_index = TRY(decoder.decode<u64>());
+
+    return Web::HTML::SessionHistoryLengthAndIndex {
+        .script_history_length = script_history_length,
+        .script_history_index = script_history_index,
+    };
+}
+
+template<>
+ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::CommittedSessionHistoryState const& state)
+{
+    TRY(encoder.encode(state.last_applied_mutation_id));
+    TRY(encoder.encode(state.last_handled_mutation_id));
+    TRY(encoder.encode(state.current_step));
+    TRY(encoder.encode(state.history_object_length_and_index));
+    return {};
+}
+
+template<>
+ErrorOr<Web::HTML::CommittedSessionHistoryState> IPC::decode(Decoder& decoder)
+{
+    auto last_applied_mutation_id = TRY(decoder.decode<Web::HTML::SessionHistoryOperationId>());
+    auto last_handled_mutation_id = TRY(decoder.decode<Web::HTML::SessionHistoryOperationId>());
+    auto current_step = TRY(decoder.decode<i32>());
+    auto history_object_length_and_index = TRY(decoder.decode<Web::HTML::SessionHistoryLengthAndIndex>());
+
+    return Web::HTML::CommittedSessionHistoryState {
+        .last_applied_mutation_id = last_applied_mutation_id,
+        .last_handled_mutation_id = last_handled_mutation_id,
+        .current_step = current_step,
+        .history_object_length_and_index = history_object_length_and_index,
+    };
+}
+
+template<>
 ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::ApplySessionHistoryStepCommand const& command)
 {
     TRY(encoder.encode(command.command_id));
@@ -638,6 +667,7 @@ ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::ApplySessionHistoryStepCo
     TRY(encoder.encode(command.kind));
     TRY(encoder.encode(command.target_step));
     TRY(encoder.encode(command.target_step_index));
+    TRY(encoder.encode(command.target_history_object_length_and_index));
     TRY(encoder.encode(command.target_entry));
     TRY(encoder.encode(command.target_top_level_entry));
     TRY(encoder.encode(command.target_step_is_top_level_entry));
@@ -654,6 +684,7 @@ ErrorOr<Web::HTML::ApplySessionHistoryStepCommand> IPC::decode(Decoder& decoder)
     auto kind = TRY(decoder.decode<Web::HTML::ApplySessionHistoryStepKind>());
     auto target_step = TRY(decoder.decode<i32>());
     auto target_step_index = TRY(decoder.decode<size_t>());
+    auto target_history_object_length_and_index = TRY(decoder.decode<Web::HTML::SessionHistoryLengthAndIndex>());
     auto target_entry = TRY(decoder.decode<Web::HTML::SessionHistoryEntryDescriptor>());
     auto target_top_level_entry = TRY(decoder.decode<Web::HTML::SessionHistoryEntryDescriptor>());
     auto target_step_is_top_level_entry = TRY(decoder.decode<bool>());
@@ -666,6 +697,7 @@ ErrorOr<Web::HTML::ApplySessionHistoryStepCommand> IPC::decode(Decoder& decoder)
         .kind = kind,
         .target_step = target_step,
         .target_step_index = target_step_index,
+        .target_history_object_length_and_index = target_history_object_length_and_index,
         .target_entry = move(target_entry),
         .target_top_level_entry = move(target_top_level_entry),
         .target_step_is_top_level_entry = target_step_is_top_level_entry,

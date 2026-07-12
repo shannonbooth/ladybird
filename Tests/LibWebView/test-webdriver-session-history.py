@@ -936,7 +936,7 @@ def web_content_history_is_observably_in_sync(snapshot):
         or ui["waitingForWebContentSeedAck"]
         or ui["ignoringWebContentUpdatesUntilSeed"]
         or ui["seedAfterCurrentHistoryLoad"]
-        or ui["pendingWebContentHistoryStepAfterFallbackLoad"] is not None
+        or ui["pendingWebContentHistoryCommandAfterFallbackLoad"] is not None
         or ui["pendingSessionHistoryNavigation"] is not None
         or ui["pendingSessionHistoryTraversal"] is not None
         or not ui["webContentHistoryMatchesUI"]
@@ -958,7 +958,7 @@ def summarize_history_snapshot(snapshot):
             "ignoringWebContentUpdatesUntilSeed": ui["ignoringWebContentUpdatesUntilSeed"],
             "seedAfterCurrentHistoryLoad": ui["seedAfterCurrentHistoryLoad"],
             "webContentMirrorState": ui["webContentMirrorState"],
-            "pendingWebContentHistoryStepAfterFallbackLoad": ui["pendingWebContentHistoryStepAfterFallbackLoad"],
+            "pendingWebContentHistoryCommandAfterFallbackLoad": ui["pendingWebContentHistoryCommandAfterFallbackLoad"],
             "pendingSessionHistoryNavigation": ui["pendingSessionHistoryNavigation"],
             "pendingSessionHistoryTraversal": ui["pendingSessionHistoryTraversal"],
             "currentResource": history_current_entry(ui).get("resource"),
@@ -1422,7 +1422,7 @@ def expect_entry_nested_history(webdriver_port, session_id, label, entry_url, ex
 def expect_pending_web_content_history_step_after_fallback_load(webdriver_port, session_id, label, log):
     snapshot = session_history(webdriver_port, session_id)
     ui = snapshot["ui"]
-    pending_step = ui["pendingWebContentHistoryStepAfterFallbackLoad"]
+    pending_step = ui["pendingWebContentHistoryCommandAfterFallbackLoad"]
     pending_traversal = ui["pendingSessionHistoryTraversal"]
     ui_current_step = history_used_steps(ui)[ui["currentUsedStepIndex"]]
     log.append(
@@ -1468,7 +1468,7 @@ def expect_no_pending_web_content_history_step_after_fallback_load(webdriver_por
     snapshot = session_history(webdriver_port, session_id)
     ui = snapshot["ui"]
     if (
-        ui["pendingWebContentHistoryStepAfterFallbackLoad"] is None
+        ui["pendingWebContentHistoryCommandAfterFallbackLoad"] is None
         and web_content_history_is_observably_in_sync(snapshot)
     ):
         log.append(f"{label} restored fallback step: {summarize_history_snapshot(snapshot)}")

@@ -16,8 +16,6 @@ StringView web_content_mirror_proof_to_string(TraversableSessionHistory::WebCont
     switch (proof) {
     case TraversableSessionHistory::WebContentMirrorProof::AcceptedSeedInstall:
         return "accepted-seed-install"sv;
-    case TraversableSessionHistory::WebContentMirrorProof::RestoredCurrentStep:
-        return "restored-current-step"sv;
     case TraversableSessionHistory::WebContentMirrorProof::ReloadPendingClear:
         return "reload-pending-clear"sv;
     case TraversableSessionHistory::WebContentMirrorProof::TopLevelCommitFromCompleteMirror:
@@ -1047,13 +1045,6 @@ TraversableSessionHistory::WebContentMutationResult TraversableSessionHistory::a
             }))
             return {};
         return accepted_mutation_result();
-    case WebContentMutationType::RestoredCurrentStep:
-        if (!did_restore_web_content_to_current_step(mutation.current_step))
-            return {};
-        return {
-            .accepted = true,
-            .web_content_history_matches_mirror = web_content_history_matches_mirror(),
-        };
     }
 
     VERIFY_NOT_REACHED();
@@ -1078,17 +1069,6 @@ void TraversableSessionHistory::record_web_content_mirror_matches_ui_process(Web
 
     m_web_content_mirror_state = WebContentMirrorState::CompleteMirror;
     m_web_content_mirror_proof = proof;
-}
-
-bool TraversableSessionHistory::did_restore_web_content_to_current_step(i32 step)
-{
-    if (!m_current_used_step_index.has_value())
-        return false;
-    if (m_used_steps[*m_current_used_step_index] != step)
-        return false;
-
-    record_web_content_mirror_matches_ui_process(WebContentMirrorProof::RestoredCurrentStep);
-    return true;
 }
 
 bool TraversableSessionHistory::apply_traversal_to_step(i32 step)
@@ -1185,13 +1165,6 @@ Optional<i32> TraversableSessionHistory::current_step_to_restore_after_loading_t
     }
 
     return current_step;
-}
-
-bool TraversableSessionHistory::web_content_can_traverse_to(TraversalTarget const& target) const
-{
-    if (!web_content_history_matches_mirror())
-        return false;
-    return m_used_steps.contains_slow(target.target_step);
 }
 
 Optional<TraversableSessionHistory::TraversalTarget> TraversableSessionHistory::traversal_target_for_delta(int delta) const

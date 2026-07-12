@@ -1321,6 +1321,7 @@ static StringView session_history_entry_update_kind_to_string(Web::HTML::Session
 
 void ViewImplementation::did_apply_session_history_mutation(Badge<WebContentClient>, Web::HTML::WebContentSessionHistoryMutation mutation)
 {
+    auto operation_id = mutation.operation_id;
     if (history_debug_enabled()) {
         if (mutation.mutation.has<Web::HTML::CurrentSessionHistoryEntryUpdate>()) {
             auto const& current_entry_update = mutation.mutation.get<Web::HTML::CurrentSessionHistoryEntryUpdate>();
@@ -1378,12 +1379,6 @@ void ViewImplementation::did_apply_session_history_mutation(Badge<WebContentClie
                 cross_document_navigation.current_step,
                 cross_document_navigation.url,
                 cross_document_navigation.document_state.id);
-        } else if (mutation.mutation.has<Web::HTML::RestoredCurrentSessionHistoryStep>()) {
-            auto const& restored_step = mutation.mutation.get<Web::HTML::RestoredCurrentSessionHistoryStep>();
-            dbgln("[History] UI received WebContent session history mutation page={} pid={} type=restored-current-step current_step={}",
-                page_id(),
-                client().pid(),
-                restored_step.current_step);
         } else {
             auto const& same_document_navigation = mutation.mutation.get<Web::HTML::SameDocumentSessionHistoryNavigation>();
             dbgln("[History] UI received WebContent session history mutation page={} pid={} type=top-level-same-document-navigation replaced_step={} current_step={} url={} document_state_id={}",
@@ -1397,6 +1392,8 @@ void ViewImplementation::did_apply_session_history_mutation(Badge<WebContentClie
     }
 
     auto update = m_top_level_traversable.did_receive_web_content_session_history_mutation(move(mutation));
+    if (update.accepted)
+        send_session_history_state_to_web_content(operation_id);
     if (update.current_url.has_value()) {
         auto current_url = *update.current_url;
         set_url(current_url);
@@ -1418,6 +1415,7 @@ void ViewImplementation::did_apply_session_history_mutation(Badge<WebContentClie
 
 void ViewImplementation::did_apply_session_history_mutation_batch(Badge<WebContentClient>, Web::HTML::WebContentSessionHistoryMutationBatch batch)
 {
+    auto operation_id = batch.operation_id;
     if (history_debug_enabled()) {
         dbgln("[History] UI received WebContent session history mutation batch page={} pid={} final_current_step={} mutations={}",
             page_id(),
@@ -1427,6 +1425,8 @@ void ViewImplementation::did_apply_session_history_mutation_batch(Badge<WebConte
     }
 
     auto update = m_top_level_traversable.did_receive_web_content_session_history_mutation_batch(move(batch));
+    if (update.accepted)
+        send_session_history_state_to_web_content(operation_id);
     if (update.current_url.has_value()) {
         auto current_url = *update.current_url;
         set_url(current_url);
@@ -1777,10 +1777,10 @@ JsonValue ViewImplementation::webdriver_session_history() const
     else
         serialized.set("currentUsedStepIndex"sv, JsonValue {});
 
-    if (auto pending_step = m_top_level_traversable.pending_web_content_session_history_seed().step_after_loading_top_level_entry; pending_step.has_value())
-        serialized.set("pendingWebContentHistoryStepAfterFallbackLoad"sv, *pending_step);
+    if (auto const& pending_command = m_top_level_traversable.pending_web_content_session_history_seed().command_after_loading_top_level_entry; pending_command.has_value())
+        serialized.set("pendingWebContentHistoryCommandAfterFallbackLoad"sv, pending_command->target_step);
     else
-        serialized.set("pendingWebContentHistoryStepAfterFallbackLoad"sv, JsonValue {});
+        serialized.set("pendingWebContentHistoryCommandAfterFallbackLoad"sv, JsonValue {});
 
     if (auto expected_seed_id = m_top_level_traversable.pending_web_content_session_history_seed().expected_seed_id; expected_seed_id.has_value())
         serialized.set("pendingWebContentSessionHistorySeedID"sv, *expected_seed_id);
@@ -1838,17 +1838,26 @@ void ViewImplementation::seed_web_content_session_history_from_ui_process(AllowC
     }
 
     if (history_debug_enabled()) {
-        dbgln("[History] UI seeds WebContent session history page={} pid={} current={} entries={}",
+        dbgln("[History] UI seeds WebContent session history page={} pid={} current_step={} navigation_api_entries={}",
             page_id(),
             client().pid(),
-            seed->current_top_level_entry_index,
-            history_log_entries(seed->entries, seed->current_top_level_entry_index));
+            seed->current_step,
+            history_log_entries(seed->entries_for_navigation_api));
     }
 
     auto seed_id = m_top_level_traversable.did_send_web_content_session_history_seed(seed->current_step);
-    client().async_install_top_level_session_history_seed(page_id(), seed_id, move(seed->entries), seed->current_top_level_entry_index, seed->allow_current_entry_reconstruction);
+    client().async_install_top_level_session_history_seed(page_id(), seed_id, move(seed->current_entry), move(seed->entries_for_navigation_api), seed->session_history_state, seed->allow_current_entry_reconstruction);
     update_navigation_action_state();
     dump_session_history("sent-webcontent-session-history-seed"sv);
+}
+
+void ViewImplementation::send_session_history_state_to_web_content(Web::HTML::SessionHistoryOperationId last_applied_mutation_id)
+{
+    auto state = m_top_level_traversable.current_session_history_state(last_applied_mutation_id);
+    if (!state.has_value())
+        return;
+
+    client().async_set_session_history_state(page_id(), *state);
 }
 
 void ViewImplementation::restore_current_session_history_entry_from_ui_process()
@@ -1909,6 +1918,9 @@ void ViewImplementation::did_install_top_level_session_history_seed(Badge<WebCon
         return;
     }
 
+    if (ack.should_send_session_history_state)
+        send_session_history_state_to_web_content(m_top_level_traversable.last_applied_web_content_session_history_mutation_id());
+
     if (ack.command_to_apply.has_value())
         client().async_apply_session_history_step(page_id(), ack.command_to_apply.release_value());
     else if (ack.should_complete_webdriver_pending_navigation)
@@ -1922,6 +1934,8 @@ void ViewImplementation::did_install_top_level_session_history_seed(Badge<WebCon
 void ViewImplementation::did_apply_session_history_step(Badge<WebContentClient>, Web::HTML::SessionHistoryOperationId command_id, bool step_was_available, Web::HTML::HistoryStepResult result)
 {
     auto step_result = m_top_level_traversable.did_apply_session_history_step(command_id, step_was_available, result);
+    if (step_result.should_send_session_history_state)
+        send_session_history_state_to_web_content(m_top_level_traversable.last_applied_web_content_session_history_mutation_id());
     if (step_result.should_update_webdriver_pending_navigation_to_current_url && m_webdriver_pending_navigation_url.has_value())
         m_webdriver_pending_navigation_url = m_url;
     if (step_result.should_reset_webdriver_pending_navigation_completion)
@@ -1995,7 +2009,7 @@ void ViewImplementation::dump_session_history(StringView reason, SessionHistoryD
         pending_navigation_restore_mode = CanonicalTraversable::pending_session_history_navigation_web_content_restore_mode_to_string(m_top_level_traversable.pending_session_history_navigation()->web_content_restore_mode);
     }
 
-    dbgln("[History] UI session history page={} pid={} reason={} url='{}' webcontent_matches={} webcontent_mirror_state={} webcontent_mirror_proof={} loading_from_ui={} waiting_to_seed={} waiting_for_seed_ack={} ignore_until_seed={} seed_after_current_load={} pending_webcontent_step={} pending_navigation_url={} pending_navigation_restore={} pending_traversal_target={} pending_traversal_stage={} back={} forward={} entries={}",
+    dbgln("[History] UI session history page={} pid={} reason={} url='{}' webcontent_matches={} webcontent_mirror_state={} webcontent_mirror_proof={} loading_from_ui={} waiting_to_seed={} waiting_for_seed_ack={} ignore_until_seed={} seed_after_current_load={} pending_webcontent_restore_command={} pending_navigation_url={} pending_navigation_restore={} pending_traversal_target={} pending_traversal_stage={} back={} forward={} entries={}",
         page_id(),
         client().pid(),
         reason,
@@ -2008,7 +2022,7 @@ void ViewImplementation::dump_session_history(StringView reason, SessionHistoryD
         m_top_level_traversable.pending_web_content_session_history_seed().waiting_for_ack,
         m_top_level_traversable.pending_web_content_session_history_seed().ignore_updates_until_seed,
         m_top_level_traversable.pending_web_content_session_history_seed().should_seed_after_current_history_load,
-        m_top_level_traversable.pending_web_content_session_history_seed().step_after_loading_top_level_entry,
+        m_top_level_traversable.pending_web_content_session_history_seed().command_after_loading_top_level_entry.has_value() ? Optional<i32> { m_top_level_traversable.pending_web_content_session_history_seed().command_after_loading_top_level_entry->target_step } : Optional<i32> {},
         pending_navigation_url,
         pending_navigation_restore_mode,
         m_top_level_traversable.pending_session_history_traversal().has_value() ? Optional<i32> { m_top_level_traversable.pending_session_history_traversal()->target_step } : Optional<i32> {},

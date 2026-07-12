@@ -35,7 +35,6 @@ enum class HistoryTraversalStatus : u8 {
 enum class CheckForCancelation : u8 {
     Yes,
     No,
-    IfWebContentCannotTraverseTarget,
 };
 
 enum class HistoryTraversalRequestSource : u8 {
@@ -67,7 +66,7 @@ struct PendingWebContentSessionHistorySeed {
     bool ignore_updates_until_seed { false };
     bool waiting_for_ack { false };
     bool should_seed_after_current_history_load { false };
-    Optional<i32> step_after_loading_top_level_entry;
+    Optional<Web::HTML::ApplySessionHistoryStepCommand> command_after_loading_top_level_entry;
     Optional<i32> expected_current_step;
     Optional<u64> expected_seed_id;
 
@@ -116,6 +115,7 @@ struct WebContentSessionHistorySeedAckResult {
     Optional<Web::HTML::ApplySessionHistoryStepCommand> command_to_apply {};
     bool should_complete_webdriver_pending_navigation { false };
     bool should_update_navigation_action_state { false };
+    bool should_send_session_history_state { false };
 };
 
 struct NavigationStartResult {
@@ -175,11 +175,13 @@ struct WebContentHistoryStepResult {
     bool should_complete_webdriver_pending_navigation { false };
     bool should_update_webdriver_pending_navigation_to_current_url { false };
     bool should_reset_webdriver_pending_navigation_completion { false };
+    bool should_send_session_history_state { false };
 };
 
 struct WebContentSessionHistorySeed {
-    Vector<Web::HTML::SessionHistoryEntryDescriptor> entries;
-    size_t current_top_level_entry_index { 0 };
+    Web::HTML::SessionHistoryEntryDescriptor current_entry;
+    Vector<Web::HTML::SessionHistoryEntryDescriptor> entries_for_navigation_api;
+    Web::HTML::CommittedSessionHistoryState session_history_state;
     i32 current_step { 0 };
     bool allow_current_entry_reconstruction { false };
 };
@@ -241,6 +243,8 @@ public:
     URL::URL prepare_to_load_session_history_traversal_target_from_ui_process(TraversableSessionHistory::TraversalTarget const&, URL::URL const& current_url);
     WebContentHistoryStepResult did_apply_session_history_step(Web::HTML::SessionHistoryOperationId command_id, bool step_was_available, Web::HTML::HistoryStepResult);
     Optional<Web::HTML::ApplySessionHistoryStepCommand> create_apply_session_history_step_command(i32 step, Web::HTML::ApplySessionHistoryStepKind = Web::HTML::ApplySessionHistoryStepKind::Traverse, Optional<u64> history_traversal_request_id = {}, Web::HTML::SessionHistoryOperationId apply_after_mutation_id = 0);
+    Optional<Web::HTML::CommittedSessionHistoryState> current_session_history_state(Web::HTML::SessionHistoryOperationId last_applied_mutation_id) const;
+    Web::HTML::SessionHistoryOperationId last_applied_web_content_session_history_mutation_id() const { return m_last_applied_web_content_session_history_mutation_id; }
     Optional<WebContentSessionHistorySeed> prepare_web_content_session_history_seed(bool allow_current_entry_reconstruction);
     CurrentSessionHistoryEntryLoad prepare_current_session_history_entry_load(URL::URL const& current_url);
     u64 did_send_web_content_session_history_seed(i32 current_step);
@@ -266,6 +270,7 @@ private:
     u64 m_next_web_content_session_history_seed_id { 1 };
     Web::HTML::SessionHistoryOperationId m_next_apply_session_history_step_command_id { 1 };
     Web::HTML::SessionHistoryOperationId m_last_applied_web_content_session_history_mutation_id { 0 };
+    Web::HTML::SessionHistoryOperationId m_last_handled_web_content_session_history_mutation_id { 0 };
     Optional<URL::URL> m_session_history_entry_url_loading_from_ui_process;
     PendingWebContentSessionHistorySeed m_pending_web_content_session_history_seed;
 };

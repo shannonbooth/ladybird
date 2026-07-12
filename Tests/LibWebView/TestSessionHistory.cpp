@@ -290,13 +290,6 @@ static bool apply_child_navigable_destruction(WebView::TraversableSessionHistory
     });
 }
 
-static bool apply_restored_current_step(WebView::TraversableSessionHistory& history, i32 step)
-{
-    return history.apply_web_content_mutation(
-                      WebView::TraversableSessionHistory::WebContentMutation::restored_current_step(step))
-        .accepted;
-}
-
 static bool apply_traversal_current_step(WebView::TraversableSessionHistory& history, i32 step)
 {
     return history.apply_traversal_to_step(step);
@@ -1635,7 +1628,7 @@ TEST_CASE(current_top_level_step_can_need_nested_history_restore)
     EXPECT(!history.traversal_target_for_step(42).has_value());
 }
 
-TEST_CASE(seeded_web_content_must_restore_nested_current_step_before_traversing)
+TEST_CASE(seeded_web_content_needs_command_to_restore_nested_current_step)
 {
     WebView::TraversableSessionHistory history;
 
@@ -1658,7 +1651,7 @@ TEST_CASE(seeded_web_content_must_restore_nested_current_step_before_traversing)
 
     auto traversal_target = history.traversal_target_for_delta(1);
     VERIFY(traversal_target.has_value());
-    EXPECT(!history.web_content_can_traverse_to(*traversal_target));
+    EXPECT_EQ(traversal_target->target_step, 2);
 
     initialize_history_from_ui_entries(history, {
                                                     entry(0, "https://a.example/"sv, {
@@ -1671,7 +1664,7 @@ TEST_CASE(seeded_web_content_must_restore_nested_current_step_before_traversing)
                                                 },
         { 0, 1, 2 }, 1);
 
-    EXPECT(history.web_content_can_traverse_to(*traversal_target));
+    EXPECT(history.web_content_history_matches_mirror());
 }
 
 TEST_CASE(recorded_seed_does_not_change_nested_ui_current_step)
@@ -1699,52 +1692,6 @@ TEST_CASE(recorded_seed_does_not_change_nested_ui_current_step)
     EXPECT(!history.web_content_history_matches_mirror());
 }
 
-TEST_CASE(seeded_web_content_restore_marks_mirror_complete)
-{
-    WebView::TraversableSessionHistory history;
-
-    initialize_history_from_ui_entries(history, {
-                                                    entry(0, "https://a.example/"sv, {
-                                                                                         nested_history("frame-1"sv, {
-                                                                                                                         entry(0, "https://frame.example/a"sv),
-                                                                                                                         entry(1, "https://frame.example/b"sv),
-                                                                                                                     }),
-                                                                                     }),
-                                                    entry(2, "https://b.example/"sv),
-                                                },
-        { 0, 1, 2 }, 1);
-
-    history.forget_web_content_state();
-    record_web_content_seeded_at_current_top_level_entry(history);
-    EXPECT(!history.web_content_history_matches_mirror());
-
-    EXPECT(apply_restored_current_step(history, 1));
-    EXPECT(history.web_content_history_matches_mirror());
-
-    EXPECT(!apply_restored_current_step(history, 3));
-    EXPECT(history.web_content_history_matches_mirror());
-}
-
-TEST_CASE(restored_web_content_step_must_match_current_ui_step)
-{
-    WebView::TraversableSessionHistory history;
-
-    initialize_history_from_ui_entries(history, {
-                                                    entry(0, "https://a.example/"sv),
-                                                    entry(1, "https://b.example/"sv),
-                                                    entry(2, "https://c.example/"sv),
-                                                },
-        { 0, 1, 2 }, 2);
-
-    history.traverse_to(1);
-    history.forget_web_content_state();
-    record_web_content_seeded_at_current_top_level_entry(history);
-
-    EXPECT(!apply_restored_current_step(history, 2));
-    expect_current_entry(history, 1, "https://b.example/"sv);
-    EXPECT(history.web_content_history_matches_mirror());
-}
-
 TEST_CASE(applied_web_content_traversal_updates_current_step)
 {
     WebView::TraversableSessionHistory history;
@@ -1765,7 +1712,7 @@ TEST_CASE(applied_web_content_traversal_updates_current_step)
 
     auto target_a = history.traversal_target_for_delta(-1);
     VERIFY(target_a.has_value());
-    EXPECT(history.web_content_can_traverse_to(*target_a));
+    EXPECT_EQ(target_a->target_step, 0);
 
     EXPECT(!apply_traversal_current_step(history, 42));
     expect_current_entry(history, 1, "https://b.example/"sv);

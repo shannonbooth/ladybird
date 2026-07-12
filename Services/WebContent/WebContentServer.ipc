@@ -68,9 +68,11 @@ endpoint WebContentServer
     set_page_parent_context(u64 page_id, Optional<Web::Compositor::CompositorContextId> parent_context_id) =|
     set_remote_child_frame_compositor_context(u64 page_id, Web::HTML::CrossProcessId frame_id, Optional<Web::Compositor::CompositorContextId> context_id) =|
     apply_session_history_step(u64 page_id, Web::HTML::ApplySessionHistoryStepCommand command) =|
+    set_session_history_state(u64 page_id, Web::HTML::CommittedSessionHistoryState state) =|
     discard_history_traversal_request(u64 page_id, u64 history_traversal_request_id) =|
-    install_top_level_session_history_seed(u64 page_id, u64 seed_id, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries,
-        size_t current_top_level_entry_index, bool allow_reconstructing_current_entry) =|
+    install_top_level_session_history_seed(u64 page_id, u64 seed_id, Web::HTML::SessionHistoryEntryDescriptor current_entry,
+        Vector<Web::HTML::SessionHistoryEntryDescriptor> entries_for_navigation_api, Web::HTML::CommittedSessionHistoryState session_history_state,
+        bool allow_reconstructing_current_entry) =|
     reset_session_history_for_testing(u64 page_id) =|
 
     set_viewport(u64 page_id, Web::DevicePixelSize size, double device_pixel_ratio, Web::ViewportIsFullscreen is_fullscreen) =|
