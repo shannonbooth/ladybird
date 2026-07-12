@@ -38,59 +38,6 @@ namespace Web::HTML {
 
 GC_DEFINE_ALLOCATOR(LocalTraversableNavigable);
 
-static bool report_current_session_history_entry_reload_pending_update(LocalTraversableNavigable& traversable, SessionHistoryEntry const& entry)
-{
-    if (!traversable.page().client().should_report_session_history_updates())
-        return false;
-
-    if (!entry.step_value().has_value())
-        return false;
-
-    traversable.save_persisted_state_to_active_session_history_entry();
-
-    SessionHistoryEntryDescriptorCreationState creation_state { [&] {
-        return traversable.page().client().allocate_cross_process_id();
-    } };
-    traversable.page().client().page_did_update_current_session_history_entry(SessionHistoryEntryUpdateKind::DocumentStateReloadPending, create_session_history_entry_descriptor(entry, creation_state));
-    return true;
-}
-
-static bool report_current_session_history_entry_document_state_population_update(LocalTraversableNavigable& traversable, SessionHistoryEntry const& entry)
-{
-    if (!traversable.page().client().should_report_session_history_updates())
-        return false;
-
-    if (!entry.step_value().has_value())
-        return false;
-
-    SessionHistoryEntryDescriptorCreationState creation_state { [&] {
-        return traversable.page().client().allocate_cross_process_id();
-    } };
-    traversable.page().client().page_did_update_current_session_history_entry(SessionHistoryEntryUpdateKind::DocumentStatePopulation, create_session_history_entry_descriptor(entry, creation_state));
-    return true;
-}
-
-static bool report_top_level_same_document_session_history_navigation(LocalTraversableNavigable& traversable, SessionHistoryEntry const& entry, Optional<i32> replaced_step, i32 current_step)
-{
-    if (!traversable.page().client().should_report_session_history_updates())
-        return false;
-
-    if (!entry.step_value().has_value())
-        return false;
-
-    traversable.save_persisted_state_to_active_session_history_entry(LocalNavigable::ReportCurrentEntryUpdate::No);
-
-    SessionHistoryEntryDescriptorCreationState creation_state { [&] {
-        return traversable.page().client().allocate_cross_process_id();
-    } };
-    traversable.page().client().page_did_apply_top_level_same_document_session_history_navigation({
-        .entry = create_session_history_entry_descriptor(entry, creation_state),
-        .replaced_step = replaced_step,
-        .current_step = current_step,
-    });
-    return true;
-}
-
 LocalTraversableNavigable::LocalTraversableNavigable(GC::Ref<Page> page)
     : LocalNavigable(
           page,
@@ -102,6 +49,62 @@ LocalTraversableNavigable::LocalTraversableNavigable(GC::Ref<Page> page)
 }
 
 LocalTraversableNavigable::~LocalTraversableNavigable() = default;
+
+bool LocalTraversableNavigable::report_current_session_history_entry_update(SessionHistoryEntryUpdateKind update_kind, SessionHistoryEntry const& entry, SaveActiveEntryPersistedState save_active_entry_persisted_state)
+{
+    if (!page().client().should_report_session_history_updates())
+        return false;
+
+    if (!entry.step_value().has_value())
+        return false;
+
+    if (save_active_entry_persisted_state == SaveActiveEntryPersistedState::Yes)
+        save_persisted_state_to_active_session_history_entry();
+
+    SessionHistoryEntryDescriptorCreationState creation_state { [&] {
+        return page().client().allocate_cross_process_id();
+    } };
+    page().client().page_did_update_current_session_history_entry(update_kind, create_session_history_entry_descriptor(entry, creation_state));
+    return true;
+}
+
+bool LocalTraversableNavigable::report_structural_session_history_update(StructuralSessionHistoryUpdateReason reason, SaveActiveEntryPersistedState save_active_entry_persisted_state)
+{
+    switch (reason) {
+    case StructuralSessionHistoryUpdateReason::TestReset:
+    case StructuralSessionHistoryUpdateReason::HistoryStepCompletion:
+    case StructuralSessionHistoryUpdateReason::NestedSameDocumentNavigation:
+        break;
+    }
+
+    if (!page().client().should_report_session_history_updates())
+        return false;
+
+    auto session_history_snapshot = create_session_history_snapshot(save_active_entry_persisted_state);
+    page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
+    return true;
+}
+
+bool LocalTraversableNavigable::report_top_level_same_document_session_history_navigation(SessionHistoryEntry const& entry, Optional<i32> replaced_step, i32 current_step)
+{
+    if (!page().client().should_report_session_history_updates())
+        return false;
+
+    if (!entry.step_value().has_value())
+        return false;
+
+    save_persisted_state_to_active_session_history_entry(LocalNavigable::ReportCurrentEntryUpdate::No);
+
+    SessionHistoryEntryDescriptorCreationState creation_state { [&] {
+        return page().client().allocate_cross_process_id();
+    } };
+    page().client().page_did_apply_top_level_same_document_session_history_navigation({
+        .entry = create_session_history_entry_descriptor(entry, creation_state),
+        .replaced_step = replaced_step,
+        .current_step = current_step,
+    });
+    return true;
+}
 
 void LocalTraversableNavigable::visit_edges(Cell::Visitor& visitor)
 {
@@ -557,10 +560,7 @@ void LocalTraversableNavigable::reset_session_history_for_testing(GC::Ref<GC::Fu
         auto entries_for_navigation_api = get_session_history_entries_for_the_navigation_api(*this, m_current_session_history_step);
         active_window()->navigation()->initialize_the_navigation_api_entries_for_reconstructed_session_history(entries_for_navigation_api, active_entry);
 
-        if (page().client().should_report_session_history_updates()) {
-            auto session_history_snapshot = create_session_history_snapshot();
-            page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
-        }
+        report_structural_session_history_update(StructuralSessionHistoryUpdateReason::TestReset);
 
         signal->resolve({});
         on_complete->function()();
@@ -1052,7 +1052,7 @@ void ApplyHistoryStepState::send_reload_pending_clear_update_if_needed()
 
     m_reload_pending_clear_update_needed = false;
     auto reload_pending_clear_entry = move(m_reload_pending_clear_entry);
-    if (reload_pending_clear_entry && report_current_session_history_entry_reload_pending_update(*m_traversable, *reload_pending_clear_entry)) {
+    if (reload_pending_clear_entry && m_traversable->report_current_session_history_entry_update(SessionHistoryEntryUpdateKind::DocumentStateReloadPending, *reload_pending_clear_entry, LocalTraversableNavigable::SaveActiveEntryPersistedState::Yes)) {
         m_reload_pending_update_state = TargetedCurrentEntryUpdateState::CoversCompletion;
         return;
     }
@@ -1553,7 +1553,7 @@ void ApplyHistoryStepState::process_continuations()
             }
 
             if (has_fresh_document) {
-                auto update_was_sent = report_current_session_history_entry_document_state_population_update(*m_traversable, *target_entry);
+                auto update_was_sent = m_traversable->report_current_session_history_entry_update(SessionHistoryEntryUpdateKind::DocumentStatePopulation, *target_entry);
                 note_document_state_population_update(*navigable, update_only, update_was_sent);
             }
 
@@ -1740,7 +1740,7 @@ void ApplyHistoryStepState::complete()
         // Current-entry/document-state updates are the non-structural completion path. If one of those targeted
         // updates covered this history-step completion, do not also send a full snapshot. The snapshot path below is
         // reserved for structural changes, recovery, or cases where the targeted proof was not sufficient.
-        if (completion_needs_full_session_history_snapshot() && m_traversable->page().client().should_report_session_history_updates()) {
+        if (completion_needs_full_session_history_snapshot()) {
             auto save_active_entry_persisted_state = LocalTraversableNavigable::SaveActiveEntryPersistedState::Yes;
             // NB: During history traversal, the active entry can point at the target
             //     entry before the active document's queued history-step update has
@@ -1752,8 +1752,7 @@ void ApplyHistoryStepState::complete()
                 if (document && active_entry && document->latest_entry() != active_entry)
                     save_active_entry_persisted_state = LocalTraversableNavigable::SaveActiveEntryPersistedState::No;
             }
-            auto session_history_snapshot = m_traversable->create_session_history_snapshot(save_active_entry_persisted_state);
-            m_traversable->page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
+            m_traversable->report_structural_session_history_update(LocalTraversableNavigable::StructuralSessionHistoryUpdateReason::HistoryStepCompletion, save_active_entry_persisted_state);
         }
 
         VERIFY(m_traversable->m_session_history_entries.size() > 0);
@@ -2532,7 +2531,7 @@ void LocalTraversableNavigable::apply_the_reload_history_step(UserNavigationInvo
                 //     session history entry as an in-flight reload.
                 if (auto current_entry = current_session_history_entry(); current_entry && current_entry->document_state()->reload_pending()) {
                     current_entry->document_state()->set_reload_pending(false);
-                    report_current_session_history_entry_reload_pending_update(*this, *current_entry);
+                    report_current_session_history_entry_update(SessionHistoryEntryUpdateKind::DocumentStateReloadPending, *current_entry, SaveActiveEntryPersistedState::Yes);
                 }
             }
             on_complete->function()(result);
@@ -2655,14 +2654,13 @@ bool LocalTraversableNavigable::try_to_synchronously_commit_same_document_naviga
                 if (entry_to_replace_step.has_value())
                     replaced_step = *entry_to_replace_step;
             }
-            report_top_level_same_document_session_history_navigation(*this, target_entry, replaced_step, m_current_session_history_step);
+            report_top_level_same_document_session_history_navigation(target_entry, replaced_step, m_current_session_history_step);
             VERIFY(session_history_entries().size() > 0);
             page().client().page_did_change_url(current_session_history_entry()->url());
             return true;
         }
 
-        auto session_history_snapshot = create_session_history_snapshot(SaveActiveEntryPersistedState::Yes);
-        page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
+        report_structural_session_history_update(StructuralSessionHistoryUpdateReason::NestedSameDocumentNavigation);
     }
 
     VERIFY(session_history_entries().size() > 0);
