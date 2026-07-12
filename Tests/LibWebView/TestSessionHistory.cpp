@@ -798,6 +798,48 @@ TEST_CASE(targeted_reload_pending_update_clears_same_document_entries)
     EXPECT(history.web_content_history_matches_mirror());
 }
 
+TEST_CASE(accepted_multiple_reload_pending_updates_do_not_request_snapshot)
+{
+    WebView::CanonicalTraversable traversable;
+
+    auto initial_update = traversable.did_receive_web_content_session_history_update({
+                                                                                        entry_with_reload_pending(0, "https://top.example/"sv, 1, "main"sv, {
+                                                                                                                                                                 nested_history("frame-1"sv, {
+                                                                                                                                                                                                 entry_with_reload_pending(0, "https://frame.example/"sv, 2, "frame"sv, {}),
+                                                                                                                                                                                             }),
+                                                                                                                                                             }),
+                                                                                    },
+        { 0 }, 0, parse_url("https://top.example/"sv));
+    EXPECT_EQ(initial_update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+
+    auto nested_update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::current_entry_update(
+        SessionHistoryEntryUpdateKind::DocumentStateReloadPending,
+        entry(0, "https://frame.example/"sv, 2, "frame"sv)));
+    EXPECT(nested_update.accepted);
+    EXPECT_EQ(nested_update.dump_reason, "did-update-current-entry"sv);
+    EXPECT(!nested_update.should_request_session_history_update);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+
+    auto top_update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::current_entry_update(
+        SessionHistoryEntryUpdateKind::DocumentStateReloadPending,
+        entry(0, "https://top.example/"sv, 1, "main"sv, {
+                                                             nested_history("frame-1"sv, {
+                                                                                             entry(0, "https://frame.example/"sv, 2, "frame"sv),
+                                                                                         }),
+                                                         })));
+    EXPECT(top_update.accepted);
+    EXPECT_EQ(top_update.dump_reason, "did-update-current-entry"sv);
+    EXPECT(!top_update.should_request_session_history_update);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+
+    auto* current_entry = traversable.session_history().current_entry();
+    VERIFY(current_entry);
+    EXPECT(!current_entry->document_state.reload_pending);
+    expect_nested_history(*current_entry, 0, "frame-1"sv, 1);
+    EXPECT(!current_entry->document_state.nested_histories[0].entries[0].document_state.reload_pending);
+}
+
 TEST_CASE(targeted_reload_pending_update_rejects_other_state_change)
 {
     WebView::TraversableSessionHistory history;

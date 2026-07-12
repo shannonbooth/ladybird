@@ -1136,8 +1136,7 @@ private:
     Optional<String> m_expected_ongoing_navigation_id;
     GC::Ptr<OnApplyHistoryStepComplete> m_on_complete;
     LocalTraversableNavigable::ReportAppliedTraversal m_report_applied_traversal { LocalTraversableNavigable::ReportAppliedTraversal::No };
-    bool m_reload_pending_clear_update_needed { false };
-    RefPtr<SessionHistoryEntry> m_reload_pending_clear_entry;
+    Vector<RefPtr<SessionHistoryEntry>> m_reload_pending_clear_entries;
     TargetedCurrentEntryUpdateState m_reload_pending_update_state { TargetedCurrentEntryUpdateState::None };
     TargetedCurrentEntryUpdateState m_document_state_population_update_state { TargetedCurrentEntryUpdateState::None };
     bool m_top_level_cross_document_navigation_update_needed { false };
@@ -1169,30 +1168,29 @@ void ApplyHistoryStepState::note_reload_pending_clear_update_needed(SessionHisto
     if (m_reload_pending_update_state == TargetedCurrentEntryUpdateState::NeedsFullSnapshot)
         return;
 
-    if (m_reload_pending_clear_update_needed || m_reload_pending_update_state == TargetedCurrentEntryUpdateState::CoversCompletion) {
-        m_reload_pending_clear_update_needed = false;
-        m_reload_pending_clear_entry = nullptr;
+    if (m_reload_pending_update_state == TargetedCurrentEntryUpdateState::CoversCompletion) {
+        m_reload_pending_clear_entries.clear();
         m_reload_pending_update_state = TargetedCurrentEntryUpdateState::NeedsFullSnapshot;
         return;
     }
 
-    m_reload_pending_clear_update_needed = true;
-    m_reload_pending_clear_entry = entry;
+    m_reload_pending_clear_entries.append(entry);
 }
 
 void ApplyHistoryStepState::send_reload_pending_clear_update_if_needed()
 {
-    if (!m_reload_pending_clear_update_needed)
+    if (m_reload_pending_clear_entries.is_empty())
         return;
 
-    m_reload_pending_clear_update_needed = false;
-    auto reload_pending_clear_entry = move(m_reload_pending_clear_entry);
-    if (reload_pending_clear_entry && m_traversable->report_current_session_history_entry_update(SessionHistoryEntryUpdateKind::DocumentStateReloadPending, *reload_pending_clear_entry, LocalTraversableNavigable::SaveActiveEntryPersistedState::Yes)) {
-        m_reload_pending_update_state = TargetedCurrentEntryUpdateState::CoversCompletion;
-        return;
+    auto reload_pending_clear_entries = move(m_reload_pending_clear_entries);
+    for (auto& entry : reload_pending_clear_entries) {
+        if (!entry || !m_traversable->report_current_session_history_entry_update(SessionHistoryEntryUpdateKind::DocumentStateReloadPending, *entry, LocalTraversableNavigable::SaveActiveEntryPersistedState::Yes)) {
+            m_reload_pending_update_state = TargetedCurrentEntryUpdateState::NeedsFullSnapshot;
+            return;
+        }
     }
 
-    m_reload_pending_update_state = TargetedCurrentEntryUpdateState::NeedsFullSnapshot;
+    m_reload_pending_update_state = TargetedCurrentEntryUpdateState::CoversCompletion;
 }
 
 bool ApplyHistoryStepState::reload_pending_updates_covered_completion() const
@@ -1392,7 +1390,7 @@ bool ApplyHistoryStepState::targeted_current_entry_updates_need_full_session_his
         return true;
     }
 
-    if (m_reload_pending_clear_update_needed || m_top_level_cross_document_navigation_update_needed || m_nested_cross_document_navigation_update_needed)
+    if (!m_reload_pending_clear_entries.is_empty() || m_top_level_cross_document_navigation_update_needed || m_nested_cross_document_navigation_update_needed)
         return true;
 
     return false;
