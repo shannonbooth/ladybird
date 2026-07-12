@@ -50,6 +50,7 @@ public:
     enum class WebContentMutationType {
         CurrentEntryUpdate,
         TopLevelSameDocumentNavigation,
+        TopLevelCrossDocumentNavigation,
         AppliedTraversal,
         RestoredCurrentStep,
     };
@@ -76,6 +77,15 @@ public:
                 .type = WebContentMutationType::TopLevelSameDocumentNavigation,
                 .entry = move(entry),
                 .replaced_step = replaced_step,
+                .current_step = current_step,
+            };
+        }
+
+        static WebContentMutation top_level_cross_document_navigation(Entry entry, i32 current_step)
+        {
+            return {
+                .type = WebContentMutationType::TopLevelCrossDocumentNavigation,
+                .entry = move(entry),
                 .current_step = current_step,
             };
         }
@@ -152,6 +162,7 @@ private:
     [[nodiscard]] bool web_content_known_history_matches_mirror() const;
     [[nodiscard]] bool update_current_entry_from_web_content(Web::HTML::SessionHistoryEntryUpdateKind, Entry);
     [[nodiscard]] bool apply_top_level_same_document_navigation_from_web_content(Entry, Optional<i32> replaced_step, i32 current_step);
+    [[nodiscard]] bool apply_top_level_cross_document_navigation_from_web_content(Entry, i32 current_step);
     [[nodiscard]] bool did_restore_web_content_to_current_step(i32 step);
     [[nodiscard]] bool did_apply_web_content_traversal_to_step(i32 step);
 

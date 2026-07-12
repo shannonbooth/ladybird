@@ -106,6 +106,26 @@ bool LocalTraversableNavigable::report_top_level_same_document_session_history_n
     return true;
 }
 
+bool LocalTraversableNavigable::report_top_level_cross_document_session_history_navigation(SessionHistoryEntry const& entry, i32 current_step)
+{
+    if (!page().client().should_report_session_history_updates())
+        return false;
+
+    if (!entry.step_value().has_value())
+        return false;
+
+    save_persisted_state_to_active_session_history_entry(LocalNavigable::ReportCurrentEntryUpdate::No);
+
+    SessionHistoryEntryDescriptorCreationState creation_state { [&] {
+        return page().client().allocate_cross_process_id();
+    } };
+    page().client().page_did_apply_session_history_mutation(WebContentSessionHistoryMutation::top_level_cross_document_navigation({
+        .entry = create_session_history_entry_descriptor(entry, creation_state),
+        .current_step = current_step,
+    }));
+    return true;
+}
+
 void LocalTraversableNavigable::visit_edges(Cell::Visitor& visitor)
 {
     Base::visit_edges(visitor);
@@ -991,6 +1011,10 @@ private:
     void note_document_state_population_update(LocalNavigable const&, bool update_only, bool update_was_sent);
     bool document_state_population_update_can_cover_completion(LocalNavigable const&, bool update_only) const;
     bool document_state_population_update_covered_completion() const;
+    void note_top_level_cross_document_navigation_update_needed(LocalNavigable const&, bool update_only, SessionHistoryEntry&);
+    void send_top_level_cross_document_navigation_update_if_needed(i32 current_step);
+    bool top_level_cross_document_navigation_update_can_cover_completion(LocalNavigable const&, bool update_only) const;
+    bool top_level_cross_document_navigation_update_covered_completion() const;
     bool targeted_current_entry_updates_covered_completion() const;
     bool completion_needs_full_session_history_snapshot() const;
 
@@ -1012,6 +1036,9 @@ private:
     RefPtr<SessionHistoryEntry> m_reload_pending_clear_entry;
     TargetedCurrentEntryUpdateState m_reload_pending_update_state { TargetedCurrentEntryUpdateState::None };
     TargetedCurrentEntryUpdateState m_document_state_population_update_state { TargetedCurrentEntryUpdateState::None };
+    bool m_top_level_cross_document_navigation_update_needed { false };
+    RefPtr<SessionHistoryEntry> m_top_level_cross_document_navigation_entry;
+    TargetedCurrentEntryUpdateState m_top_level_cross_document_navigation_update_state { TargetedCurrentEntryUpdateState::None };
     GC::Ref<Platform::Timer> m_timeout;
 
     Vector<GC::Ref<LocalNavigable>> m_changing_navigables;
@@ -1111,17 +1138,85 @@ bool ApplyHistoryStepState::document_state_population_update_covered_completion(
     return m_document_state_population_update_state == TargetedCurrentEntryUpdateState::CoversCompletion;
 }
 
+void ApplyHistoryStepState::note_top_level_cross_document_navigation_update_needed(LocalNavigable const& navigable, bool update_only, SessionHistoryEntry& entry)
+{
+    if (m_top_level_cross_document_navigation_update_state == TargetedCurrentEntryUpdateState::NeedsFullSnapshot)
+        return;
+
+    if (m_top_level_cross_document_navigation_update_needed
+        || m_top_level_cross_document_navigation_update_state == TargetedCurrentEntryUpdateState::CoversCompletion) {
+        m_top_level_cross_document_navigation_update_needed = false;
+        m_top_level_cross_document_navigation_entry = nullptr;
+        m_top_level_cross_document_navigation_update_state = TargetedCurrentEntryUpdateState::NeedsFullSnapshot;
+        return;
+    }
+
+    if (!top_level_cross_document_navigation_update_can_cover_completion(navigable, update_only)) {
+        m_top_level_cross_document_navigation_update_state = TargetedCurrentEntryUpdateState::NeedsFullSnapshot;
+        return;
+    }
+
+    m_top_level_cross_document_navigation_update_needed = true;
+    m_top_level_cross_document_navigation_entry = entry;
+}
+
+void ApplyHistoryStepState::send_top_level_cross_document_navigation_update_if_needed(i32 current_step)
+{
+    if (!m_top_level_cross_document_navigation_update_needed)
+        return;
+
+    m_top_level_cross_document_navigation_update_needed = false;
+    auto entry = move(m_top_level_cross_document_navigation_entry);
+    if (entry && m_traversable->report_top_level_cross_document_session_history_navigation(*entry, current_step)) {
+        m_top_level_cross_document_navigation_update_state = TargetedCurrentEntryUpdateState::CoversCompletion;
+        return;
+    }
+
+    m_top_level_cross_document_navigation_update_state = TargetedCurrentEntryUpdateState::NeedsFullSnapshot;
+}
+
+bool ApplyHistoryStepState::top_level_cross_document_navigation_update_can_cover_completion(LocalNavigable const& navigable, bool update_only) const
+{
+    if (!m_pending_document)
+        return false;
+
+    if (!m_navigation_type.has_value())
+        return false;
+
+    if (*m_navigation_type != Bindings::NavigationType::Push && *m_navigation_type != Bindings::NavigationType::Replace)
+        return false;
+
+    if (m_synchronous_navigation == LocalTraversableNavigable::SynchronousNavigation::Yes)
+        return false;
+
+    if (update_only)
+        return false;
+
+    if (!navigable.is_top_level_traversable())
+        return false;
+
+    return m_changing_navigables.size() == 1;
+}
+
+bool ApplyHistoryStepState::top_level_cross_document_navigation_update_covered_completion() const
+{
+    return m_top_level_cross_document_navigation_update_state == TargetedCurrentEntryUpdateState::CoversCompletion;
+}
+
 bool ApplyHistoryStepState::targeted_current_entry_updates_covered_completion() const
 {
     if (m_reload_pending_update_state == TargetedCurrentEntryUpdateState::NeedsFullSnapshot
-        || m_document_state_population_update_state == TargetedCurrentEntryUpdateState::NeedsFullSnapshot) {
+        || m_document_state_population_update_state == TargetedCurrentEntryUpdateState::NeedsFullSnapshot
+        || m_top_level_cross_document_navigation_update_state == TargetedCurrentEntryUpdateState::NeedsFullSnapshot) {
         return false;
     }
 
-    if (m_reload_pending_clear_update_needed)
+    if (m_reload_pending_clear_update_needed || m_top_level_cross_document_navigation_update_needed)
         return false;
 
-    return reload_pending_updates_covered_completion() || document_state_population_update_covered_completion();
+    return reload_pending_updates_covered_completion()
+        || document_state_population_update_covered_completion()
+        || top_level_cross_document_navigation_update_covered_completion();
 }
 
 bool ApplyHistoryStepState::completion_needs_full_session_history_snapshot() const
@@ -1553,8 +1648,12 @@ void ApplyHistoryStepState::process_continuations()
             }
 
             if (has_fresh_document) {
-                auto update_was_sent = m_traversable->report_current_session_history_entry_update(SessionHistoryEntryUpdateKind::DocumentStatePopulation, *target_entry);
-                note_document_state_population_update(*navigable, update_only, update_was_sent);
+                if (top_level_cross_document_navigation_update_can_cover_completion(*navigable, update_only)) {
+                    note_top_level_cross_document_navigation_update_needed(*navigable, update_only, *target_entry);
+                } else {
+                    auto update_was_sent = m_traversable->report_current_session_history_entry_update(SessionHistoryEntryUpdateKind::DocumentStatePopulation, *target_entry);
+                    note_document_state_population_update(*navigable, update_only, update_was_sent);
+                }
             }
 
             // 1. Let previousEntry be navigable's active session history entry.
@@ -1736,10 +1835,11 @@ void ApplyHistoryStepState::complete()
         // AD-HOC: Report the updated session history descriptors to the UI-process mirror.
         if (m_navigation_type == Bindings::NavigationType::Reload)
             send_reload_pending_clear_update_if_needed();
+        send_top_level_cross_document_navigation_update_if_needed(used_target_step);
 
-        // Current-entry/document-state updates are the non-structural completion path. If one of those targeted
-        // updates covered this history-step completion, do not also send a full snapshot. The snapshot path below is
-        // reserved for structural changes, recovery, or cases where the targeted proof was not sufficient.
+        // Targeted mutations cover the simple completion paths that WebContent can prove back to the UI process. If
+        // one of them covered this history-step completion, do not also send a full snapshot. The snapshot path below
+        // remains the recovery path for structural changes outside the targeted mutation set.
         if (completion_needs_full_session_history_snapshot()) {
             auto save_active_entry_persisted_state = LocalTraversableNavigable::SaveActiveEntryPersistedState::Yes;
             // NB: During history traversal, the active entry can point at the target

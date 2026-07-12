@@ -362,6 +362,26 @@ ErrorOr<Web::HTML::SameDocumentSessionHistoryNavigation> IPC::decode(Decoder& de
 }
 
 template<>
+ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation const& navigation)
+{
+    TRY(encoder.encode(navigation.entry));
+    TRY(encoder.encode(navigation.current_step));
+    return {};
+}
+
+template<>
+ErrorOr<Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation> IPC::decode(Decoder& decoder)
+{
+    auto entry = TRY(decoder.decode<Web::HTML::SessionHistoryEntryDescriptor>());
+    auto current_step = TRY(decoder.decode<i32>());
+
+    return Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation {
+        .entry = move(entry),
+        .current_step = current_step,
+    };
+}
+
+template<>
 ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::WebContentSessionHistoryMutation const& mutation)
 {
     TRY(encoder.encode(mutation.mutation));
