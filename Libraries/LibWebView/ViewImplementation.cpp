@@ -1246,26 +1246,6 @@ void ViewImplementation::apply_web_content_session_history_update(WebContentSess
     update_navigation_action_state();
 }
 
-void ViewImplementation::did_update_session_history(Badge<WebContentClient>, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index)
-{
-    if (history_debug_enabled()) {
-        dbgln("[History] UI received WebContent session history snapshot page={} pid={} current_used_step={} entries={} used_steps={}",
-            page_id(),
-            client().pid(),
-            current_used_step_index,
-            history_log_entries(entries),
-            history_log_steps(used_steps, current_used_step_index));
-    }
-    auto update = m_top_level_traversable.did_receive_web_content_session_history_update(move(entries), move(used_steps), current_used_step_index, m_url);
-    if (update.ignore_reason.has_value()) {
-        dump_session_history(*update.ignore_reason);
-        update_navigation_action_state();
-        return;
-    }
-    apply_web_content_session_history_update(update.update);
-    dump_session_history("did-update-session-history"sv);
-}
-
 static StringView session_history_entry_update_kind_to_string(Web::HTML::SessionHistoryEntryUpdateKind update_kind)
 {
     switch (update_kind) {

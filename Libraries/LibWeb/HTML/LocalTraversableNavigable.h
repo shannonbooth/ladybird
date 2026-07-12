@@ -230,8 +230,6 @@ private:
     [[nodiscard]] bool can_go_back() const;
     [[nodiscard]] bool can_go_forward() const;
 
-    bool report_session_history_reset_for_testing();
-    bool send_full_session_history_snapshot(SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::Yes);
     Optional<WebContentSessionHistoryMutation> create_current_session_history_entry_update_mutation(SessionHistoryEntryUpdateKind, SessionHistoryEntry const&, SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::No);
     Optional<WebContentSessionHistoryMutation> create_current_entry_nested_history_mutation(CurrentEntryNestedHistoryMutation const&, i32 current_step);
     Optional<WebContentSessionHistoryMutation> create_top_level_same_document_session_history_navigation_mutation(SessionHistoryEntry const&, Optional<i32> replaced_step, i32 current_step);

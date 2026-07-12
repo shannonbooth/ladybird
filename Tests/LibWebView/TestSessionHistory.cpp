@@ -512,7 +512,7 @@ TEST_CASE(accepted_targeted_current_entry_update_keeps_mirror_proven)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://a.example/"sv, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto),
                                                                                      },
         { 0 }, 0, parse_url("https://a.example/"sv));
@@ -531,7 +531,7 @@ TEST_CASE(rejected_targeted_current_entry_update_marks_mirror_stale)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://a.example/"sv, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto),
                                                                                      },
         { 0 }, 0, parse_url("https://a.example/"sv));
@@ -576,7 +576,7 @@ TEST_CASE(accepted_current_entry_nested_history_update_keeps_mirror_proven)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://top.example/"sv, 1, "main"sv),
                                                                                      },
         { 0 }, 0, parse_url("https://top.example/"sv));
@@ -604,7 +604,7 @@ TEST_CASE(accepted_current_entry_nested_history_update_keeps_mirror_unproven)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://example.test/a"sv, 1, "main"sv),
                                                                                          entry(1, "https://example.test/b"sv, 2, "main"sv),
                                                                                      },
@@ -612,7 +612,7 @@ TEST_CASE(accepted_current_entry_nested_history_update_keeps_mirror_unproven)
     EXPECT_EQ(initial_update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
     EXPECT(traversable.current_web_content_session_history_matches_mirror());
 
-    auto partial_update = traversable.did_receive_web_content_session_history_update({
+    auto partial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, URL::about_blank()),
                                                                                          entry(1, "https://example.test/b"sv, 2, "main"sv),
                                                                                          entry(2, "https://example.test/c"sv, 3, "main"sv),
@@ -638,7 +638,7 @@ TEST_CASE(rejected_current_entry_nested_history_update_marks_mirror_stale)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://top.example/"sv, 1, "main"sv),
                                                                                      },
         { 0 }, 0, parse_url("https://top.example/"sv));
@@ -793,7 +793,7 @@ TEST_CASE(accepted_multiple_reload_pending_updates_keep_mirror_proven)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry_with_reload_pending(0, "https://top.example/"sv, 1, "main"sv, {
                                                                                                                                                                  nested_history("frame-1"sv, {
                                                                                                                                                                                                  entry_with_reload_pending(0, "https://frame.example/"sv, 2, "frame"sv, {}),
@@ -1180,7 +1180,7 @@ TEST_CASE(accepted_nested_same_document_navigation_keeps_mirror_proven)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://top.example/"sv, 1, "main"sv, {
                                                                                                                                              nested_history("frame-1"sv, {
                                                                                                                                                                              entry(0, "https://frame.example/"sv, 2, "frame"sv),
@@ -1209,7 +1209,7 @@ TEST_CASE(rejected_nested_same_document_navigation_marks_mirror_stale)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://top.example/"sv, 1, "main"sv, {
                                                                                                                                              nested_history("frame-1"sv, {
                                                                                                                                                                              entry(0, "https://frame.example/"sv, 2, "frame"sv),
@@ -1299,7 +1299,7 @@ TEST_CASE(accepted_nested_cross_document_navigation_keeps_mirror_proven)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://top.example/"sv, 1, "main"sv, {
                                                                                                                                              nested_history("frame-1"sv, {
                                                                                                                                                                              entry(0, "https://frame-a.example/"sv, 2, "frame"sv),
@@ -1327,7 +1327,7 @@ TEST_CASE(rejected_nested_cross_document_navigation_marks_mirror_stale)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://top.example/"sv, 1, "main"sv, {
                                                                                                                                              nested_history("frame-1"sv, {
                                                                                                                                                                              entry(0, "https://frame-a.example/"sv, 2, "frame"sv),
@@ -1494,7 +1494,7 @@ TEST_CASE(accepted_top_level_cross_document_navigation_keeps_mirror_proven)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://a.example/"sv, 1, "main"sv),
                                                                                      },
         { 0 }, 0, parse_url("https://a.example/"sv));
@@ -1527,7 +1527,7 @@ TEST_CASE(accepted_top_level_cross_document_navigation_with_committed_document_s
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://a.example/"sv, 1, "main"sv),
                                                                                      },
         { 0 }, 0, parse_url("https://a.example/"sv));
@@ -1559,7 +1559,7 @@ TEST_CASE(accepted_top_level_cross_document_navigation_with_redirected_url_keeps
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://a.example/"sv, 1, "main"sv),
                                                                                      },
         { 0 }, 0, parse_url("https://a.example/"sv));
@@ -1593,7 +1593,7 @@ TEST_CASE(rejected_top_level_cross_document_navigation_marks_mirror_stale)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://a.example/"sv, 1, "main"sv),
                                                                                      },
         { 0 }, 0, parse_url("https://a.example/"sv));
@@ -2592,7 +2592,7 @@ TEST_CASE(seed_ack_proof_tracks_seed_snapshot_identity)
 TEST_CASE(seed_ack_rejects_pending_proof_for_different_current_step)
 {
     WebView::CanonicalTraversable traversable;
-    auto update = traversable.did_receive_web_content_session_history_update({
+    auto update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                  entry(0, "https://a.example/"sv, 1, "main"sv),
                                                                                  entry(1, "https://b.example/"sv, 2, "main"sv),
                                                                              },
@@ -2624,7 +2624,7 @@ TEST_CASE(web_content_traversal_with_partial_history_does_not_claim_full_match)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://example.test/a"sv, 1, "main"sv),
                                                                                          entry(1, "https://example.test/b"sv, 2, "main"sv),
                                                                                      },
@@ -2632,7 +2632,7 @@ TEST_CASE(web_content_traversal_with_partial_history_does_not_claim_full_match)
     EXPECT_EQ(initial_update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
     EXPECT(traversable.current_web_content_session_history_matches_mirror());
 
-    auto partial_update = traversable.did_receive_web_content_session_history_update({
+    auto partial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, URL::about_blank()),
                                                                                          entry(1, "https://example.test/b"sv, 2, "main"sv),
                                                                                          entry(2, "https://example.test/c"sv, 3, "main"sv),
@@ -2665,7 +2665,7 @@ TEST_CASE(applied_traversal_mutation_updates_current_step)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://example.test/a"sv, 1, "main"sv),
                                                                                          entry(1, "https://example.test/b"sv, 2, "main"sv),
                                                                                      },
@@ -2696,7 +2696,7 @@ TEST_CASE(applied_history_step_result_without_mutation_falls_back_to_ui_target)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://example.test/a"sv, 1, "main"sv),
                                                                                          entry(1, "https://example.test/b"sv, 2, "main"sv),
                                                                                      },
@@ -2723,7 +2723,7 @@ TEST_CASE(applied_same_document_traversal_completes_webdriver_from_mutation)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://example.test/state?replace"sv, 7, "main"sv),
                                                                                          entry(1, "https://example.test/state?push"sv, 7, "main"sv),
                                                                                      },
@@ -2754,7 +2754,7 @@ TEST_CASE(web_content_initiated_applied_traversal_mutation_updates_current_step)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://example.test/a"sv, 1, "main"sv),
                                                                                          entry(1, "https://example.test/b"sv, 2, "main"sv),
                                                                                      },
@@ -2777,7 +2777,7 @@ TEST_CASE(rejected_web_content_initiated_applied_traversal_marks_mirror_stale)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://example.test/a"sv, 1, "main"sv),
                                                                                          entry(1, "https://example.test/b"sv, 2, "main"sv),
                                                                                      },
@@ -2798,7 +2798,7 @@ TEST_CASE(rejected_applied_traversal_mutation_falls_back_to_ui_target)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://example.test/a"sv, 1, "main"sv),
                                                                                          entry(1, "https://example.test/b"sv, 2, "main"sv),
                                                                                          entry(2, "https://example.test/c"sv, 3, "main"sv),
@@ -2812,7 +2812,7 @@ TEST_CASE(rejected_applied_traversal_mutation_falls_back_to_ui_target)
     VERIFY(traversal.target_step.has_value());
     EXPECT_EQ(*traversal.target_step, 1);
 
-    auto partial_update = traversable.did_receive_web_content_session_history_update({
+    auto partial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(2, "https://example.test/c"sv, 3, "main"sv),
                                                                                      },
         { 2 }, 0, parse_url("https://example.test/c"sv));
@@ -2833,7 +2833,7 @@ TEST_CASE(applied_traversal_mutation_restores_seeded_current_step)
 {
     WebView::CanonicalTraversable traversable;
 
-    auto initial_update = traversable.did_receive_web_content_session_history_update({
+    auto initial_update = traversable.did_receive_web_content_session_history_update_for_testing({
                                                                                          entry(0, "https://a.example/"sv, {
                                                                                                                               nested_history("frame-1"sv, {
                                                                                                                                                               entry(0, "https://frame.example/a"sv),
