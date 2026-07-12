@@ -55,8 +55,17 @@ bool LocalTraversableNavigable::report_current_session_history_entry_update(Sess
     if (!page().client().should_report_session_history_updates())
         return false;
 
-    if (!entry.step_value().has_value())
+    auto mutation = create_current_session_history_entry_update_mutation(update_kind, entry, save_active_entry_persisted_state);
+    if (!mutation.has_value())
         return false;
+
+    return report_session_history_mutation(mutation.release_value());
+}
+
+Optional<WebContentSessionHistoryMutation> LocalTraversableNavigable::create_current_session_history_entry_update_mutation(SessionHistoryEntryUpdateKind update_kind, SessionHistoryEntry const& entry, SaveActiveEntryPersistedState save_active_entry_persisted_state)
+{
+    if (!entry.step_value().has_value())
+        return {};
 
     if (save_active_entry_persisted_state == SaveActiveEntryPersistedState::Yes)
         save_persisted_state_to_active_session_history_entry();
@@ -64,8 +73,7 @@ bool LocalTraversableNavigable::report_current_session_history_entry_update(Sess
     SessionHistoryEntryDescriptorCreationState creation_state { [&] {
         return page().client().allocate_cross_process_id();
     } };
-    page().client().page_did_apply_session_history_mutation(WebContentSessionHistoryMutation::current_entry_update(update_kind, create_session_history_entry_descriptor(entry, creation_state)));
-    return true;
+    return WebContentSessionHistoryMutation::current_entry_update(update_kind, create_session_history_entry_descriptor(entry, creation_state));
 }
 
 bool LocalTraversableNavigable::send_full_session_history_snapshot(SaveActiveEntryPersistedState save_active_entry_persisted_state)
@@ -97,9 +105,18 @@ bool LocalTraversableNavigable::report_current_entry_nested_histories_update(i32
     if (!page().client().should_report_session_history_updates())
         return false;
 
+    auto mutation = create_current_entry_nested_histories_update_mutation(current_step, save_active_entry_persisted_state);
+    if (!mutation.has_value())
+        return false;
+
+    return report_session_history_mutation(mutation.release_value());
+}
+
+Optional<WebContentSessionHistoryMutation> LocalTraversableNavigable::create_current_entry_nested_histories_update_mutation(i32 current_step, SaveActiveEntryPersistedState save_active_entry_persisted_state)
+{
     auto current_entry = current_session_history_entry();
     if (!current_entry || !current_entry->step_value().has_value())
-        return false;
+        return {};
 
     if (save_active_entry_persisted_state == SaveActiveEntryPersistedState::Yes)
         save_persisted_state_to_active_session_history_entry();
@@ -108,12 +125,11 @@ bool LocalTraversableNavigable::report_current_entry_nested_histories_update(i32
         return page().client().allocate_cross_process_id();
     } };
     auto descriptor = create_session_history_entry_descriptor(*current_entry, creation_state);
-    page().client().page_did_apply_session_history_mutation(WebContentSessionHistoryMutation::current_entry_nested_histories_update({
+    return WebContentSessionHistoryMutation::current_entry_nested_histories_update({
         .document_state_id = descriptor.document_state.id,
         .nested_histories = move(descriptor.document_state.nested_histories),
         .current_step = current_step,
-    }));
-    return true;
+    });
 }
 
 bool LocalTraversableNavigable::report_top_level_same_document_session_history_navigation(SessionHistoryEntry const& entry, Optional<i32> replaced_step, i32 current_step)
@@ -121,20 +137,28 @@ bool LocalTraversableNavigable::report_top_level_same_document_session_history_n
     if (!page().client().should_report_session_history_updates())
         return false;
 
-    if (!entry.step_value().has_value())
+    auto mutation = create_top_level_same_document_session_history_navigation_mutation(entry, replaced_step, current_step);
+    if (!mutation.has_value())
         return false;
+
+    return report_session_history_mutation(mutation.release_value());
+}
+
+Optional<WebContentSessionHistoryMutation> LocalTraversableNavigable::create_top_level_same_document_session_history_navigation_mutation(SessionHistoryEntry const& entry, Optional<i32> replaced_step, i32 current_step)
+{
+    if (!entry.step_value().has_value())
+        return {};
 
     save_persisted_state_to_active_session_history_entry(LocalNavigable::ReportCurrentEntryUpdate::No);
 
     SessionHistoryEntryDescriptorCreationState creation_state { [&] {
         return page().client().allocate_cross_process_id();
     } };
-    page().client().page_did_apply_session_history_mutation(WebContentSessionHistoryMutation::top_level_same_document_navigation({
+    return WebContentSessionHistoryMutation::top_level_same_document_navigation({
         .entry = create_session_history_entry_descriptor(entry, creation_state),
         .replaced_step = replaced_step,
         .current_step = current_step,
-    }));
-    return true;
+    });
 }
 
 bool LocalTraversableNavigable::report_nested_same_document_session_history_navigation(LocalNavigable const& target_navigable, SessionHistoryEntry const& entry, Optional<i32> replaced_step, i32 current_step)
@@ -142,14 +166,24 @@ bool LocalTraversableNavigable::report_nested_same_document_session_history_navi
     if (!page().client().should_report_session_history_updates())
         return false;
 
+    auto mutation = create_nested_same_document_session_history_navigation_mutation(target_navigable, entry, replaced_step, current_step);
+    if (!mutation.has_value())
+        return false;
+
+    return report_session_history_mutation(mutation.release_value());
+}
+
+Optional<WebContentSessionHistoryMutation> LocalTraversableNavigable::create_nested_same_document_session_history_navigation_mutation(LocalNavigable const& target_navigable, SessionHistoryEntry const& entry, Optional<i32> replaced_step, i32 current_step)
+{
     VERIFY(entry.step_value().has_value());
 
     auto parent = target_navigable.parent();
-    VERIFY(parent);
+    if (!parent)
+        return {};
 
     auto parent_entry = as<LocalNavigable>(*parent).active_session_history_entry();
-    VERIFY(parent_entry);
-    VERIFY(parent_entry->step_value().has_value());
+    if (!parent_entry || !parent_entry->step_value().has_value())
+        return {};
 
     save_persisted_state_to_active_session_history_entry(LocalNavigable::ReportCurrentEntryUpdate::No);
 
@@ -157,14 +191,13 @@ bool LocalTraversableNavigable::report_nested_same_document_session_history_navi
         return page().client().allocate_cross_process_id();
     } };
     auto parent_descriptor = create_session_history_entry_descriptor(*parent_entry, creation_state);
-    page().client().page_did_apply_session_history_mutation(WebContentSessionHistoryMutation::nested_same_document_navigation({
+    return WebContentSessionHistoryMutation::nested_same_document_navigation({
         .parent_document_state_id = parent_descriptor.document_state.id,
         .navigable_id = target_navigable.id(),
         .entry = create_session_history_entry_descriptor(entry, creation_state),
         .replaced_step = replaced_step,
         .current_step = current_step,
-    }));
-    return true;
+    });
 }
 
 bool LocalTraversableNavigable::report_nested_cross_document_session_history_navigation(LocalNavigable const& target_navigable, SessionHistoryEntry const& entry, i32 current_step)
@@ -172,16 +205,25 @@ bool LocalTraversableNavigable::report_nested_cross_document_session_history_nav
     if (!page().client().should_report_session_history_updates())
         return false;
 
-    if (!entry.step_value().has_value())
+    auto mutation = create_nested_cross_document_session_history_navigation_mutation(target_navigable, entry, current_step);
+    if (!mutation.has_value())
         return false;
+
+    return report_session_history_mutation(mutation.release_value());
+}
+
+Optional<WebContentSessionHistoryMutation> LocalTraversableNavigable::create_nested_cross_document_session_history_navigation_mutation(LocalNavigable const& target_navigable, SessionHistoryEntry const& entry, i32 current_step)
+{
+    if (!entry.step_value().has_value())
+        return {};
 
     auto parent = target_navigable.parent();
     if (!parent)
-        return false;
+        return {};
 
     auto parent_entry = as<LocalNavigable>(*parent).active_session_history_entry();
     if (!parent_entry || !parent_entry->step_value().has_value())
-        return false;
+        return {};
 
     save_persisted_state_to_active_session_history_entry(LocalNavigable::ReportCurrentEntryUpdate::No);
 
@@ -189,13 +231,12 @@ bool LocalTraversableNavigable::report_nested_cross_document_session_history_nav
         return page().client().allocate_cross_process_id();
     } };
     auto parent_descriptor = create_session_history_entry_descriptor(*parent_entry, creation_state);
-    page().client().page_did_apply_session_history_mutation(WebContentSessionHistoryMutation::nested_cross_document_navigation({
+    return WebContentSessionHistoryMutation::nested_cross_document_navigation({
         .parent_document_state_id = parent_descriptor.document_state.id,
         .navigable_id = target_navigable.id(),
         .entry = create_session_history_entry_descriptor(entry, creation_state),
         .current_step = current_step,
-    }));
-    return true;
+    });
 }
 
 bool LocalTraversableNavigable::report_top_level_cross_document_session_history_navigation(SessionHistoryEntry const& entry, i32 current_step)
@@ -203,19 +244,27 @@ bool LocalTraversableNavigable::report_top_level_cross_document_session_history_
     if (!page().client().should_report_session_history_updates())
         return false;
 
-    if (!entry.step_value().has_value())
+    auto mutation = create_top_level_cross_document_session_history_navigation_mutation(entry, current_step);
+    if (!mutation.has_value())
         return false;
+
+    return report_session_history_mutation(mutation.release_value());
+}
+
+Optional<WebContentSessionHistoryMutation> LocalTraversableNavigable::create_top_level_cross_document_session_history_navigation_mutation(SessionHistoryEntry const& entry, i32 current_step)
+{
+    if (!entry.step_value().has_value())
+        return {};
 
     save_persisted_state_to_active_session_history_entry(LocalNavigable::ReportCurrentEntryUpdate::No);
 
     SessionHistoryEntryDescriptorCreationState creation_state { [&] {
         return page().client().allocate_cross_process_id();
     } };
-    page().client().page_did_apply_session_history_mutation(WebContentSessionHistoryMutation::top_level_cross_document_navigation({
+    return WebContentSessionHistoryMutation::top_level_cross_document_navigation({
         .entry = create_session_history_entry_descriptor(entry, creation_state),
         .current_step = current_step,
-    }));
-    return true;
+    });
 }
 
 bool LocalTraversableNavigable::report_applied_session_history_traversal(i32 current_step)
@@ -226,6 +275,30 @@ bool LocalTraversableNavigable::report_applied_session_history_traversal(i32 cur
     page().client().page_did_apply_session_history_mutation(WebContentSessionHistoryMutation::applied_traversal({
         .current_step = current_step,
     }));
+    return true;
+}
+
+bool LocalTraversableNavigable::report_session_history_mutation(WebContentSessionHistoryMutation mutation)
+{
+    if (!page().client().should_report_session_history_updates())
+        return false;
+
+    page().client().page_did_apply_session_history_mutation(mutation);
+    return true;
+}
+
+bool LocalTraversableNavigable::report_session_history_mutation_batch(Vector<WebContentSessionHistoryMutation> mutations, i32 final_current_step)
+{
+    if (!page().client().should_report_session_history_updates())
+        return false;
+
+    if (mutations.is_empty())
+        return true;
+
+    page().client().page_did_apply_session_history_mutation_batch({
+        .mutations = move(mutations),
+        .final_current_step = final_current_step,
+    });
     return true;
 }
 
@@ -1053,13 +1126,18 @@ public:
         Completed,
     };
 
-    enum class TargetedCurrentEntryUpdateState : u8 {
-        None,
-        CoversCompletion,
-        Failed,
+private:
+    struct SameDocumentNavigationUpdate {
+        GC::Ptr<LocalNavigable> navigable;
+        RefPtr<SessionHistoryEntry> entry;
+        Optional<i32> replaced_step;
     };
 
-private:
+    struct NestedCrossDocumentNavigationUpdate {
+        GC::Ptr<LocalNavigable> navigable;
+        RefPtr<SessionHistoryEntry> entry;
+    };
+
     void visit_edges(Cell::Visitor& visitor) override
     {
         Base::visit_edges(visitor);
@@ -1072,8 +1150,10 @@ private:
         visitor.visit(m_changing_navigables);
         visitor.visit(m_non_changing_navigables);
         visitor.visit(m_continuations);
-        visitor.visit(m_same_document_navigation_navigable);
-        visitor.visit(m_nested_cross_document_navigation_navigable);
+        for (auto& update : m_same_document_navigation_updates)
+            visitor.visit(update.navigable);
+        for (auto& update : m_nested_cross_document_navigation_updates)
+            visitor.visit(update.navigable);
         for (auto& navigable : m_navigables_that_must_wait_before_handling_sync_navigation)
             visitor.visit(navigable);
     }
@@ -1113,24 +1193,19 @@ private:
     void clear_ongoing_traversals_for_changing_navigables();
 
     void note_reload_pending_clear_update_needed(SessionHistoryEntry&);
-    void send_reload_pending_clear_update_if_needed();
-    bool reload_pending_updates_covered_completion() const;
-    void note_document_state_population_update(LocalNavigable const&, bool update_only, bool update_was_sent);
-    bool document_state_population_update_can_cover_completion(LocalNavigable const&, bool update_only) const;
-    bool document_state_population_update_covered_completion() const;
+    void queue_reload_pending_clear_updates();
+    void note_document_state_population_update_needed(SessionHistoryEntry&);
+    void queue_document_state_population_updates();
     void note_top_level_cross_document_navigation_update_needed(LocalNavigable const&, bool update_only, SessionHistoryEntry&);
-    void send_top_level_cross_document_navigation_update_if_needed(i32 current_step);
-    bool top_level_cross_document_navigation_update_can_cover_completion(LocalNavigable const&, bool update_only) const;
-    bool top_level_cross_document_navigation_update_covered_completion() const;
+    void queue_top_level_cross_document_navigation_updates(i32 current_step);
     void note_same_document_navigation_update_needed(LocalNavigable&, bool update_only, SessionHistoryEntry&, Optional<UniqueNodeID> displayed_document_id);
-    void send_same_document_navigation_update_if_needed(i32 current_step);
-    bool same_document_navigation_update_can_cover_completion(LocalNavigable const&, bool update_only, SessionHistoryEntry const&, Optional<UniqueNodeID> displayed_document_id) const;
-    bool same_document_navigation_update_covered_completion() const;
+    void queue_same_document_navigation_updates(i32 current_step);
     void note_nested_cross_document_navigation_update_needed(LocalNavigable&, bool update_only, SessionHistoryEntry&);
-    void send_nested_cross_document_navigation_update_if_needed(i32 current_step);
-    bool nested_cross_document_navigation_update_can_cover_completion(LocalNavigable const&, bool update_only) const;
-    bool nested_cross_document_navigation_update_covered_completion() const;
-    bool targeted_current_entry_updates_failed() const;
+    void queue_nested_cross_document_navigation_updates(i32 current_step);
+    void queue_current_entry_nested_histories_update(i32 current_step);
+    void queue_applied_traversal_update(i32 current_step);
+    void queue_session_history_mutation(Optional<WebContentSessionHistoryMutation>);
+    bool send_session_history_mutation_batch(i32 final_current_step);
 
     Phase m_phase { Phase::WaitingForDocumentPopulation };
     u64 m_generation { 0 };
@@ -1147,21 +1222,13 @@ private:
     Optional<String> m_expected_ongoing_navigation_id;
     GC::Ptr<OnApplyHistoryStepComplete> m_on_complete;
     LocalTraversableNavigable::ReportAppliedTraversal m_report_applied_traversal { LocalTraversableNavigable::ReportAppliedTraversal::No };
+    Vector<WebContentSessionHistoryMutation> m_session_history_mutation_batch;
+    bool m_session_history_mutation_batch_failed { false };
     Vector<RefPtr<SessionHistoryEntry>> m_reload_pending_clear_entries;
-    TargetedCurrentEntryUpdateState m_reload_pending_update_state { TargetedCurrentEntryUpdateState::None };
-    TargetedCurrentEntryUpdateState m_document_state_population_update_state { TargetedCurrentEntryUpdateState::None };
-    bool m_top_level_cross_document_navigation_update_needed { false };
-    RefPtr<SessionHistoryEntry> m_top_level_cross_document_navigation_entry;
-    TargetedCurrentEntryUpdateState m_top_level_cross_document_navigation_update_state { TargetedCurrentEntryUpdateState::None };
-    bool m_same_document_navigation_update_needed { false };
-    GC::Ptr<LocalNavigable> m_same_document_navigation_navigable;
-    RefPtr<SessionHistoryEntry> m_same_document_navigation_entry;
-    Optional<i32> m_same_document_navigation_replaced_step;
-    TargetedCurrentEntryUpdateState m_same_document_navigation_update_state { TargetedCurrentEntryUpdateState::None };
-    bool m_nested_cross_document_navigation_update_needed { false };
-    GC::Ptr<LocalNavigable> m_nested_cross_document_navigation_navigable;
-    RefPtr<SessionHistoryEntry> m_nested_cross_document_navigation_entry;
-    TargetedCurrentEntryUpdateState m_nested_cross_document_navigation_update_state { TargetedCurrentEntryUpdateState::None };
+    Vector<RefPtr<SessionHistoryEntry>> m_document_state_population_entries;
+    Vector<RefPtr<SessionHistoryEntry>> m_top_level_cross_document_navigation_entries;
+    Vector<SameDocumentNavigationUpdate> m_same_document_navigation_updates;
+    Vector<NestedCrossDocumentNavigationUpdate> m_nested_cross_document_navigation_updates;
     GC::Ref<Platform::Timer> m_timeout;
 
     Vector<GC::Ref<LocalNavigable>> m_changing_navigables;
@@ -1181,329 +1248,152 @@ GC_DEFINE_ALLOCATOR(ApplyHistoryStepState);
 
 void ApplyHistoryStepState::note_reload_pending_clear_update_needed(SessionHistoryEntry& entry)
 {
-    if (m_reload_pending_update_state == TargetedCurrentEntryUpdateState::Failed)
-        return;
-
-    if (m_reload_pending_update_state == TargetedCurrentEntryUpdateState::CoversCompletion) {
-        m_reload_pending_clear_entries.clear();
-        m_reload_pending_update_state = TargetedCurrentEntryUpdateState::Failed;
-        return;
-    }
-
     m_reload_pending_clear_entries.append(entry);
 }
 
-void ApplyHistoryStepState::send_reload_pending_clear_update_if_needed()
+void ApplyHistoryStepState::queue_reload_pending_clear_updates()
 {
-    if (m_reload_pending_clear_entries.is_empty())
-        return;
-
     auto reload_pending_clear_entries = move(m_reload_pending_clear_entries);
-    for (auto& entry : reload_pending_clear_entries) {
-        if (!entry || !m_traversable->report_current_session_history_entry_update(SessionHistoryEntryUpdateKind::DocumentStateReloadPending, *entry, LocalTraversableNavigable::SaveActiveEntryPersistedState::Yes)) {
-            m_reload_pending_update_state = TargetedCurrentEntryUpdateState::Failed;
-            return;
-        }
-    }
-
-    m_reload_pending_update_state = TargetedCurrentEntryUpdateState::CoversCompletion;
+    for (auto& entry : reload_pending_clear_entries)
+        queue_session_history_mutation(entry ? m_traversable->create_current_session_history_entry_update_mutation(SessionHistoryEntryUpdateKind::DocumentStateReloadPending, *entry, LocalTraversableNavigable::SaveActiveEntryPersistedState::Yes) : Optional<WebContentSessionHistoryMutation> {});
 }
 
-bool ApplyHistoryStepState::reload_pending_updates_covered_completion() const
+void ApplyHistoryStepState::note_document_state_population_update_needed(SessionHistoryEntry& entry)
 {
-    return m_reload_pending_update_state == TargetedCurrentEntryUpdateState::CoversCompletion;
+    m_document_state_population_entries.append(entry);
 }
 
-void ApplyHistoryStepState::note_document_state_population_update(LocalNavigable const& navigable, bool update_only, bool update_was_sent)
+void ApplyHistoryStepState::queue_document_state_population_updates()
 {
-    if (m_document_state_population_update_state == TargetedCurrentEntryUpdateState::Failed)
-        return;
-
-    if (m_document_state_population_update_state == TargetedCurrentEntryUpdateState::CoversCompletion) {
-        m_document_state_population_update_state = TargetedCurrentEntryUpdateState::Failed;
-        return;
-    }
-
-    if (!update_was_sent || !document_state_population_update_can_cover_completion(navigable, update_only)) {
-        m_document_state_population_update_state = TargetedCurrentEntryUpdateState::Failed;
-        return;
-    }
-
-    m_document_state_population_update_state = TargetedCurrentEntryUpdateState::CoversCompletion;
-}
-
-bool ApplyHistoryStepState::document_state_population_update_can_cover_completion(LocalNavigable const& navigable, bool update_only) const
-{
-    if (!m_pending_document)
-        return false;
-
-    if (!m_navigation_type.has_value())
-        return false;
-
-    if (*m_navigation_type != Bindings::NavigationType::Push && *m_navigation_type != Bindings::NavigationType::Replace)
-        return false;
-
-    if (m_synchronous_navigation == LocalTraversableNavigable::SynchronousNavigation::Yes)
-        return false;
-
-    if (update_only)
-        return false;
-
-    if (!navigable.is_top_level_traversable())
-        return false;
-
-    return m_changing_navigables.size() == 1;
-}
-
-bool ApplyHistoryStepState::document_state_population_update_covered_completion() const
-{
-    return m_document_state_population_update_state == TargetedCurrentEntryUpdateState::CoversCompletion;
+    auto entries = move(m_document_state_population_entries);
+    for (auto& entry : entries)
+        queue_session_history_mutation(entry ? m_traversable->create_current_session_history_entry_update_mutation(SessionHistoryEntryUpdateKind::DocumentStatePopulation, *entry) : Optional<WebContentSessionHistoryMutation> {});
 }
 
 void ApplyHistoryStepState::note_top_level_cross_document_navigation_update_needed(LocalNavigable const& navigable, bool update_only, SessionHistoryEntry& entry)
 {
-    if (m_top_level_cross_document_navigation_update_state == TargetedCurrentEntryUpdateState::Failed)
-        return;
-
-    if (m_top_level_cross_document_navigation_update_needed
-        || m_top_level_cross_document_navigation_update_state == TargetedCurrentEntryUpdateState::CoversCompletion) {
-        m_top_level_cross_document_navigation_update_needed = false;
-        m_top_level_cross_document_navigation_entry = nullptr;
-        m_top_level_cross_document_navigation_update_state = TargetedCurrentEntryUpdateState::Failed;
-        return;
-    }
-
-    if (!top_level_cross_document_navigation_update_can_cover_completion(navigable, update_only)) {
-        m_top_level_cross_document_navigation_update_state = TargetedCurrentEntryUpdateState::Failed;
+    if (!m_pending_document
+        || !m_navigation_type.has_value()
+        || (*m_navigation_type != Bindings::NavigationType::Push && *m_navigation_type != Bindings::NavigationType::Replace)
+        || m_synchronous_navigation == LocalTraversableNavigable::SynchronousNavigation::Yes
+        || update_only
+        || !navigable.is_top_level_traversable()) {
+        m_session_history_mutation_batch_failed = true;
         return;
     }
 
-    m_top_level_cross_document_navigation_update_needed = true;
-    m_top_level_cross_document_navigation_entry = entry;
+    m_top_level_cross_document_navigation_entries.append(entry);
 }
 
-void ApplyHistoryStepState::send_top_level_cross_document_navigation_update_if_needed(i32 current_step)
+void ApplyHistoryStepState::queue_top_level_cross_document_navigation_updates(i32 current_step)
 {
-    if (!m_top_level_cross_document_navigation_update_needed)
-        return;
-
-    m_top_level_cross_document_navigation_update_needed = false;
-    auto entry = move(m_top_level_cross_document_navigation_entry);
-    if (entry && m_traversable->report_top_level_cross_document_session_history_navigation(*entry, current_step)) {
-        m_top_level_cross_document_navigation_update_state = TargetedCurrentEntryUpdateState::CoversCompletion;
-        return;
-    }
-
-    m_top_level_cross_document_navigation_update_state = TargetedCurrentEntryUpdateState::Failed;
-}
-
-bool ApplyHistoryStepState::top_level_cross_document_navigation_update_can_cover_completion(LocalNavigable const& navigable, bool update_only) const
-{
-    if (!m_pending_document)
-        return false;
-
-    if (!m_navigation_type.has_value())
-        return false;
-
-    if (*m_navigation_type != Bindings::NavigationType::Push && *m_navigation_type != Bindings::NavigationType::Replace)
-        return false;
-
-    if (m_synchronous_navigation == LocalTraversableNavigable::SynchronousNavigation::Yes)
-        return false;
-
-    if (update_only)
-        return false;
-
-    if (!navigable.is_top_level_traversable())
-        return false;
-
-    return m_changing_navigables.size() == 1;
-}
-
-bool ApplyHistoryStepState::top_level_cross_document_navigation_update_covered_completion() const
-{
-    return m_top_level_cross_document_navigation_update_state == TargetedCurrentEntryUpdateState::CoversCompletion;
+    auto entries = move(m_top_level_cross_document_navigation_entries);
+    for (auto& entry : entries)
+        queue_session_history_mutation(entry ? m_traversable->create_top_level_cross_document_session_history_navigation_mutation(*entry, current_step) : Optional<WebContentSessionHistoryMutation> {});
 }
 
 void ApplyHistoryStepState::note_same_document_navigation_update_needed(LocalNavigable& navigable, bool update_only, SessionHistoryEntry& entry, Optional<UniqueNodeID> displayed_document_id)
 {
-    if (m_same_document_navigation_update_state == TargetedCurrentEntryUpdateState::Failed)
-        return;
-
-    if (m_same_document_navigation_update_needed
-        || m_same_document_navigation_update_state == TargetedCurrentEntryUpdateState::CoversCompletion) {
-        m_same_document_navigation_update_needed = false;
-        m_same_document_navigation_navigable = nullptr;
-        m_same_document_navigation_entry = nullptr;
-        m_same_document_navigation_replaced_step.clear();
-        m_same_document_navigation_update_state = TargetedCurrentEntryUpdateState::Failed;
-        return;
-    }
-
-    if (!same_document_navigation_update_can_cover_completion(navigable, update_only, entry, displayed_document_id)) {
-        m_same_document_navigation_update_state = TargetedCurrentEntryUpdateState::Failed;
+    if (m_synchronous_navigation != LocalTraversableNavigable::SynchronousNavigation::Yes
+        || !m_navigation_type.has_value()
+        || (*m_navigation_type != Bindings::NavigationType::Push && *m_navigation_type != Bindings::NavigationType::Replace)
+        || m_pending_document
+        || !update_only
+        || !displayed_document_id.has_value()
+        || !entry.step_value().has_value()
+        || entry.document_state()->document_id() != displayed_document_id
+        || (!navigable.is_top_level_traversable() && !navigable.parent())) {
+        m_session_history_mutation_batch_failed = true;
         return;
     }
 
     auto entry_step = entry.step_value();
     VERIFY(entry_step.has_value());
-    m_same_document_navigation_update_needed = true;
-    m_same_document_navigation_navigable = navigable;
-    m_same_document_navigation_entry = entry;
+    SameDocumentNavigationUpdate update {
+        .navigable = navigable,
+        .entry = entry,
+    };
     if (*m_navigation_type == Bindings::NavigationType::Replace)
-        m_same_document_navigation_replaced_step = *entry_step;
+        update.replaced_step = *entry_step;
+    m_same_document_navigation_updates.append(move(update));
 }
 
-void ApplyHistoryStepState::send_same_document_navigation_update_if_needed(i32 current_step)
+void ApplyHistoryStepState::queue_same_document_navigation_updates(i32 current_step)
 {
-    if (!m_same_document_navigation_update_needed)
-        return;
-
-    m_same_document_navigation_update_needed = false;
-    auto navigable = m_same_document_navigation_navigable;
-    auto entry = move(m_same_document_navigation_entry);
-    auto replaced_step = m_same_document_navigation_replaced_step;
-    m_same_document_navigation_navigable = nullptr;
-    m_same_document_navigation_replaced_step.clear();
-    if (navigable && entry) {
-        auto update_was_sent = navigable->is_top_level_traversable()
-            ? m_traversable->report_top_level_same_document_session_history_navigation(*entry, replaced_step, current_step)
-            : m_traversable->report_nested_same_document_session_history_navigation(*navigable, *entry, replaced_step, current_step);
-        if (update_was_sent) {
-            m_same_document_navigation_update_state = TargetedCurrentEntryUpdateState::CoversCompletion;
-            return;
+    auto updates = move(m_same_document_navigation_updates);
+    for (auto& update : updates) {
+        if (update.navigable && update.entry) {
+            queue_session_history_mutation(update.navigable->is_top_level_traversable()
+                    ? m_traversable->create_top_level_same_document_session_history_navigation_mutation(*update.entry, update.replaced_step, current_step)
+                    : m_traversable->create_nested_same_document_session_history_navigation_mutation(*update.navigable, *update.entry, update.replaced_step, current_step));
+        } else {
+            queue_session_history_mutation({});
         }
     }
-
-    m_same_document_navigation_update_state = TargetedCurrentEntryUpdateState::Failed;
-}
-
-bool ApplyHistoryStepState::same_document_navigation_update_can_cover_completion(LocalNavigable const& navigable, bool update_only, SessionHistoryEntry const& entry, Optional<UniqueNodeID> displayed_document_id) const
-{
-    if (m_synchronous_navigation != LocalTraversableNavigable::SynchronousNavigation::Yes)
-        return false;
-
-    if (!m_navigation_type.has_value())
-        return false;
-
-    if (*m_navigation_type != Bindings::NavigationType::Push && *m_navigation_type != Bindings::NavigationType::Replace)
-        return false;
-
-    if (m_pending_document)
-        return false;
-
-    if (!update_only)
-        return false;
-
-    if (!displayed_document_id.has_value())
-        return false;
-
-    if (!entry.step_value().has_value())
-        return false;
-
-    if (entry.document_state()->document_id() != displayed_document_id)
-        return false;
-
-    if (!navigable.is_top_level_traversable() && !navigable.parent())
-        return false;
-
-    return m_changing_navigables.size() == 1;
-}
-
-bool ApplyHistoryStepState::same_document_navigation_update_covered_completion() const
-{
-    return m_same_document_navigation_update_state == TargetedCurrentEntryUpdateState::CoversCompletion;
 }
 
 void ApplyHistoryStepState::note_nested_cross_document_navigation_update_needed(LocalNavigable& navigable, bool update_only, SessionHistoryEntry& entry)
 {
-    if (m_nested_cross_document_navigation_update_state == TargetedCurrentEntryUpdateState::Failed)
-        return;
-
-    if (m_nested_cross_document_navigation_update_needed
-        || m_nested_cross_document_navigation_update_state == TargetedCurrentEntryUpdateState::CoversCompletion) {
-        m_nested_cross_document_navigation_update_needed = false;
-        m_nested_cross_document_navigation_navigable = nullptr;
-        m_nested_cross_document_navigation_entry = nullptr;
-        m_nested_cross_document_navigation_update_state = TargetedCurrentEntryUpdateState::Failed;
-        return;
-    }
-
-    if (!nested_cross_document_navigation_update_can_cover_completion(navigable, update_only)) {
-        m_nested_cross_document_navigation_update_state = TargetedCurrentEntryUpdateState::Failed;
+    if (!m_pending_document
+        || !m_navigation_type.has_value()
+        || (*m_navigation_type != Bindings::NavigationType::Push && *m_navigation_type != Bindings::NavigationType::Replace)
+        || m_synchronous_navigation == LocalTraversableNavigable::SynchronousNavigation::Yes
+        || update_only
+        || navigable.is_top_level_traversable()
+        || !navigable.parent()) {
+        m_session_history_mutation_batch_failed = true;
         return;
     }
 
-    m_nested_cross_document_navigation_update_needed = true;
-    m_nested_cross_document_navigation_navigable = navigable;
-    m_nested_cross_document_navigation_entry = entry;
+    m_nested_cross_document_navigation_updates.append({
+        .navigable = navigable,
+        .entry = entry,
+    });
 }
 
-void ApplyHistoryStepState::send_nested_cross_document_navigation_update_if_needed(i32 current_step)
+void ApplyHistoryStepState::queue_nested_cross_document_navigation_updates(i32 current_step)
 {
-    if (!m_nested_cross_document_navigation_update_needed)
-        return;
+    auto updates = move(m_nested_cross_document_navigation_updates);
+    for (auto& update : updates) {
+        if (update.navigable && update.entry)
+            queue_session_history_mutation(m_traversable->create_nested_cross_document_session_history_navigation_mutation(*update.navigable, *update.entry, current_step));
+        else
+            queue_session_history_mutation({});
+    }
+}
 
-    m_nested_cross_document_navigation_update_needed = false;
-    auto navigable = m_nested_cross_document_navigation_navigable;
-    auto entry = move(m_nested_cross_document_navigation_entry);
-    m_nested_cross_document_navigation_navigable = nullptr;
-    if (navigable && entry && m_traversable->report_nested_cross_document_session_history_navigation(*navigable, *entry, current_step)) {
-        m_nested_cross_document_navigation_update_state = TargetedCurrentEntryUpdateState::CoversCompletion;
+void ApplyHistoryStepState::queue_current_entry_nested_histories_update(i32 current_step)
+{
+    queue_session_history_mutation(m_traversable->create_current_entry_nested_histories_update_mutation(current_step));
+}
+
+void ApplyHistoryStepState::queue_applied_traversal_update(i32 current_step)
+{
+    queue_session_history_mutation(WebContentSessionHistoryMutation::applied_traversal({
+        .current_step = current_step,
+    }));
+}
+
+void ApplyHistoryStepState::queue_session_history_mutation(Optional<WebContentSessionHistoryMutation> mutation)
+{
+    if (!mutation.has_value()) {
+        m_session_history_mutation_batch_failed = true;
         return;
     }
 
-    m_nested_cross_document_navigation_update_state = TargetedCurrentEntryUpdateState::Failed;
+    m_session_history_mutation_batch.append(mutation.release_value());
 }
 
-bool ApplyHistoryStepState::nested_cross_document_navigation_update_can_cover_completion(LocalNavigable const& navigable, bool update_only) const
+bool ApplyHistoryStepState::send_session_history_mutation_batch(i32 final_current_step)
 {
-    if (!m_pending_document)
+    if (m_session_history_mutation_batch_failed)
         return false;
 
-    if (!m_navigation_type.has_value())
-        return false;
-
-    if (*m_navigation_type != Bindings::NavigationType::Push && *m_navigation_type != Bindings::NavigationType::Replace)
-        return false;
-
-    if (m_synchronous_navigation == LocalTraversableNavigable::SynchronousNavigation::Yes)
-        return false;
-
-    if (update_only)
-        return false;
-
-    if (navigable.is_top_level_traversable())
-        return false;
-
-    if (!navigable.parent())
-        return false;
-
-    return m_changing_navigables.size() == 1;
-}
-
-bool ApplyHistoryStepState::nested_cross_document_navigation_update_covered_completion() const
-{
-    return m_nested_cross_document_navigation_update_state == TargetedCurrentEntryUpdateState::CoversCompletion;
-}
-
-bool ApplyHistoryStepState::targeted_current_entry_updates_failed() const
-{
-    if (m_reload_pending_update_state == TargetedCurrentEntryUpdateState::Failed
-        || m_document_state_population_update_state == TargetedCurrentEntryUpdateState::Failed
-        || m_top_level_cross_document_navigation_update_state == TargetedCurrentEntryUpdateState::Failed
-        || m_same_document_navigation_update_state == TargetedCurrentEntryUpdateState::Failed
-        || m_nested_cross_document_navigation_update_state == TargetedCurrentEntryUpdateState::Failed) {
-        return true;
-    }
-
-    if (!m_reload_pending_clear_entries.is_empty()
-        || m_top_level_cross_document_navigation_update_needed
-        || m_same_document_navigation_update_needed
-        || m_nested_cross_document_navigation_update_needed)
+    auto mutations = move(m_session_history_mutation_batch);
+    if (mutations.is_empty())
         return true;
 
-    return false;
+    return m_traversable->report_session_history_mutation_batch(move(mutations), final_current_step);
 }
 
 void ApplyHistoryStepState::start()
@@ -1930,13 +1820,14 @@ void ApplyHistoryStepState::process_continuations()
             }
 
             if (has_fresh_document) {
-                if (top_level_cross_document_navigation_update_can_cover_completion(*navigable, update_only)) {
-                    note_top_level_cross_document_navigation_update_needed(*navigable, update_only, *target_entry);
-                } else if (nested_cross_document_navigation_update_can_cover_completion(*navigable, update_only)) {
-                    note_nested_cross_document_navigation_update_needed(*navigable, update_only, *target_entry);
+                if (m_navigation_type.has_value()
+                    && (*m_navigation_type == Bindings::NavigationType::Push || *m_navigation_type == Bindings::NavigationType::Replace)) {
+                    if (navigable->is_top_level_traversable())
+                        note_top_level_cross_document_navigation_update_needed(*navigable, update_only, *target_entry);
+                    else
+                        note_nested_cross_document_navigation_update_needed(*navigable, update_only, *target_entry);
                 } else {
-                    auto update_was_sent = m_traversable->report_current_session_history_entry_update(SessionHistoryEntryUpdateKind::DocumentStatePopulation, *target_entry);
-                    note_document_state_population_update(*navigable, update_only, update_was_sent);
+                    note_document_state_population_update_needed(*target_entry);
                 }
             } else if (m_synchronous_navigation == LocalTraversableNavigable::SynchronousNavigation::Yes
                 && m_navigation_type.has_value()
@@ -2124,22 +2015,20 @@ void ApplyHistoryStepState::complete()
 
         // AD-HOC: Report the updated session history descriptors to the UI-process mirror.
         if (m_navigation_type == Bindings::NavigationType::Reload)
-            send_reload_pending_clear_update_if_needed();
-        send_top_level_cross_document_navigation_update_if_needed(used_target_step);
-        send_same_document_navigation_update_if_needed(used_target_step);
-        send_nested_cross_document_navigation_update_if_needed(used_target_step);
-        auto applied_traversal_update_covered_completion = false;
+            queue_reload_pending_clear_updates();
         if (m_report_applied_traversal == LocalTraversableNavigable::ReportAppliedTraversal::Yes)
-            applied_traversal_update_covered_completion = m_traversable->report_applied_session_history_traversal(used_target_step);
-        if (applied_traversal_update_covered_completion || same_document_navigation_update_covered_completion())
+            queue_applied_traversal_update(used_target_step);
+        queue_document_state_population_updates();
+        queue_top_level_cross_document_navigation_updates(used_target_step);
+        auto has_same_document_navigation_mutation = !m_same_document_navigation_updates.is_empty();
+        queue_same_document_navigation_updates(used_target_step);
+        queue_nested_cross_document_navigation_updates(used_target_step);
+        if (m_report_applied_traversal == LocalTraversableNavigable::ReportAppliedTraversal::Yes || has_same_document_navigation_mutation)
             completion_result = HistoryStepResult::AppliedBySessionHistoryMutation;
-        auto nested_histories_update_covered_completion = false;
         if (!m_navigation_type.has_value())
-            nested_histories_update_covered_completion = m_traversable->report_current_entry_nested_histories_update(used_target_step);
+            queue_current_entry_nested_histories_update(used_target_step);
 
-        auto session_history_mutation_failed = targeted_current_entry_updates_failed();
-        if (!m_navigation_type.has_value() && !nested_histories_update_covered_completion)
-            session_history_mutation_failed = true;
+        auto session_history_mutation_failed = !send_session_history_mutation_batch(used_target_step);
 
         // If WebContent cannot prove the targeted mutation, do not send a full completion snapshot here. Tell the UI
         // process to mark its WebContent mirror state unproven and request an explicit snapshot through the existing

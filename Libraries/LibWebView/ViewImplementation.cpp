@@ -1393,6 +1393,39 @@ void ViewImplementation::did_apply_session_history_mutation(Badge<WebContentClie
     dump_session_history(update.dump_reason);
 }
 
+void ViewImplementation::did_apply_session_history_mutation_batch(Badge<WebContentClient>, Web::HTML::WebContentSessionHistoryMutationBatch batch)
+{
+    if (history_debug_enabled()) {
+        dbgln("[History] UI received WebContent session history mutation batch page={} pid={} final_current_step={} mutations={}",
+            page_id(),
+            client().pid(),
+            batch.final_current_step,
+            batch.mutations.size());
+    }
+
+    auto update = m_top_level_traversable.did_receive_web_content_session_history_mutation_batch(move(batch));
+    if (update.current_url.has_value()) {
+        auto current_url = *update.current_url;
+        set_url(current_url);
+
+        if (m_webdriver_pending_navigation_url.has_value() && *m_webdriver_pending_navigation_url != current_url)
+            m_webdriver_pending_navigation_url = current_url;
+    }
+    if (update.should_request_session_history_update)
+        client().async_request_session_history_update(page_id());
+
+    if (update.fallback_target.has_value()) {
+        load_session_history_traversal_target_from_ui_process(*update.fallback_target, update.dump_reason);
+        return;
+    }
+
+    if (update.should_complete_webdriver_pending_navigation)
+        complete_webdriver_pending_navigation_if_url_matches(m_url);
+    if (update.should_update_navigation_action_state)
+        update_navigation_action_state();
+    dump_session_history(update.dump_reason);
+}
+
 void ViewImplementation::did_update_session_history_for_testing(Badge<WebContentClient>, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index)
 {
     auto update = m_top_level_traversable.did_receive_web_content_session_history_update_for_testing(move(entries), move(used_steps), current_used_step_index, m_url);

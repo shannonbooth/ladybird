@@ -184,6 +184,11 @@ struct WebContentSessionHistoryMutation {
     }
 };
 
+struct WebContentSessionHistoryMutationBatch {
+    Vector<WebContentSessionHistoryMutation> mutations;
+    i32 final_current_step { 0 };
+};
+
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#nested-history
 struct SessionHistoryNestedHistoryDescriptor {
     CrossProcessId id;
@@ -356,6 +361,12 @@ WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::WebContentSessionHistoryMutati
 
 template<>
 WEB_API ErrorOr<Web::HTML::WebContentSessionHistoryMutation> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::WebContentSessionHistoryMutationBatch const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::WebContentSessionHistoryMutationBatch> decode(Decoder&);
 
 template<>
 WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::SessionHistoryEntryScrollPositionData const&);

@@ -511,6 +511,26 @@ ErrorOr<Web::HTML::WebContentSessionHistoryMutation> IPC::decode(Decoder& decode
 }
 
 template<>
+ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::WebContentSessionHistoryMutationBatch const& batch)
+{
+    TRY(encoder.encode(batch.mutations));
+    TRY(encoder.encode(batch.final_current_step));
+    return {};
+}
+
+template<>
+ErrorOr<Web::HTML::WebContentSessionHistoryMutationBatch> IPC::decode(Decoder& decoder)
+{
+    auto mutations = TRY(decoder.decode<Vector<Web::HTML::WebContentSessionHistoryMutation>>());
+    auto final_current_step = TRY(decoder.decode<i32>());
+
+    return Web::HTML::WebContentSessionHistoryMutationBatch {
+        .mutations = move(mutations),
+        .final_current_step = final_current_step,
+    };
+}
+
+template<>
 ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::SessionHistoryEntryScrollPositionData const& scroll_position_data)
 {
     TRY(encoder.encode(scroll_position_data.viewport_scroll_position));

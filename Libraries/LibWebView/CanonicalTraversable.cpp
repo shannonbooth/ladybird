@@ -475,6 +475,31 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
     };
 }
 
+WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_content_session_history_mutation_batch(Web::HTML::WebContentSessionHistoryMutationBatch batch)
+{
+    WebContentSessionHistoryMutationResult batch_result {
+        .accepted = true,
+        .dump_reason = "did-apply-session-history-mutation-batch"sv,
+    };
+
+    for (auto& mutation : batch.mutations) {
+        auto mutation_result = did_receive_web_content_session_history_mutation(move(mutation));
+        if (!mutation_result.accepted)
+            return mutation_result;
+
+        if (mutation_result.fallback_target.has_value())
+            return mutation_result;
+
+        batch_result.should_request_session_history_update |= mutation_result.should_request_session_history_update;
+        batch_result.should_update_navigation_action_state |= mutation_result.should_update_navigation_action_state;
+        batch_result.should_complete_webdriver_pending_navigation |= mutation_result.should_complete_webdriver_pending_navigation;
+        if (mutation_result.current_url.has_value())
+            batch_result.current_url = move(mutation_result.current_url);
+    }
+
+    return batch_result;
+}
+
 WebContentSessionHistoryMutationResult CanonicalTraversable::did_fail_to_apply_web_content_session_history_mutation()
 {
     if (m_pending_web_content_session_history_seed.waiting_for_ack)

@@ -206,6 +206,14 @@ private:
     bool report_session_history_reset_for_testing();
     bool report_session_history_mutation_failure();
     bool send_full_session_history_snapshot(SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::Yes);
+    Optional<WebContentSessionHistoryMutation> create_current_session_history_entry_update_mutation(SessionHistoryEntryUpdateKind, SessionHistoryEntry const&, SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::No);
+    Optional<WebContentSessionHistoryMutation> create_current_entry_nested_histories_update_mutation(i32 current_step, SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::Yes);
+    Optional<WebContentSessionHistoryMutation> create_top_level_same_document_session_history_navigation_mutation(SessionHistoryEntry const&, Optional<i32> replaced_step, i32 current_step);
+    Optional<WebContentSessionHistoryMutation> create_nested_same_document_session_history_navigation_mutation(LocalNavigable const&, SessionHistoryEntry const&, Optional<i32> replaced_step, i32 current_step);
+    Optional<WebContentSessionHistoryMutation> create_nested_cross_document_session_history_navigation_mutation(LocalNavigable const&, SessionHistoryEntry const&, i32 current_step);
+    Optional<WebContentSessionHistoryMutation> create_top_level_cross_document_session_history_navigation_mutation(SessionHistoryEntry const&, i32 current_step);
+    bool report_session_history_mutation(WebContentSessionHistoryMutation);
+    bool report_session_history_mutation_batch(Vector<WebContentSessionHistoryMutation>, i32 final_current_step);
     bool report_current_entry_nested_histories_update(i32 current_step, SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::Yes);
     bool report_top_level_same_document_session_history_navigation(SessionHistoryEntry const&, Optional<i32> replaced_step, i32 current_step);
     bool report_nested_same_document_session_history_navigation(LocalNavigable const&, SessionHistoryEntry const&, Optional<i32> replaced_step, i32 current_step);

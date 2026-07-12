@@ -1792,6 +1792,12 @@ void WebContentClient::did_apply_session_history_mutation(u64 page_id, Web::HTML
         view->did_apply_session_history_mutation({}, move(mutation));
 }
 
+void WebContentClient::did_apply_session_history_mutation_batch(u64 page_id, Web::HTML::WebContentSessionHistoryMutationBatch batch)
+{
+    if (auto view = view_for_page_id(page_id); view.has_value())
+        view->did_apply_session_history_mutation_batch({}, move(batch));
+}
+
 Messages::WebContentClient::DidRequestUiProcessSessionHistoryForTestingResponse WebContentClient::did_request_ui_process_session_history_for_testing(u64 page_id)
 {
     if (auto view = view_for_page_id(page_id); view.has_value())
