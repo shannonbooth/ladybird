@@ -739,19 +739,7 @@ String Internals::dump_session_history()
 
 String Internals::dump_ui_process_session_history()
 {
-    auto& document = window().associated_document();
-    if (auto navigable = document.navigable()) {
-        if (auto traversable = navigable->traversable_navigable();
-            traversable && document.page().client().should_report_session_history_updates()) {
-            auto session_history_snapshot = traversable->create_session_history_snapshot();
-            return document.page().client().page_did_update_session_history_and_request_ui_process_session_history_for_testing(
-                session_history_snapshot.top_level_session_history_entries,
-                session_history_snapshot.used_session_history_steps,
-                session_history_snapshot.current_used_step_index);
-        }
-    }
-
-    return document.page().client().page_did_request_ui_process_session_history_for_testing();
+    return window().associated_document().page().client().page_did_request_ui_process_session_history_for_testing();
 }
 
 String Internals::dump_site_isolation_process_tree()
