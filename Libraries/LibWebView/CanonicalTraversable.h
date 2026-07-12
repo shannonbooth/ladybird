@@ -223,7 +223,7 @@ public:
     Web::HTML::VisibilityState system_visibility_state() const { return m_system_visibility_state; }
     void set_system_visibility_state(Web::HTML::VisibilityState visibility_state) { m_system_visibility_state = visibility_state; }
 
-    bool current_web_content_session_history_matches_mirror() const { return m_session_history.web_content_history_matches_mirror(); }
+    bool current_web_content_session_history_matches_mirror() const { return !m_pending_session_history_navigation.has_value() && m_session_history.web_content_history_matches_mirror(); }
 
     Optional<PendingSessionHistoryNavigation> const& pending_session_history_navigation() const { return m_pending_session_history_navigation; }
     Optional<PendingSessionHistoryTraversal> const& pending_session_history_traversal() const { return m_pending_session_history_traversal; }

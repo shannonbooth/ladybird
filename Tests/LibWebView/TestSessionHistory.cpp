@@ -564,6 +564,28 @@ TEST_CASE(targeted_current_entry_update_updates_scroll_position_data)
     EXPECT(history.web_content_history_matches_mirror());
 }
 
+TEST_CASE(targeted_scroll_position_update_accepts_reconstructed_current_entry_identity)
+{
+    WebView::TraversableSessionHistory history;
+
+    auto initial_entry = entry(0, "https://a.example/"sv, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
+    initial_entry.scroll_position_data.viewport_scroll_position = { 0, 100 };
+    initialize_history_from_ui_entries(history, { initial_entry }, { 0 }, 0);
+    EXPECT(history.web_content_history_matches_mirror());
+
+    auto updated_entry = initial_entry;
+    updated_entry.document_state.id = test_document_state_id(99);
+    updated_entry.navigation_api_state = state_record(9);
+    updated_entry.scroll_position_data.viewport_scroll_position = { 0, 300 };
+    EXPECT(apply_current_entry_update(history, SessionHistoryEntryUpdateKind::ScrollPositionData, move(updated_entry)));
+
+    auto* current_entry = history.current_entry();
+    VERIFY(current_entry);
+    expect_entry_viewport_scroll_position(*current_entry, { 0, 300 });
+    expect_entry_state(*current_entry, 1, 2, "key-a"sv, "id-a"sv, Web::HTML::ScrollRestorationMode::Auto);
+    EXPECT(history.web_content_history_matches_mirror());
+}
+
 TEST_CASE(targeted_scroll_position_update_rejects_other_state_change)
 {
     WebView::TraversableSessionHistory history;
@@ -866,7 +888,7 @@ TEST_CASE(targeted_top_level_same_document_navigation_replaces_current_entry)
     EXPECT(history.web_content_history_matches_mirror());
 }
 
-TEST_CASE(targeted_top_level_same_document_navigation_bootstraps_partial_current_entry_slice)
+TEST_CASE(targeted_top_level_same_document_navigation_updates_unproven_mirror_without_reproving)
 {
     WebView::TraversableSessionHistory history;
     history.navigate(parse_url("https://a.example/"sv), test_document_state_id(1));
@@ -876,7 +898,6 @@ TEST_CASE(targeted_top_level_same_document_navigation_bootstraps_partial_current
     EXPECT(apply_top_level_cross_document_navigation(history, move(committed_entry), 1));
     EXPECT(!history.web_content_history_matches_mirror());
     EXPECT_EQ(history.web_content_current_step().value(), 1);
-    EXPECT(history.web_content_known_entries().is_empty());
 
     auto replacement_entry = entry(1, "https://b.example/#replacement"sv, 2, "main"sv);
     EXPECT(apply_top_level_same_document_navigation(history, move(replacement_entry), 1, 1));
@@ -888,11 +909,6 @@ TEST_CASE(targeted_top_level_same_document_navigation_bootstraps_partial_current
     EXPECT(!history.web_content_history_matches_mirror());
     EXPECT_EQ(history.web_content_current_step().value(), 1);
 
-    auto known_entries_after_replace = history.web_content_known_entries();
-    EXPECT_EQ(known_entries_after_replace.size(), 1uz);
-    EXPECT_EQ(known_entries_after_replace[0].step, 1);
-    EXPECT_EQ(known_entries_after_replace[0].url, parse_url("https://b.example/#replacement"sv));
-
     auto pushed_entry = entry(2, "https://b.example/#pushed"sv, 2, "main"sv);
     EXPECT(apply_top_level_same_document_navigation(history, move(pushed_entry), {}, 2));
 
@@ -903,16 +919,9 @@ TEST_CASE(targeted_top_level_same_document_navigation_bootstraps_partial_current
     expect_current_entry(history, 2, "https://b.example/#pushed"sv);
     EXPECT(!history.web_content_history_matches_mirror());
     EXPECT_EQ(history.web_content_current_step().value(), 2);
-
-    auto known_entries_after_push = history.web_content_known_entries();
-    EXPECT_EQ(known_entries_after_push.size(), 2uz);
-    EXPECT_EQ(known_entries_after_push[0].step, 1);
-    EXPECT_EQ(known_entries_after_push[0].url, parse_url("https://b.example/#replacement"sv));
-    EXPECT_EQ(known_entries_after_push[1].step, 2);
-    EXPECT_EQ(known_entries_after_push[1].url, parse_url("https://b.example/#pushed"sv));
 }
 
-TEST_CASE(targeted_top_level_same_document_navigation_rejects_unproven_web_content_state)
+TEST_CASE(targeted_top_level_same_document_navigation_accepts_unproven_mirror_without_reproving)
 {
     WebView::TraversableSessionHistory history;
     initialize_history_from_ui_entries(history, {
@@ -924,9 +933,11 @@ TEST_CASE(targeted_top_level_same_document_navigation_rejects_unproven_web_conte
     history.forget_web_content_state();
 
     auto pushed_entry = entry(2, "https://b.example/#pushed"sv, 2, "main"sv);
-    EXPECT(!apply_top_level_same_document_navigation(history, move(pushed_entry), {}, 2));
-    EXPECT_EQ(history.size(), 2uz);
-    expect_current_entry(history, 1, "https://b.example/"sv);
+    EXPECT(apply_top_level_same_document_navigation(history, move(pushed_entry), {}, 2));
+    EXPECT_EQ(history.size(), 3uz);
+    expect_current_entry(history, 2, "https://b.example/#pushed"sv);
+    EXPECT(!history.web_content_history_matches_mirror());
+    EXPECT_EQ(history.web_content_current_step().value(), 2);
 }
 
 TEST_CASE(targeted_nested_same_document_navigation_appends_entry)
@@ -1127,7 +1138,7 @@ TEST_CASE(rejected_nested_cross_document_navigation_marks_mirror_stale)
     EXPECT(!traversable.current_web_content_session_history_matches_mirror());
 }
 
-TEST_CASE(targeted_top_level_cross_document_navigation_proves_predicted_push)
+TEST_CASE(targeted_top_level_cross_document_navigation_updates_predicted_push_without_reproving)
 {
     WebView::TraversableSessionHistory history;
     initialize_history_from_ui_entries(history, {
@@ -1152,10 +1163,10 @@ TEST_CASE(targeted_top_level_cross_document_navigation_proves_predicted_push)
     EXPECT_EQ(history.used_step_count(), 2uz);
     expect_entry(history, 0, 0, "https://a.example/"sv);
     expect_current_entry(history, 1, "https://b.example/"sv);
-    EXPECT(history.web_content_history_matches_mirror());
+    EXPECT(!history.web_content_history_matches_mirror());
 }
 
-TEST_CASE(targeted_top_level_cross_document_navigation_proves_predicted_push_with_committed_document_state_id)
+TEST_CASE(targeted_top_level_cross_document_navigation_updates_predicted_push_with_committed_document_state_id_without_reproving)
 {
     WebView::TraversableSessionHistory history;
     initialize_history_from_ui_entries(history, {
@@ -1180,10 +1191,10 @@ TEST_CASE(targeted_top_level_cross_document_navigation_proves_predicted_push_wit
     auto* current_entry = history.current_entry();
     VERIFY(current_entry);
     expect_entry_document_state(*current_entry, 2, "main"sv);
-    EXPECT(history.web_content_history_matches_mirror());
+    EXPECT(!history.web_content_history_matches_mirror());
 }
 
-TEST_CASE(targeted_top_level_cross_document_navigation_proves_redirected_predicted_push)
+TEST_CASE(targeted_top_level_cross_document_navigation_updates_redirected_predicted_push_without_reproving)
 {
     WebView::TraversableSessionHistory history;
     initialize_history_from_ui_entries(history, {
@@ -1208,10 +1219,10 @@ TEST_CASE(targeted_top_level_cross_document_navigation_proves_redirected_predict
     auto* current_entry = history.current_entry();
     VERIFY(current_entry);
     expect_entry_document_state(*current_entry, 2, "main"sv);
-    EXPECT(history.web_content_history_matches_mirror());
+    EXPECT(!history.web_content_history_matches_mirror());
 }
 
-TEST_CASE(targeted_top_level_cross_document_navigation_proves_redirected_forward_replacement)
+TEST_CASE(targeted_top_level_cross_document_navigation_updates_redirected_forward_replacement_without_reproving)
 {
     WebView::TraversableSessionHistory history;
     initialize_history_from_ui_entries(history, {
@@ -1237,17 +1248,16 @@ TEST_CASE(targeted_top_level_cross_document_navigation_proves_redirected_forward
     auto* current_entry = history.current_entry();
     VERIFY(current_entry);
     expect_entry_document_state(*current_entry, 3, "main"sv);
-    EXPECT(history.web_content_history_matches_mirror());
+    EXPECT(!history.web_content_history_matches_mirror());
 }
 
-TEST_CASE(top_level_cross_document_navigation_proves_single_entry_without_known_history)
+TEST_CASE(top_level_cross_document_navigation_updates_single_entry_without_reproving)
 {
     WebView::TraversableSessionHistory history;
 
     auto document_state_id = allocate_test_ui_process_document_state_id();
     history.navigate(parse_url("https://a.example/"sv), document_state_id);
     EXPECT(!history.web_content_history_matches_mirror());
-    EXPECT(history.web_content_known_entries().is_empty());
 
     auto committed_entry = entry(0, "https://a.example/"sv);
     committed_entry.document_state.id = document_state_id;
@@ -1255,9 +1265,7 @@ TEST_CASE(top_level_cross_document_navigation_proves_single_entry_without_known_
     committed_entry.document_state.origin = parse_url("https://a.example/"sv).origin();
     EXPECT(apply_top_level_cross_document_navigation(history, move(committed_entry), 0));
 
-    EXPECT(history.web_content_history_matches_mirror());
-    EXPECT_EQ(history.web_content_known_used_steps().size(), 1uz);
-    EXPECT_EQ(history.web_content_known_used_steps()[0], 0);
+    EXPECT(!history.web_content_history_matches_mirror());
     auto web_content_current_step = history.web_content_current_step();
     VERIFY(web_content_current_step.has_value());
     EXPECT_EQ(*web_content_current_step, 0);
@@ -1689,7 +1697,7 @@ TEST_CASE(applied_web_content_traversal_updates_current_step)
     EXPECT_EQ(*web_content_current_step, 1);
 }
 
-TEST_CASE(applied_web_content_traversal_rejects_unknown_web_content_state)
+TEST_CASE(applied_web_content_traversal_from_unknown_updates_current_step_without_proving_mirror)
 {
     WebView::TraversableSessionHistory history;
 
@@ -1701,9 +1709,10 @@ TEST_CASE(applied_web_content_traversal_rejects_unknown_web_content_state)
         { 0, 1, 2 }, 2);
 
     history.traverse_to(1);
-    EXPECT(!apply_traversal_current_step(history, 0));
-    expect_current_entry(history, 1, "https://b.example/"sv);
-    EXPECT(!history.web_content_current_step().has_value());
+    EXPECT(apply_traversal_current_step(history, 0));
+    expect_current_entry(history, 0, "https://a.example/"sv);
+    EXPECT_EQ(history.web_content_current_step().value(), 0);
+    EXPECT(!history.web_content_history_matches_mirror());
 }
 
 TEST_CASE(recorded_seed_tracks_preserved_document_state_ids)
@@ -1720,7 +1729,6 @@ TEST_CASE(recorded_seed_tracks_preserved_document_state_ids)
     history.record_web_content_seeded_from_ui_process(0);
 
     EXPECT(history.web_content_history_matches_mirror());
-    EXPECT_EQ(history.web_content_known_entries().size(), 3uz);
     EXPECT_EQ(history.web_content_current_step().value(), 0);
 }
 
@@ -1784,7 +1792,7 @@ TEST_CASE(seed_ack_rejects_pending_proof_for_different_current_step)
     auto ack = traversable.did_receive_web_content_session_history_seed_ack(true, current_step, seed->expected_ack_proof.value);
     EXPECT_EQ(ack.dump_reason, "webcontent-session-history-seed-ack-mismatch"sv);
     EXPECT(!traversable.current_web_content_session_history_matches_mirror());
-    EXPECT(traversable.session_history().web_content_known_entries().is_empty());
+    EXPECT(!traversable.session_history().web_content_current_step().has_value());
 }
 
 TEST_CASE(applied_traversal_mutation_updates_current_step)
@@ -1953,7 +1961,7 @@ TEST_CASE(applied_traversal_mutation_restores_seeded_current_step)
     EXPECT(traversable.current_web_content_session_history_matches_mirror());
 }
 
-TEST_CASE(preserved_web_content_history_only_reproves_matching_known_state)
+TEST_CASE(explicit_web_content_mirror_match_marks_state_complete)
 {
     WebView::TraversableSessionHistory history;
 
@@ -1967,13 +1975,8 @@ TEST_CASE(preserved_web_content_history_only_reproves_matching_known_state)
     history.mark_web_content_history_match_unproven();
     EXPECT(!history.web_content_history_matches_mirror());
 
-    history.record_web_content_history_preserved();
+    history.record_web_content_mirror_matches_ui_process();
     EXPECT(history.web_content_history_matches_mirror());
-
-    history.navigate(parse_url("https://c.example/"sv), allocate_test_ui_process_document_state_id());
-    history.mark_web_content_history_match_unproven();
-    history.record_web_content_history_preserved();
-    EXPECT(!history.web_content_history_matches_mirror());
 }
 
 TEST_CASE(traversal_target_for_delta_outside_used_steps)
@@ -2146,10 +2149,7 @@ TEST_CASE(mark_current_entry_reload_pending)
     VERIFY(current_entry);
     EXPECT(current_entry->document_state.reload_pending);
     EXPECT(!history.web_content_history_matches_mirror());
-
-    auto web_content_known_entries = history.web_content_known_entries();
-    EXPECT_EQ(web_content_known_entries.size(), 2uz);
-    EXPECT(!web_content_known_entries[1].document_state.reload_pending);
+    EXPECT_EQ(history.web_content_current_step().value(), 1);
 }
 
 TEST_CASE(navigate_preserves_document_resource)

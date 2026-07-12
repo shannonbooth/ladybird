@@ -948,7 +948,22 @@ def comparable_history(history):
         "currentUsedStepIndex": history["currentUsedStepIndex"],
         "entries": [comparable_entry(entry) for entry in history["entries"]],
         "usedSteps": history["usedSteps"],
+        "currentResource": history_current_entry(history).get("resource"),
     }
+
+
+def web_content_history_is_observably_in_sync(snapshot):
+    ui = snapshot["ui"]
+    return not (
+        ui["waitingToSeedWebContent"]
+        or ui["waitingForWebContentSeedAck"]
+        or ui["ignoringWebContentUpdatesUntilSeed"]
+        or ui["reseedAfterCurrentHistoryLoad"]
+        or ui["pendingWebContentHistoryStepAfterFallbackLoad"] is not None
+        or ui["pendingSessionHistoryNavigation"] is not None
+        or ui["pendingSessionHistoryTraversal"] is not None
+        or comparable_history(ui) != comparable_history(snapshot["webContent"])
+    )
 
 
 def summarize_history_snapshot(snapshot):
@@ -966,8 +981,7 @@ def summarize_history_snapshot(snapshot):
             "waitingForWebContentSeedAck": ui["waitingForWebContentSeedAck"],
             "ignoringWebContentUpdatesUntilSeed": ui["ignoringWebContentUpdatesUntilSeed"],
             "reseedAfterCurrentHistoryLoad": ui["reseedAfterCurrentHistoryLoad"],
-            "webContentHasKnownCurrentStep": ui["webContentHasKnownCurrentStep"],
-            "webContentKnownUsedSteps": history_step_values(ui["webContentKnownUsedSteps"]),
+            "webContentMirrorState": ui["webContentMirrorState"],
             "webContentCurrentStep": ui["webContentCurrentStep"],
             "pendingWebContentHistoryStepAfterFallbackLoad": ui["pendingWebContentHistoryStepAfterFallbackLoad"],
             "pendingSessionHistoryNavigation": ui["pendingSessionHistoryNavigation"],
@@ -994,14 +1008,15 @@ def expect_ui_session_history(
     expected_forward_enabled,
     log,
     expect_web_content_matches_ui=None,
-    expected_web_content_known_used_steps=None,
     expected_web_content_current_step=None,
     expected_waiting_to_seed_web_content=None,
     expected_waiting_for_web_content_seed_ack=None,
     expected_ignoring_web_content_updates_until_seed=None,
     expected_reseed_after_current_history_load=None,
+    expected_web_content_mirror_state=None,
 ):
-    def ui_history_matches(ui):
+    def ui_history_matches(snapshot):
+        ui = snapshot["ui"]
         return (
             history_entry_urls(ui) == expected_entry_urls
             and history_used_steps(ui) == expected_used_steps
@@ -1010,19 +1025,11 @@ def expect_ui_session_history(
             and ui["forwardButtonEnabled"] is expected_forward_enabled
             and (
                 expect_web_content_matches_ui is None
-                or ui["webContentHistoryMatchesUI"] is expect_web_content_matches_ui
-            )
-            and (
-                expected_web_content_known_used_steps is None
-                or history_step_values(ui["webContentKnownUsedSteps"]) == expected_web_content_known_used_steps
+                or web_content_history_is_observably_in_sync(snapshot) is expect_web_content_matches_ui
             )
             and (
                 expected_web_content_current_step is None
                 or ui["webContentCurrentStep"] == expected_web_content_current_step
-            )
-            and (
-                expected_web_content_current_step is None
-                or history_current_step(ui["webContentKnownUsedSteps"]) == expected_web_content_current_step
             )
             and (
                 expected_waiting_to_seed_web_content is None
@@ -1040,20 +1047,10 @@ def expect_ui_session_history(
                 expected_reseed_after_current_history_load is None
                 or ui["reseedAfterCurrentHistoryLoad"] is expected_reseed_after_current_history_load
             )
-        )
-
-    def web_content_matches_ui(snapshot):
-        ui = snapshot["ui"]
-        web_content = snapshot["webContent"]
-        return not (
-            ui["waitingToSeedWebContent"]
-            or ui["waitingForWebContentSeedAck"]
-            or ui["ignoringWebContentUpdatesUntilSeed"]
-            or ui["reseedAfterCurrentHistoryLoad"]
-            or ui["pendingWebContentHistoryStepAfterFallbackLoad"] is not None
-            or ui["pendingSessionHistoryNavigation"] is not None
-            or ui["pendingSessionHistoryTraversal"] is not None
-            or comparable_history(ui) != comparable_history(web_content)
+            and (
+                expected_web_content_mirror_state is None
+                or ui["webContentMirrorState"] == expected_web_content_mirror_state
+            )
         )
 
     def raise_ui_mismatch(snapshot):
@@ -1061,12 +1058,12 @@ def expect_ui_session_history(
             f"Expected {label} UI history to be entries={expected_entry_urls}, usedSteps={expected_used_steps}, "
             f"currentUsedStepIndex={expected_current_used_step_index}, back={expected_back_enabled}, "
             f"forward={expected_forward_enabled}, webContentMatchesUI={expect_web_content_matches_ui}, "
-            f"webContentKnownUsedSteps={expected_web_content_known_used_steps}, "
             f"webContentCurrentStep={expected_web_content_current_step}, "
             f"waitingToSeedWebContent={expected_waiting_to_seed_web_content}, "
             f"waitingForWebContentSeedAck={expected_waiting_for_web_content_seed_ack}, "
             f"ignoringWebContentUpdatesUntilSeed={expected_ignoring_web_content_updates_until_seed}; "
             f"reseedAfterCurrentHistoryLoad={expected_reseed_after_current_history_load}; "
+            f"webContentMirrorState={expected_web_content_mirror_state}; "
             f"got {summarize_history_snapshot(snapshot)}\n" + "\n".join(log)
         )
 
@@ -1074,10 +1071,10 @@ def expect_ui_session_history(
         deadline = time.monotonic() + EVENT_TIMEOUT_SECONDS
         while True:
             snapshot = session_history(webdriver_port, session_id)
-            if ui_history_matches(snapshot["ui"]) and web_content_matches_ui(snapshot):
+            if ui_history_matches(snapshot) and web_content_history_is_observably_in_sync(snapshot):
                 break
             if time.monotonic() >= deadline:
-                if not ui_history_matches(snapshot["ui"]):
+                if not ui_history_matches(snapshot):
                     raise_ui_mismatch(snapshot)
                 raise AssertionError(
                     f"Expected {label} WebContent history to match UI, got {summarize_history_snapshot(snapshot)}\n"
@@ -1089,7 +1086,7 @@ def expect_ui_session_history(
         return snapshot
 
     snapshot = session_history(webdriver_port, session_id)
-    if not ui_history_matches(snapshot["ui"]):
+    if not ui_history_matches(snapshot):
         raise_ui_mismatch(snapshot)
 
     log.append(f"{label} history: {summarize_history_snapshot(snapshot)}")
@@ -1106,30 +1103,18 @@ def wait_for_ui_session_history(
     expected_back_enabled,
     expected_forward_enabled,
     log,
-    expected_web_content_known_used_steps,
     expected_web_content_current_step,
 ):
     def matches_expected_history(snapshot):
         ui = snapshot["ui"]
-        web_content = snapshot["webContent"]
         return (
             history_entry_urls(ui) == expected_entry_urls
             and history_used_steps(ui) == expected_used_steps
             and ui["currentUsedStepIndex"] == expected_current_used_step_index
             and ui["backButtonEnabled"] is expected_back_enabled
             and ui["forwardButtonEnabled"] is expected_forward_enabled
-            and ui["webContentHistoryMatchesUI"]
-            and history_step_values(ui["webContentKnownUsedSteps"]) == expected_web_content_known_used_steps
             and ui["webContentCurrentStep"] == expected_web_content_current_step
-            and history_current_step(ui["webContentKnownUsedSteps"]) == expected_web_content_current_step
-            and not ui["waitingToSeedWebContent"]
-            and not ui["waitingForWebContentSeedAck"]
-            and not ui["ignoringWebContentUpdatesUntilSeed"]
-            and not ui["reseedAfterCurrentHistoryLoad"]
-            and ui["pendingWebContentHistoryStepAfterFallbackLoad"] is None
-            and ui["pendingSessionHistoryNavigation"] is None
-            and ui["pendingSessionHistoryTraversal"] is None
-            and comparable_history(ui) == comparable_history(web_content)
+            and web_content_history_is_observably_in_sync(snapshot)
         )
 
     return wait_for_session_history(webdriver_port, session_id, label, matches_expected_history, log)
@@ -1168,7 +1153,6 @@ def expect_beforeunload_cancels_webdriver_navigation(
         ui_history["forwardButtonEnabled"],
         log,
         expect_web_content_matches_ui=True,
-        expected_web_content_known_used_steps=history_step_values(ui_history["webContentKnownUsedSteps"]),
         expected_web_content_current_step=ui_history["webContentCurrentStep"],
     )
     return state
@@ -1204,7 +1188,6 @@ def expect_javascript_noop_ui_load_does_not_change_history(
         ui_history["forwardButtonEnabled"],
         log,
         expect_web_content_matches_ui=True,
-        expected_web_content_known_used_steps=history_step_values(ui_history["webContentKnownUsedSteps"]),
         expected_web_content_current_step=ui_history["webContentCurrentStep"],
     )
 
@@ -1238,7 +1221,6 @@ def expect_javascript_noop_webdriver_navigation_does_not_change_history(
         ui_history["forwardButtonEnabled"],
         log,
         expect_web_content_matches_ui=True,
-        expected_web_content_known_used_steps=history_step_values(ui_history["webContentKnownUsedSteps"]),
         expected_web_content_current_step=ui_history["webContentCurrentStep"],
     )
 
@@ -1310,18 +1292,7 @@ def expect_navigation_buttons(webdriver_port, session_id, label, expected_back_e
 
 def expect_web_content_session_history_matches_ui(webdriver_port, session_id, label, log):
     snapshot = session_history(webdriver_port, session_id)
-    ui = snapshot["ui"]
-    if (
-        ui["webContentHistoryMatchesUI"]
-        and not ui["waitingToSeedWebContent"]
-        and not ui["waitingForWebContentSeedAck"]
-        and not ui["ignoringWebContentUpdatesUntilSeed"]
-        and not ui["reseedAfterCurrentHistoryLoad"]
-        and ui["pendingWebContentHistoryStepAfterFallbackLoad"] is None
-        and ui["pendingSessionHistoryNavigation"] is None
-        and ui["pendingSessionHistoryTraversal"] is None
-        and comparable_history(ui) == comparable_history(snapshot["webContent"])
-    ):
+    if web_content_history_is_observably_in_sync(snapshot):
         log.append(f"{label} matched history: {summarize_history_snapshot(snapshot)}")
         return snapshot
 
@@ -1551,12 +1522,6 @@ def expect_pending_web_content_history_step_after_fallback_load(webdriver_port, 
             f"got {ui['webContentCurrentStep']}\n" + "\n".join(log)
         )
 
-    if history_current_step(ui["webContentKnownUsedSteps"]) != web_content_current_step:
-        raise AssertionError(
-            f"Expected {label} known WebContent steps to mark current step {web_content_current_step}\n"
-            + "\n".join(log)
-        )
-
     if ui["webContentCurrentStep"] == pending_step:
         raise AssertionError(
             f"Expected {label} WebContent to still be before pending step {pending_step}\n" + "\n".join(log)
@@ -1566,19 +1531,10 @@ def expect_pending_web_content_history_step_after_fallback_load(webdriver_port, 
 def expect_no_pending_web_content_history_step_after_fallback_load(webdriver_port, session_id, label, log):
     snapshot = session_history(webdriver_port, session_id)
     ui = snapshot["ui"]
-    web_content = snapshot["webContent"]
     if (
         ui["pendingWebContentHistoryStepAfterFallbackLoad"] is None
-        and ui["webContentHistoryMatchesUI"]
-        and not ui["waitingToSeedWebContent"]
-        and not ui["waitingForWebContentSeedAck"]
-        and not ui["ignoringWebContentUpdatesUntilSeed"]
-        and not ui["reseedAfterCurrentHistoryLoad"]
-        and ui["pendingSessionHistoryNavigation"] is None
-        and ui["pendingSessionHistoryTraversal"] is None
         and ui["webContentCurrentStep"] == history_used_steps(ui)[ui["currentUsedStepIndex"]]
-        and history_current_step(ui["webContentKnownUsedSteps"]) == ui["webContentCurrentStep"]
-        and comparable_history(ui) == comparable_history(web_content)
+        and web_content_history_is_observably_in_sync(snapshot)
     ):
         log.append(f"{label} restored fallback step: {summarize_history_snapshot(snapshot)}")
         return
@@ -1765,7 +1721,6 @@ def run_blocked_process_swap_ui_forward_crash_recovery_test(
         False,
         log,
         expect_web_content_matches_ui=True,
-        expected_web_content_known_used_steps=[0, 1],
         expected_web_content_current_step=1,
     )
 
@@ -1782,7 +1737,6 @@ def run_blocked_process_swap_ui_forward_crash_recovery_test(
         True,
         log,
         expect_web_content_matches_ui=True,
-        expected_web_content_known_used_steps=[0, 1],
         expected_web_content_current_step=0,
     )
 
@@ -1846,7 +1800,6 @@ def run_blocked_process_swap_ui_forward_crash_recovery_test(
         False,
         log,
         expect_web_content_matches_ui=True,
-        expected_web_content_known_used_steps=[0, 1],
         expected_web_content_current_step=1,
     )
     request(webdriver_port, "DELETE", f"/session/{session_id}")
@@ -1916,7 +1869,6 @@ def expect_second_ui_forward_during_pending_forward_does_not_hang(
         False,
         log,
         expect_web_content_matches_ui=True,
-        expected_web_content_known_used_steps=[0, 1, 2],
         expected_web_content_current_step=2,
     )
     page_server.block_forward_load = False
@@ -1966,7 +1918,6 @@ document.body.append(iframe);
         False,
         log,
         expect_web_content_matches_ui=True,
-        expected_web_content_known_used_steps=[0, 1],
         expected_web_content_current_step=1,
     )
     execute_script(webdriver_port, session_id, "document.querySelector('iframe')?.remove(); return null;")
@@ -1992,11 +1943,9 @@ def expect_beforeunload_cancels_stale_ui_load(
         before_blocked_browser_ui_back["ui"]["backButtonEnabled"],
         before_blocked_browser_ui_back["ui"]["forwardButtonEnabled"],
         log,
-        expect_web_content_matches_ui=False,
-        expected_web_content_known_used_steps=history_step_values(
-            before_blocked_browser_ui_back["ui"]["webContentKnownUsedSteps"]
-        ),
+        expect_web_content_matches_ui=True,
         expected_web_content_current_step=before_blocked_browser_ui_back["ui"]["webContentCurrentStep"],
+        expected_web_content_mirror_state="unknown",
     )
 
     load_url_from_ui(webdriver_port, session_id, url_c)
@@ -2022,9 +1971,6 @@ def expect_beforeunload_cancels_stale_ui_load(
         before_blocked_browser_ui_back["ui"]["forwardButtonEnabled"],
         log,
         expect_web_content_matches_ui=True,
-        expected_web_content_known_used_steps=history_step_values(
-            before_blocked_browser_ui_back["ui"]["webContentKnownUsedSteps"]
-        ),
         expected_web_content_current_step=before_blocked_browser_ui_back["ui"]["webContentCurrentStep"],
     )
 
@@ -2047,7 +1993,6 @@ def expect_same_url_ui_load_replaces_current_entry(webdriver_port, session_id, u
         False,
         log,
         expect_web_content_matches_ui=True,
-        expected_web_content_known_used_steps=[0],
         expected_web_content_current_step=0,
     )
 
@@ -2069,7 +2014,6 @@ def expect_webdriver_fragment_navigation_completes(webdriver_port, session_id, u
         False,
         log,
         expect_web_content_matches_ui=True,
-        expected_web_content_known_used_steps=[0, 1],
         expected_web_content_current_step=1,
     )
 
@@ -2215,7 +2159,6 @@ def run_test(webdriver_binary):
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0],
             expected_web_content_current_step=0,
         )
         request(webdriver_port, "DELETE", f"/session/{session_id}")
@@ -2250,7 +2193,6 @@ def run_test(webdriver_binary):
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2, 3],
             expected_web_content_current_step=3,
         )
 
@@ -2267,7 +2209,6 @@ def run_test(webdriver_binary):
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2, 3],
             expected_web_content_current_step=3,
         )
 
@@ -2284,7 +2225,6 @@ def run_test(webdriver_binary):
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2, 3],
             expected_web_content_current_step=2,
         )
 
@@ -2301,7 +2241,6 @@ def run_test(webdriver_binary):
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2, 3],
             expected_web_content_current_step=1,
         )
 
@@ -2318,7 +2257,6 @@ def run_test(webdriver_binary):
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2, 3],
             expected_web_content_current_step=0,
         )
 
@@ -2336,7 +2274,6 @@ def run_test(webdriver_binary):
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2, 3],
             expected_web_content_current_step=0,
         )
         request(webdriver_port, "DELETE", f"/session/{session_id}")
@@ -2382,7 +2319,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             False,
             log,
             expect_web_content_matches_ui=False,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=1,
         )
         expect_current_ui_entry_resource(
@@ -2443,7 +2379,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=1,
         )
         request(webdriver_port, "DELETE", f"/session/{session_id}")
@@ -2476,7 +2411,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=1,
         )
 
@@ -2508,7 +2442,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             False,
             True,
             log,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=0,
         )
         expect_url(
@@ -2529,7 +2462,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=0,
         )
         request(webdriver_port, "DELETE", f"/session/{session_id}")
@@ -2562,7 +2494,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=1,
         )
 
@@ -2603,7 +2534,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=0,
         )
         request(webdriver_port, "DELETE", f"/session/{session_id}")
@@ -2701,9 +2631,6 @@ return [Math.floor(rect.left + rect.width / 2), Math.floor(rect.top + rect.heigh
             before_blocked_process_swap_webdriver_back["ui"]["forwardButtonEnabled"],
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=history_step_values(
-                before_blocked_process_swap_webdriver_back["ui"]["webContentKnownUsedSteps"]
-            ),
             expected_web_content_current_step=before_blocked_process_swap_webdriver_back["ui"]["webContentCurrentStep"],
         )
         request(webdriver_port, "DELETE", f"/session/{session_id}")
@@ -2737,7 +2664,6 @@ return [Math.floor(rect.left + rect.width / 2), Math.floor(rect.top + rect.heigh
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=1,
         )
 
@@ -2798,7 +2724,6 @@ return [Math.floor(rect.left + rect.width / 2), Math.floor(rect.top + rect.heigh
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=0,
         )
         request(webdriver_port, "DELETE", f"/session/{session_id}")
@@ -3040,7 +2965,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=1,
         )
 
@@ -3059,7 +2983,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=1,
         )
 
@@ -3078,7 +3001,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=1,
         )
         request(webdriver_port, "DELETE", f"/session/{session_id}")
@@ -3098,7 +3020,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             False,
             False,
             log,
-            expected_web_content_known_used_steps=[0],
             expected_web_content_current_step=0,
         )
 
@@ -3115,7 +3036,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=1,
         )
 
@@ -3132,7 +3052,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=0,
         )
 
@@ -3158,7 +3077,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=1,
         )
 
@@ -3175,7 +3093,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=0,
         )
 
@@ -3192,7 +3109,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=1,
         )
 
@@ -3209,7 +3125,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=0,
         )
 
@@ -3227,7 +3142,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             True,
             False,
             log,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=1,
         )
 
@@ -3246,7 +3160,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=0,
         )
         if (
@@ -3272,7 +3185,6 @@ return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.heigh
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=1,
         )
         if (
@@ -3341,9 +3253,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             before_script_initiated_blocked_back["ui"]["forwardButtonEnabled"],
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=history_step_values(
-                before_script_initiated_blocked_back["ui"]["webContentKnownUsedSteps"]
-            ),
             expected_web_content_current_step=before_script_initiated_blocked_back["ui"]["webContentCurrentStep"],
         )
         execute_script(webdriver_port, session_id, "window.onbeforeunload = null; return null;")
@@ -3361,7 +3270,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             False,
             True,
             log,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=0,
         )
         expect_url(webdriver_port, session_id, "after cross-site browser shortcut back to /a", url_a, log)
@@ -3376,7 +3284,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=0,
         )
 
@@ -3393,7 +3300,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             True,
             False,
             log,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=1,
         )
         expect_url(webdriver_port, session_id, "after cross-site browser shortcut forward to /b", url_b, log)
@@ -3408,7 +3314,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1],
             expected_web_content_current_step=1,
         )
 
@@ -3426,7 +3331,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             True,
             False,
             log,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=2,
         )
 
@@ -3443,7 +3347,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             True,
             True,
             log,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=1,
         )
         expect_url(webdriver_port, session_id, "after browser shortcut back to /b", url_b, log)
@@ -3458,7 +3361,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=1,
         )
 
@@ -3475,7 +3377,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             True,
             False,
             log,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=2,
         )
         expect_url(webdriver_port, session_id, "after browser shortcut forward to /c", url_c, log)
@@ -3490,7 +3391,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=2,
         )
 
@@ -3507,7 +3407,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=1,
         )
 
@@ -3524,7 +3423,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=0,
         )
 
@@ -3541,7 +3439,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=0,
         )
 
@@ -3558,7 +3455,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=0,
         )
 
@@ -3575,7 +3471,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=1,
         )
 
@@ -3592,7 +3487,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=2,
         )
 
@@ -3609,7 +3503,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=2,
         )
 
@@ -3626,7 +3519,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=2,
         )
 
@@ -3645,7 +3537,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=1,
         )
 
@@ -3664,7 +3555,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=2,
         )
 
@@ -3681,7 +3571,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=1,
         )
 
@@ -3698,7 +3587,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=0,
         )
 
@@ -3715,7 +3603,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=1,
         )
 
@@ -3732,7 +3619,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=2,
         )
 
@@ -3749,7 +3635,6 @@ return [location.href, window.scriptBeforeUnloadCount, navigator.userActivation.
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=1,
         )
 
@@ -3787,7 +3672,6 @@ return [
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=2,
         )
 
@@ -3820,7 +3704,6 @@ return [
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=2,
         )
 
@@ -3837,7 +3720,6 @@ return [
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=1,
         )
 
@@ -3854,7 +3736,6 @@ return [
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=0,
         )
 
@@ -3871,7 +3752,6 @@ return [
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=0,
         )
 
@@ -3888,7 +3768,6 @@ return [
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=0,
         )
 
@@ -3905,7 +3784,6 @@ return [
             True,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=1,
         )
 
@@ -3922,7 +3800,6 @@ return [
             False,
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=[0, 1, 2],
             expected_web_content_current_step=2,
         )
 
@@ -3974,7 +3851,7 @@ return [
                 return False
             return (
                 history_entry_urls(ui_history)[current_index] == url_state_push
-                and ui_history["webContentHistoryMatchesUI"]
+                and web_content_history_is_observably_in_sync(snapshot)
             )
 
         wait_for_session_history(
@@ -4141,17 +4018,7 @@ return [location.href, window.canceledTraverseCount];
 
         def browser_ui_traverse_setup_is_mirrored(snapshot):
             ui_history = snapshot["ui"]
-            if (
-                not ui_history["webContentHistoryMatchesUI"]
-                or ui_history["waitingToSeedWebContent"]
-                or ui_history["waitingForWebContentSeedAck"]
-                or ui_history["ignoringWebContentUpdatesUntilSeed"]
-                or ui_history["reseedAfterCurrentHistoryLoad"]
-                or ui_history["pendingWebContentHistoryStepAfterFallbackLoad"] is not None
-                or ui_history["pendingSessionHistoryNavigation"] is not None
-                or ui_history["pendingSessionHistoryTraversal"] is not None
-                or comparable_history(ui_history) != comparable_history(snapshot["webContent"])
-            ):
+            if not web_content_history_is_observably_in_sync(snapshot):
                 return False
             return history_current_entry(ui_history)["url"] == url_scroll_cancel_current
 
@@ -4415,9 +4282,6 @@ return [Math.floor(rect.left + rect.width / 2), Math.floor(rect.top + rect.heigh
             before_blocked_browser_ui_back["ui"]["forwardButtonEnabled"],
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=history_step_values(
-                before_blocked_browser_ui_back["ui"]["webContentKnownUsedSteps"]
-            ),
             expected_web_content_current_step=before_blocked_browser_ui_back["ui"]["webContentCurrentStep"],
         )
         execute_script(webdriver_port, session_id, "navigation.onnavigate = null; return null;")
@@ -4490,9 +4354,6 @@ return [Math.floor(rect.left + rect.width / 2), Math.floor(rect.top + rect.heigh
             before_blocked_browser_ui_back["ui"]["forwardButtonEnabled"],
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=history_step_values(
-                before_blocked_browser_ui_back["ui"]["webContentKnownUsedSteps"]
-            ),
             expected_web_content_current_step=before_blocked_browser_ui_back["ui"]["webContentCurrentStep"],
         )
 
@@ -4558,9 +4419,6 @@ return [Math.floor(rect.left + rect.width / 2), Math.floor(rect.top + rect.heigh
             before_blocked_browser_ui_back["ui"]["forwardButtonEnabled"],
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=history_step_values(
-                before_blocked_browser_ui_back["ui"]["webContentKnownUsedSteps"]
-            ),
             expected_web_content_current_step=before_blocked_browser_ui_back["ui"]["webContentCurrentStep"],
         )
 
@@ -4586,9 +4444,6 @@ return [Math.floor(rect.left + rect.width / 2), Math.floor(rect.top + rect.heigh
             before_blocked_browser_ui_back["ui"]["forwardButtonEnabled"],
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=history_step_values(
-                before_blocked_browser_ui_back["ui"]["webContentKnownUsedSteps"]
-            ),
             expected_web_content_current_step=before_blocked_browser_ui_back["ui"]["webContentCurrentStep"],
         )
 
@@ -4614,9 +4469,6 @@ return [Math.floor(rect.left + rect.width / 2), Math.floor(rect.top + rect.heigh
             before_blocked_browser_ui_back["ui"]["forwardButtonEnabled"],
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=history_step_values(
-                before_blocked_browser_ui_back["ui"]["webContentKnownUsedSteps"]
-            ),
             expected_web_content_current_step=before_blocked_browser_ui_back["ui"]["webContentCurrentStep"],
         )
 
@@ -4655,9 +4507,6 @@ return [Math.floor(rect.left + rect.width / 2), Math.floor(rect.top + rect.heigh
             before_blocked_browser_ui_back["ui"]["forwardButtonEnabled"],
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=history_step_values(
-                before_blocked_browser_ui_back["ui"]["webContentKnownUsedSteps"]
-            ),
             expected_web_content_current_step=before_blocked_browser_ui_back["ui"]["webContentCurrentStep"],
         )
         execute_script(webdriver_port, session_id, "window.onbeforeunload = null; return null;")
@@ -4744,9 +4593,6 @@ return [Math.floor(rect.left + rect.width / 2), Math.floor(rect.top + rect.heigh
             before_location_replace["ui"]["forwardButtonEnabled"],
             log,
             expect_web_content_matches_ui=True,
-            expected_web_content_known_used_steps=history_step_values(
-                before_location_replace["ui"]["webContentKnownUsedSteps"]
-            ),
             expected_web_content_current_step=before_location_replace["ui"]["webContentCurrentStep"],
         )
 
