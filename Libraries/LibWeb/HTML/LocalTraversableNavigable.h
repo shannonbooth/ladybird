@@ -203,11 +203,9 @@ private:
     [[nodiscard]] bool can_go_back() const;
     [[nodiscard]] bool can_go_forward() const;
 
-    enum class StructuralSessionHistoryUpdateReason : u8 {
-        TestReset,
-        HistoryStepCompletion,
-    };
-    bool report_structural_session_history_update(StructuralSessionHistoryUpdateReason, SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::Yes);
+    bool report_session_history_reset_for_testing();
+    bool report_session_history_mutation_failure();
+    bool send_full_session_history_snapshot(SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::Yes);
     bool report_current_entry_nested_histories_update(i32 current_step, SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::Yes);
     bool report_top_level_same_document_session_history_navigation(SessionHistoryEntry const&, Optional<i32> replaced_step, i32 current_step);
     bool report_nested_same_document_session_history_navigation(LocalNavigable const&, SessionHistoryEntry const&, Optional<i32> replaced_step, i32 current_step);
