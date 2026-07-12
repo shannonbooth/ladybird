@@ -1356,27 +1356,25 @@ void ViewImplementation::did_apply_session_history_mutation(Badge<WebContentClie
                 nested_history_removal.current_step);
         } else if (mutation.mutation.has<Web::HTML::NestedSameDocumentSessionHistoryNavigation>()) {
             auto const& nested_navigation = mutation.mutation.get<Web::HTML::NestedSameDocumentSessionHistoryNavigation>();
-            Vector<Web::HTML::SessionHistoryEntryDescriptor> entries;
-            entries.append(nested_navigation.entry);
-            dbgln("[History] UI received WebContent session history mutation page={} pid={} type=nested-same-document-navigation parent_document_state_id={} navigable_id={} replaced_step={} current_step={} entry={}",
+            dbgln("[History] UI received WebContent session history mutation page={} pid={} type=nested-same-document-navigation parent_document_state_id={} navigable_id={} replaced_step={} current_step={} url={} document_state_id={}",
                 page_id(),
                 client().pid(),
                 nested_navigation.parent_document_state_id,
                 nested_navigation.navigable_id,
                 nested_navigation.replaced_step,
                 nested_navigation.current_step,
-                history_log_entries(entries));
+                nested_navigation.url,
+                nested_navigation.document_state.id);
         } else if (mutation.mutation.has<Web::HTML::NestedCrossDocumentSessionHistoryNavigation>()) {
             auto const& nested_navigation = mutation.mutation.get<Web::HTML::NestedCrossDocumentSessionHistoryNavigation>();
-            Vector<Web::HTML::SessionHistoryEntryDescriptor> entries;
-            entries.append(nested_navigation.entry);
-            dbgln("[History] UI received WebContent session history mutation page={} pid={} type=nested-cross-document-navigation parent_document_state_id={} navigable_id={} current_step={} entry={}",
+            dbgln("[History] UI received WebContent session history mutation page={} pid={} type=nested-cross-document-navigation parent_document_state_id={} navigable_id={} current_step={} url={} document_state_id={}",
                 page_id(),
                 client().pid(),
                 nested_navigation.parent_document_state_id,
                 nested_navigation.navigable_id,
                 nested_navigation.current_step,
-                history_log_entries(entries));
+                nested_navigation.url,
+                nested_navigation.document_state.id);
         } else if (mutation.mutation.has<Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation>()) {
             auto const& cross_document_navigation = mutation.mutation.get<Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation>();
             dbgln("[History] UI received WebContent session history mutation page={} pid={} type=top-level-cross-document-navigation current_step={} url={} document_state_id={}",

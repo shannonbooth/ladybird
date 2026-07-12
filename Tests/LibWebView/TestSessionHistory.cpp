@@ -223,6 +223,41 @@ static Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation top_level_cross_
     };
 }
 
+static Web::HTML::NestedSameDocumentSessionHistoryNavigation nested_same_document_navigation_details(Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor entry, Optional<i32> replaced_step, i32 current_step)
+{
+    return {
+        .parent_document_state_id = parent_document_state_id,
+        .navigable_id = navigable_id,
+        .url = move(entry.url),
+        .document_state = move(entry.document_state),
+        .classic_history_api_state = move(entry.classic_history_api_state),
+        .navigation_api_state = move(entry.navigation_api_state),
+        .navigation_api_key = move(entry.navigation_api_key),
+        .navigation_api_id = move(entry.navigation_api_id),
+        .scroll_restoration_mode = entry.scroll_restoration_mode,
+        .scroll_position_data = move(entry.scroll_position_data),
+        .replaced_step = replaced_step,
+        .current_step = current_step,
+    };
+}
+
+static Web::HTML::NestedCrossDocumentSessionHistoryNavigation nested_cross_document_navigation_details(Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor entry, i32 current_step)
+{
+    return {
+        .parent_document_state_id = parent_document_state_id,
+        .navigable_id = navigable_id,
+        .url = move(entry.url),
+        .document_state = move(entry.document_state),
+        .classic_history_api_state = move(entry.classic_history_api_state),
+        .navigation_api_state = move(entry.navigation_api_state),
+        .navigation_api_key = move(entry.navigation_api_key),
+        .navigation_api_id = move(entry.navigation_api_id),
+        .scroll_restoration_mode = entry.scroll_restoration_mode,
+        .scroll_position_data = move(entry.scroll_position_data),
+        .current_step = current_step,
+    };
+}
+
 static bool apply_top_level_same_document_navigation(WebView::TraversableSessionHistory& history, Web::HTML::SessionHistoryEntryDescriptor entry, Optional<i32> replaced_step, i32 current_step)
 {
     return history.apply_top_level_same_document_navigation(same_document_navigation_details(move(entry), replaced_step, current_step));
@@ -230,16 +265,12 @@ static bool apply_top_level_same_document_navigation(WebView::TraversableSession
 
 static bool apply_nested_same_document_navigation(WebView::TraversableSessionHistory& history, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor entry, Optional<i32> replaced_step, i32 current_step)
 {
-    return history.apply_web_content_mutation(
-                      WebView::TraversableSessionHistory::WebContentMutation::nested_same_document_navigation(parent_document_state_id, navigable_id, move(entry), replaced_step, current_step))
-        .accepted;
+    return history.apply_nested_same_document_navigation(nested_same_document_navigation_details(parent_document_state_id, navigable_id, move(entry), replaced_step, current_step));
 }
 
 static bool apply_nested_cross_document_navigation(WebView::TraversableSessionHistory& history, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor entry, i32 current_step)
 {
-    return history.apply_web_content_mutation(
-                      WebView::TraversableSessionHistory::WebContentMutation::nested_cross_document_navigation(parent_document_state_id, navigable_id, move(entry), current_step))
-        .accepted;
+    return history.apply_nested_cross_document_navigation_commit(nested_cross_document_navigation_details(parent_document_state_id, navigable_id, move(entry), current_step));
 }
 
 static bool apply_top_level_cross_document_navigation(WebView::TraversableSessionHistory& history, Web::HTML::SessionHistoryEntryDescriptor entry, i32 current_step)
@@ -1011,13 +1042,8 @@ TEST_CASE(accepted_nested_same_document_navigation_keeps_mirror_proven)
     EXPECT(traversable.current_web_content_session_history_matches_mirror());
 
     auto pushed_entry = entry(1, "https://frame.example/#pushed"sv, 2, "frame"sv);
-    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::nested_same_document_navigation({
-        .parent_document_state_id = test_document_state_id(1),
-        .navigable_id = navigable_id("frame-1"sv),
-        .entry = move(pushed_entry),
-        .replaced_step = {},
-        .current_step = 1,
-    }));
+    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::nested_same_document_navigation(
+        nested_same_document_navigation_details(test_document_state_id(1), navigable_id("frame-1"sv), move(pushed_entry), {}, 1)));
     EXPECT(update.accepted);
     EXPECT_EQ(update.dump_reason, "did-apply-nested-same-document-navigation"sv);
     EXPECT(update.should_update_navigation_action_state);
@@ -1038,13 +1064,8 @@ TEST_CASE(rejected_nested_same_document_navigation_marks_mirror_stale)
         { 0 }, 0, parse_url("https://top.example/"sv));
 
     auto pushed_entry = entry(1, "https://frame.example/#pushed"sv, 2, "frame"sv);
-    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::nested_same_document_navigation({
-        .parent_document_state_id = test_document_state_id(99),
-        .navigable_id = navigable_id("frame-1"sv),
-        .entry = move(pushed_entry),
-        .replaced_step = {},
-        .current_step = 1,
-    }));
+    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::nested_same_document_navigation(
+        nested_same_document_navigation_details(test_document_state_id(99), navigable_id("frame-1"sv), move(pushed_entry), {}, 1)));
     EXPECT(!update.accepted);
     EXPECT_EQ(update.dump_reason, "rejected-nested-same-document-navigation"sv);
     EXPECT(update.should_update_navigation_action_state);
@@ -1126,12 +1147,8 @@ TEST_CASE(accepted_nested_cross_document_navigation_keeps_mirror_proven)
     EXPECT(traversable.current_web_content_session_history_matches_mirror());
 
     auto pushed_entry = entry(1, "https://frame-b.example/"sv, 3, "frame"sv);
-    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::nested_cross_document_navigation({
-        .parent_document_state_id = test_document_state_id(1),
-        .navigable_id = navigable_id("frame-1"sv),
-        .entry = move(pushed_entry),
-        .current_step = 1,
-    }));
+    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::nested_cross_document_navigation(
+        nested_cross_document_navigation_details(test_document_state_id(1), navigable_id("frame-1"sv), move(pushed_entry), 1)));
     EXPECT(update.accepted);
     EXPECT_EQ(update.dump_reason, "did-apply-nested-cross-document-navigation"sv);
     EXPECT(update.should_update_navigation_action_state);
@@ -1152,12 +1169,8 @@ TEST_CASE(rejected_nested_cross_document_navigation_marks_mirror_stale)
         { 0 }, 0, parse_url("https://top.example/"sv));
 
     auto pushed_entry = entry(1, "https://frame-b.example/"sv, 3, "frame"sv);
-    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::nested_cross_document_navigation({
-        .parent_document_state_id = test_document_state_id(99),
-        .navigable_id = navigable_id("frame-1"sv),
-        .entry = move(pushed_entry),
-        .current_step = 1,
-    }));
+    auto update = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::nested_cross_document_navigation(
+        nested_cross_document_navigation_details(test_document_state_id(99), navigable_id("frame-1"sv), move(pushed_entry), 1)));
     EXPECT(!update.accepted);
     EXPECT_EQ(update.dump_reason, "rejected-nested-cross-document-navigation"sv);
     EXPECT(update.should_update_navigation_action_state);
