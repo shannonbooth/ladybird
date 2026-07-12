@@ -1839,9 +1839,8 @@ void ViewImplementation::seed_web_content_session_history_from_ui_process(AllowC
             history_log_entries(seed->entries, seed->current_top_level_entry_index));
     }
 
-    auto expected_ack_proof = seed->expected_ack_proof;
-    client().async_set_top_level_session_history(page_id(), move(seed->entries), seed->current_top_level_entry_index, seed->allow_current_entry_reconstruction);
-    m_top_level_traversable.did_send_web_content_session_history_seed(expected_ack_proof);
+    client().async_install_top_level_session_history_seed(page_id(), move(seed->entries), seed->current_top_level_entry_index, seed->allow_current_entry_reconstruction);
+    m_top_level_traversable.did_send_web_content_session_history_seed(seed->current_step);
     update_navigation_action_state();
     dump_session_history("sent-webcontent-session-history-seed"sv);
 }
@@ -1887,18 +1886,17 @@ NonnullRefPtr<Core::Promise<Empty>> ViewImplementation::reset_session_history_fo
     return *m_pending_session_history_reset_for_testing;
 }
 
-void ViewImplementation::did_set_top_level_session_history(Badge<WebContentClient>, bool accepted, i32 current_step, TraversableSessionHistory::SeedAckProof seed_ack_proof)
+void ViewImplementation::did_install_top_level_session_history_seed(Badge<WebContentClient>, bool accepted, i32 current_step)
 {
     if (history_debug_enabled()) {
-        dbgln("[History] UI received WebContent session history seed ack page={} pid={} accepted={} current_step={} proof={}",
+        dbgln("[History] UI received WebContent session history seed ack page={} pid={} accepted={} current_step={}",
             page_id(),
             client().pid(),
             accepted,
-            current_step,
-            seed_ack_proof);
+            current_step);
     }
 
-    auto ack = m_top_level_traversable.did_receive_web_content_session_history_seed_ack(accepted, current_step, seed_ack_proof);
+    auto ack = m_top_level_traversable.did_receive_web_content_session_history_seed_ack(accepted, current_step);
     if (ack.ignored) {
         dump_session_history(ack.dump_reason);
         return;

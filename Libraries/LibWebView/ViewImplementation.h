@@ -264,7 +264,7 @@ public:
 
     void did_apply_session_history_mutation(Badge<WebContentClient>, Web::HTML::WebContentSessionHistoryMutation);
     void did_apply_session_history_mutation_batch(Badge<WebContentClient>, Web::HTML::WebContentSessionHistoryMutationBatch);
-    void did_set_top_level_session_history(Badge<WebContentClient>, bool accepted, i32 current_step, TraversableSessionHistory::SeedAckProof);
+    void did_install_top_level_session_history_seed(Badge<WebContentClient>, bool accepted, i32 current_step);
     void did_traverse_the_history_to_step(Badge<WebContentClient>, i32 step, bool step_was_available, Web::HTML::HistoryStepResult);
     void did_check_if_traverse_history_step_is_canceled(
         Badge<WebContentClient>, u64 request_id, i32 step, bool canceled);
@@ -410,7 +410,7 @@ protected:
     virtual Vector<Web::Clipboard::SystemClipboardRepresentation> clipboard_entries() const;
 
     virtual bool defer_backing_store_release(i32) { return false; }
-    virtual void did_accept_presented_backing_store(i32, Gfx::IntRect) { }
+    virtual void did_accept_presented_backing_store(i32, Gfx::IntRect) {}
     void release_backing_store(i32 bitmap_id);
 
     static constexpr auto ZOOM_MIN_LEVEL = 0.3;

@@ -621,7 +621,7 @@ static bool expected_ongoing_navigation_was_superseded(GC::Ptr<LocalNavigable> n
     return navigable->ongoing_navigation() != *expected_navigation_id;
 }
 
-bool LocalTraversableNavigable::replace_top_level_session_history_entries_from_ui_process(Vector<SessionHistoryEntryDescriptor> entries_from_ui_process, size_t current_top_level_entry_index, bool allow_reconstructing_current_entry)
+bool LocalTraversableNavigable::try_to_install_top_level_session_history_entries_from_ui_process(Vector<SessionHistoryEntryDescriptor> entries_from_ui_process, size_t current_top_level_entry_index, bool allow_reconstructing_current_entry)
 {
     if (entries_from_ui_process.is_empty() || current_top_level_entry_index >= entries_from_ui_process.size())
         return false;

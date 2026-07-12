@@ -56,18 +56,13 @@ struct PendingSessionHistoryNavigation {
     WebContentRestoreMode web_content_restore_mode { WebContentRestoreMode::PreserveCurrentProcessState };
 };
 
-struct WebContentSessionHistorySeedAckProof {
-    TraversableSessionHistory::SeedAckProof value { 0 };
-    i32 current_step { 0 };
-};
-
 struct PendingWebContentSessionHistorySeed {
     bool should_send_entries { false };
     bool ignore_updates_until_seed { false };
     bool waiting_for_ack { false };
     bool should_reseed_after_current_history_load { false };
     Optional<i32> step_after_loading_top_level_entry;
-    Optional<WebContentSessionHistorySeedAckProof> expected_ack_proof;
+    Optional<i32> expected_current_step;
 
     void clear() { *this = {}; }
 };
@@ -186,7 +181,7 @@ struct HistoryStepCancelationCheckResult {
 struct WebContentSessionHistorySeed {
     Vector<Web::HTML::SessionHistoryEntryDescriptor> entries;
     size_t current_top_level_entry_index { 0 };
-    WebContentSessionHistorySeedAckProof expected_ack_proof;
+    i32 current_step { 0 };
     bool allow_current_entry_reconstruction { false };
 };
 
@@ -238,7 +233,7 @@ public:
     void prepare_to_seed_web_content_session_history_from_ui_process();
     WebContentSessionHistoryMutationResult did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation);
     WebContentSessionHistoryMutationResult did_receive_web_content_session_history_mutation_batch(Web::HTML::WebContentSessionHistoryMutationBatch);
-    WebContentSessionHistorySeedAckResult did_receive_web_content_session_history_seed_ack(bool accepted, i32 current_step, TraversableSessionHistory::SeedAckProof);
+    WebContentSessionHistorySeedAckResult did_receive_web_content_session_history_seed_ack(bool accepted, i32 current_step);
     NavigationStartResult did_start_navigation(URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::HTML::CrossProcessId document_state_id, bool is_redirect, Web::Bindings::NavigationHistoryBehavior, bool is_showing_crash_page);
     NavigationCancelResult did_cancel_navigation(URL::URL const&, bool has_webdriver_pending_navigation);
     NavigationFinishResult did_finish_navigation(URL::URL const&);
@@ -249,7 +244,7 @@ public:
     HistoryStepCancelationCheckResult did_check_if_traverse_history_step_is_canceled(u64 request_id, i32 step, bool canceled);
     Optional<WebContentSessionHistorySeed> prepare_web_content_session_history_seed(bool allow_current_entry_reconstruction);
     CurrentSessionHistoryEntryLoad prepare_current_session_history_entry_load(URL::URL const& current_url);
-    void did_send_web_content_session_history_seed(WebContentSessionHistorySeedAckProof);
+    void did_send_web_content_session_history_seed(i32 current_step);
     bool prepare_to_restore_current_session_history_entry_from_ui_process();
     void did_crash_requiring_web_content_session_history_seed();
     void reset_session_history_for_testing();

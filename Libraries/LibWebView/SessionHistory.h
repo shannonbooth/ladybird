@@ -22,7 +22,6 @@ namespace WebView {
 class WEBVIEW_API TraversableSessionHistory {
 public:
     using Entry = Web::HTML::SessionHistoryEntryDescriptor;
-    using SeedAckProof = u64;
 
     struct TraversalTarget {
         size_t target_step_index { 0 };
@@ -168,7 +167,6 @@ public:
     void mark_current_entry_reload_pending();
     void clear_current_entry_reload_pending();
     [[nodiscard]] WebContentMutationResult apply_web_content_mutation(WebContentMutation);
-    [[nodiscard]] static SeedAckProof compute_seed_ack_proof(Vector<Entry> const&, size_t current_top_level_entry_index);
     void record_web_content_seeded_from_ui_process(i32 current_step);
     void record_web_content_mirror_matches_ui_process();
     void forget_web_content_state();

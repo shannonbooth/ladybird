@@ -7,8 +7,6 @@
 #include <AK/HashTable.h>
 #include <AK/NumericLimits.h>
 #include <AK/QuickSort.h>
-#include <LibIPC/Encoder.h>
-#include <LibIPC/Message.h>
 #include <LibWebView/SessionHistory.h>
 
 namespace WebView {
@@ -41,19 +39,6 @@ static bool entries_are_valid(Vector<TraversableSessionHistory::Entry> const& en
         previous_step = entry.step;
     }
     return true;
-}
-
-static constexpr u64 seed_ack_proof_offset_basis = 1469598103934665603ULL;
-static constexpr u64 seed_ack_proof_prime = 1099511628211ULL;
-
-static u64 compute_fnv1a_64(ReadonlyBytes bytes)
-{
-    auto hash = seed_ack_proof_offset_basis;
-    for (auto byte : bytes) {
-        hash ^= byte;
-        hash *= seed_ack_proof_prime;
-    }
-    return hash;
 }
 
 struct SessionHistoryEntryMutationResult {
@@ -974,18 +959,6 @@ TraversableSessionHistory::WebContentMutationResult TraversableSessionHistory::a
     }
 
     VERIFY_NOT_REACHED();
-}
-
-TraversableSessionHistory::SeedAckProof TraversableSessionHistory::compute_seed_ack_proof(Vector<Entry> const& entries, size_t current_top_level_entry_index)
-{
-    VERIFY(current_top_level_entry_index < entries.size());
-
-    IPC::MessageBuffer buffer;
-    IPC::Encoder encoder { buffer };
-    MUST(encoder.encode("WebView::SessionHistorySeedAckProof-v6"sv));
-    MUST(encoder.encode(entries));
-    MUST(encoder.encode(current_top_level_entry_index));
-    return compute_fnv1a_64(buffer.data().span());
 }
 
 void TraversableSessionHistory::record_web_content_seeded_from_ui_process(i32 current_step)

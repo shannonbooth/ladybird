@@ -1732,44 +1732,7 @@ TEST_CASE(recorded_seed_tracks_preserved_document_state_ids)
     EXPECT_EQ(history.web_content_current_step().value(), 0);
 }
 
-TEST_CASE(seed_ack_proof_tracks_seed_identity)
-{
-    Vector<WebView::TraversableSessionHistory::Entry> seed_entries {
-        entry(0, "https://a.example/"sv, 1, "main"sv),
-        entry(1, "https://b.example/"sv, 2, "main"sv),
-    };
-
-    auto proof = WebView::TraversableSessionHistory::compute_seed_ack_proof(seed_entries, 1);
-    EXPECT_EQ(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(seed_entries, 1));
-
-    auto entries_with_different_document_state_id = seed_entries;
-    entries_with_different_document_state_id[1].document_state.id = test_document_state_id(3);
-    EXPECT_NE(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(entries_with_different_document_state_id, 1));
-
-    auto entries_with_different_scroll_position = seed_entries;
-    entries_with_different_scroll_position[1].scroll_position_data.viewport_scroll_position = { 0, 100 };
-    EXPECT_NE(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(entries_with_different_scroll_position, 1));
-
-    auto entries_with_different_navigation_api_key = seed_entries;
-    entries_with_different_navigation_api_key[1].navigation_api_key = MUST(String::from_utf8("key-b"sv));
-    EXPECT_NE(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(entries_with_different_navigation_api_key, 1));
-
-    auto entries_with_different_navigation_api_id = seed_entries;
-    entries_with_different_navigation_api_id[1].navigation_api_id = MUST(String::from_utf8("id-b"sv));
-    EXPECT_NE(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(entries_with_different_navigation_api_id, 1));
-
-    auto entries_with_different_navigation_api_state = seed_entries;
-    entries_with_different_navigation_api_state[1].navigation_api_state = state_record(9);
-    EXPECT_NE(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(entries_with_different_navigation_api_state, 1));
-
-    auto entries_with_different_classic_history_api_state = seed_entries;
-    entries_with_different_classic_history_api_state[1].classic_history_api_state = state_record(8);
-    EXPECT_NE(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(entries_with_different_classic_history_api_state, 1));
-
-    EXPECT_NE(proof, WebView::TraversableSessionHistory::compute_seed_ack_proof(seed_entries, 0));
-}
-
-TEST_CASE(seed_ack_rejects_pending_proof_for_different_current_step)
+TEST_CASE(seed_ack_rejects_unexpected_current_step)
 {
     WebView::CanonicalTraversable traversable;
     initialize_canonical_traversable_from_ui_entries(traversable, {
@@ -1783,13 +1746,10 @@ TEST_CASE(seed_ack_rejects_pending_proof_for_different_current_step)
     auto seed = traversable.prepare_web_content_session_history_seed(false);
     VERIFY(seed.has_value());
 
-    auto current_step = seed->entries[seed->current_top_level_entry_index].step;
+    auto current_step = seed->current_step;
+    traversable.did_send_web_content_session_history_seed(0);
 
-    auto expected_ack_proof = seed->expected_ack_proof;
-    expected_ack_proof.current_step = 0;
-    traversable.did_send_web_content_session_history_seed(expected_ack_proof);
-
-    auto ack = traversable.did_receive_web_content_session_history_seed_ack(true, current_step, seed->expected_ack_proof.value);
+    auto ack = traversable.did_receive_web_content_session_history_seed_ack(true, current_step);
     EXPECT_EQ(ack.dump_reason, "webcontent-session-history-seed-ack-mismatch"sv);
     EXPECT(!traversable.current_web_content_session_history_matches_mirror());
     EXPECT(!traversable.session_history().web_content_current_step().has_value());
@@ -1941,11 +1901,11 @@ TEST_CASE(applied_traversal_mutation_restores_seeded_current_step)
     traversable.prepare_to_seed_web_content_session_history_from_ui_process();
     auto seed = traversable.prepare_web_content_session_history_seed(false);
     VERIFY(seed.has_value());
-    traversable.did_send_web_content_session_history_seed(seed->expected_ack_proof);
+    traversable.did_send_web_content_session_history_seed(seed->current_step);
 
-    auto current_step = seed->entries[seed->current_top_level_entry_index].step;
+    auto current_step = seed->current_step;
 
-    auto ack = traversable.did_receive_web_content_session_history_seed_ack(true, current_step, seed->expected_ack_proof.value);
+    auto ack = traversable.did_receive_web_content_session_history_seed_ack(true, current_step);
     EXPECT_EQ(ack.dump_reason, "webcontent-session-history-seed-ack"sv);
     VERIFY(ack.step_to_traverse.has_value());
     EXPECT_EQ(*ack.step_to_traverse, 1);
