@@ -119,13 +119,21 @@ struct TopLevelCrossDocumentSessionHistoryNavigation {
     i32 current_step { 0 };
 };
 
+struct AppliedSessionHistoryTraversal {
+    i32 current_step { 0 };
+};
+
+struct RestoredCurrentSessionHistoryStep {
+    i32 current_step { 0 };
+};
+
 struct CurrentSessionHistoryEntryUpdate {
     SessionHistoryEntryUpdateKind update_kind { SessionHistoryEntryUpdateKind::NavigationAPIState };
     SessionHistoryEntryDescriptor entry;
 };
 
 struct WebContentSessionHistoryMutation {
-    using Mutation = Variant<CurrentSessionHistoryEntryUpdate, SameDocumentSessionHistoryNavigation, NestedSameDocumentSessionHistoryNavigation, NestedCrossDocumentSessionHistoryNavigation, TopLevelCrossDocumentSessionHistoryNavigation>;
+    using Mutation = Variant<CurrentSessionHistoryEntryUpdate, SameDocumentSessionHistoryNavigation, NestedSameDocumentSessionHistoryNavigation, NestedCrossDocumentSessionHistoryNavigation, TopLevelCrossDocumentSessionHistoryNavigation, AppliedSessionHistoryTraversal, RestoredCurrentSessionHistoryStep>;
 
     Mutation mutation;
 
@@ -152,6 +160,16 @@ struct WebContentSessionHistoryMutation {
     static WebContentSessionHistoryMutation top_level_cross_document_navigation(TopLevelCrossDocumentSessionHistoryNavigation navigation)
     {
         return { move(navigation) };
+    }
+
+    static WebContentSessionHistoryMutation applied_traversal(AppliedSessionHistoryTraversal traversal)
+    {
+        return { traversal };
+    }
+
+    static WebContentSessionHistoryMutation restored_current_step(RestoredCurrentSessionHistoryStep step)
+    {
+        return { step };
     }
 };
 
@@ -303,6 +321,18 @@ WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::TopLevelCrossDocumentSessionHi
 
 template<>
 WEB_API ErrorOr<Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::AppliedSessionHistoryTraversal const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::AppliedSessionHistoryTraversal> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::RestoredCurrentSessionHistoryStep const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::RestoredCurrentSessionHistoryStep> decode(Decoder&);
 
 template<>
 WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::WebContentSessionHistoryMutation const&);

@@ -86,6 +86,7 @@ struct PendingSessionHistoryTraversal {
     u64 cancelation_check_request_id { 0 };
     bool will_change_top_level_entry { false };
     bool will_replace_web_content_process { false };
+    bool webdriver_pending_navigation_completes_with_session_history_update { false };
     Stage stage { Stage::ApplyingInWebContent };
     Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete;
 };

@@ -2322,6 +2322,139 @@ TEST_CASE(web_content_traversal_with_partial_history_does_not_claim_full_match)
     EXPECT_EQ(*web_content_current_step, 1);
 }
 
+TEST_CASE(applied_traversal_mutation_updates_current_step_before_completion_result)
+{
+    WebView::CanonicalTraversable traversable;
+
+    auto initial_update = traversable.did_receive_web_content_session_history_update({
+                                                                                         entry(0, "https://example.test/a"sv, 1, "main"sv),
+                                                                                         entry(1, "https://example.test/b"sv, 2, "main"sv),
+                                                                                     },
+        { 0, 1 }, 0, parse_url("https://example.test/a"sv));
+    EXPECT_EQ(initial_update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+
+    auto traversal = traversable.traverse_the_history_by_delta(1, WebView::CheckForCancelation::No, parse_url("https://example.test/a"sv), {});
+    EXPECT_EQ(traversal.action, WebView::HistoryTraversalAction::TraverseInWebContent);
+    VERIFY(traversal.target_step.has_value());
+    EXPECT_EQ(*traversal.target_step, 1);
+    EXPECT(!traversal.webdriver_pending_navigation_completes_with_session_history_update);
+
+    auto mutation = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::applied_traversal({
+        .current_step = 1,
+    }));
+    EXPECT(mutation.accepted);
+    EXPECT_EQ(mutation.dump_reason, "did-apply-session-history-traversal"sv);
+    EXPECT(!mutation.should_update_navigation_action_state);
+    expect_current_entry(traversable.session_history(), 1, "https://example.test/b"sv);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+
+    auto step_result = traversable.did_traverse_the_history_to_step(1, true, Web::HTML::HistoryStepResult::Applied);
+    EXPECT_EQ(step_result.dump_reason, "webcontent-history-step-applied"sv);
+    EXPECT(!step_result.fallback_target.has_value());
+    EXPECT(!step_result.should_complete_webdriver_pending_navigation);
+    expect_current_entry(traversable.session_history(), 1, "https://example.test/b"sv);
+}
+
+TEST_CASE(applied_same_document_traversal_completes_webdriver_from_history_step)
+{
+    WebView::CanonicalTraversable traversable;
+
+    auto initial_update = traversable.did_receive_web_content_session_history_update({
+                                                                                         entry(0, "https://example.test/state?replace"sv, 7, "main"sv),
+                                                                                         entry(1, "https://example.test/state?push"sv, 7, "main"sv),
+                                                                                     },
+        { 0, 1 }, 1, parse_url("https://example.test/state?push"sv));
+    EXPECT_EQ(initial_update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+
+    auto traversal = traversable.traverse_the_history_by_delta(-1, WebView::CheckForCancelation::No, parse_url("https://example.test/state?push"sv), {});
+    EXPECT_EQ(traversal.action, WebView::HistoryTraversalAction::TraverseInWebContent);
+    VERIFY(traversal.target_step.has_value());
+    EXPECT_EQ(*traversal.target_step, 0);
+    EXPECT(traversal.webdriver_pending_navigation_completes_with_session_history_update);
+
+    auto mutation = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::applied_traversal({
+        .current_step = 0,
+    }));
+    EXPECT(mutation.accepted);
+    EXPECT_EQ(mutation.dump_reason, "did-apply-session-history-traversal"sv);
+    expect_current_entry(traversable.session_history(), 0, "https://example.test/state?replace"sv);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+
+    auto step_result = traversable.did_traverse_the_history_to_step(0, true, Web::HTML::HistoryStepResult::Applied);
+    EXPECT_EQ(step_result.dump_reason, "webcontent-history-step-applied"sv);
+    EXPECT(!step_result.fallback_target.has_value());
+    EXPECT(step_result.should_complete_webdriver_pending_navigation);
+    expect_current_entry(traversable.session_history(), 0, "https://example.test/state?replace"sv);
+}
+
+TEST_CASE(stale_applied_traversal_mutation_does_not_move_current_step)
+{
+    WebView::CanonicalTraversable traversable;
+
+    auto initial_update = traversable.did_receive_web_content_session_history_update({
+                                                                                         entry(0, "https://example.test/a"sv, 1, "main"sv),
+                                                                                         entry(1, "https://example.test/b"sv, 2, "main"sv),
+                                                                                     },
+        { 0, 1 }, 0, parse_url("https://example.test/a"sv));
+    EXPECT_EQ(initial_update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+
+    auto mutation = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::applied_traversal({
+        .current_step = 1,
+    }));
+    EXPECT(!mutation.accepted);
+    EXPECT_EQ(mutation.dump_reason, "ignored-stale-webcontent-applied-traversal"sv);
+    EXPECT(!mutation.should_update_navigation_action_state);
+    expect_current_entry(traversable.session_history(), 0, "https://example.test/a"sv);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+}
+
+TEST_CASE(applied_traversal_mutation_restores_seeded_current_step)
+{
+    WebView::CanonicalTraversable traversable;
+
+    auto initial_update = traversable.did_receive_web_content_session_history_update({
+                                                                                         entry(0, "https://a.example/"sv, {
+                                                                                                                              nested_history("frame-1"sv, {
+                                                                                                                                                              entry(0, "https://frame.example/a"sv),
+                                                                                                                                                              entry(1, "https://frame.example/b"sv),
+                                                                                                                                                          }),
+                                                                                                                          }),
+                                                                                     },
+        { 0, 1 }, 1, parse_url("https://a.example/"sv));
+    EXPECT_EQ(initial_update.update.update_result, WebView::TraversableSessionHistory::UpdateResult::CompleteSnapshot);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+
+    traversable.prepare_to_seed_web_content_session_history_from_ui_process();
+    auto seed = traversable.prepare_web_content_session_history_seed(false);
+    VERIFY(seed.has_value());
+    traversable.did_send_web_content_session_history_seed(seed->expected_ack_proof);
+
+    auto seed_entries = seed->entries;
+    auto seed_steps = traversable.session_history().used_steps();
+    auto current_used_step_index = seed_steps.find_first_index(seed_entries[seed->current_top_level_entry_index].step);
+    VERIFY(current_used_step_index.has_value());
+
+    auto ack = traversable.did_receive_web_content_session_history_seed_ack(true, move(seed_entries), move(seed_steps), *current_used_step_index, seed->expected_ack_proof.value, parse_url("https://a.example/"sv));
+    EXPECT_EQ(ack.dump_reason, "webcontent-session-history-seed-ack"sv);
+    VERIFY(ack.step_to_traverse.has_value());
+    EXPECT_EQ(*ack.step_to_traverse, 1);
+    EXPECT(!traversable.current_web_content_session_history_matches_mirror());
+
+    auto mutation = traversable.did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation::applied_traversal({
+        .current_step = 1,
+    }));
+    EXPECT(mutation.accepted);
+    EXPECT_EQ(mutation.dump_reason, "did-restore-current-session-history-step"sv);
+    EXPECT(!mutation.should_update_navigation_action_state);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+
+    auto step_result = traversable.did_traverse_the_history_to_step(1, true, Web::HTML::HistoryStepResult::Applied);
+    EXPECT_EQ(step_result.dump_reason, "webcontent-history-step-restored"sv);
+    EXPECT(traversable.current_web_content_session_history_matches_mirror());
+}
+
 TEST_CASE(preserved_web_content_history_only_reproves_matching_known_state)
 {
     WebView::TraversableSessionHistory history;
