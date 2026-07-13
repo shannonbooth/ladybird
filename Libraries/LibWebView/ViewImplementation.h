@@ -266,7 +266,7 @@ public:
 
     void did_apply_session_history_mutation(Badge<WebContentClient>, Web::HTML::WebContentSessionHistoryMutation);
     void did_apply_session_history_mutation_batch(Badge<WebContentClient>, Web::HTML::WebContentSessionHistoryMutationBatch);
-    void did_install_top_level_session_history_seed(Badge<WebContentClient>, u64 seed_id, bool accepted, i32 current_step);
+    void did_install_top_level_session_history_state(Badge<WebContentClient>, u64 state_install_id, bool accepted, i32 current_step);
     void did_apply_session_history_step(Badge<WebContentClient>, Web::HTML::SessionHistoryOperationId command_id, bool step_was_available, Web::HTML::HistoryStepResult);
     void did_reset_session_history_for_testing(Badge<WebContentClient>);
     void mark_web_content_session_history_stale_for_testing(Badge<WebContentClient>);
@@ -439,11 +439,10 @@ protected:
         No,
         Yes,
     };
-    void seed_web_content_session_history_from_ui_process(AllowCurrentEntryReconstruction = AllowCurrentEntryReconstruction::No);
+    void install_web_content_session_history_state_from_ui_process(AllowCurrentEntryReconstruction = AllowCurrentEntryReconstruction::No);
     void send_session_history_state_to_web_content(Web::HTML::SessionHistoryOperationId last_applied_mutation_id);
     void restore_current_session_history_entry_from_ui_process();
     void load_current_session_history_entry_from_ui_process();
-    void load_session_history_traversal_target_from_ui_process(TraversableSessionHistory::TraversalTarget const&, StringView dump_reason);
     NonnullRefPtr<Core::Promise<Empty>> reset_session_history_for_testing();
 
     virtual void update_zoom();

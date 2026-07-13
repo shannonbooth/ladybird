@@ -554,7 +554,7 @@ static void populate_nested_histories_from_ui_process(DocumentState& document_st
 {
     auto& nested_histories = document_state.nested_histories();
     if (nested_histories.size() == nested_history_descriptors.size()) {
-        // FIXME: This is temporary glue for the current load-then-seed ordering.
+        // FIXME: This is temporary glue for the current load-then-state-install ordering.
         //        A replacement WebContent process can create live child navigables
         //        before the UI process sends its canonical session-history tree.
         //        Now that nested history ids are canonical CrossProcessIds, the UI id
@@ -583,8 +583,8 @@ static void apply_session_history_entry_descriptor_from_ui_process(SessionHistor
 {
     entry.set_url(move(entry_descriptor.url));
     entry.set_step(static_cast<int>(entry_descriptor.step));
-    // NB: Older UI-process mirrors can carry an empty serialization record for
-    //     provisional entries. Do not preserve stale state from a reused entry, but
+    // NB: Older UI-process session history copies can carry an empty serialization record for
+    //     placeholder entries. Do not preserve stale state from a reused entry, but
     //     also do not install an invalid record that would crash when restored.
     auto& vm = Bindings::main_thread_vm();
     if (entry_descriptor.classic_history_api_state.is_empty())
@@ -612,7 +612,7 @@ static void apply_session_history_document_state_descriptor_from_ui_process(Docu
     document_state.set_about_base_url(document_state_descriptor.about_base_url);
     document_state.set_resource(document_state_descriptor.resource);
     document_state.set_reload_pending(document_state_descriptor.reload_pending);
-    // AD-HOC: A UI-created document state can still be provisional when installed into WebContent. Do not let that
+    // AD-HOC: A UI-created document state can still be placeholder when installed into WebContent. Do not let that
     //         UI-owned state make an already-populated live document state appear unpopulated again.
     document_state.set_ever_populated(document_state.ever_populated() || document_state_descriptor.ever_populated);
     document_state.set_navigable_target_name(document_state_descriptor.navigable_target_name);
@@ -703,53 +703,53 @@ bool LocalTraversableNavigable::try_to_install_top_level_session_history_entries
         return false;
 
     // NB: The UI process stores a traversable's authoritative session history entries across WebContent process swaps.
-    //     The seed installs only the current entry and the contiguous top-level entries exposed by the Navigation API.
+    //     The state install carries only the current entry and the contiguous top-level entries exposed by the Navigation API.
     //     Traversal target selection and classic history.length/index stay UI-owned.
     auto active_entry = active_session_history_entry();
     VERIFY(active_entry);
     auto active_document = this->active_document();
     VERIFY(active_document);
     if (!active_document->is_initial_about_blank()) {
-        // NB: The UI process can seed WebContent's top-level session history around an already-loaded document during
+        // NB: The UI process can install WebContent's top-level session history around an already-loaded document during
         //     crash recovery or UI-owned fallback traversal. Same-document history updates are committed synchronously
-        //     in WebContent, while the UI-process mirror is necessarily fed by async IPC. If the UI sends back an older
+        //     in WebContent, while the UI-process copy is necessarily fed by async IPC. If the UI sends back an older
         //     current entry, accepting it would clobber the active document's live latest entry and make a queued
-        //     traversal target unreachable. A provisional descriptor is UI-owned state, not an authoritative
+        //     traversal target unreachable. A UI-process placeholder descriptor is UI-owned state, not an authoritative
         //     description of an already-live current document.
-        //     Process-swap/preload seeds still go through the initial about:blank path above.
+        //     Process-swap/preload installs still go through the initial about:blank path above.
         auto latest_entry = active_document->latest_entry();
         if (!latest_entry)
             return false;
 
         // NB: Nested histories can be UI-owned state that is intentionally restored after the current top-level
-        //     document has loaded. The live latest entry must still match the UI seed's top-level state, but requiring
+        //     document has loaded. The live latest entry must still match the UI-installed top-level state, but requiring
         //     nested histories to match would reject the state we are being asked to restore.
-        auto latest_entry_matches_ui_seed = session_history_entry_matches_descriptor_ignoring_document_state_id(*latest_entry, current_entry_from_ui_process, MatchNestedHistories::No);
+        auto latest_entry_matches_ui_state_install = session_history_entry_matches_descriptor_ignoring_document_state_id(*latest_entry, current_entry_from_ui_process, MatchNestedHistories::No);
 
         auto active_entry_is_latest_entry = latest_entry.ptr() == active_entry.ptr();
-        auto current_entry_url_matches_ui_seed = latest_entry->url() == current_entry_from_ui_process.url;
+        auto current_entry_url_matches_ui_state_install = latest_entry->url() == current_entry_from_ui_process.url;
 
-        // NB: The seed no longer carries the full top-level list, so reconstruction checks are expressed in terms of
+        // NB: The state install no longer carries the full top-level list, so reconstruction checks are expressed in terms of
         //     the live current document and the UI-selected current entry instead of list shape.
         auto can_restore_fresh_ui_history_load = m_session_history_entries.size() == 1
             && active_entry.ptr() == m_session_history_entries.first().ptr()
             && active_entry_is_latest_entry
-            && current_entry_url_matches_ui_seed;
+            && current_entry_url_matches_ui_state_install;
 
         auto latest_entry_step = latest_entry->step_value();
-        auto can_restore_preseeded_ui_history_load = latest_entry_step.has_value()
+        auto can_restore_preinstalled_ui_history_load = latest_entry_step.has_value()
             && *latest_entry_step == current_entry_from_ui_process.step
             && active_entry_is_latest_entry
-            && current_entry_url_matches_ui_seed;
+            && current_entry_url_matches_ui_state_install;
 
         auto can_restore_current_entry_after_superseded_ui_history_load = active_entry_is_latest_entry
-            && current_entry_url_matches_ui_seed;
+            && current_entry_url_matches_ui_state_install;
 
         auto can_reconstruct_current_entry = allow_reconstructing_current_entry
-            && (can_restore_fresh_ui_history_load || can_restore_preseeded_ui_history_load || can_restore_current_entry_after_superseded_ui_history_load);
-        if (current_entry_from_ui_process.document_state.is_provisional && !can_reconstruct_current_entry)
+            && (can_restore_fresh_ui_history_load || can_restore_preinstalled_ui_history_load || can_restore_current_entry_after_superseded_ui_history_load);
+        if (current_entry_from_ui_process.document_state.is_ui_process_placeholder && !can_reconstruct_current_entry)
             return false;
-        if (!latest_entry_matches_ui_seed && !can_reconstruct_current_entry)
+        if (!latest_entry_matches_ui_state_install && !can_reconstruct_current_entry)
             return false;
     }
 
@@ -767,7 +767,7 @@ bool LocalTraversableNavigable::try_to_install_top_level_session_history_entries
             VERIFY(entry->document_state());
             auto should_preserve_active_document_state = !active_document->is_initial_about_blank()
                 && allow_reconstructing_current_entry
-                && entry_descriptor.document_state.is_provisional;
+                && entry_descriptor.document_state.is_ui_process_placeholder;
             apply_session_history_entry_descriptor_from_ui_process(*entry, entry_descriptor);
             if (should_preserve_active_document_state) {
                 // The UI descriptor was created before the recovered document populated its state. Keep the live
@@ -796,7 +796,7 @@ bool LocalTraversableNavigable::try_to_install_top_level_session_history_entries
     document->history()->m_index = history_object_length_and_index.script_history_index;
     document->history()->m_length = history_object_length_and_index.script_history_length;
 
-    // NB: The UI process can seed a replacement WebContent process before the new document has loaded. Do not
+    // NB: The UI process can install state into a replacement WebContent process before the new document has loaded. Do not
     //     restore the UI-owned entry's classic history API state or persisted state onto the initial about:blank
     //     document; the navigation algorithm will restore them onto the document that is actually created for the
     //     entry.
@@ -2086,7 +2086,7 @@ void ApplyHistoryStepState::complete()
         // 20. Set traversable's current session history step to targetStep.
         m_traversable->m_current_session_history_step = used_target_step;
 
-        // AD-HOC: Report the updated session history descriptors to the UI-process mirror.
+        // AD-HOC: Report the updated session history descriptors to the UI-process copy.
         if (m_navigation_type == Bindings::NavigationType::Reload)
             queue_reload_pending_clear_updates();
         queue_document_state_population_updates();
@@ -2826,7 +2826,7 @@ bool LocalTraversableNavigable::ensure_command_target_step_is_locally_reachable(
             return false;
 
         // The UI process only issues an apply-session-history-step command for a committed session history
-        // target. UI-created mirrors can still lag WebContent's document-state population bit after process
+        // target. UI-created descriptors can still lag WebContent's document-state population bit after process
         // swaps, so repair the local invariant needed by the spec's traverse assertion before applying it.
         target_document_state->set_ever_populated(true);
         return true;

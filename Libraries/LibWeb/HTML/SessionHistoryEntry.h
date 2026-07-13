@@ -64,7 +64,7 @@ struct SessionHistoryNestedHistoryDescriptor {
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#session-history-entry
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#document-state
 struct SessionHistoryDocumentStateDescriptor {
-    // AD-HOC: The spec models shared document state by object identity. The UI-process mirror uses a stable
+    // AD-HOC: The spec models shared document state by object identity. The UI-process copy uses a stable
     //         descriptor ID so entries that share a document state can be reconstructed after IPC.
     CrossProcessId id;
     Variant<SerializedPolicyContainer, DocumentState::Client> history_policy_container { DocumentState::Client::Tag };
@@ -76,7 +76,7 @@ struct SessionHistoryDocumentStateDescriptor {
     Variant<Empty, String, POSTResource> resource;
     bool reload_pending { false };
     bool ever_populated { false };
-    bool is_provisional { false };
+    bool is_ui_process_placeholder { false };
     Utf16String navigable_target_name;
     Vector<SessionHistoryNestedHistoryDescriptor> nested_histories;
 };
@@ -238,7 +238,7 @@ struct CommittedSessionHistoryState {
 enum class ApplySessionHistoryStepKind : u8 {
     Traverse,
     CheckForCancelationBeforeLoad,
-    RestoreCurrentStepAfterLoad,
+    RestoreCurrentStepAfterTopLevelLoad,
 };
 
 struct ApplySessionHistoryStepCommand {

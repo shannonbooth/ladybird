@@ -51,7 +51,7 @@ static SessionHistoryDocumentStateDescriptor create_session_history_document_sta
         Vector<SessionHistoryEntryDescriptor> nested_entry_descriptors;
         nested_entry_descriptors.ensure_capacity(nested_history.entries.size());
         for (auto const& nested_entry : nested_history.entries) {
-            // NB: UI-process session history mirrors only concrete used history steps. A child entry whose step is
+            // NB: UI-process session history copies only concrete used history steps. A child entry whose step is
             //     still "pending" has not been attached to the traversable's step graph yet.
             if (!nested_entry->step_value().has_value())
                 continue;
@@ -60,7 +60,7 @@ static SessionHistoryDocumentStateDescriptor create_session_history_document_sta
 
         // NB: Keep the nested-history descriptor even when every entry in it is still pending. The entries are not
         //     used history steps yet, but the descriptor id preserves the live child navigable identity when the UI
-        //     process later seeds an already-loaded document.
+        //     process later installs state around an already-loaded document.
         nested_history_descriptors.unchecked_append({
             .id = nested_history.id,
             .entries = move(nested_entry_descriptors),
@@ -171,7 +171,7 @@ static bool session_history_document_state_descriptors_match(SessionHistoryDocum
         && a.resource == b.resource
         && a.reload_pending == b.reload_pending
         && a.ever_populated == b.ever_populated
-        && a.is_provisional == b.is_provisional
+        && a.is_ui_process_placeholder == b.is_ui_process_placeholder
         && a.navigable_target_name == b.navigable_target_name
         && session_history_nested_history_descriptors_match(a.nested_histories, b.nested_histories);
 }
@@ -734,7 +734,7 @@ ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::SessionHistoryDocumentSta
     TRY(encoder.encode(document_state.resource));
     TRY(encoder.encode(document_state.reload_pending));
     TRY(encoder.encode(document_state.ever_populated));
-    TRY(encoder.encode(document_state.is_provisional));
+    TRY(encoder.encode(document_state.is_ui_process_placeholder));
     TRY(encoder.encode(document_state.navigable_target_name));
     TRY(encoder.encode(document_state.nested_histories));
     return {};
@@ -753,7 +753,7 @@ ErrorOr<Web::HTML::SessionHistoryDocumentStateDescriptor> IPC::decode(Decoder& d
     auto resource = TRY(decoder.decode<Variant<Empty, String, Web::HTML::POSTResource>>());
     auto reload_pending = TRY(decoder.decode<bool>());
     auto ever_populated = TRY(decoder.decode<bool>());
-    auto is_provisional = TRY(decoder.decode<bool>());
+    auto is_ui_process_placeholder = TRY(decoder.decode<bool>());
     auto navigable_target_name = TRY(decoder.decode<Utf16String>());
     auto nested_histories = TRY(decoder.decode<Vector<Web::HTML::SessionHistoryNestedHistoryDescriptor>>());
 
@@ -768,7 +768,7 @@ ErrorOr<Web::HTML::SessionHistoryDocumentStateDescriptor> IPC::decode(Decoder& d
         .resource = move(resource),
         .reload_pending = reload_pending,
         .ever_populated = ever_populated,
-        .is_provisional = is_provisional,
+        .is_ui_process_placeholder = is_ui_process_placeholder,
         .navigable_target_name = move(navigable_target_name),
         .nested_histories = move(nested_histories),
     };

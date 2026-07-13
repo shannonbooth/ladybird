@@ -1812,10 +1812,10 @@ Messages::WebContentClient::DidRequestSiteIsolationProcessTreeForTestingResponse
     return { SiteIsolationManager::the().dump_process_tree(*this, page_id) };
 }
 
-void WebContentClient::did_install_top_level_session_history_seed(u64 page_id, u64 seed_id, bool accepted, i32 current_step)
+void WebContentClient::did_install_top_level_session_history_state(u64 page_id, u64 state_install_id, bool accepted, i32 current_step)
 {
     if (auto view = view_for_page_id(page_id); view.has_value())
-        view->did_install_top_level_session_history_seed({}, seed_id, accepted, current_step);
+        view->did_install_top_level_session_history_state({}, state_install_id, accepted, current_step);
 }
 
 void WebContentClient::did_apply_session_history_step(u64 page_id, Web::HTML::SessionHistoryOperationId command_id, bool step_was_available, Web::HTML::HistoryStepResult result)
