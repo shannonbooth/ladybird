@@ -459,6 +459,13 @@ static void stop_or_resume_response_body_delivery(LocalNavigable::NavigationPara
         nav_params->response->resume_body_delivery();
 }
 
+bool PopulateSessionHistoryEntryDocumentOutput::has_session_history_entry_or_document_state_identity_mutation() const
+{
+    return redirected_url.has_value()
+        || classic_history_api_state.has_value()
+        || replacement_document_state;
+}
+
 void PopulateSessionHistoryEntryDocumentOutput::apply_to(NonnullRefPtr<SessionHistoryEntry> entry)
 {
     if (replacement_document_state)
@@ -3196,9 +3203,10 @@ void LocalNavigable::reload(Optional<StorageSerializationRecord> navigation_api_
     // AD-HOC: Report the reload-pending document state to the UI process before the reload history step finishes,
     //         so the UI-owned session history mirror remains synchronized during an in-flight reload.
     if (traversable->page().client().should_report_session_history_updates()) {
-        traversable->report_current_session_history_entry_update(SessionHistoryEntryUpdateKind::DocumentStateReloadPending, *active_session_history_entry());
-        auto session_history_snapshot = traversable->create_session_history_snapshot();
-        traversable->page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
+        if (!traversable->report_current_session_history_entry_update(SessionHistoryEntryUpdateKind::DocumentStateReloadPending, *active_session_history_entry())) {
+            auto session_history_snapshot = traversable->create_session_history_snapshot();
+            traversable->page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
+        }
     }
 
     // 4. Append the following session history traversal steps to traversable:

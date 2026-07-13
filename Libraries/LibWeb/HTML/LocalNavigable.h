@@ -421,6 +421,7 @@ public:
     RefPtr<DocumentState> replacement_document_state;
     bool resource_cleared = false;
 
+    bool has_session_history_entry_or_document_state_identity_mutation() const;
     void apply_to(NonnullRefPtr<SessionHistoryEntry> entry);
 
 private:

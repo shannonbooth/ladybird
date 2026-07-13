@@ -823,6 +823,7 @@ struct ChangingNavigableContinuationState : public JS::Cell {
     GC::Ptr<PopulateSessionHistoryEntryDocumentOutput> population_output;
     GC::Ptr<DOM::Document> resolved_document;
     Optional<URL::Origin> old_origin;
+    bool cleared_reload_pending_for_population { false };
 
     virtual void visit_edges(Cell::Visitor& visitor) override
     {
@@ -1244,6 +1245,7 @@ void ApplyHistoryStepState::start()
                     potentially_target_specific_source_snapshot_params = navigable->active_document()->snapshot_source_snapshot_params();
 
                 // 5. Set targetEntry's document state's reload pending to false.
+                changing_navigable_continuation->cleared_reload_pending_for_population = target_entry->document_state()->reload_pending();
                 target_entry->document_state()->set_reload_pending(false);
 
                 // 6. Let allowPOST be targetEntry's document state's reload pending.
@@ -1401,18 +1403,24 @@ void ApplyHistoryStepState::process_continuations()
                 }
             }
 
+            auto can_report_document_state_population_update = population_output
+                && population_output->document
+                && !population_output->has_session_history_entry_or_document_state_identity_mutation();
             if (population_output)
                 population_output->apply_to(*target_entry);
 
             // Post-population adjustments — only run when a fresh document was produced
             // (not for 204/205 no-document outcomes where resolved_document is the old active document).
             bool has_fresh_document = m_pending_document || (population_output && population_output->document);
+            auto changed_classic_history_api_state = false;
+            auto changed_navigable_target_name = false;
             if (has_fresh_document) {
                 auto resolved_document = continuation->resolved_document;
                 // 2. If targetEntry's document's origin is not oldOrigin, then set targetEntry's classic history API state to StructuredSerializeForStorage(null).
                 if (resolved_document->origin() != old_origin) {
                     auto& vm = navigable->vm();
                     target_entry->set_classic_history_api_state(MUST(structured_serialize_for_storage(vm, JS::js_null())));
+                    changed_classic_history_api_state = true;
                 }
 
                 // 3. If all of the following are true:
@@ -1424,8 +1432,13 @@ void ApplyHistoryStepState::process_continuations()
                     && !(resolved_document->browsing_context()->is_auxiliary() && resolved_document->browsing_context()->opener_browsing_context() != nullptr)
                     && target_entry->document_state()->origin() != old_origin) {
                     target_entry->document_state()->set_navigable_target_name(Utf16String {});
+                    changed_navigable_target_name = true;
                 }
             }
+            if (continuation->cleared_reload_pending_for_population)
+                m_traversable->report_current_session_history_entry_update(SessionHistoryEntryUpdateKind::DocumentStateReloadPending, *target_entry);
+            if (can_report_document_state_population_update && !changed_classic_history_api_state && !changed_navigable_target_name)
+                m_traversable->report_current_session_history_entry_update(SessionHistoryEntryUpdateKind::DocumentStatePopulation, *target_entry);
 
             // 1. Let previousEntry be navigable's active session history entry.
             auto previous_entry = navigable->active_session_history_entry();
@@ -2397,7 +2410,8 @@ void LocalTraversableNavigable::apply_the_reload_history_step(UserNavigationInvo
                 if (auto current_entry = current_session_history_entry(); current_entry && current_entry->document_state()->reload_pending()) {
                     current_entry->document_state()->set_reload_pending(false);
 
-                    if (page().client().should_report_session_history_updates()) {
+                    if (page().client().should_report_session_history_updates()
+                        && !report_current_session_history_entry_update(SessionHistoryEntryUpdateKind::DocumentStateReloadPending, *current_entry)) {
                         auto session_history_snapshot = create_session_history_snapshot();
                         page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
                     }
