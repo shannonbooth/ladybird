@@ -217,6 +217,8 @@ public:
 
     Optional<URL::URL> const& session_history_entry_url_loading_from_ui_process() const { return m_session_history_entry_url_loading_from_ui_process; }
     PendingWebContentSessionHistoryStateInstall const& pending_web_content_session_history_state_install() const { return m_pending_web_content_session_history_state_install; }
+    Web::HTML::SessionHistoryEpoch web_content_session_history_epoch() const { return m_web_content_session_history_epoch; }
+    bool is_current_web_content_session_history_epoch(Web::HTML::SessionHistoryEpoch epoch) const { return epoch == m_web_content_session_history_epoch; }
 
     ProcessSwapNavigationPreparation prepare_for_process_swap_navigation(URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::Bindings::NavigationHistoryBehavior);
     PageLoadPreparation prepare_for_page_load(URL::URL const&, Web::Bindings::NavigationHistoryBehavior);
@@ -225,13 +227,15 @@ public:
     void prepare_to_install_web_content_session_history_state();
     WebContentSessionHistoryMutationResult did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation);
     WebContentSessionHistoryMutationResult did_receive_web_content_session_history_mutation_batch(Web::HTML::WebContentSessionHistoryMutationBatch);
-    WebContentSessionHistoryStateInstallAckResult did_receive_web_content_session_history_state_install_ack(u64 state_install_id, bool accepted, i32 current_step);
+    WebContentSessionHistoryStateInstallAckResult did_receive_web_content_session_history_state_install_ack(u64 state_install_id, bool accepted, i32 current_step) { return did_receive_web_content_session_history_state_install_ack(state_install_id, accepted, current_step, m_web_content_session_history_epoch); }
+    WebContentSessionHistoryStateInstallAckResult did_receive_web_content_session_history_state_install_ack(u64 state_install_id, bool accepted, i32 current_step, Web::HTML::SessionHistoryEpoch);
     NavigationStartResult did_start_navigation(URL::URL const&, Variant<Empty, String, Web::HTML::POSTResource>, Web::HTML::CrossProcessId document_state_id, bool is_redirect, Web::Bindings::NavigationHistoryBehavior, bool is_showing_crash_page);
     NavigationCancelResult did_cancel_navigation(URL::URL const&, bool has_webdriver_pending_navigation);
     NavigationFinishResult did_finish_navigation(URL::URL const&);
     RestorePendingSessionHistoryNavigationResult restore_pending_session_history_navigation();
     HistoryTraversalDecision traverse_the_history_by_delta(int delta, CheckForCancelation, URL::URL const& current_url, Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete, Optional<u64> history_traversal_request_id = {}, Web::HTML::SessionHistoryOperationId apply_after_mutation_id = 0);
-    WebContentHistoryStepResult did_apply_session_history_step(Web::HTML::SessionHistoryOperationId command_id, bool step_was_available, Web::HTML::HistoryStepResult);
+    WebContentHistoryStepResult did_apply_session_history_step(Web::HTML::SessionHistoryOperationId command_id, bool step_was_available, Web::HTML::HistoryStepResult result) { return did_apply_session_history_step(command_id, step_was_available, result, m_web_content_session_history_epoch); }
+    WebContentHistoryStepResult did_apply_session_history_step(Web::HTML::SessionHistoryOperationId command_id, bool step_was_available, Web::HTML::HistoryStepResult, Web::HTML::SessionHistoryEpoch);
     Optional<Web::HTML::ApplySessionHistoryStepCommand> create_apply_session_history_step_command(i32 step, Web::HTML::ApplySessionHistoryStepKind = Web::HTML::ApplySessionHistoryStepKind::Traverse, Optional<u64> history_traversal_request_id = {}, Web::HTML::SessionHistoryOperationId apply_after_mutation_id = 0);
     Optional<Web::HTML::CommittedSessionHistoryState> current_session_history_state(Web::HTML::SessionHistoryOperationId last_applied_mutation_id) const;
     Web::HTML::SessionHistoryOperationId last_applied_web_content_session_history_mutation_id() const { return m_last_applied_web_content_session_history_mutation_id; }
@@ -240,7 +244,7 @@ public:
     u64 did_send_web_content_session_history_state_install(i32 current_step);
     bool prepare_to_restore_current_session_history_entry_from_ui_process();
     void did_crash_requiring_web_content_session_history_state_install();
-    void reset_session_history_for_testing();
+    Web::HTML::SessionHistoryEpoch reset_session_history_for_testing();
     void mark_web_content_session_history_stale_for_testing();
     void did_replace_web_content_process();
 
@@ -248,6 +252,7 @@ public:
     static StringView pending_session_history_traversal_stage_to_string(PendingSessionHistoryTraversal::Stage);
 
 private:
+    Web::HTML::SessionHistoryEpoch begin_new_web_content_session_history_epoch();
     void abandon_pending_web_content_session_history_state_install();
     void remove_from_index(CanonicalNavigable&);
 
@@ -258,6 +263,7 @@ private:
     Optional<PendingSessionHistoryTraversal> m_pending_session_history_traversal;
     Optional<i32> m_pending_session_history_reload_step;
     u64 m_next_web_content_session_history_state_install_id { 1 };
+    Web::HTML::SessionHistoryEpoch m_web_content_session_history_epoch { 0 };
     Web::HTML::SessionHistoryOperationId m_next_apply_session_history_step_command_id { 1 };
     Web::HTML::SessionHistoryOperationId m_last_applied_web_content_session_history_mutation_id { 0 };
     Web::HTML::SessionHistoryOperationId m_last_handled_web_content_session_history_mutation_id { 0 };

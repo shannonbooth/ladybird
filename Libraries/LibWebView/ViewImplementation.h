@@ -119,6 +119,7 @@ public:
         Function<void(HistoryTraversalOutcome)> = nullptr,
         Optional<u64> history_traversal_request_id = {},
         Web::HTML::SessionHistoryOperationId apply_after_mutation_id = 0);
+    bool is_current_web_content_session_history_epoch(Web::HTML::SessionHistoryEpoch epoch) const { return m_top_level_traversable.is_current_web_content_session_history_epoch(epoch); }
     [[nodiscard]] Vector<SessionHistoryTraversalMenuItem> session_history_traversal_menu_items(int direction) const;
 
     void zoom_in();
@@ -266,9 +267,9 @@ public:
 
     void did_apply_session_history_mutation(Badge<WebContentClient>, Web::HTML::WebContentSessionHistoryMutation);
     void did_apply_session_history_mutation_batch(Badge<WebContentClient>, Web::HTML::WebContentSessionHistoryMutationBatch);
-    void did_install_top_level_session_history_state(Badge<WebContentClient>, u64 state_install_id, bool accepted, i32 current_step);
-    void did_apply_session_history_step(Badge<WebContentClient>, Web::HTML::SessionHistoryOperationId command_id, bool step_was_available, Web::HTML::HistoryStepResult);
-    void did_reset_session_history_for_testing(Badge<WebContentClient>);
+    void did_install_top_level_session_history_state(Badge<WebContentClient>, Web::HTML::SessionHistoryEpoch, u64 state_install_id, bool accepted, i32 current_step);
+    void did_apply_session_history_step(Badge<WebContentClient>, Web::HTML::SessionHistoryEpoch, Web::HTML::SessionHistoryOperationId command_id, bool step_was_available, Web::HTML::HistoryStepResult);
+    void did_reset_session_history_for_testing(Badge<WebContentClient>, Web::HTML::SessionHistoryEpoch);
     void mark_web_content_session_history_stale_for_testing(Badge<WebContentClient>);
     void did_start_webdriver_navigation(Badge<WebContentClient>, URL::URL const&);
     String ui_process_session_history_for_testing(Badge<WebContentClient>) const;

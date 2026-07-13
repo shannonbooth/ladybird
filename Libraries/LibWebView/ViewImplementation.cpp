@@ -202,7 +202,7 @@ void ViewImplementation::create_new_process_for_cross_site_navigation(URL::URL c
         install_web_content_session_history_state_from_ui_process();
     auto web_content_history_handling = preparation.should_install_web_content_history_state_before_load ? Web::Bindings::NavigationHistoryBehavior::Replace : history_handling;
     dump_session_history("process-swap-load"sv);
-    client().async_load_url_with_document_resource(page_id(), url, document_resource, web_content_history_handling);
+    client().async_load_url_with_document_resource(page_id(), m_top_level_traversable.web_content_session_history_epoch(), url, document_resource, web_content_history_handling);
     dump_session_history("after-process-swap-load"sv);
 }
 
@@ -277,7 +277,7 @@ void ViewImplementation::load(URL::URL const& url, Web::Bindings::NavigationHist
     if (!preparation.should_defer_ui_process_history_update)
         set_url(url);
     dump_session_history("load"sv);
-    client().async_load_url(page_id(), url, history_handling);
+    client().async_load_url(page_id(), m_top_level_traversable.web_content_session_history_epoch(), url, history_handling);
 }
 
 void ViewImplementation::load_html(StringView html)
@@ -291,7 +291,7 @@ void ViewImplementation::load_html(StringView html)
     m_should_suppress_history_for_current_load = false;
     m_should_suppress_history_for_next_load = false;
     m_top_level_traversable.prepare_for_non_history_page_load();
-    client().async_load_html(page_id(), html);
+    client().async_load_html(page_id(), m_top_level_traversable.web_content_session_history_epoch(), html);
 }
 
 void ViewImplementation::load_crash_page_html(StringView html, URL::URL const& crashed_url)
@@ -306,7 +306,7 @@ void ViewImplementation::load_crash_page_html(StringView html, URL::URL const& c
     m_should_suppress_history_for_next_load = true;
     m_top_level_traversable.prepare_for_non_history_page_load();
     set_url(crashed_url);
-    client().async_load_html_with_url(page_id(), html, crashed_url);
+    client().async_load_html_with_url(page_id(), m_top_level_traversable.web_content_session_history_epoch(), html, crashed_url);
 }
 
 void ViewImplementation::load_navigation_error_page(StringView text)
@@ -1848,19 +1848,20 @@ void ViewImplementation::load_current_session_history_entry_from_ui_process()
 {
     auto load = m_top_level_traversable.prepare_current_session_history_entry_load(m_url);
     if (load.document_resource.has<Empty>())
-        client().async_load_url(page_id(), load.url, load.history_handling);
+        client().async_load_url(page_id(), m_top_level_traversable.web_content_session_history_epoch(), load.url, load.history_handling);
     else
-        client().async_load_url_with_document_resource(page_id(), load.url, load.document_resource, load.history_handling);
+        client().async_load_url_with_document_resource(page_id(), m_top_level_traversable.web_content_session_history_epoch(), load.url, load.document_resource, load.history_handling);
 }
 
 NonnullRefPtr<Core::Promise<Empty>> ViewImplementation::reset_session_history_for_testing()
 {
     m_pending_session_history_reset_for_testing = Core::Promise<Empty>::construct();
-    client().async_reset_session_history_for_testing(page_id());
+    auto session_history_epoch = m_top_level_traversable.reset_session_history_for_testing();
+    client().async_reset_session_history_for_testing(page_id(), session_history_epoch);
     return *m_pending_session_history_reset_for_testing;
 }
 
-void ViewImplementation::did_install_top_level_session_history_state(Badge<WebContentClient>, u64 state_install_id, bool accepted, i32 current_step)
+void ViewImplementation::did_install_top_level_session_history_state(Badge<WebContentClient>, Web::HTML::SessionHistoryEpoch session_history_epoch, u64 state_install_id, bool accepted, i32 current_step)
 {
     if (history_debug_enabled()) {
         dbgln("[History] UI received WebContent session history state install ack page={} pid={} state_install_id={} accepted={} current_step={}",
@@ -1871,7 +1872,7 @@ void ViewImplementation::did_install_top_level_session_history_state(Badge<WebCo
             current_step);
     }
 
-    auto ack = m_top_level_traversable.did_receive_web_content_session_history_state_install_ack(state_install_id, accepted, current_step);
+    auto ack = m_top_level_traversable.did_receive_web_content_session_history_state_install_ack(state_install_id, accepted, current_step, session_history_epoch);
     if (ack.ignored) {
         dump_session_history(ack.dump_reason);
         return;
@@ -1890,9 +1891,9 @@ void ViewImplementation::did_install_top_level_session_history_state(Badge<WebCo
     dump_session_history(ack.dump_reason);
 }
 
-void ViewImplementation::did_apply_session_history_step(Badge<WebContentClient>, Web::HTML::SessionHistoryOperationId command_id, bool step_was_available, Web::HTML::HistoryStepResult result)
+void ViewImplementation::did_apply_session_history_step(Badge<WebContentClient>, Web::HTML::SessionHistoryEpoch session_history_epoch, Web::HTML::SessionHistoryOperationId command_id, bool step_was_available, Web::HTML::HistoryStepResult result)
 {
-    auto step_result = m_top_level_traversable.did_apply_session_history_step(command_id, step_was_available, result);
+    auto step_result = m_top_level_traversable.did_apply_session_history_step(command_id, step_was_available, result, session_history_epoch);
     if (step_result.should_send_session_history_state)
         send_session_history_state_to_web_content(m_top_level_traversable.last_applied_web_content_session_history_mutation_id());
     if (step_result.should_update_webdriver_pending_navigation_to_current_url && m_webdriver_pending_navigation_url.has_value())
@@ -1936,10 +1937,12 @@ void ViewImplementation::did_apply_session_history_step(Badge<WebContentClient>,
         step_result.on_cancelation_check_complete(move(step_result.outcome));
 }
 
-void ViewImplementation::did_reset_session_history_for_testing(Badge<WebContentClient>)
+void ViewImplementation::did_reset_session_history_for_testing(Badge<WebContentClient>, Web::HTML::SessionHistoryEpoch session_history_epoch)
 {
+    if (!m_top_level_traversable.is_current_web_content_session_history_epoch(session_history_epoch))
+        return;
+
     auto promise = move(m_pending_session_history_reset_for_testing);
-    m_top_level_traversable.reset_session_history_for_testing();
     m_webdriver_pending_navigation_url.clear();
     m_webdriver_pending_navigation_completes_with_session_history_update = false;
     update_navigation_action_state();

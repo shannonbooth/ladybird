@@ -572,6 +572,7 @@ ErrorOr<Web::HTML::TopLevelCrossDocumentSessionHistoryNavigation> IPC::decode(De
 template<>
 ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::WebContentSessionHistoryMutation const& mutation)
 {
+    TRY(encoder.encode(mutation.epoch));
     TRY(encoder.encode(mutation.operation_id));
     TRY(encoder.encode(mutation.mutation));
     return {};
@@ -580,10 +581,12 @@ ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::WebContentSessionHistoryM
 template<>
 ErrorOr<Web::HTML::WebContentSessionHistoryMutation> IPC::decode(Decoder& decoder)
 {
+    auto epoch = TRY(decoder.decode<Web::HTML::SessionHistoryEpoch>());
     auto operation_id = TRY(decoder.decode<Web::HTML::SessionHistoryOperationId>());
     auto mutation = TRY(decoder.decode<Web::HTML::WebContentSessionHistoryMutation::Mutation>());
 
     return Web::HTML::WebContentSessionHistoryMutation {
+        .epoch = epoch,
         .operation_id = operation_id,
         .mutation = move(mutation),
     };
@@ -592,6 +595,7 @@ ErrorOr<Web::HTML::WebContentSessionHistoryMutation> IPC::decode(Decoder& decode
 template<>
 ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::WebContentSessionHistoryMutationBatch const& batch)
 {
+    TRY(encoder.encode(batch.epoch));
     TRY(encoder.encode(batch.operation_id));
     TRY(encoder.encode(batch.mutations));
     TRY(encoder.encode(batch.final_current_step));
@@ -601,11 +605,13 @@ ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::WebContentSessionHistoryM
 template<>
 ErrorOr<Web::HTML::WebContentSessionHistoryMutationBatch> IPC::decode(Decoder& decoder)
 {
+    auto epoch = TRY(decoder.decode<Web::HTML::SessionHistoryEpoch>());
     auto operation_id = TRY(decoder.decode<Web::HTML::SessionHistoryOperationId>());
     auto mutations = TRY(decoder.decode<Vector<Web::HTML::WebContentSessionHistoryMutation>>());
     auto final_current_step = TRY(decoder.decode<i32>());
 
     return Web::HTML::WebContentSessionHistoryMutationBatch {
+        .epoch = epoch,
         .operation_id = operation_id,
         .mutations = move(mutations),
         .final_current_step = final_current_step,
@@ -635,6 +641,7 @@ ErrorOr<Web::HTML::SessionHistoryLengthAndIndex> IPC::decode(Decoder& decoder)
 template<>
 ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::CommittedSessionHistoryState const& state)
 {
+    TRY(encoder.encode(state.epoch));
     TRY(encoder.encode(state.last_applied_mutation_id));
     TRY(encoder.encode(state.last_handled_mutation_id));
     TRY(encoder.encode(state.current_step));
@@ -645,12 +652,14 @@ ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::CommittedSessionHistorySt
 template<>
 ErrorOr<Web::HTML::CommittedSessionHistoryState> IPC::decode(Decoder& decoder)
 {
+    auto epoch = TRY(decoder.decode<Web::HTML::SessionHistoryEpoch>());
     auto last_applied_mutation_id = TRY(decoder.decode<Web::HTML::SessionHistoryOperationId>());
     auto last_handled_mutation_id = TRY(decoder.decode<Web::HTML::SessionHistoryOperationId>());
     auto current_step = TRY(decoder.decode<i32>());
     auto history_object_length_and_index = TRY(decoder.decode<Web::HTML::SessionHistoryLengthAndIndex>());
 
     return Web::HTML::CommittedSessionHistoryState {
+        .epoch = epoch,
         .last_applied_mutation_id = last_applied_mutation_id,
         .last_handled_mutation_id = last_handled_mutation_id,
         .current_step = current_step,
@@ -661,6 +670,7 @@ ErrorOr<Web::HTML::CommittedSessionHistoryState> IPC::decode(Decoder& decoder)
 template<>
 ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::ApplySessionHistoryStepCommand const& command)
 {
+    TRY(encoder.encode(command.epoch));
     TRY(encoder.encode(command.command_id));
     TRY(encoder.encode(command.apply_after_mutation_id));
     TRY(encoder.encode(command.history_traversal_request_id));
@@ -678,6 +688,7 @@ ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::ApplySessionHistoryStepCo
 template<>
 ErrorOr<Web::HTML::ApplySessionHistoryStepCommand> IPC::decode(Decoder& decoder)
 {
+    auto epoch = TRY(decoder.decode<Web::HTML::SessionHistoryEpoch>());
     auto command_id = TRY(decoder.decode<Web::HTML::SessionHistoryOperationId>());
     auto apply_after_mutation_id = TRY(decoder.decode<Web::HTML::SessionHistoryOperationId>());
     auto history_traversal_request_id = TRY(decoder.decode<Optional<u64>>());
@@ -691,6 +702,7 @@ ErrorOr<Web::HTML::ApplySessionHistoryStepCommand> IPC::decode(Decoder& decoder)
     auto changes_top_level_entry = TRY(decoder.decode<bool>());
 
     return Web::HTML::ApplySessionHistoryStepCommand {
+        .epoch = epoch,
         .command_id = command_id,
         .apply_after_mutation_id = apply_after_mutation_id,
         .history_traversal_request_id = move(history_traversal_request_id),

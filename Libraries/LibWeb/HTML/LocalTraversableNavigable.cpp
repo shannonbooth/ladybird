@@ -327,6 +327,7 @@ bool LocalTraversableNavigable::report_session_history_mutation(WebContentSessio
     if (!page().client().should_report_session_history_updates())
         return false;
 
+    mutation.epoch = m_session_history_epoch;
     mutation.operation_id = m_next_session_history_operation_id++;
     m_last_emitted_session_history_mutation_id = mutation.operation_id;
     auto operation_id = mutation.operation_id;
@@ -344,12 +345,14 @@ bool LocalTraversableNavigable::report_session_history_mutation_batch(Vector<Web
         return true;
 
     for (auto& mutation : mutations) {
+        mutation.epoch = m_session_history_epoch;
         mutation.operation_id = m_next_session_history_operation_id++;
         m_last_emitted_session_history_mutation_id = mutation.operation_id;
     }
 
     auto operation_id = m_last_emitted_session_history_mutation_id;
     page().client().page_did_apply_session_history_mutation_batch({
+        .epoch = m_session_history_epoch,
         .operation_id = m_last_emitted_session_history_mutation_id,
         .mutations = move(mutations),
         .final_current_step = final_current_step,
@@ -810,8 +813,37 @@ bool LocalTraversableNavigable::try_to_install_top_level_session_history_entries
     return true;
 }
 
-void LocalTraversableNavigable::reset_session_history_for_testing(GC::Ref<GC::Function<void()>> on_complete)
+bool LocalTraversableNavigable::set_session_history_epoch_from_ui_process(SessionHistoryEpoch epoch)
 {
+    if (epoch < m_session_history_epoch)
+        return false;
+
+    if (epoch == m_session_history_epoch)
+        return true;
+
+    m_session_history_epoch = epoch;
+    m_next_session_history_operation_id = 1;
+    m_last_emitted_session_history_mutation_id = 0;
+    m_committed_session_history_state_from_ui_process.clear();
+    m_pending_history_object_length_and_index_changes.clear();
+    m_override_history_object_length_and_index_step.clear();
+    m_override_history_object_length_and_index.clear();
+    m_apply_history_step_generation_counter = 0;
+    m_committed_apply_history_step_generation = 0;
+    m_outstanding_claimed_session_history_steps.clear();
+    m_pending_history_traversal_requests.clear();
+    m_intercepted_history_traversal_steps.clear();
+    m_pending_intercepted_history_traversal_completions.clear();
+    return true;
+}
+
+void LocalTraversableNavigable::reset_session_history_for_testing(SessionHistoryEpoch epoch, GC::Ref<GC::Function<void()>> on_complete)
+{
+    if (!set_session_history_epoch_from_ui_process(epoch)) {
+        on_complete->function()();
+        return;
+    }
+
     append_session_history_traversal_steps(GC::create_function(heap(), [this, on_complete](NonnullRefPtr<Core::Promise<Empty>> signal) {
         auto maybe_active_entry = active_session_history_entry();
         VERIFY(maybe_active_entry);
@@ -823,10 +855,18 @@ void LocalTraversableNavigable::reset_session_history_for_testing(GC::Ref<GC::Fu
         set_active_session_history_entry(active_entry);
         set_current_session_history_entry(active_entry);
         m_current_session_history_step = 0;
+        m_next_session_history_operation_id = 1;
+        m_last_emitted_session_history_mutation_id = 0;
         m_committed_session_history_state_from_ui_process.clear();
         m_pending_history_object_length_and_index_changes.clear();
         m_override_history_object_length_and_index_step.clear();
         m_override_history_object_length_and_index.clear();
+        m_apply_history_step_generation_counter = 0;
+        m_committed_apply_history_step_generation = 0;
+        m_outstanding_claimed_session_history_steps.clear();
+        m_pending_history_traversal_requests.clear();
+        m_intercepted_history_traversal_steps.clear();
+        m_pending_intercepted_history_traversal_completions.clear();
 
         auto document = active_document();
         VERIFY(document);
@@ -954,8 +994,11 @@ void LocalTraversableNavigable::record_pending_history_object_length_and_index_c
     });
 }
 
-void LocalTraversableNavigable::set_session_history_state_from_ui_process(CommittedSessionHistoryState state)
+bool LocalTraversableNavigable::set_session_history_state_from_ui_process(CommittedSessionHistoryState state)
 {
+    if (!set_session_history_epoch_from_ui_process(state.epoch))
+        return false;
+
     m_committed_session_history_state_from_ui_process = state;
     m_pending_history_object_length_and_index_changes.remove_all_matching([last_handled_mutation_id = state.last_handled_mutation_id](auto const& pending_change) {
         return pending_change.operation_id <= last_handled_mutation_id;
@@ -965,6 +1008,7 @@ void LocalTraversableNavigable::set_session_history_state_from_ui_process(Commit
         m_current_session_history_step = state.current_step;
 
     update_active_documents_history_object_length_and_index(history_object_length_and_index_with_pending_changes());
+    return true;
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-the-history-object-length-and-index
@@ -2800,7 +2844,7 @@ void LocalTraversableNavigable::traverse_the_history_by_delta(int delta, GC::Ptr
             request_id = store_pending_history_traversal_request(source_snapshot_params, initiator_to_check, user_involvement);
         }
 
-        if (!page().client().page_did_request_traverse_the_history_by_delta(request_id, m_last_emitted_session_history_mutation_id, delta)) {
+        if (!page().client().page_did_request_traverse_the_history_by_delta(request_id, m_session_history_epoch, m_last_emitted_session_history_mutation_id, delta)) {
             if (request_id.has_value())
                 discard_history_traversal_request(*request_id);
         }
@@ -2886,6 +2930,11 @@ bool LocalTraversableNavigable::ensure_command_target_step_is_locally_reachable(
 
 void LocalTraversableNavigable::apply_session_history_step(Web::HTML::ApplySessionHistoryStepCommand command, GC::Ref<GC::Function<void(bool step_was_available, HistoryStepResult)>> on_complete)
 {
+    if (command.epoch != m_session_history_epoch) {
+        on_complete->function()(false, HistoryStepResult::Applied);
+        return;
+    }
+
     Optional<PendingHistoryTraversalRequest> maybe_request;
     if (command.history_traversal_request_id.has_value())
         maybe_request = take_pending_history_traversal_request(*command.history_traversal_request_id);

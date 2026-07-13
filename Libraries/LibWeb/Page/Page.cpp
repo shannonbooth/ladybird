@@ -189,7 +189,7 @@ void Page::reload()
 
 void Page::traverse_the_history_by_delta(int delta)
 {
-    (void)m_client->page_did_request_traverse_the_history_by_delta({}, top_level_traversable()->last_emitted_session_history_mutation_id(), delta);
+    (void)m_client->page_did_request_traverse_the_history_by_delta({}, top_level_traversable()->session_history_epoch(), top_level_traversable()->last_emitted_session_history_mutation_id(), delta);
 }
 
 Gfx::Palette Page::palette() const

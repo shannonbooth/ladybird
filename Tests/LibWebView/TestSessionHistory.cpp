@@ -1801,6 +1801,63 @@ TEST_CASE(state_install_ack_ignores_stale_state_install_id)
     EXPECT(traversable.current_web_content_session_history_is_synchronized());
 }
 
+TEST_CASE(traversal_loads_from_ui_while_webcontent_state_install_is_pending)
+{
+    WebView::CanonicalTraversable traversable;
+    initialize_canonical_traversable_from_ui_entries(traversable, {
+                                                                      entry(0, "https://example.test/a"sv, 1, "main"sv),
+                                                                      entry(1, "https://example.test/b"sv, 2, "main"sv),
+                                                                  },
+        { 0, 1 }, 0, parse_url("https://example.test/a"sv));
+    EXPECT(traversable.current_web_content_session_history_is_synchronized());
+
+    traversable.prepare_to_install_web_content_session_history_state();
+    EXPECT(traversable.pending_web_content_session_history_state_install().should_install_state);
+
+    auto traversal = traversable.traverse_the_history_by_delta(1, WebView::CheckForCancelation::Yes, parse_url("https://example.test/a"sv), {});
+    EXPECT_EQ(traversal.action, WebView::HistoryTraversalAction::LoadCurrentEntryFromUIProcess);
+    EXPECT(!traversal.outcome.waiting_for_cancelation_check);
+    EXPECT(!traversal.command.has_value());
+    expect_current_entry(traversable.session_history(), 1, "https://example.test/b"sv);
+    EXPECT(traversable.pending_web_content_session_history_state_install().should_install_state);
+}
+
+TEST_CASE(post_load_state_install_ignores_webcontent_commit_batch_until_reinstall)
+{
+    WebView::CanonicalTraversable traversable;
+    initialize_canonical_traversable_from_ui_entries(traversable, {
+                                                                      entry(0, "https://example.test/d"sv, 21, "main"sv),
+                                                                      entry(1, "https://example.test/state?replace"sv, 22, "ladybird-history-name"sv),
+                                                                      entry(2, "https://example.test/state?push"sv, 22, "ladybird-history-name"sv),
+                                                                  },
+        { 0, 1, 2 }, 2, parse_url("https://example.test/state?push"sv));
+    EXPECT(traversable.current_web_content_session_history_is_synchronized());
+
+    traversable.did_crash_requiring_web_content_session_history_state_install();
+    EXPECT(traversable.prepare_to_restore_current_session_history_entry_from_ui_process());
+    EXPECT(traversable.pending_web_content_session_history_state_install().should_install_after_current_history_load);
+
+    auto replacement_entry = entry(2, "https://example.test/state?push"sv, 23, ""sv);
+    auto mutation = Web::HTML::WebContentSessionHistoryMutation::top_level_cross_document_navigation(
+        top_level_cross_document_navigation_details(move(replacement_entry), 2));
+    mutation.epoch = traversable.web_content_session_history_epoch();
+    mutation.operation_id = 1;
+
+    Web::HTML::WebContentSessionHistoryMutationBatch batch {
+        .epoch = traversable.web_content_session_history_epoch(),
+        .operation_id = 1,
+        .mutations = { move(mutation) },
+        .final_current_step = 2,
+    };
+    auto result = traversable.did_receive_web_content_session_history_mutation_batch(move(batch));
+    EXPECT(!result.accepted);
+    EXPECT_EQ(result.dump_reason, "ignored-session-history-mutation-batch-before-post-load-state-install"sv);
+
+    auto* current_entry = traversable.session_history().current_entry();
+    VERIFY(current_entry);
+    expect_entry_document_state(*current_entry, 22, "ladybird-history-name"sv);
+}
+
 TEST_CASE(applied_history_step_result_updates_current_step)
 {
     WebView::CanonicalTraversable traversable;

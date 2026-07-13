@@ -49,6 +49,7 @@ enum class SessionHistoryEntryUpdateKind : u8 {
 };
 
 using SessionHistoryOperationId = u64;
+using SessionHistoryEpoch = u64;
 
 struct SessionHistoryEntryDescriptor;
 
@@ -177,47 +178,49 @@ struct ChildNavigableSessionHistoryDestroyed {
 struct WebContentSessionHistoryMutation {
     using Mutation = Variant<CurrentSessionHistoryEntryUpdate, ChildNavigableSessionHistoryCreated, ChildNavigableSessionHistoryDestroyed, SameDocumentSessionHistoryNavigation, NestedSameDocumentSessionHistoryNavigation, NestedCrossDocumentSessionHistoryNavigation, TopLevelCrossDocumentSessionHistoryNavigation>;
 
+    SessionHistoryEpoch epoch { 0 };
     SessionHistoryOperationId operation_id { 0 };
     Mutation mutation;
 
     static WebContentSessionHistoryMutation current_entry_update(SessionHistoryEntryUpdateKind update_kind, SessionHistoryEntryDescriptor entry)
     {
-        return { 0, CurrentSessionHistoryEntryUpdate { update_kind, move(entry) } };
+        return { .mutation = CurrentSessionHistoryEntryUpdate { update_kind, move(entry) } };
     }
 
     static WebContentSessionHistoryMutation child_navigable_created(ChildNavigableSessionHistoryCreated created)
     {
-        return { 0, move(created) };
+        return { .mutation = move(created) };
     }
 
     static WebContentSessionHistoryMutation child_navigable_destroyed(ChildNavigableSessionHistoryDestroyed destroyed)
     {
-        return { 0, move(destroyed) };
+        return { .mutation = move(destroyed) };
     }
 
     static WebContentSessionHistoryMutation top_level_same_document_navigation(SameDocumentSessionHistoryNavigation navigation)
     {
-        return { 0, move(navigation) };
+        return { .mutation = move(navigation) };
     }
 
     static WebContentSessionHistoryMutation nested_same_document_navigation(NestedSameDocumentSessionHistoryNavigation navigation)
     {
-        return { 0, move(navigation) };
+        return { .mutation = move(navigation) };
     }
 
     static WebContentSessionHistoryMutation nested_cross_document_navigation(NestedCrossDocumentSessionHistoryNavigation navigation)
     {
-        return { 0, move(navigation) };
+        return { .mutation = move(navigation) };
     }
 
     static WebContentSessionHistoryMutation top_level_cross_document_navigation(TopLevelCrossDocumentSessionHistoryNavigation navigation)
     {
-        return { 0, move(navigation) };
+        return { .mutation = move(navigation) };
     }
 
 };
 
 struct WebContentSessionHistoryMutationBatch {
+    SessionHistoryEpoch epoch { 0 };
     SessionHistoryOperationId operation_id { 0 };
     Vector<WebContentSessionHistoryMutation> mutations;
     i32 final_current_step { 0 };
@@ -229,6 +232,7 @@ struct SessionHistoryLengthAndIndex {
 };
 
 struct CommittedSessionHistoryState {
+    SessionHistoryEpoch epoch { 0 };
     SessionHistoryOperationId last_applied_mutation_id { 0 };
     SessionHistoryOperationId last_handled_mutation_id { 0 };
     i32 current_step { 0 };
@@ -242,6 +246,7 @@ enum class ApplySessionHistoryStepKind : u8 {
 };
 
 struct ApplySessionHistoryStepCommand {
+    SessionHistoryEpoch epoch { 0 };
     SessionHistoryOperationId command_id { 0 };
     SessionHistoryOperationId apply_after_mutation_id { 0 };
     Optional<u64> history_traversal_request_id;

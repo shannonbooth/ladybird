@@ -76,6 +76,15 @@ void CanonicalTraversable::remove_from_index(CanonicalNavigable& navigable)
     });
 }
 
+Web::HTML::SessionHistoryEpoch CanonicalTraversable::begin_new_web_content_session_history_epoch()
+{
+    VERIFY(m_web_content_session_history_epoch + 1 != 0);
+    ++m_web_content_session_history_epoch;
+    m_last_applied_web_content_session_history_mutation_id = 0;
+    m_last_handled_web_content_session_history_mutation_id = 0;
+    return m_web_content_session_history_epoch;
+}
+
 void CanonicalTraversable::abandon_pending_web_content_session_history_state_install()
 {
     m_session_history_entry_url_loading_from_ui_process.clear();
@@ -84,6 +93,7 @@ void CanonicalTraversable::abandon_pending_web_content_session_history_state_ins
 
 void CanonicalTraversable::prepare_to_install_web_content_session_history_state()
 {
+    begin_new_web_content_session_history_epoch();
     m_session_history.forget_web_content_state();
     m_pending_session_history_navigation.clear();
     m_pending_web_content_session_history_state_install.clear();
@@ -105,9 +115,24 @@ static bool can_install_state_in_replacement_process_before_load(TraversableSess
     return true;
 }
 
+static bool web_content_session_history_state_install_is_pending(PendingWebContentSessionHistoryStateInstall const& pending_web_content_session_history_state_install)
+{
+    return pending_web_content_session_history_state_install.should_install_state
+        || pending_web_content_session_history_state_install.waiting_for_state_install_ack
+        || pending_web_content_session_history_state_install.should_install_after_current_history_load
+        || pending_web_content_session_history_state_install.restore_command_after_loading_top_level_entry.has_value();
+}
+
+static bool has_current_ui_session_history_entry(TraversableSessionHistory const& session_history)
+{
+    return session_history.current_entry() != nullptr;
+}
+
 ProcessSwapNavigationPreparation CanonicalTraversable::prepare_for_process_swap_navigation(URL::URL const& url, Variant<Empty, String, Web::HTML::POSTResource> document_resource, Web::Bindings::NavigationHistoryBehavior history_handling)
 {
     ProcessSwapNavigationPreparation result;
+    if (!m_session_history_entry_url_loading_from_ui_process.has_value())
+        begin_new_web_content_session_history_epoch();
 
     auto ui_session_history_already_points_to_url = false;
     if (auto const* current_entry = m_session_history.current_entry(); current_entry && current_entry->url == url)
@@ -198,6 +223,7 @@ PageLoadPreparation CanonicalTraversable::prepare_for_page_load(URL::URL const& 
 
 void CanonicalTraversable::prepare_for_non_history_page_load()
 {
+    begin_new_web_content_session_history_epoch();
     abandon_pending_web_content_session_history_state_install();
     m_session_history.forget_web_content_state();
     m_pending_session_history_reload_step.clear();
@@ -222,6 +248,9 @@ void CanonicalTraversable::did_replace_web_content_process()
 
 WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_content_session_history_mutation(Web::HTML::WebContentSessionHistoryMutation mutation)
 {
+    if (mutation.epoch != m_web_content_session_history_epoch)
+        return { .dump_reason = "ignored-stale-session-history-mutation-epoch"sv };
+
     auto mutation_operation_id = mutation.operation_id;
     if (mutation_operation_id != 0 && mutation_operation_id <= m_last_handled_web_content_session_history_mutation_id)
         return { .dump_reason = "ignored-stale-session-history-mutation"sv };
@@ -229,8 +258,23 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
     if (mutation_operation_id != 0)
         m_last_handled_web_content_session_history_mutation_id = mutation_operation_id;
 
+    // WebContent still creates the concrete SessionHistoryEntry for a cross-document commit. Until that is split
+    // apart from the UI-owned history commit, the post-load state install is the step that grafts the UI-selected
+    // entry state back onto the freshly loaded document. Do not let the interim load-commit mutation overwrite the
+    // UI's authoritative entry before that install runs.
+    if (m_pending_web_content_session_history_state_install.should_install_after_current_history_load)
+        return { .dump_reason = "ignored-session-history-mutation-before-post-load-state-install"sv };
+
     if (m_pending_web_content_session_history_state_install.restore_command_after_loading_top_level_entry.has_value())
         return { .dump_reason = "ignored-session-history-mutation-before-restore-command"sv };
+
+    if (!has_current_ui_session_history_entry(m_session_history)) {
+        m_session_history.forget_web_content_state();
+        return {
+            .dump_reason = "rejected-session-history-mutation-without-current-ui-entry"sv,
+            .should_update_navigation_action_state = true,
+        };
+    }
 
     if (mutation.mutation.has<Web::HTML::CurrentSessionHistoryEntryUpdate>()) {
         auto current_entry_update = move(mutation.mutation.get<Web::HTML::CurrentSessionHistoryEntryUpdate>());
@@ -409,9 +453,19 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
 
 WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_content_session_history_mutation_batch(Web::HTML::WebContentSessionHistoryMutationBatch batch)
 {
+    if (batch.epoch != m_web_content_session_history_epoch)
+        return { .dump_reason = "ignored-stale-session-history-mutation-batch-epoch"sv };
+
     auto batch_operation_id = batch.operation_id;
     if (batch_operation_id != 0 && batch_operation_id <= m_last_handled_web_content_session_history_mutation_id)
         return { .dump_reason = "ignored-stale-session-history-mutation"sv };
+
+    // See the single-mutation case above. WebContent commonly reports the load commit as a mutation batch.
+    if (m_pending_web_content_session_history_state_install.should_install_after_current_history_load) {
+        if (batch_operation_id != 0)
+            m_last_handled_web_content_session_history_mutation_id = batch_operation_id;
+        return { .dump_reason = "ignored-session-history-mutation-batch-before-post-load-state-install"sv };
+    }
 
     if (m_pending_web_content_session_history_state_install.restore_command_after_loading_top_level_entry.has_value()) {
         if (batch_operation_id != 0)
@@ -441,8 +495,11 @@ WebContentSessionHistoryMutationResult CanonicalTraversable::did_receive_web_con
     return batch_result;
 }
 
-WebContentSessionHistoryStateInstallAckResult CanonicalTraversable::did_receive_web_content_session_history_state_install_ack(u64 state_install_id, bool accepted, i32 current_step)
+WebContentSessionHistoryStateInstallAckResult CanonicalTraversable::did_receive_web_content_session_history_state_install_ack(u64 state_install_id, bool accepted, i32 current_step, Web::HTML::SessionHistoryEpoch epoch)
 {
+    if (epoch != m_web_content_session_history_epoch)
+        return { .ignored = true, .dump_reason = "ignored-stale-webcontent-session-history-state-install-ack-epoch"sv };
+
     if (!m_pending_web_content_session_history_state_install.waiting_for_state_install_ack)
         return { .ignored = true, .dump_reason = "ignored-webcontent-session-history-state-install-ack"sv };
 
@@ -675,6 +732,7 @@ Optional<Web::HTML::ApplySessionHistoryStepCommand> CanonicalTraversable::create
         return {};
 
     return Web::HTML::ApplySessionHistoryStepCommand {
+        .epoch = m_web_content_session_history_epoch,
         .command_id = m_next_apply_session_history_step_command_id++,
         .apply_after_mutation_id = apply_after_mutation_id,
         .history_traversal_request_id = history_traversal_request_id,
@@ -703,6 +761,7 @@ Optional<Web::HTML::CommittedSessionHistoryState> CanonicalTraversable::current_
         return {};
 
     return Web::HTML::CommittedSessionHistoryState {
+        .epoch = m_web_content_session_history_epoch,
         .last_applied_mutation_id = last_applied_mutation_id,
         .last_handled_mutation_id = m_last_handled_web_content_session_history_mutation_id,
         .current_step = *current_step,
@@ -745,7 +804,8 @@ HistoryTraversalDecision CanonicalTraversable::traverse_the_history_by_delta(int
         .on_cancelation_check_complete = nullptr,
     };
 
-    if (!will_replace_web_content_process) {
+    auto current_web_content_can_apply_history_step = !web_content_session_history_state_install_is_pending(m_pending_web_content_session_history_state_install);
+    if (!will_replace_web_content_process && current_web_content_can_apply_history_step) {
         pending_traversal.stage = PendingSessionHistoryTraversal::Stage::ApplyingCommandInWebContent;
         m_pending_session_history_traversal = move(pending_traversal);
         return {
@@ -758,7 +818,7 @@ HistoryTraversalDecision CanonicalTraversable::traverse_the_history_by_delta(int
         };
     }
 
-    auto needs_cancelation_check = check_for_cancelation == CheckForCancelation::Yes;
+    auto needs_cancelation_check = check_for_cancelation == CheckForCancelation::Yes && current_web_content_can_apply_history_step;
     if (needs_cancelation_check) {
         command->kind = Web::HTML::ApplySessionHistoryStepKind::CheckForCancelationBeforeLoad;
         pending_traversal.command_kind = command->kind;
@@ -788,8 +848,11 @@ HistoryTraversalDecision CanonicalTraversable::traverse_the_history_by_delta(int
     };
 }
 
-WebContentHistoryStepResult CanonicalTraversable::did_apply_session_history_step(Web::HTML::SessionHistoryOperationId command_id, bool step_was_available, Web::HTML::HistoryStepResult result)
+WebContentHistoryStepResult CanonicalTraversable::did_apply_session_history_step(Web::HTML::SessionHistoryOperationId command_id, bool step_was_available, Web::HTML::HistoryStepResult result, Web::HTML::SessionHistoryEpoch epoch)
 {
+    if (epoch != m_web_content_session_history_epoch)
+        return { .dump_reason = "ignored-stale-apply-session-history-step-result-epoch"sv };
+
     if (!m_pending_session_history_traversal.has_value()
         || m_pending_session_history_traversal->command_id != command_id) {
         return { .dump_reason = "ignored-stale-apply-session-history-step-result"sv };
@@ -1012,8 +1075,9 @@ void CanonicalTraversable::did_crash_requiring_web_content_session_history_state
     prepare_to_install_web_content_session_history_state();
 }
 
-void CanonicalTraversable::reset_session_history_for_testing()
+Web::HTML::SessionHistoryEpoch CanonicalTraversable::reset_session_history_for_testing()
 {
+    begin_new_web_content_session_history_epoch();
     m_session_history.clear();
     m_session_history.mark_web_content_history_match_unproven();
     m_pending_session_history_navigation.clear();
@@ -1021,6 +1085,7 @@ void CanonicalTraversable::reset_session_history_for_testing()
     m_pending_session_history_reload_step.clear();
     m_session_history_entry_url_loading_from_ui_process.clear();
     abandon_pending_web_content_session_history_state_install();
+    return m_web_content_session_history_epoch;
 }
 
 void CanonicalTraversable::mark_web_content_session_history_stale_for_testing()

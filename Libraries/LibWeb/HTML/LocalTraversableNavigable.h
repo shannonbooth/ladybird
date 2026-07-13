@@ -113,10 +113,12 @@ public:
     void traverse_the_history_by_delta(int delta, GC::Ptr<DOM::Document> source_document = {});
     void discard_history_traversal_request(u64 history_traversal_request_id);
     SessionHistoryOperationId last_emitted_session_history_mutation_id() const { return m_last_emitted_session_history_mutation_id; }
+    SessionHistoryEpoch session_history_epoch() const { return m_session_history_epoch; }
+    bool set_session_history_epoch_from_ui_process(SessionHistoryEpoch);
     void apply_session_history_step(Web::HTML::ApplySessionHistoryStepCommand, GC::Ref<GC::Function<void(bool step_was_available, HistoryStepResult)>> on_complete);
-    void set_session_history_state_from_ui_process(CommittedSessionHistoryState);
+    bool set_session_history_state_from_ui_process(CommittedSessionHistoryState);
     bool try_to_install_top_level_session_history_entries_from_ui_process(SessionHistoryEntryDescriptor current_entry, Vector<SessionHistoryEntryDescriptor> entries_for_navigation_api, bool allow_reconstructing_current_entry);
-    void reset_session_history_for_testing(GC::Ref<GC::Function<void()>> on_complete);
+    void reset_session_history_for_testing(SessionHistoryEpoch, GC::Ref<GC::Function<void()>> on_complete);
 
     void close_top_level_traversable();
     void definitely_close_top_level_traversable();
@@ -255,6 +257,7 @@ private:
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#tn-current-session-history-step
     int m_current_session_history_step { 0 };
+    SessionHistoryEpoch m_session_history_epoch { 0 };
     SessionHistoryOperationId m_next_session_history_operation_id { 1 };
     SessionHistoryOperationId m_last_emitted_session_history_mutation_id { 0 };
     Optional<CommittedSessionHistoryState> m_committed_session_history_state_from_ui_process;
