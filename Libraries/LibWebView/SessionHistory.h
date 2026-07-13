@@ -64,6 +64,8 @@ public:
     [[nodiscard]] bool child_navigable_was_destroyed_from_web_content(Web::HTML::ChildNavigableDestroyed);
     [[nodiscard]] bool commit_same_document_navigation_from_web_content(Web::HTML::SameDocumentNavigationCommitted);
     [[nodiscard]] bool commit_nested_same_document_navigation_from_web_content(Web::HTML::NestedSameDocumentNavigationCommitted);
+    [[nodiscard]] bool commit_top_level_cross_document_navigation_from_web_content(Web::HTML::TopLevelCrossDocumentNavigationCommitted);
+    [[nodiscard]] bool commit_nested_cross_document_navigation_from_web_content(Web::HTML::NestedCrossDocumentNavigationCommitted);
     UpdateResult update_from_web_content(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index);
     [[nodiscard]] bool did_seed_web_content_from_ui_process(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index);
     void did_seed_web_content_from_ui_process(size_t current_top_level_entry_index);

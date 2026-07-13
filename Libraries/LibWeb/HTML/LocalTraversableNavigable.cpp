@@ -648,6 +648,68 @@ bool LocalTraversableNavigable::report_same_document_navigation_committed(LocalN
     }
 }
 
+bool LocalTraversableNavigable::report_cross_document_navigation_committed(LocalNavigable const& target_navigable, SessionHistoryEntry const& target_entry, i32 current_step)
+{
+    if (!page().client().should_report_session_history_updates())
+        return false;
+
+    if (!target_entry.step_value().has_value())
+        return false;
+
+    SessionHistoryEntryDescriptorCreationState creation_state { [this] {
+        return page().client().allocate_cross_process_id();
+    } };
+
+    auto entry = create_session_history_entry_descriptor(target_entry, creation_state);
+    auto report_update = [&](WebContentSessionHistoryUpdate::Details details) {
+        page().client().page_did_report_session_history_update({
+            .generation = m_session_history_generation,
+            .update_id = m_next_session_history_update_id++,
+            .details = move(details),
+        });
+    };
+
+    if (target_navigable.is_top_level_traversable()) {
+        report_update(TopLevelCrossDocumentNavigationCommitted {
+            .url = move(entry.url),
+            .document_state = move(entry.document_state),
+            .classic_history_api_state = move(entry.classic_history_api_state),
+            .navigation_api_state = move(entry.navigation_api_state),
+            .navigation_api_key = move(entry.navigation_api_key),
+            .navigation_api_id = move(entry.navigation_api_id),
+            .scroll_restoration_mode = entry.scroll_restoration_mode,
+            .scroll_position_data = move(entry.scroll_position_data),
+            .current_step = current_step,
+        });
+        return true;
+    } else {
+        auto parent = target_navigable.parent();
+        if (!parent)
+            return false;
+
+        auto const& parent_navigable = as<LocalNavigable>(*parent);
+        auto parent_entry = parent_navigable.active_session_history_entry();
+        if (!parent_entry || !parent_entry->step_value().has_value())
+            return false;
+
+        auto parent_entry_descriptor = create_session_history_entry_descriptor(*parent_entry, creation_state);
+        report_update(NestedCrossDocumentNavigationCommitted {
+            .parent_document_state_id = parent_entry_descriptor.document_state.id,
+            .navigable_id = target_navigable.id(),
+            .url = move(entry.url),
+            .document_state = move(entry.document_state),
+            .classic_history_api_state = move(entry.classic_history_api_state),
+            .navigation_api_state = move(entry.navigation_api_state),
+            .navigation_api_key = move(entry.navigation_api_key),
+            .navigation_api_id = move(entry.navigation_api_id),
+            .scroll_restoration_mode = entry.scroll_restoration_mode,
+            .scroll_position_data = move(entry.scroll_position_data),
+            .current_step = current_step,
+        });
+        return true;
+    }
+}
+
 void LocalTraversableNavigable::reset_session_history_for_testing(GC::Ref<GC::Function<void()>> on_complete)
 {
     append_session_history_traversal_steps(GC::create_function(heap(), [this, on_complete](NonnullRefPtr<Core::Promise<Empty>> signal) {
@@ -1740,21 +1802,35 @@ void ApplyHistoryStepState::complete()
         // AD-HOC: Report the updated session history descriptors to the UI-process mirror.
         if (m_traversable->page().client().should_report_session_history_updates()) {
             bool did_report_session_history_update = m_session_history_update_report == LocalTraversableNavigable::SessionHistoryUpdateReport::AlreadyReported;
+
+            // Same-document push/replace commits have no pending Document. Once the step completes, report the
+            // committed entry operation instead of sending the whole traversable snapshot.
             if (!did_report_session_history_update
                 && m_pending_document == nullptr
-                && m_navigation_type.has_value()
-                && (*m_navigation_type == Bindings::NavigationType::Push || *m_navigation_type == Bindings::NavigationType::Replace)
+                && (m_navigation_type == Bindings::NavigationType::Push || m_navigation_type == Bindings::NavigationType::Replace)
                 && m_changing_navigables.size() == 1) {
                 auto target_entry = m_changing_navigables.first()->current_session_history_entry();
                 if (target_entry) {
                     Optional<i32> replaced_step;
-                    if (*m_navigation_type == Bindings::NavigationType::Replace) {
+                    if (m_navigation_type == Bindings::NavigationType::Replace) {
                         if (auto target_step = target_entry->step_value(); target_step.has_value())
                             replaced_step = static_cast<i32>(*target_step);
                     }
-                    if (*m_navigation_type == Bindings::NavigationType::Push || replaced_step.has_value())
+                    if (m_navigation_type == Bindings::NavigationType::Push || replaced_step.has_value())
                         did_report_session_history_update = m_traversable->report_same_document_navigation_committed(*m_changing_navigables.first(), *target_entry, replaced_step, m_traversable->m_current_session_history_step);
                 }
+            }
+
+            // Cross-document push/replace commits arrive here with the freshly-created Document as pendingDocument.
+            // Once the step completes, the target navigable has activated that Document and the entry is final.
+            if (!did_report_session_history_update
+                && m_traversable->m_committed_session_history_state_from_ui_process.has_value()
+                && m_pending_document != nullptr
+                && (m_navigation_type == Bindings::NavigationType::Push || m_navigation_type == Bindings::NavigationType::Replace)
+                && m_changing_navigables.size() == 1) {
+                auto target_entry = m_changing_navigables.first()->current_session_history_entry();
+                if (target_entry)
+                    did_report_session_history_update = m_traversable->report_cross_document_navigation_committed(*m_changing_navigables.first(), *target_entry, m_traversable->m_current_session_history_step);
             }
 
             if (!did_report_session_history_update) {

@@ -263,6 +263,18 @@ WebContentSessionHistoryReportResult CanonicalTraversable::did_receive_web_conte
             return {};
         }
 
+        if (update.details.has<Web::HTML::TopLevelCrossDocumentNavigationCommitted>()) {
+            if (!m_session_history.commit_top_level_cross_document_navigation_from_web_content(move(update.details.get<Web::HTML::TopLevelCrossDocumentNavigationCommitted>())))
+                return "rejected-top-level-cross-document-navigation-commit"sv;
+            return {};
+        }
+
+        if (update.details.has<Web::HTML::NestedCrossDocumentNavigationCommitted>()) {
+            if (!m_session_history.commit_nested_cross_document_navigation_from_web_content(move(update.details.get<Web::HTML::NestedCrossDocumentNavigationCommitted>())))
+                return "rejected-nested-cross-document-navigation-commit"sv;
+            return {};
+        }
+
         return "ignored-unsupported-session-history-update"sv;
     };
 

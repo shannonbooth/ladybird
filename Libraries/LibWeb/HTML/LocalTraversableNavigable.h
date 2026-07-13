@@ -72,6 +72,7 @@ public:
     bool report_child_navigable_created(LocalNavigable const& parent_navigable, LocalNavigable const& child_navigable, SessionHistoryEntry const& initial_entry);
     bool report_child_navigable_destroyed(LocalNavigable const& parent_navigable, LocalNavigable const& child_navigable);
     bool report_same_document_navigation_committed(LocalNavigable const& target_navigable, SessionHistoryEntry const& target_entry, Optional<i32> replaced_step, i32 current_step);
+    bool report_cross_document_navigation_committed(LocalNavigable const& target_navigable, SessionHistoryEntry const& target_entry, i32 current_step);
 
     VisibilityState system_visibility_state() const { return m_system_visibility_state; }
     void set_system_visibility_state(VisibilityState);
