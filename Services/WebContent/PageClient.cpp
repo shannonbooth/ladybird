@@ -1086,6 +1086,11 @@ void PageClient::page_did_update_session_history(Vector<Web::HTML::SessionHistor
     client().async_did_update_session_history(m_id, entries, used_steps, current_used_step_index);
 }
 
+void PageClient::page_did_report_session_history_update(Web::HTML::WebContentSessionHistoryUpdate update)
+{
+    client().async_did_report_session_history_update(m_id, move(update));
+}
+
 String PageClient::page_did_request_ui_process_session_history_for_testing()
 {
     return client().did_request_ui_process_session_history_for_testing(m_id);

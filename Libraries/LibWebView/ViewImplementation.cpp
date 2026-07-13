@@ -1334,8 +1334,10 @@ void ViewImplementation::did_update_session_history(Badge<WebContentClient>, Vec
 
 void ViewImplementation::did_report_session_history_update(Badge<WebContentClient>, Web::HTML::WebContentSessionHistoryUpdate update)
 {
-    (void)update;
-    dump_session_history("ignored-webcontent-session-history-update-report"sv);
+    auto result = m_top_level_traversable.did_receive_web_content_session_history_update(move(update));
+    if (result.should_update_navigation_action_state)
+        update_navigation_action_state();
+    dump_session_history(result.dump_reason);
 }
 
 void ViewImplementation::did_update_session_history_for_testing(Badge<WebContentClient>, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index)

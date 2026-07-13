@@ -221,6 +221,38 @@ void CanonicalTraversable::prepare_for_reload()
     m_current_web_content_session_history_matches_mirror = false;
 }
 
+WebContentSessionHistoryReportResult CanonicalTraversable::did_receive_web_content_session_history_update(Web::HTML::WebContentSessionHistoryUpdate update)
+{
+    if (update.generation != m_web_content_session_history_generation)
+        return { .dump_reason = "ignored-stale-session-history-update-generation"sv };
+
+    if (update.update_id <= m_last_handled_web_content_session_history_update_id)
+        return { .dump_reason = "ignored-stale-session-history-update"sv };
+
+    m_last_handled_web_content_session_history_update_id = update.update_id;
+
+    if (!update.details.has<Web::HTML::CurrentEntryUpdated>())
+        return { .dump_reason = "ignored-unsupported-session-history-update"sv };
+
+    auto current_entry_update = move(update.details.get<Web::HTML::CurrentEntryUpdated>());
+    if (!m_session_history.update_current_entry_from_web_content(current_entry_update.update_kind, move(current_entry_update.entry))) {
+        m_current_web_content_session_history_matches_mirror = false;
+        m_session_history.forget_web_content_state();
+        return {
+            .dump_reason = "rejected-current-entry-update"sv,
+            .should_update_navigation_action_state = true,
+        };
+    }
+
+    m_last_applied_web_content_session_history_update_id = update.update_id;
+
+    m_current_web_content_session_history_matches_mirror = m_session_history.web_content_history_matches_mirror();
+    return {
+        .accepted = true,
+        .dump_reason = "did-update-current-entry"sv,
+    };
+}
+
 WebContentSessionHistoryUpdateDecision CanonicalTraversable::did_receive_web_content_session_history_update(Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url)
 {
     if (m_pending_web_content_session_history_seed.waiting_for_ack)

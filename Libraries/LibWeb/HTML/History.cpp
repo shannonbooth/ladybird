@@ -269,6 +269,8 @@ WebIDL::ExceptionOr<void> History::set_scroll_restoration(Bindings::ScrollRestor
         break;
     }
 
+    this_relevant_global_object.navigable()->traversable_navigable()->report_current_session_history_entry_update(SessionHistoryEntryUpdateKind::ScrollRestorationMode, *active_session_history_entry);
+
     return {};
 }
 

@@ -64,6 +64,7 @@ public:
         Yes,
     };
     SessionHistorySnapshot create_session_history_snapshot(SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::Yes);
+    bool report_current_session_history_entry_update(SessionHistoryEntryUpdateKind, SessionHistoryEntry const&, SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::No);
 
     VisibilityState system_visibility_state() const { return m_system_visibility_state; }
     void set_system_visibility_state(VisibilityState);
@@ -200,6 +201,7 @@ private:
     // https://html.spec.whatwg.org/multipage/document-sequences.html#tn-current-session-history-step
     int m_current_session_history_step { 0 };
     u64 m_session_history_generation { 0 };
+    u64 m_next_session_history_update_id { 1 };
     Optional<CommittedSessionHistoryState> m_committed_session_history_state_from_ui_process;
 
     // Concurrent apply-history-step runs share the step numbering below. Runs are serialized through the session

@@ -48,6 +48,11 @@ static void report_session_history_update_for_navigation_api_state_change(DOM::D
     if (!traversable->page().client().should_report_session_history_updates())
         return;
 
+    auto active_entry = navigable->active_session_history_entry();
+    VERIFY(active_entry);
+    if (traversable->report_current_session_history_entry_update(SessionHistoryEntryUpdateKind::NavigationAPIState, *active_entry))
+        return;
+
     auto session_history_snapshot = traversable->create_session_history_snapshot();
     traversable->page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
 }

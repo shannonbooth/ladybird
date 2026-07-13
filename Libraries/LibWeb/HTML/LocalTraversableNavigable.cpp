@@ -490,6 +490,7 @@ bool LocalTraversableNavigable::set_session_history_state_from_ui_process(Commit
         return false;
 
     m_session_history_generation = state.generation;
+    m_next_session_history_update_id = max(state.last_applied_update_id, state.last_handled_update_id) + 1;
 
     auto history_object_length_and_index = state.history_object_length_and_index;
     m_committed_session_history_state_from_ui_process = move(state);
@@ -500,6 +501,32 @@ bool LocalTraversableNavigable::set_session_history_state_from_ui_process(Commit
         document->history()->m_length = history_object_length_and_index.script_history_length;
     }
 
+    return true;
+}
+
+bool LocalTraversableNavigable::report_current_session_history_entry_update(SessionHistoryEntryUpdateKind update_kind, SessionHistoryEntry const& entry, SaveActiveEntryPersistedState save_active_entry_persisted_state)
+{
+    if (!page().client().should_report_session_history_updates())
+        return false;
+
+    if (!entry.step_value().has_value())
+        return false;
+
+    if (save_active_entry_persisted_state == SaveActiveEntryPersistedState::Yes)
+        save_persisted_state_to_active_session_history_entry();
+
+    SessionHistoryEntryDescriptorCreationState creation_state { [this] {
+        return page().client().allocate_cross_process_id();
+    } };
+
+    page().client().page_did_report_session_history_update({
+        .generation = m_session_history_generation,
+        .update_id = m_next_session_history_update_id++,
+        .details = CurrentEntryUpdated {
+            .update_kind = update_kind,
+            .entry = create_session_history_entry_descriptor(entry, creation_state),
+        },
+    });
     return true;
 }
 

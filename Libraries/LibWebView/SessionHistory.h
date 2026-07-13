@@ -59,6 +59,7 @@ public:
     void replace_current_entry(URL::URL, Web::HTML::CrossProcessId document_state_id, Variant<Empty, String, Web::HTML::POSTResource>);
     void mark_current_entry_reload_pending();
     void clear_current_entry_reload_pending();
+    [[nodiscard]] bool update_current_entry_from_web_content(Web::HTML::SessionHistoryEntryUpdateKind, Entry);
     UpdateResult update_from_web_content(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index);
     [[nodiscard]] bool did_seed_web_content_from_ui_process(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index);
     void did_seed_web_content_from_ui_process(size_t current_top_level_entry_index);

@@ -100,6 +100,12 @@ struct WebContentSessionHistoryUpdateDecision {
     WebContentSessionHistoryUpdateResult update {};
 };
 
+struct WebContentSessionHistoryReportResult {
+    bool accepted { false };
+    StringView dump_reason;
+    bool should_update_navigation_action_state { false };
+};
+
 struct WebContentSessionHistorySeedAckResult {
     bool ignored { false };
     StringView dump_reason;
@@ -233,6 +239,7 @@ public:
     void prepare_for_non_history_page_load();
     void prepare_for_reload();
     void prepare_to_seed_web_content_session_history_from_ui_process();
+    WebContentSessionHistoryReportResult did_receive_web_content_session_history_update(Web::HTML::WebContentSessionHistoryUpdate);
     WebContentSessionHistoryUpdateDecision did_receive_web_content_session_history_update(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url);
     WebContentSessionHistoryUpdateDecision did_receive_web_content_session_history_update_for_testing(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url);
     WebContentSessionHistorySeedAckResult did_receive_web_content_session_history_seed_ack(bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url);
