@@ -38,6 +38,15 @@ enum class ScrollRestorationMode {
     Manual,
 };
 
+enum class SessionHistoryEntryUpdateKind : u8 {
+    NavigationAPIState,
+    ScrollRestorationMode,
+    ScrollPositionData,
+    DocumentStateReloadPending,
+    DocumentStatePopulation,
+    DocumentStateNavigableTargetName,
+};
+
 struct SessionHistoryNestedHistoryDescriptor;
 
 // IPC-friendly descriptors for the parts of session history entries and document states that can survive
@@ -82,6 +91,93 @@ struct SessionHistoryEntryDescriptor {
     String navigation_api_id;
     ScrollRestorationMode scroll_restoration_mode { ScrollRestorationMode::Auto };
     SessionHistoryEntryScrollPositionData scroll_position_data;
+};
+
+struct CurrentEntryUpdated {
+    SessionHistoryEntryUpdateKind update_kind { SessionHistoryEntryUpdateKind::NavigationAPIState };
+    SessionHistoryEntryDescriptor entry;
+};
+
+struct ChildNavigableCreated {
+    CrossProcessId parent_document_state_id;
+    CrossProcessId navigable_id;
+    SessionHistoryEntryDescriptor initial_entry;
+    i32 current_step { 0 };
+};
+
+struct ChildNavigableDestroyed {
+    CrossProcessId parent_document_state_id;
+    CrossProcessId navigable_id;
+    i32 current_step { 0 };
+};
+
+struct SameDocumentNavigationCommitted {
+    URL::URL url;
+    SessionHistoryDocumentStateDescriptor document_state;
+    StorageSerializationRecord classic_history_api_state;
+    StorageSerializationRecord navigation_api_state;
+    String navigation_api_key;
+    String navigation_api_id;
+    ScrollRestorationMode scroll_restoration_mode { ScrollRestorationMode::Auto };
+    SessionHistoryEntryScrollPositionData scroll_position_data;
+    Optional<i32> replaced_step;
+    i32 current_step { 0 };
+};
+
+struct NestedSameDocumentNavigationCommitted {
+    CrossProcessId parent_document_state_id;
+    CrossProcessId navigable_id;
+    URL::URL url;
+    SessionHistoryDocumentStateDescriptor document_state;
+    StorageSerializationRecord classic_history_api_state;
+    StorageSerializationRecord navigation_api_state;
+    String navigation_api_key;
+    String navigation_api_id;
+    ScrollRestorationMode scroll_restoration_mode { ScrollRestorationMode::Auto };
+    SessionHistoryEntryScrollPositionData scroll_position_data;
+    Optional<i32> replaced_step;
+    i32 current_step { 0 };
+};
+
+struct NestedCrossDocumentNavigationCommitted {
+    CrossProcessId parent_document_state_id;
+    CrossProcessId navigable_id;
+    URL::URL url;
+    SessionHistoryDocumentStateDescriptor document_state;
+    StorageSerializationRecord classic_history_api_state;
+    StorageSerializationRecord navigation_api_state;
+    String navigation_api_key;
+    String navigation_api_id;
+    ScrollRestorationMode scroll_restoration_mode { ScrollRestorationMode::Auto };
+    SessionHistoryEntryScrollPositionData scroll_position_data;
+    i32 current_step { 0 };
+};
+
+struct TopLevelCrossDocumentNavigationCommitted {
+    URL::URL url;
+    SessionHistoryDocumentStateDescriptor document_state;
+    StorageSerializationRecord classic_history_api_state;
+    StorageSerializationRecord navigation_api_state;
+    String navigation_api_key;
+    String navigation_api_id;
+    ScrollRestorationMode scroll_restoration_mode { ScrollRestorationMode::Auto };
+    SessionHistoryEntryScrollPositionData scroll_position_data;
+    i32 current_step { 0 };
+};
+
+struct WebContentSessionHistoryUpdate {
+    using Details = Variant<
+        CurrentEntryUpdated,
+        ChildNavigableCreated,
+        ChildNavigableDestroyed,
+        SameDocumentNavigationCommitted,
+        NestedSameDocumentNavigationCommitted,
+        NestedCrossDocumentNavigationCommitted,
+        TopLevelCrossDocumentNavigationCommitted>;
+
+    u64 generation { 0 };
+    u64 update_id { 0 };
+    Details details;
 };
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#nested-history
@@ -215,6 +311,54 @@ WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::SessionHistoryEntryDescriptor 
 
 template<>
 WEB_API ErrorOr<Web::HTML::SessionHistoryEntryDescriptor> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::CurrentEntryUpdated const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::CurrentEntryUpdated> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::ChildNavigableCreated const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::ChildNavigableCreated> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::ChildNavigableDestroyed const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::ChildNavigableDestroyed> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::SameDocumentNavigationCommitted const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::SameDocumentNavigationCommitted> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::NestedSameDocumentNavigationCommitted const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::NestedSameDocumentNavigationCommitted> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::NestedCrossDocumentNavigationCommitted const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::NestedCrossDocumentNavigationCommitted> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::TopLevelCrossDocumentNavigationCommitted const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::TopLevelCrossDocumentNavigationCommitted> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::WebContentSessionHistoryUpdate const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::WebContentSessionHistoryUpdate> decode(Decoder&);
 
 template<>
 WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::SessionHistoryEntryScrollPositionData const&);

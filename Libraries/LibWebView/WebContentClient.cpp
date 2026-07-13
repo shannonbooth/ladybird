@@ -1803,6 +1803,12 @@ void WebContentClient::did_update_session_history(u64 page_id, Vector<Web::HTML:
         view->did_update_session_history({}, move(entries), move(used_steps), current_used_step_index);
 }
 
+void WebContentClient::did_report_session_history_update(u64 page_id, Web::HTML::WebContentSessionHistoryUpdate update)
+{
+    if (auto view = view_for_page_id(page_id); view.has_value())
+        view->did_report_session_history_update({}, move(update));
+}
+
 Messages::WebContentClient::DidRequestUiProcessSessionHistoryForTestingResponse WebContentClient::did_request_ui_process_session_history_for_testing(u64 page_id)
 {
     if (auto view = view_for_page_id(page_id); view.has_value())
