@@ -348,7 +348,7 @@ WebContentSessionHistoryUpdateDecision CanonicalTraversable::did_receive_web_con
 {
     // NB: dumpUIProcessSessionHistory() first sends WebContent's current snapshot to the UI process, then returns
     //     the UI mirror. If a stale seed ack is still pending, normal async snapshots are intentionally ignored, so
-    //     use the same convergence path as a rejected seed ack to make this testing hook deterministic.
+    //     allow this testing hook to adopt the explicit snapshot it requested.
     if (m_pending_web_content_session_history_seed.waiting_for_ack) {
         auto update = adopt_web_content_session_history_after_rejected_seed(move(entries), move(used_steps), current_used_step_index, current_url);
         if (update.update_result == TraversableSessionHistory::UpdateResult::InvalidSnapshot)
@@ -411,24 +411,17 @@ WebContentSessionHistoryUpdateResult CanonicalTraversable::adopt_web_content_ses
     return update;
 }
 
-WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_content_session_history_seed_ack(bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url)
+WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_content_session_history_seed_ack(u64 seed_id, bool accepted)
 {
     if (!m_pending_web_content_session_history_seed.waiting_for_ack)
         return { .ignored = true, .dump_reason = "ignored-webcontent-session-history-seed-ack"sv };
+    if (seed_id != m_pending_web_content_session_history_seed.seed_id)
+        return { .ignored = true, .dump_reason = "ignored-stale-webcontent-session-history-seed-ack"sv };
 
     WebContentSessionHistorySeedAckResult result;
     result.should_update_navigation_action_state = true;
 
     if (!accepted) {
-        auto update = adopt_web_content_session_history_after_rejected_seed(move(entries), move(used_steps), current_used_step_index, current_url);
-        if (update.update_result != TraversableSessionHistory::UpdateResult::InvalidSnapshot) {
-            result.dump_reason = "webcontent-session-history-seed-rejected-with-current-snapshot"sv;
-            result.current_url = move(update.current_url);
-            // NB: Applying the adopted snapshot's current URL already refreshes the navigation actions.
-            result.should_update_navigation_action_state = false;
-            return result;
-        }
-
         abandon_pending_web_content_session_history_seed();
         m_current_web_content_session_history_matches_mirror = false;
         m_session_history.forget_web_content_state();
@@ -437,7 +430,8 @@ WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_cont
         return result;
     }
 
-    if (!m_session_history.did_seed_web_content_from_ui_process(move(entries), move(used_steps), current_used_step_index, m_pending_web_content_session_history_seed.allow_current_entry_reconstruction)) {
+    if (!m_pending_web_content_session_history_seed.current_top_level_entry_index.has_value()
+        || !m_session_history.did_seed_web_content_from_ui_process(*m_pending_web_content_session_history_seed.current_top_level_entry_index)) {
         if (m_pending_web_content_session_history_seed.should_reseed_after_current_history_load) {
             m_pending_web_content_session_history_seed.waiting_for_ack = false;
             m_pending_web_content_session_history_seed.should_send_entries = true;
@@ -465,7 +459,8 @@ WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_cont
     }
 
     m_pending_web_content_session_history_seed.ignore_updates_until_seed = false;
-    m_current_web_content_session_history_matches_mirror = !m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value()
+    m_current_web_content_session_history_matches_mirror = m_session_history.web_content_history_matches_mirror()
+        && !m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value()
         && !m_pending_session_history_navigation.has_value();
     if (m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value()) {
         if (m_pending_session_history_traversal.has_value())
@@ -490,7 +485,7 @@ NavigationStartResult CanonicalTraversable::did_start_navigation(URL::URL const&
         if (*m_session_history_entry_url_loading_from_ui_process != url)
             return { .dump_reason = "ignored-stale-ui-history-load-start"sv };
 
-        auto should_keep_preseeded_web_content_history = m_pending_web_content_session_history_seed.waiting_for_ack || m_session_history.web_content_uses_ui_step_coordinates();
+        auto should_keep_preseeded_web_content_history = m_pending_web_content_session_history_seed.waiting_for_ack || m_session_history.web_content_history_matches_mirror();
         m_session_history_entry_url_loading_from_ui_process.clear();
         if (!should_keep_preseeded_web_content_history) {
             m_current_web_content_session_history_matches_mirror = false;
@@ -847,7 +842,6 @@ Optional<WebContentSessionHistorySeed> CanonicalTraversable::prepare_web_content
     auto allow_reconstructing_current_entry = is_restoring_traversal_target
         || m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value()
         || allow_current_entry_reconstruction;
-    m_pending_web_content_session_history_seed.allow_current_entry_reconstruction = allow_reconstructing_current_entry;
     auto current_top_level_step = entries[*current_top_level_entry_index].step;
     auto session_history_state = session_history_state_for_seed(current_top_level_step);
     if (!session_history_state.has_value()) {
@@ -857,7 +851,11 @@ Optional<WebContentSessionHistorySeed> CanonicalTraversable::prepare_web_content
         return {};
     }
 
+    m_pending_web_content_session_history_seed.seed_id = m_next_web_content_session_history_seed_id++;
+    m_pending_web_content_session_history_seed.current_top_level_entry_index = *current_top_level_entry_index;
+
     return WebContentSessionHistorySeed {
+        .seed_id = m_pending_web_content_session_history_seed.seed_id,
         .entries = move(entries),
         .session_history_state = *session_history_state,
         .current_top_level_entry_index = *current_top_level_entry_index,
@@ -888,7 +886,7 @@ CurrentSessionHistoryEntryLoad CanonicalTraversable::prepare_current_session_his
     }
 
     m_session_history_entry_url_loading_from_ui_process = current_entry->url;
-    auto history_handling = m_pending_web_content_session_history_seed.waiting_for_ack || m_session_history.web_content_uses_ui_step_coordinates()
+    auto history_handling = m_pending_web_content_session_history_seed.waiting_for_ack || m_session_history.web_content_history_matches_mirror()
         ? Web::Bindings::NavigationHistoryBehavior::Replace
         : Web::Bindings::NavigationHistoryBehavior::Auto;
     return { .url = current_entry->url, .document_resource = current_entry->document_state.resource, .history_handling = history_handling };

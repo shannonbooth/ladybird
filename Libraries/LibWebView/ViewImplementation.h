@@ -265,7 +265,7 @@ public:
     void did_update_session_history(Badge<WebContentClient>, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32>, size_t current_used_step_index);
     void did_report_session_history_update(Badge<WebContentClient>, Web::HTML::WebContentSessionHistoryUpdate);
     void did_update_session_history_for_testing(Badge<WebContentClient>, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32>, size_t current_used_step_index);
-    void did_set_top_level_session_history(Badge<WebContentClient>, bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index);
+    void did_set_top_level_session_history(Badge<WebContentClient>, u64 seed_id, bool accepted);
     void did_traverse_the_history_to_step(Badge<WebContentClient>, i32 step, bool step_was_available, Web::HTML::HistoryStepResult);
     void did_check_if_traverse_history_step_is_canceled(
         Badge<WebContentClient>, u64 request_id, i32 step, bool canceled);

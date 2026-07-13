@@ -357,17 +357,16 @@ void ConnectionFromClient::check_if_traverse_history_step_is_canceled(u64 page_i
         }));
 }
 
-void ConnectionFromClient::set_top_level_session_history(u64 page_id, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Web::HTML::CommittedSessionHistoryState session_history_state, size_t current_top_level_entry_index, bool allow_reconstructing_current_entry)
+void ConnectionFromClient::set_top_level_session_history(u64 page_id, u64 seed_id, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Web::HTML::CommittedSessionHistoryState session_history_state, size_t current_top_level_entry_index, bool allow_reconstructing_current_entry)
 {
     if (auto page = this->page(page_id); page.has_value()) {
         auto& traversable = *page->page().top_level_traversable();
         auto accepted = traversable.replace_top_level_session_history_entries_from_ui_process(move(entries), current_top_level_entry_index, allow_reconstructing_current_entry);
         if (accepted)
             accepted = traversable.set_session_history_state_from_ui_process(move(session_history_state));
-        auto session_history_snapshot = traversable.create_session_history_snapshot();
-        async_did_set_top_level_session_history(page_id, accepted, move(session_history_snapshot.top_level_session_history_entries), move(session_history_snapshot.used_session_history_steps), session_history_snapshot.current_used_step_index);
+        async_did_set_top_level_session_history(page_id, seed_id, accepted);
     } else {
-        async_did_set_top_level_session_history(page_id, false, {}, {}, 0);
+        async_did_set_top_level_session_history(page_id, seed_id, false);
     }
 }
 

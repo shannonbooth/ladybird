@@ -1832,10 +1832,10 @@ Messages::WebContentClient::DidUpdateSessionHistoryAndRequestUiProcessSessionHis
     return { "{}"_string };
 }
 
-void WebContentClient::did_set_top_level_session_history(u64 page_id, bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index)
+void WebContentClient::did_set_top_level_session_history(u64 page_id, u64 seed_id, bool accepted)
 {
     if (auto view = view_for_page_id(page_id); view.has_value())
-        view->did_set_top_level_session_history({}, accepted, move(entries), move(used_steps), current_used_step_index);
+        view->did_set_top_level_session_history({}, seed_id, accepted);
 }
 
 void WebContentClient::did_traverse_the_history_to_step(u64 page_id, i32 step, bool step_was_available, Web::HTML::HistoryStepResult result)

@@ -376,8 +376,9 @@ bool LocalTraversableNavigable::replace_top_level_session_history_entries_from_u
         //     while the UI-process mirror is necessarily fed by async IPC. If that mirror sends back an older current
         //     entry, accepting it would clobber the active document's live latest entry and make a queued traversal
         //     target unreachable. A provisional descriptor is UI-owned state, not an authoritative description of an
-        //     already-live current document. The broader model should move toward a narrower seed-ack contract or
-        //     targeted UI-process mutations instead of sending a full async mirror back as authoritative state.
+        //     already-live current document. The seed ack only reports whether WebContent installed the UI-owned
+        //     entries; this install path still needs to avoid treating an older UI-owned current entry descriptor as
+        //     authoritative state for an already-live document.
         //     Process-swap/preload seeds still go through the initial about:blank path above.
         auto const& current_entry_from_ui_process = entries_from_ui_process[current_top_level_entry_index];
         if (current_entry_from_ui_process.document_state.is_provisional)
