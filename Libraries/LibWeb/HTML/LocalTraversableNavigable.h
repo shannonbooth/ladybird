@@ -63,8 +63,14 @@ public:
         No,
         Yes,
     };
+    enum class SessionHistoryUpdateReport : bool {
+        Needed,
+        AlreadyReported,
+    };
     SessionHistorySnapshot create_session_history_snapshot(SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::Yes);
     bool report_current_session_history_entry_update(SessionHistoryEntryUpdateKind, SessionHistoryEntry const&, SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::No);
+    bool report_child_navigable_created(LocalNavigable const& parent_navigable, LocalNavigable const& child_navigable, SessionHistoryEntry const& initial_entry);
+    bool report_child_navigable_destroyed(LocalNavigable const& parent_navigable, LocalNavigable const& child_navigable);
     bool report_same_document_navigation_committed(LocalNavigable const& target_navigable, SessionHistoryEntry const& target_entry, Optional<i32> replaced_step, i32 current_step);
 
     VisibilityState system_visibility_state() const { return m_system_visibility_state; }
@@ -88,7 +94,7 @@ public:
     };
     [[nodiscard]] bool try_to_synchronously_commit_same_document_navigation(GC::Ref<LocalNavigable>, NonnullRefPtr<SessionHistoryEntry>, RefPtr<SessionHistoryEntry> entry_to_replace);
     void apply_the_push_or_replace_history_step(int step, HistoryHandlingBehavior history_handling, UserNavigationInvolvement, SynchronousNavigation, GC::Ptr<DOM::Document> pending_document, GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable, Optional<String> expected_ongoing_navigation_id, GC::Ref<OnApplyHistoryStepComplete> on_complete);
-    void update_for_navigable_creation_or_destruction(GC::Ref<OnApplyHistoryStepComplete> on_complete);
+    void update_for_navigable_creation_or_destruction(GC::Ref<OnApplyHistoryStepComplete> on_complete, SessionHistoryUpdateReport = SessionHistoryUpdateReport::Needed);
 
     int get_the_used_step(int step) const;
     Vector<GC::Root<LocalNavigable>> get_all_local_navigables_whose_current_session_history_entry_will_change_or_reload(int) const;
@@ -166,7 +172,8 @@ private:
         GC::Ptr<DOM::Document> pending_document,
         GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable,
         Optional<String> expected_ongoing_navigation_id,
-        GC::Ref<OnApplyHistoryStepComplete> on_complete);
+        GC::Ref<OnApplyHistoryStepComplete> on_complete,
+        SessionHistoryUpdateReport = SessionHistoryUpdateReport::Needed);
 
     void apply_the_history_step_after_unload_check(
         int step,
@@ -179,7 +186,8 @@ private:
         GC::Ptr<DOM::Document> pending_document,
         GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable,
         Optional<String> expected_ongoing_navigation_id,
-        GC::Ref<OnApplyHistoryStepComplete> on_complete);
+        GC::Ref<OnApplyHistoryStepComplete> on_complete,
+        SessionHistoryUpdateReport);
 
     using OnHistoryStepPrechecksComplete = GC::Function<void(HistoryStepResult, int target_step, LocalNavigable::NavigationAPIAbortBehavior)>;
     void run_the_history_step_prechecks(

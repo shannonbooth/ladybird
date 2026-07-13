@@ -239,6 +239,18 @@ WebContentSessionHistoryReportResult CanonicalTraversable::did_receive_web_conte
             return {};
         }
 
+        if (update.details.has<Web::HTML::ChildNavigableCreated>()) {
+            if (!m_session_history.child_navigable_was_created_from_web_content(move(update.details.get<Web::HTML::ChildNavigableCreated>())))
+                return "rejected-child-navigable-created"sv;
+            return {};
+        }
+
+        if (update.details.has<Web::HTML::ChildNavigableDestroyed>()) {
+            if (!m_session_history.child_navigable_was_destroyed_from_web_content(move(update.details.get<Web::HTML::ChildNavigableDestroyed>())))
+                return "rejected-child-navigable-destroyed"sv;
+            return {};
+        }
+
         if (update.details.has<Web::HTML::SameDocumentNavigationCommitted>()) {
             if (!m_session_history.commit_same_document_navigation_from_web_content(move(update.details.get<Web::HTML::SameDocumentNavigationCommitted>())))
                 return "rejected-same-document-navigation-commit"sv;

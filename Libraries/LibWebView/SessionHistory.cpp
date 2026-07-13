@@ -177,6 +177,52 @@ static TraversableSessionHistory::Entry entry_from_nested_same_document_navigati
     };
 }
 
+static bool append_child_navigable_to_document_state(Vector<TraversableSessionHistory::Entry>& entries, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId navigable_id, TraversableSessionHistory::Entry const& initial_entry, bool& found_parent)
+{
+    for (auto& entry : entries) {
+        if (entry.document_state.id == parent_document_state_id) {
+            found_parent = true;
+            for (auto const& nested_history : entry.document_state.nested_histories) {
+                if (nested_history.id == navigable_id)
+                    return false;
+            }
+            entry.document_state.nested_histories.append({
+                .id = navigable_id,
+                .entries = { initial_entry },
+            });
+        }
+
+        for (auto& nested_history : entry.document_state.nested_histories) {
+            if (!append_child_navigable_to_document_state(nested_history.entries, parent_document_state_id, navigable_id, initial_entry, found_parent))
+                return false;
+        }
+    }
+
+    return true;
+}
+
+static bool remove_child_navigable_from_document_state(Vector<TraversableSessionHistory::Entry>& entries, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId navigable_id, bool& found_parent)
+{
+    for (auto& entry : entries) {
+        if (entry.document_state.id == parent_document_state_id) {
+            found_parent = true;
+            auto old_size = entry.document_state.nested_histories.size();
+            entry.document_state.nested_histories.remove_all_matching([&](auto const& nested_history) {
+                return nested_history.id == navigable_id;
+            });
+            if (entry.document_state.nested_histories.size() == old_size)
+                return false;
+        }
+
+        for (auto& nested_history : entry.document_state.nested_histories) {
+            if (!remove_child_navigable_from_document_state(nested_history.entries, parent_document_state_id, navigable_id, found_parent))
+                return false;
+        }
+    }
+
+    return true;
+}
+
 static bool entries_match(Vector<TraversableSessionHistory::Entry> const& a, Vector<TraversableSessionHistory::Entry> const& b)
 {
     if (a.size() != b.size())
@@ -570,6 +616,40 @@ static bool apply_same_document_navigation_commit(
     return current_used_step_index.has_value() && entries_are_valid(entries) && entries_and_used_steps_are_consistent(entries, used_steps);
 }
 
+static bool apply_child_navigable_created(
+    Vector<TraversableSessionHistory::Entry>& entries,
+    Vector<i32>& used_steps,
+    Optional<size_t>& current_used_step_index,
+    Web::HTML::ChildNavigableCreated const& created)
+{
+    if (created.current_step < 0 || created.initial_entry.step < 0)
+        return false;
+
+    bool found_parent = false;
+    if (!append_child_navigable_to_document_state(entries, created.parent_document_state_id, created.navigable_id, created.initial_entry, found_parent) || !found_parent)
+        return false;
+
+    recompute_used_steps(entries, used_steps, current_used_step_index, created.current_step);
+    return current_used_step_index.has_value() && entries_are_valid(entries) && entries_and_used_steps_are_consistent(entries, used_steps);
+}
+
+static bool apply_child_navigable_destroyed(
+    Vector<TraversableSessionHistory::Entry>& entries,
+    Vector<i32>& used_steps,
+    Optional<size_t>& current_used_step_index,
+    Web::HTML::ChildNavigableDestroyed const& destroyed)
+{
+    if (destroyed.current_step < 0)
+        return false;
+
+    bool found_parent = false;
+    if (!remove_child_navigable_from_document_state(entries, destroyed.parent_document_state_id, destroyed.navigable_id, found_parent) || !found_parent)
+        return false;
+
+    recompute_used_steps(entries, used_steps, current_used_step_index, destroyed.current_step);
+    return current_used_step_index.has_value() && entries_are_valid(entries) && entries_and_used_steps_are_consistent(entries, used_steps);
+}
+
 static TraversableSessionHistory::Entry create_ui_process_session_history_entry(
     i32 step,
     URL::URL url,
@@ -723,6 +803,70 @@ bool TraversableSessionHistory::update_current_entry_from_web_content(Web::HTML:
     m_entries = move(entries);
     if (updated_web_content_known_entries.has_value())
         m_web_content_known_entries = updated_web_content_known_entries.release_value();
+    return true;
+}
+
+bool TraversableSessionHistory::child_navigable_was_created_from_web_content(Web::HTML::ChildNavigableCreated created)
+{
+    if (!m_web_content_current_step.has_value() || !m_web_content_uses_ui_step_coordinates)
+        return false;
+
+    if (!m_current_used_step_index.has_value() || *m_current_used_step_index >= m_used_steps.size())
+        return false;
+
+    if (*m_web_content_current_step != m_used_steps[*m_current_used_step_index])
+        return false;
+
+    auto entries = m_entries;
+    auto used_steps = m_used_steps;
+    auto current_used_step_index = m_current_used_step_index;
+    if (!apply_child_navigable_created(entries, used_steps, current_used_step_index, created))
+        return false;
+
+    auto web_content_known_entries = m_web_content_known_entries;
+    auto web_content_known_used_steps = m_web_content_known_used_steps;
+    auto web_content_current_used_step_index = web_content_known_used_steps.find_first_index(*m_web_content_current_step);
+    if (!apply_child_navigable_created(web_content_known_entries, web_content_known_used_steps, web_content_current_used_step_index, created))
+        return false;
+
+    m_entries = move(entries);
+    m_used_steps = move(used_steps);
+    m_current_used_step_index = current_used_step_index;
+    m_web_content_known_entries = move(web_content_known_entries);
+    m_web_content_known_used_steps = move(web_content_known_used_steps);
+    m_web_content_current_step = m_used_steps[*m_current_used_step_index];
+    return true;
+}
+
+bool TraversableSessionHistory::child_navigable_was_destroyed_from_web_content(Web::HTML::ChildNavigableDestroyed destroyed)
+{
+    if (!m_web_content_current_step.has_value() || !m_web_content_uses_ui_step_coordinates)
+        return false;
+
+    if (!m_current_used_step_index.has_value() || *m_current_used_step_index >= m_used_steps.size())
+        return false;
+
+    if (*m_web_content_current_step != m_used_steps[*m_current_used_step_index])
+        return false;
+
+    auto entries = m_entries;
+    auto used_steps = m_used_steps;
+    auto current_used_step_index = m_current_used_step_index;
+    if (!apply_child_navigable_destroyed(entries, used_steps, current_used_step_index, destroyed))
+        return false;
+
+    auto web_content_known_entries = m_web_content_known_entries;
+    auto web_content_known_used_steps = m_web_content_known_used_steps;
+    auto web_content_current_used_step_index = web_content_known_used_steps.find_first_index(*m_web_content_current_step);
+    if (!apply_child_navigable_destroyed(web_content_known_entries, web_content_known_used_steps, web_content_current_used_step_index, destroyed))
+        return false;
+
+    m_entries = move(entries);
+    m_used_steps = move(used_steps);
+    m_current_used_step_index = current_used_step_index;
+    m_web_content_known_entries = move(web_content_known_entries);
+    m_web_content_known_used_steps = move(web_content_known_used_steps);
+    m_web_content_current_step = m_used_steps[*m_current_used_step_index];
     return true;
 }
 
