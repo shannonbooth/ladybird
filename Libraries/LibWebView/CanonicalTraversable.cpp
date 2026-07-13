@@ -231,15 +231,38 @@ WebContentSessionHistoryReportResult CanonicalTraversable::did_receive_web_conte
 
     m_last_handled_web_content_session_history_update_id = update.update_id;
 
-    if (!update.details.has<Web::HTML::CurrentEntryUpdated>())
-        return { .dump_reason = "ignored-unsupported-session-history-update"sv };
+    auto apply_update = [&]() -> Optional<StringView> {
+        if (update.details.has<Web::HTML::CurrentEntryUpdated>()) {
+            auto current_entry_update = move(update.details.get<Web::HTML::CurrentEntryUpdated>());
+            if (!m_session_history.update_current_entry_from_web_content(current_entry_update.update_kind, move(current_entry_update.entry)))
+                return "rejected-current-entry-update"sv;
+            return {};
+        }
 
-    auto current_entry_update = move(update.details.get<Web::HTML::CurrentEntryUpdated>());
-    if (!m_session_history.update_current_entry_from_web_content(current_entry_update.update_kind, move(current_entry_update.entry))) {
+        if (update.details.has<Web::HTML::SameDocumentNavigationCommitted>()) {
+            if (!m_session_history.commit_same_document_navigation_from_web_content(move(update.details.get<Web::HTML::SameDocumentNavigationCommitted>())))
+                return "rejected-same-document-navigation-commit"sv;
+            return {};
+        }
+
+        if (update.details.has<Web::HTML::NestedSameDocumentNavigationCommitted>()) {
+            if (!m_session_history.commit_nested_same_document_navigation_from_web_content(move(update.details.get<Web::HTML::NestedSameDocumentNavigationCommitted>())))
+                return "rejected-nested-same-document-navigation-commit"sv;
+            return {};
+        }
+
+        return "ignored-unsupported-session-history-update"sv;
+    };
+
+    auto rejection_reason = apply_update();
+    if (rejection_reason.has_value()) {
+        if (*rejection_reason == "ignored-unsupported-session-history-update"sv)
+            return { .dump_reason = *rejection_reason };
+
         m_current_web_content_session_history_matches_mirror = false;
         m_session_history.forget_web_content_state();
         return {
-            .dump_reason = "rejected-current-entry-update"sv,
+            .dump_reason = *rejection_reason,
             .should_update_navigation_action_state = true,
         };
     }
@@ -249,7 +272,8 @@ WebContentSessionHistoryReportResult CanonicalTraversable::did_receive_web_conte
     m_current_web_content_session_history_matches_mirror = m_session_history.web_content_history_matches_mirror();
     return {
         .accepted = true,
-        .dump_reason = "did-update-current-entry"sv,
+        .dump_reason = "did-report-session-history-update"sv,
+        .should_update_navigation_action_state = true,
     };
 }
 
@@ -570,6 +594,7 @@ HistoryTraversalDecision CanonicalTraversable::traverse_the_history_by_delta(int
     auto web_content_can_apply_traversal = !m_pending_web_content_session_history_seed.should_send_entries
         && !m_pending_web_content_session_history_seed.ignore_updates_until_seed
         && !m_pending_web_content_session_history_seed.waiting_for_ack
+        && m_current_web_content_session_history_matches_mirror
         && !m_session_history_entry_url_loading_from_ui_process.has_value()
         && !m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value()
         && m_session_history.web_content_can_traverse_to(*target);

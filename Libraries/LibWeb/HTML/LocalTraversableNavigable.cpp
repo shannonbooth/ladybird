@@ -530,6 +530,71 @@ bool LocalTraversableNavigable::report_current_session_history_entry_update(Sess
     return true;
 }
 
+bool LocalTraversableNavigable::report_same_document_navigation_committed(LocalNavigable const& target_navigable, SessionHistoryEntry const& target_entry, Optional<i32> replaced_step, i32 current_step)
+{
+    if (!page().client().should_report_session_history_updates())
+        return false;
+
+    auto target_step = target_entry.step_value();
+    if (!target_step.has_value())
+        return false;
+
+    SessionHistoryEntryDescriptorCreationState creation_state { [this] {
+        return page().client().allocate_cross_process_id();
+    } };
+
+    auto entry = create_session_history_entry_descriptor(target_entry, creation_state);
+    auto report_update = [&](WebContentSessionHistoryUpdate::Details details) {
+        page().client().page_did_report_session_history_update({
+            .generation = m_session_history_generation,
+            .update_id = m_next_session_history_update_id++,
+            .details = move(details),
+        });
+    };
+
+    if (target_navigable.is_top_level_traversable()) {
+        report_update(SameDocumentNavigationCommitted {
+            .url = move(entry.url),
+            .document_state = move(entry.document_state),
+            .classic_history_api_state = move(entry.classic_history_api_state),
+            .navigation_api_state = move(entry.navigation_api_state),
+            .navigation_api_key = move(entry.navigation_api_key),
+            .navigation_api_id = move(entry.navigation_api_id),
+            .scroll_restoration_mode = entry.scroll_restoration_mode,
+            .scroll_position_data = move(entry.scroll_position_data),
+            .replaced_step = replaced_step,
+            .current_step = current_step,
+        });
+        return true;
+    } else {
+        auto parent = target_navigable.parent();
+        if (!parent)
+            return false;
+
+        auto const& parent_navigable = as<LocalNavigable>(*parent);
+        auto parent_entry = parent_navigable.active_session_history_entry();
+        if (!parent_entry || !parent_entry->step_value().has_value())
+            return false;
+
+        auto parent_entry_descriptor = create_session_history_entry_descriptor(*parent_entry, creation_state);
+        report_update(NestedSameDocumentNavigationCommitted {
+            .parent_document_state_id = parent_entry_descriptor.document_state.id,
+            .navigable_id = target_navigable.id(),
+            .url = move(entry.url),
+            .document_state = move(entry.document_state),
+            .classic_history_api_state = move(entry.classic_history_api_state),
+            .navigation_api_state = move(entry.navigation_api_state),
+            .navigation_api_key = move(entry.navigation_api_key),
+            .navigation_api_id = move(entry.navigation_api_id),
+            .scroll_restoration_mode = entry.scroll_restoration_mode,
+            .scroll_position_data = move(entry.scroll_position_data),
+            .replaced_step = replaced_step,
+            .current_step = current_step,
+        });
+        return true;
+    }
+}
+
 void LocalTraversableNavigable::reset_session_history_for_testing(GC::Ref<GC::Function<void()>> on_complete)
 {
     append_session_history_traversal_steps(GC::create_function(heap(), [this, on_complete](NonnullRefPtr<Core::Promise<Empty>> signal) {
@@ -1618,19 +1683,38 @@ void ApplyHistoryStepState::complete()
 
         // AD-HOC: Report the updated session history descriptors to the UI-process mirror.
         if (m_traversable->page().client().should_report_session_history_updates()) {
-            auto save_active_entry_persisted_state = LocalTraversableNavigable::SaveActiveEntryPersistedState::Yes;
-            // NB: During history traversal, the active entry can point at the target
-            //     entry before the active document's queued history-step update has
-            //     restored the target entry's persisted state. Do not overwrite that
-            //     target entry with the document's pre-restoration viewport offset.
-            if (m_navigation_type == Bindings::NavigationType::Traverse) {
-                auto document = m_traversable->active_document();
-                auto active_entry = m_traversable->active_session_history_entry();
-                if (document && active_entry && document->latest_entry() != active_entry)
-                    save_active_entry_persisted_state = LocalTraversableNavigable::SaveActiveEntryPersistedState::No;
+            bool did_report_same_document_navigation = false;
+            if (m_pending_document == nullptr
+                && m_navigation_type.has_value()
+                && (*m_navigation_type == Bindings::NavigationType::Push || *m_navigation_type == Bindings::NavigationType::Replace)
+                && m_changing_navigables.size() == 1) {
+                auto target_entry = m_changing_navigables.first()->current_session_history_entry();
+                if (target_entry) {
+                    Optional<i32> replaced_step;
+                    if (*m_navigation_type == Bindings::NavigationType::Replace) {
+                        if (auto target_step = target_entry->step_value(); target_step.has_value())
+                            replaced_step = static_cast<i32>(*target_step);
+                    }
+                    if (*m_navigation_type == Bindings::NavigationType::Push || replaced_step.has_value())
+                        did_report_same_document_navigation = m_traversable->report_same_document_navigation_committed(*m_changing_navigables.first(), *target_entry, replaced_step, m_traversable->m_current_session_history_step);
+                }
             }
-            auto session_history_snapshot = m_traversable->create_session_history_snapshot(save_active_entry_persisted_state);
-            m_traversable->page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
+
+            if (!did_report_same_document_navigation) {
+                auto save_active_entry_persisted_state = LocalTraversableNavigable::SaveActiveEntryPersistedState::Yes;
+                // NB: During history traversal, the active entry can point at the target
+                //     entry before the active document's queued history-step update has
+                //     restored the target entry's persisted state. Do not overwrite that
+                //     target entry with the document's pre-restoration viewport offset.
+                if (m_navigation_type == Bindings::NavigationType::Traverse) {
+                    auto document = m_traversable->active_document();
+                    auto active_entry = m_traversable->active_session_history_entry();
+                    if (document && active_entry && document->latest_entry() != active_entry)
+                        save_active_entry_persisted_state = LocalTraversableNavigable::SaveActiveEntryPersistedState::No;
+                }
+                auto session_history_snapshot = m_traversable->create_session_history_snapshot(save_active_entry_persisted_state);
+                m_traversable->page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
+            }
         }
 
         VERIFY(m_traversable->m_session_history_entries.size() > 0);
@@ -2530,8 +2614,20 @@ bool LocalTraversableNavigable::try_to_synchronously_commit_same_document_naviga
     }
 
     if (page().client().should_report_session_history_updates()) {
-        auto session_history_snapshot = create_session_history_snapshot(SaveActiveEntryPersistedState::Yes);
-        page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
+        Optional<i32> replaced_step;
+        auto can_report_same_document_navigation = true;
+        if (entry_to_replace) {
+            if (auto entry_to_replace_step = entry_to_replace->step_value(); entry_to_replace_step.has_value()) {
+                replaced_step = static_cast<i32>(*entry_to_replace_step);
+            } else {
+                can_report_same_document_navigation = false;
+            }
+        }
+
+        if (!can_report_same_document_navigation || !report_same_document_navigation_committed(*target_navigable, *target_entry, replaced_step, m_current_session_history_step)) {
+            auto session_history_snapshot = create_session_history_snapshot(SaveActiveEntryPersistedState::Yes);
+            page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
+        }
     }
 
     VERIFY(session_history_entries().size() > 0);

@@ -65,6 +65,7 @@ public:
     };
     SessionHistorySnapshot create_session_history_snapshot(SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::Yes);
     bool report_current_session_history_entry_update(SessionHistoryEntryUpdateKind, SessionHistoryEntry const&, SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::No);
+    bool report_same_document_navigation_committed(LocalNavigable const& target_navigable, SessionHistoryEntry const& target_entry, Optional<i32> replaced_step, i32 current_step);
 
     VisibilityState system_visibility_state() const { return m_system_visibility_state; }
     void set_system_visibility_state(VisibilityState);
