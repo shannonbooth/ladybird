@@ -1545,19 +1545,20 @@ def expect_pending_web_content_history_step_after_fallback_load(webdriver_port, 
             + "\n".join(log)
         )
 
-    if ui["webContentCurrentStep"] != web_content_current_step:
+    if ui["webContentCurrentStep"] is not None:
         raise AssertionError(
-            f"Expected {label} UI to report WebContent current step {web_content_current_step}, "
+            f"Expected {label} UI to have no proven WebContent current step, "
             f"got {ui['webContentCurrentStep']}\n" + "\n".join(log)
         )
 
-    if history_current_step(ui["webContentKnownUsedSteps"]) != web_content_current_step:
+    if ui["webContentKnownUsedSteps"] != []:
         raise AssertionError(
-            f"Expected {label} known WebContent steps to mark current step {web_content_current_step}\n"
+            f"Expected {label} UI to have no known WebContent used steps, "
+            f"got {history_step_values(ui['webContentKnownUsedSteps'])}\n"
             + "\n".join(log)
         )
 
-    if ui["webContentCurrentStep"] == pending_step:
+    if web_content_current_step == pending_step:
         raise AssertionError(
             f"Expected {label} WebContent to still be before pending step {pending_step}\n" + "\n".join(log)
         )

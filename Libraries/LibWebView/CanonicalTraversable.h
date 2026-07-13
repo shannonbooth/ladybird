@@ -61,6 +61,7 @@ struct PendingWebContentSessionHistorySeed {
     bool ignore_updates_until_seed { false };
     bool waiting_for_ack { false };
     bool should_reseed_after_current_history_load { false };
+    bool allow_current_entry_reconstruction { false };
     Optional<i32> step_after_loading_top_level_entry;
 
     void clear() { *this = {}; }
