@@ -1758,7 +1758,7 @@ void ViewImplementation::seed_web_content_session_history_from_ui_process(AllowC
             history_log_entries(seed->entries, seed->current_top_level_entry_index));
     }
 
-    client().async_set_top_level_session_history(page_id(), move(seed->entries), seed->current_top_level_entry_index, seed->allow_current_entry_reconstruction);
+    client().async_set_top_level_session_history(page_id(), move(seed->entries), seed->session_history_state, seed->current_top_level_entry_index, seed->allow_current_entry_reconstruction);
     m_top_level_traversable.did_send_web_content_session_history_seed();
     update_navigation_action_state();
     dump_session_history("sent-webcontent-session-history-seed"sv);

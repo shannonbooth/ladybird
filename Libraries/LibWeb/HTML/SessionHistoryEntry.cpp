@@ -403,3 +403,52 @@ ErrorOr<Web::HTML::SessionHistoryNestedHistoryDescriptor> IPC::decode(Decoder& d
 
     return Web::HTML::SessionHistoryNestedHistoryDescriptor { id, move(entries) };
 }
+
+template<>
+ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::SessionHistoryLengthAndIndex const& length_and_index)
+{
+    TRY(encoder.encode(length_and_index.script_history_length));
+    TRY(encoder.encode(length_and_index.script_history_index));
+    return {};
+}
+
+template<>
+ErrorOr<Web::HTML::SessionHistoryLengthAndIndex> IPC::decode(Decoder& decoder)
+{
+    auto script_history_length = TRY(decoder.decode<u64>());
+    auto script_history_index = TRY(decoder.decode<u64>());
+
+    return Web::HTML::SessionHistoryLengthAndIndex {
+        .script_history_length = script_history_length,
+        .script_history_index = script_history_index,
+    };
+}
+
+template<>
+ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::CommittedSessionHistoryState const& state)
+{
+    TRY(encoder.encode(state.generation));
+    TRY(encoder.encode(state.last_applied_update_id));
+    TRY(encoder.encode(state.last_handled_update_id));
+    TRY(encoder.encode(state.current_step));
+    TRY(encoder.encode(state.history_object_length_and_index));
+    return {};
+}
+
+template<>
+ErrorOr<Web::HTML::CommittedSessionHistoryState> IPC::decode(Decoder& decoder)
+{
+    auto generation = TRY(decoder.decode<u64>());
+    auto last_applied_update_id = TRY(decoder.decode<u64>());
+    auto last_handled_update_id = TRY(decoder.decode<u64>());
+    auto current_step = TRY(decoder.decode<i32>());
+    auto history_object_length_and_index = TRY(decoder.decode<Web::HTML::SessionHistoryLengthAndIndex>());
+
+    return Web::HTML::CommittedSessionHistoryState {
+        .generation = generation,
+        .last_applied_update_id = last_applied_update_id,
+        .last_handled_update_id = last_handled_update_id,
+        .current_step = current_step,
+        .history_object_length_and_index = move(history_object_length_and_index),
+    };
+}

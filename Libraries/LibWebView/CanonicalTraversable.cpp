@@ -699,6 +699,25 @@ HistoryStepCancelationCheckResult CanonicalTraversable::did_check_if_traverse_hi
     };
 }
 
+Optional<Web::HTML::CommittedSessionHistoryState> CanonicalTraversable::session_history_state_for_seed(i32 current_step) const
+{
+    auto used_steps = m_session_history.used_steps();
+    auto current_used_step_index = used_steps.find_first_index(current_step);
+    if (!current_used_step_index.has_value())
+        return {};
+
+    return Web::HTML::CommittedSessionHistoryState {
+        .generation = m_web_content_session_history_generation,
+        .last_applied_update_id = m_last_applied_web_content_session_history_update_id,
+        .last_handled_update_id = m_last_handled_web_content_session_history_update_id,
+        .current_step = current_step,
+        .history_object_length_and_index = {
+            .script_history_length = m_session_history.used_step_count(),
+            .script_history_index = *current_used_step_index,
+        },
+    };
+}
+
 Optional<WebContentSessionHistorySeed> CanonicalTraversable::prepare_web_content_session_history_seed(bool allow_current_entry_reconstruction)
 {
     auto current_top_level_entry_index = m_session_history.current_top_level_entry_index();
@@ -724,9 +743,18 @@ Optional<WebContentSessionHistorySeed> CanonicalTraversable::prepare_web_content
     auto allow_reconstructing_current_entry = is_restoring_traversal_target
         || m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value()
         || allow_current_entry_reconstruction;
+    auto current_top_level_step = entries[*current_top_level_entry_index].step;
+    auto session_history_state = session_history_state_for_seed(current_top_level_step);
+    if (!session_history_state.has_value()) {
+        abandon_pending_web_content_session_history_seed();
+        m_current_web_content_session_history_matches_mirror = false;
+        m_session_history.forget_web_content_state();
+        return {};
+    }
 
     return WebContentSessionHistorySeed {
         .entries = move(entries),
+        .session_history_state = *session_history_state,
         .current_top_level_entry_index = *current_top_level_entry_index,
         .allow_current_entry_reconstruction = allow_reconstructing_current_entry,
     };

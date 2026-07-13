@@ -481,6 +481,28 @@ bool LocalTraversableNavigable::replace_top_level_session_history_entries_from_u
     return true;
 }
 
+bool LocalTraversableNavigable::set_session_history_state_from_ui_process(CommittedSessionHistoryState state)
+{
+    if (state.generation < m_session_history_generation)
+        return false;
+
+    if (state.current_step != m_current_session_history_step)
+        return false;
+
+    m_session_history_generation = state.generation;
+
+    auto history_object_length_and_index = state.history_object_length_and_index;
+    m_committed_session_history_state_from_ui_process = move(state);
+
+    auto document = active_document();
+    if (document) {
+        document->history()->m_index = history_object_length_and_index.script_history_index;
+        document->history()->m_length = history_object_length_and_index.script_history_length;
+    }
+
+    return true;
+}
+
 void LocalTraversableNavigable::reset_session_history_for_testing(GC::Ref<GC::Function<void()>> on_complete)
 {
     append_session_history_traversal_steps(GC::create_function(heap(), [this, on_complete](NonnullRefPtr<Core::Promise<Empty>> signal) {
@@ -555,6 +577,13 @@ Vector<int> LocalTraversableNavigable::get_all_used_history_steps() const
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-the-history-object-length-and-index
 LocalTraversableNavigable::HistoryObjectLengthAndIndex LocalTraversableNavigable::get_the_history_object_length_and_index(int step) const
 {
+    if (m_committed_session_history_state_from_ui_process.has_value() && m_committed_session_history_state_from_ui_process->current_step == step) {
+        return HistoryObjectLengthAndIndex {
+            .script_history_length = m_committed_session_history_state_from_ui_process->history_object_length_and_index.script_history_length,
+            .script_history_index = m_committed_session_history_state_from_ui_process->history_object_length_and_index.script_history_index,
+        };
+    }
+
     // 1. Let steps be the result of getting all used history steps within traversable.
     auto steps = get_all_used_history_steps();
 

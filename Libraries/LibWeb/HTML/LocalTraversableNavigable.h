@@ -44,6 +44,7 @@ public:
     virtual bool is_top_level_traversable() const override;
 
     int current_session_history_step() const { return m_current_session_history_step; }
+    bool set_session_history_state_from_ui_process(CommittedSessionHistoryState);
 
     // Claims the step number for a new push-type session history entry. Claims are tracked separately from the current
     // step: The current step only advances when an apply-history-step run commits — and several runs can have claimed
@@ -198,6 +199,8 @@ private:
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#tn-current-session-history-step
     int m_current_session_history_step { 0 };
+    u64 m_session_history_generation { 0 };
+    Optional<CommittedSessionHistoryState> m_committed_session_history_state_from_ui_process;
 
     // Concurrent apply-history-step runs share the step numbering below. Runs are serialized through the session
     // history traversal queue — but a synchronous navigation can jump the queue while another run is paused (see the

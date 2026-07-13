@@ -90,6 +90,19 @@ struct SessionHistoryNestedHistoryDescriptor {
     Vector<SessionHistoryEntryDescriptor> entries;
 };
 
+struct SessionHistoryLengthAndIndex {
+    u64 script_history_length { 0 };
+    u64 script_history_index { 0 };
+};
+
+struct CommittedSessionHistoryState {
+    u64 generation { 0 };
+    u64 last_applied_update_id { 0 };
+    u64 last_handled_update_id { 0 };
+    i32 current_step { 0 };
+    SessionHistoryLengthAndIndex history_object_length_and_index;
+};
+
 // https://html.spec.whatwg.org/multipage/history.html#session-history-entry
 class WEB_API SessionHistoryEntry final : public RefCounted<SessionHistoryEntry> {
 public:
@@ -220,5 +233,17 @@ WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::SessionHistoryNestedHistoryDes
 
 template<>
 WEB_API ErrorOr<Web::HTML::SessionHistoryNestedHistoryDescriptor> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::SessionHistoryLengthAndIndex const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::SessionHistoryLengthAndIndex> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::CommittedSessionHistoryState const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::CommittedSessionHistoryState> decode(Decoder&);
 
 }

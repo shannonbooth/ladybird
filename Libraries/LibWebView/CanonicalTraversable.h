@@ -182,6 +182,7 @@ struct HistoryStepCancelationCheckResult {
 
 struct WebContentSessionHistorySeed {
     Vector<Web::HTML::SessionHistoryEntryDescriptor> entries;
+    Web::HTML::CommittedSessionHistoryState session_history_state;
     size_t current_top_level_entry_index { 0 };
     bool allow_current_entry_reconstruction { false };
 };
@@ -257,6 +258,7 @@ public:
 private:
     void abandon_pending_web_content_session_history_seed();
     void remove_from_index(CanonicalNavigable&);
+    Optional<Web::HTML::CommittedSessionHistoryState> session_history_state_for_seed(i32 current_step) const;
     WebContentSessionHistoryUpdateResult update_session_history_from_web_content(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, bool pending_step_after_fallback_load_was_restored, bool seed_web_content_on_invalid_snapshot, URL::URL const& current_url);
     WebContentSessionHistoryUpdateResult adopt_web_content_session_history_after_rejected_seed(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url);
 
@@ -264,6 +266,9 @@ private:
     TraversableSessionHistory m_session_history;
     Web::HTML::VisibilityState m_system_visibility_state { Web::HTML::VisibilityState::Hidden };
     bool m_current_web_content_session_history_matches_mirror { false };
+    u64 m_web_content_session_history_generation { 0 };
+    u64 m_last_applied_web_content_session_history_update_id { 0 };
+    u64 m_last_handled_web_content_session_history_update_id { 0 };
     Optional<PendingSessionHistoryNavigation> m_pending_session_history_navigation;
     Optional<PendingSessionHistoryTraversal> m_pending_session_history_traversal;
     u64 m_next_traverse_history_step_cancelation_check_request_id { 0 };
