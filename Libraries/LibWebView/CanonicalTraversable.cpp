@@ -421,9 +421,11 @@ WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_cont
     if (m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value()) {
         auto application_id = m_next_history_step_application_id++;
         result.history_step_application_id = application_id;
+        m_pending_web_content_session_history_seed.history_step_application_id = application_id;
         if (m_pending_session_history_traversal.has_value()) {
             m_pending_session_history_traversal->stage = PendingSessionHistoryTraversal::Stage::RestoringNestedStepAfterSeed;
             m_pending_session_history_traversal->application_id = application_id;
+            m_pending_session_history_traversal->apply_history_step_stage = PendingSessionHistoryTraversal::ApplyHistoryStepStage::ChangingNavigables;
         }
         result.step_to_traverse = *m_pending_web_content_session_history_seed.step_after_loading_top_level_entry;
     } else {
@@ -641,6 +643,7 @@ HistoryTraversalDecision CanonicalTraversable::traverse_the_history(TraversableS
         }
 
         auto application_id = pending_traversal.application_id;
+        pending_traversal.apply_history_step_stage = PendingSessionHistoryTraversal::ApplyHistoryStepStage::ChangingNavigables;
         m_pending_session_history_traversal = move(pending_traversal);
         return {
             .outcome = { .status = HistoryTraversalStatus::Started, .will_replace_web_content_process = will_replace_web_content_process, .will_change_top_level_entry = target.changes_top_level_entry },
@@ -706,6 +709,29 @@ URL::URL CanonicalTraversable::prepare_to_load_session_history_traversal_target_
     return target_url;
 }
 
+Optional<Web::HTML::HistoryObjectLengthAndIndex> CanonicalTraversable::did_finish_applying_history_step_to_changing_navigables(u64 application_id, i32 step)
+{
+    if (m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value()) {
+        if (m_pending_web_content_session_history_seed.history_step_application_id != application_id
+            || *m_pending_web_content_session_history_seed.step_after_loading_top_level_entry != step)
+            return {};
+        return m_session_history.get_the_history_object_length_and_index(step);
+    }
+
+    if (!m_pending_session_history_traversal.has_value()
+        || m_pending_session_history_traversal->application_id != application_id
+        || m_pending_session_history_traversal->target_step != step
+        || m_pending_session_history_traversal->apply_history_step_stage != PendingSessionHistoryTraversal::ApplyHistoryStepStage::ChangingNavigables)
+        return {};
+
+    auto length_and_index = m_session_history.get_the_history_object_length_and_index(step);
+    if (!length_and_index.has_value())
+        return {};
+
+    m_pending_session_history_traversal->apply_history_step_stage = PendingSessionHistoryTraversal::ApplyHistoryStepStage::NonchangingNavigables;
+    return length_and_index;
+}
+
 WebContentHistoryStepResult CanonicalTraversable::did_finish_applying_history_step(u64 application_id, i32 step, bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult result)
 {
     if (!m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value()) {
@@ -762,6 +788,7 @@ WebContentHistoryStepResult CanonicalTraversable::did_finish_applying_history_st
 
     if (step_was_available && should_update_current_session_history_step && result == Web::HTML::HistoryStepResult::Applied) {
         m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.clear();
+        m_pending_web_content_session_history_seed.history_step_application_id.clear();
         m_current_web_content_session_history_matches_mirror = m_session_history.did_restore_web_content_to_current_step(step);
         complete_pending_session_history_traversal();
         return { .dump_reason = "webcontent-history-step-restored"sv, .should_update_navigation_action_state = true, .should_complete_webdriver_pending_navigation = true };
@@ -772,6 +799,7 @@ WebContentHistoryStepResult CanonicalTraversable::did_finish_applying_history_st
         return { .dump_reason = pending_step_dump_reason, .should_restore_pending_navigation = true };
 
     m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.clear();
+    m_pending_web_content_session_history_seed.history_step_application_id.clear();
     m_current_web_content_session_history_matches_mirror = false;
     m_session_history.forget_web_content_state();
     complete_pending_session_history_traversal(result);

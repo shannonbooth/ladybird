@@ -951,6 +951,29 @@ bool TraversableSessionHistory::set_current_session_history_step(i32 step)
     return true;
 }
 
+// https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-the-history-object-length-and-index
+Optional<Web::HTML::HistoryObjectLengthAndIndex> TraversableSessionHistory::get_the_history_object_length_and_index(i32 step) const
+{
+    // 1. Let steps be the result of getting all used history steps within traversable.
+    auto const& steps = m_used_steps;
+
+    // 2. Let scriptHistoryLength be the size of steps.
+    auto script_history_length = steps.size();
+
+    // 3. Assert: steps contains step.
+    auto script_history_index = steps.find_first_index(step);
+    if (!script_history_index.has_value())
+        return {};
+
+    // 4. Let scriptHistoryIndex be the index of step in steps.
+
+    // 5. Return (scriptHistoryLength, scriptHistoryIndex).
+    return Web::HTML::HistoryObjectLengthAndIndex {
+        .script_history_length = script_history_length,
+        .script_history_index = *script_history_index,
+    };
+}
+
 bool TraversableSessionHistory::web_content_history_matches_mirror() const
 {
     if (!m_web_content_current_step.has_value() || !m_current_used_step_index.has_value())

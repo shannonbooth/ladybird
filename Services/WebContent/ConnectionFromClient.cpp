@@ -362,10 +362,23 @@ void ConnectionFromClient::traverse_the_history_to_step(u64 page_id, u64 applica
     auto& heap = Web::HTML::main_thread_event_loop().heap();
     page->page().top_level_traversable()->traverse_the_history_to_step(
         step,
+        GC::create_function(heap, [page, application_id, step](GC::Ref<Web::HTML::ResumeApplyingHistoryStep> resume_applying) mutable {
+            page->did_finish_applying_history_step_to_changing_navigables(application_id, step, resume_applying);
+        }),
         GC::create_function(heap, [page, application_id, step](bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult result, GC::Ref<Web::HTML::OnApplyHistoryStepComplete> finish_applying) mutable {
             page->did_finish_applying_history_step(application_id, step, step_was_available, should_update_current_session_history_step, result, finish_applying);
         }),
         GC::create_function(heap, [](bool, Web::HTML::HistoryStepResult) { }));
+}
+
+void ConnectionFromClient::continue_history_step_application(u64 page_id, u64 application_id, bool should_continue, u64 script_history_length, u64 script_history_index)
+{
+    if (auto page = this->page(page_id); page.has_value()) {
+        Optional<Web::HTML::HistoryObjectLengthAndIndex> length_and_index;
+        if (should_continue)
+            length_and_index = { script_history_length, script_history_index };
+        page->continue_history_step_application(application_id, move(length_and_index));
+    }
 }
 
 void ConnectionFromClient::complete_history_step_application(u64 page_id, u64 application_id, Web::HTML::HistoryStepResult result)

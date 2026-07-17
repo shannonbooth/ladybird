@@ -101,6 +101,7 @@ private:
     virtual void apply_pending_session_history_traversal(u64 page_id, u64 request_id, u64 application_id, Vector<Web::HTML::CrossProcessId> changing_navigables, Vector<Web::HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates) override;
     virtual void complete_session_history_traversal(u64 page_id, u64 request_id, Web::HTML::HistoryStepResult) override;
     virtual void traverse_the_history_to_step(u64 page_id, u64 application_id, i32 step) override;
+    virtual void continue_history_step_application(u64 page_id, u64 application_id, bool should_continue, u64 script_history_length, u64 script_history_index) override;
     virtual void complete_history_step_application(u64 page_id, u64 application_id, Web::HTML::HistoryStepResult) override;
     virtual void check_if_traverse_history_step_is_canceled(u64 page_id, u64 request_id, i32 step) override;
     virtual void set_top_level_session_history(u64 page_id, Vector<Web::HTML::SessionHistoryEntryDescriptor>, size_t current_top_level_entry_index, bool allow_reconstructing_current_entry) override;

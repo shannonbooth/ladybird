@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <AK/Optional.h>
 #include <LibGC/Function.h>
 
 namespace Web::HTML {
@@ -25,7 +26,15 @@ enum class HistoryStepResult {
     Applied,
 };
 
+// https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-the-history-object-length-and-index
+struct HistoryObjectLengthAndIndex {
+    u64 script_history_length;
+    u64 script_history_index;
+};
+
 using OnApplyHistoryStepComplete = GC::Function<void(HistoryStepResult)>;
+using ResumeApplyingHistoryStep = GC::Function<void(Optional<HistoryObjectLengthAndIndex>)>;
+using OnApplyHistoryStepChangingNavigablesComplete = GC::Function<void(GC::Ref<ResumeApplyingHistoryStep>)>;
 
 // The document-local jobs from apply the history step have completed, but the traversable-wide
 // current session history step has not yet been committed. The final callback completes the

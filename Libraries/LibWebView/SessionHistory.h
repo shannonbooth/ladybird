@@ -8,6 +8,7 @@
 
 #include <AK/Optional.h>
 #include <AK/Vector.h>
+#include <LibWeb/HTML/HistoryStepResult.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWebView/Export.h>
 #include <LibWebView/Forward.h>
@@ -72,6 +73,7 @@ public:
     [[nodiscard]] bool did_restore_web_content_to_current_step(i32 step);
     [[nodiscard]] bool did_apply_web_content_traversal_to_step(i32 step);
     [[nodiscard]] bool set_current_session_history_step(i32 step);
+    [[nodiscard]] Optional<Web::HTML::HistoryObjectLengthAndIndex> get_the_history_object_length_and_index(i32 step) const;
     void forget_web_content_state();
     Vector<Entry> entries() const;
     Vector<i32> used_steps() const;

@@ -131,6 +131,8 @@ void PageClient::visit_edges(JS::Cell::Visitor& visitor)
         visitor.visit(request.value.apply_in_web_content);
         visitor.visit(request.value.on_complete);
     }
+    for (auto& resume_applying : m_history_step_applications_waiting_for_nonchanging_navigables)
+        visitor.visit(resume_applying.value);
     for (auto& finish_applying : m_pending_history_step_applications)
         visitor.visit(finish_applying.value);
     m_pending_dom_mutations.for_each([&](auto& pending_mutation) {
@@ -1158,6 +1160,9 @@ void PageClient::apply_pending_session_history_traversal(u64 request_id, u64 app
     request->apply_in_web_content->function()(
         move(changing_navigables),
         move(nonchanging_navigables_that_still_need_updates),
+        GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, application_id, step = request->step](GC::Ref<Web::HTML::ResumeApplyingHistoryStep> resume_applying) {
+            did_finish_applying_history_step_to_changing_navigables(application_id, step, resume_applying);
+        }),
         GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, application_id, step = request->step](bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult result, GC::Ref<Web::HTML::OnApplyHistoryStepComplete> finish_applying) {
             did_finish_applying_history_step(application_id, step, step_was_available, should_update_current_session_history_step, result, finish_applying);
         }),
@@ -1170,6 +1175,20 @@ void PageClient::did_complete_session_history_traversal(u64 request_id, Web::HTM
     if (!request.has_value())
         return;
     request->on_complete->function()(result);
+}
+
+void PageClient::did_finish_applying_history_step_to_changing_navigables(u64 application_id, int step, GC::Ref<Web::HTML::ResumeApplyingHistoryStep> resume_applying)
+{
+    m_history_step_applications_waiting_for_nonchanging_navigables.set(application_id, resume_applying);
+    client().async_did_finish_applying_history_step_to_changing_navigables(m_id, application_id, step);
+}
+
+void PageClient::continue_history_step_application(u64 application_id, Optional<Web::HTML::HistoryObjectLengthAndIndex> length_and_index)
+{
+    auto resume_applying = m_history_step_applications_waiting_for_nonchanging_navigables.take(application_id);
+    if (!resume_applying.has_value())
+        return;
+    resume_applying.value()->function()(move(length_and_index));
 }
 
 void PageClient::did_finish_applying_history_step(u64 application_id, int step, bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult result, GC::Ref<Web::HTML::OnApplyHistoryStepComplete> finish_applying)
