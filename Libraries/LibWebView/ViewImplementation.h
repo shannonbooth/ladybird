@@ -123,7 +123,8 @@ public:
     [[nodiscard]] HistoryTraversalOutcome traverse_the_history_to_step(
         i32 step,
         CheckForCancelation = CheckForCancelation::Yes,
-        Function<void(HistoryTraversalOutcome)> = nullptr);
+        Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete = nullptr,
+        Function<void()> on_complete = nullptr);
     [[nodiscard]] Vector<SessionHistoryTraversalMenuItem> session_history_traversal_menu_items(int direction) const;
 
     void zoom_in();

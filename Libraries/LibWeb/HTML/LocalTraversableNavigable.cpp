@@ -2196,8 +2196,10 @@ void LocalTraversableNavigable::traverse_the_history_by_delta(int delta, GC::Ptr
 
             auto all_steps = get_all_used_history_steps();
             if (!all_steps.contains_slow(*target_step)) {
-                page().client().page_did_request_traverse_the_history_to_step(*target_step, HistoryTraversalPrecheck::Needed);
-                signal->resolve({});
+                page().client().page_did_request_traverse_the_history_to_step(*target_step, HistoryTraversalPrecheck::Needed,
+                    GC::create_function(heap(), [signal] {
+                        signal->resolve({});
+                    }));
                 return;
             }
 
@@ -2215,9 +2217,15 @@ void LocalTraversableNavigable::traverse_the_history_by_delta(int delta, GC::Ptr
                 if (target_top_level_entry && current_session_history_entry() && page().client().decide_navigation_process(current_session_history_entry()->url(), target_top_level_entry->url(), NavigationTarget::TopLevel) == NavigationProcessDecision::Remote) {
                     run_the_history_step_prechecks(*target_step, true, source_snapshot_params, initiator_to_check, user_involvement, Bindings::NavigationType::Traverse, LocalNavigable::NavigationAPIAbortBehavior::Abort,
                         GC::create_function(heap(), [this, target_step = *target_step, signal](HistoryStepResult result, int, LocalNavigable::NavigationAPIAbortBehavior) {
-                            if (result == HistoryStepResult::Applied)
-                                page().client().page_did_request_traverse_the_history_to_step(target_step, HistoryTraversalPrecheck::AlreadyDone);
-                            signal->resolve({});
+                            if (result != HistoryStepResult::Applied) {
+                                signal->resolve({});
+                                return;
+                            }
+
+                            page().client().page_did_request_traverse_the_history_to_step(target_step, HistoryTraversalPrecheck::AlreadyDone,
+                                GC::create_function(heap(), [signal] {
+                                    signal->resolve({});
+                                }));
                         }));
                     return;
                 }

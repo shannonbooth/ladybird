@@ -127,6 +127,8 @@ void PageClient::visit_edges(JS::Cell::Visitor& visitor)
         visitor.visit(reader.value);
     for (auto& callback : m_pending_session_history_traversal_target_requests)
         visitor.visit(callback.value);
+    for (auto& callback : m_pending_session_history_traversal_requests)
+        visitor.visit(callback.value);
     m_pending_dom_mutations.for_each([&](auto& pending_mutation) {
         visitor.visit(pending_mutation.target);
     });
@@ -1121,9 +1123,11 @@ void PageClient::page_did_request_history_traversal_target_by_delta(int delta, G
     client().async_did_request_history_traversal_target_by_delta(m_id, request_id, delta);
 }
 
-void PageClient::page_did_request_traverse_the_history_to_step(int step, Web::HistoryTraversalPrecheck history_traversal_precheck)
+void PageClient::page_did_request_traverse_the_history_to_step(int step, Web::HistoryTraversalPrecheck history_traversal_precheck, GC::Ref<GC::Function<void()>> on_complete)
 {
-    client().async_did_request_traverse_the_history_to_step(m_id, step, history_traversal_precheck);
+    auto request_id = m_next_session_history_traversal_request_id++;
+    m_pending_session_history_traversal_requests.set(request_id, on_complete);
+    client().async_did_request_traverse_the_history_to_step(m_id, request_id, step, history_traversal_precheck);
 }
 
 void PageClient::page_did_request_navigation_api_traversal_target(Web::HTML::CrossProcessId navigable_id, Utf16String const& navigation_api_key, GC::Ref<GC::Function<void(Optional<int>)>> on_complete)
@@ -1139,6 +1143,14 @@ void PageClient::did_resolve_session_history_traversal_target(u64 request_id, Op
     if (!callback.has_value())
         return;
     callback.value()->function()(target_step);
+}
+
+void PageClient::did_complete_session_history_traversal(u64 request_id)
+{
+    auto callback = m_pending_session_history_traversal_requests.take(request_id);
+    if (!callback.has_value())
+        return;
+    callback.value()->function()();
 }
 
 void PageClient::request_webdriver_history_traversal(int delta, Function<void(WebDriverHistoryTraversalResult)> on_complete)

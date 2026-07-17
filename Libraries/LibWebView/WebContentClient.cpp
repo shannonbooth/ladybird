@@ -1524,20 +1524,30 @@ void WebContentClient::did_request_history_traversal_target_by_delta(u64 page_id
     async_resolve_session_history_traversal_target(page_id, request_id, target_step);
 }
 
-void WebContentClient::did_request_traverse_the_history_to_step(u64 page_id, i32 step, Web::HistoryTraversalPrecheck history_traversal_precheck)
+void WebContentClient::did_request_traverse_the_history_to_step(u64 page_id, u64 request_id, i32 step, Web::HistoryTraversalPrecheck history_traversal_precheck)
 {
     auto* page_host = navigable_for_page(page_id);
-    if (!page_host)
+    if (!page_host) {
+        async_complete_session_history_traversal(page_id, request_id);
         return;
+    }
 
     auto view = ViewImplementation::find_view_for_traversable(page_host->top_level_traversable());
-    if (!view.has_value())
+    if (!view.has_value()) {
+        async_complete_session_history_traversal(page_id, request_id);
         return;
+    }
 
     auto check_for_cancelation = history_traversal_precheck == Web::HistoryTraversalPrecheck::Needed
         ? CheckForCancelation::Yes
         : CheckForCancelation::IfWebContentCannotTraverseTarget;
-    (void)view->traverse_the_history_to_step(step, check_for_cancelation);
+    auto weak_this = static_cast<Core::EventReceiver&>(*this).make_weak_ptr();
+    (void)view->traverse_the_history_to_step(step, check_for_cancelation, nullptr, [weak_this, page_id, request_id] {
+        auto self = weak_this.strong_ref();
+        if (!self)
+            return;
+        static_cast<WebContentClient&>(*self).async_complete_session_history_traversal(page_id, request_id);
+    });
 }
 
 void WebContentClient::did_request_navigation_api_traversal_target(u64 page_id, u64 request_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_api_key)

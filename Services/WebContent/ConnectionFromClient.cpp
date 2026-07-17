@@ -339,6 +339,12 @@ void ConnectionFromClient::resolve_session_history_traversal_target(u64 page_id,
         page->did_resolve_session_history_traversal_target(request_id, target_step);
 }
 
+void ConnectionFromClient::complete_session_history_traversal(u64 page_id, u64 request_id)
+{
+    if (auto page = this->page(page_id); page.has_value())
+        page->did_complete_session_history_traversal(request_id);
+}
+
 void ConnectionFromClient::traverse_the_history_to_step(u64 page_id, i32 step)
 {
     auto page = this->page(page_id);

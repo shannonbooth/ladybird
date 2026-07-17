@@ -388,9 +388,10 @@ HistoryTraversalOutcome ViewImplementation::traverse_the_history_by_delta(
 HistoryTraversalOutcome ViewImplementation::traverse_the_history_to_step(
     i32 step,
     CheckForCancelation check_for_cancelation,
-    Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete)
+    Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete,
+    Function<void()> on_complete)
 {
-    return start_history_traversal(m_top_level_traversable.traverse_the_history_to_step(step, check_for_cancelation, m_url, move(on_cancelation_check_complete)));
+    return start_history_traversal(m_top_level_traversable.traverse_the_history_to_step(step, check_for_cancelation, m_url, move(on_cancelation_check_complete), move(on_complete)));
 }
 
 HistoryTraversalOutcome ViewImplementation::start_history_traversal(HistoryTraversalDecision decision)
