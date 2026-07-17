@@ -1915,6 +1915,21 @@ void WebContentClient::did_set_top_level_session_history(u64 page_id, bool accep
         view->did_set_top_level_session_history({}, accepted, move(entries), move(used_steps), current_used_step_index);
 }
 
+void WebContentClient::did_prepare_to_apply_history_step_to_changing_navigable(u64 page_id, u64 application_id, i32 step, Web::HTML::CrossProcessId navigable_id)
+{
+    Optional<Web::HTML::ChangingNavigableHistoryStepApplicationData> data;
+    if (auto view = view_for_page_id(page_id); view.has_value())
+        data = view->prepare_to_apply_history_step_to_changing_navigable({ }, application_id, step, navigable_id);
+
+    async_continue_applying_history_step_to_changing_navigable(
+        page_id,
+        application_id,
+        data.has_value(),
+        data.has_value() ? data->history_object_length_and_index.script_history_length : 0,
+        data.has_value() ? data->history_object_length_and_index.script_history_index : 0,
+        data.has_value() ? move(data->entries_for_navigation_api) : Vector<Web::HTML::SessionHistoryEntryDescriptor> { });
+}
+
 void WebContentClient::did_finish_applying_history_step_to_changing_navigables(u64 page_id, u64 application_id, i32 step)
 {
     Optional<Web::HTML::HistoryObjectLengthAndIndex> length_and_index;

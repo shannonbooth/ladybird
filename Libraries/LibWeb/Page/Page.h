@@ -432,6 +432,7 @@ enum class HistoryTraversalPrecheck : u8 {
 using ApplyPendingSessionHistoryTraversal = GC::Function<void(
     Vector<HTML::CrossProcessId> changing_navigables,
     Vector<HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates,
+    GC::Ref<HTML::OnApplyHistoryStepReadyToApplyToChangingNavigable> on_ready_to_apply_to_changing_navigable,
     GC::Ref<HTML::OnApplyHistoryStepChangingNavigablesComplete> on_changing_navigables_complete,
     GC::Ref<HTML::OnApplyHistoryStepJobsComplete> on_jobs_complete,
     GC::Ref<HTML::OnApplyHistoryStepComplete> on_complete)>;

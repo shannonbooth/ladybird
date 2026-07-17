@@ -261,6 +261,7 @@ public:
     HistoryTraversalDecision traverse_the_history_by_delta(int delta, CheckForCancelation, URL::URL const& current_url, Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete);
     HistoryTraversalDecision traverse_the_history_to_step(i32 step, CheckForCancelation, URL::URL const& current_url, Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete, Function<void(Web::HTML::HistoryStepResult)> on_complete);
     URL::URL prepare_to_load_session_history_traversal_target_from_ui_process(TraversableSessionHistory::TraversalTarget const&, URL::URL const& current_url);
+    Optional<Web::HTML::ChangingNavigableHistoryStepApplicationData> prepare_to_apply_history_step_to_changing_navigable(u64 application_id, i32 step, Web::HTML::CrossProcessId navigable_id) const;
     Optional<Web::HTML::HistoryObjectLengthAndIndex> did_finish_applying_history_step_to_changing_navigables(u64 application_id, i32 step);
     WebContentHistoryStepResult did_finish_applying_history_step(u64 application_id, i32 step, bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult);
     HistoryStepCancelationCheckResult did_check_if_traverse_history_step_is_canceled(u64 request_id, i32 step, Web::HTML::HistoryStepResult);
@@ -279,6 +280,7 @@ private:
     HistoryTraversalDecision traverse_the_history(TraversableSessionHistory::TraversalTarget const&, CheckForCancelation, URL::URL const& current_url, Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete, Function<void(Web::HTML::HistoryStepResult)> on_complete);
     void complete_pending_session_history_traversal(Web::HTML::HistoryStepResult = Web::HTML::HistoryStepResult::Applied);
     void abandon_pending_web_content_session_history_seed();
+    void reconcile_child_navigable_ids_after_session_history_reconstruction();
     void remove_from_index(CanonicalNavigable&);
     WebContentSessionHistoryUpdateResult update_session_history_from_web_content(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, bool pending_step_after_fallback_load_was_restored, bool seed_web_content_on_invalid_snapshot, URL::URL const& current_url);
     WebContentSessionHistoryUpdateResult adopt_web_content_session_history_after_rejected_seed(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url);

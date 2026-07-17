@@ -406,6 +406,8 @@ WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_cont
         return result;
     }
 
+    reconcile_child_navigable_ids_after_session_history_reconstruction();
+
     m_pending_web_content_session_history_seed.waiting_for_ack = false;
     if (m_pending_web_content_session_history_seed.should_reseed_after_current_history_load) {
         m_pending_web_content_session_history_seed.should_send_entries = true;
@@ -439,6 +441,35 @@ WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_cont
 
     result.dump_reason = "webcontent-session-history-seed-ack"sv;
     return result;
+}
+
+void CanonicalTraversable::reconcile_child_navigable_ids_after_session_history_reconstruction()
+{
+    auto const* current_entry = m_session_history.current_entry();
+    if (!current_entry)
+        return;
+
+    auto const& nested_histories = current_entry->document_state.nested_histories;
+    if (children().size() != nested_histories.size())
+        return;
+
+    // FIXME: This mirrors WebContent's temporary glue for the current load-then-seed ordering. A replacement process
+    //        can create live child navigables before receiving the canonical session-history tree. WebContent retargets
+    //        those children to the canonical nested-history ids when applying the seed; keep the UI-owned navigable
+    //        tree in the same id space so subsequent apply-the-history-step jobs can find them.
+    for (size_t i = 0; i < nested_histories.size(); ++i) {
+        auto& child_navigable = *children()[i];
+        auto canonical_id = nested_histories[i].id;
+        if (child_navigable.id() == canonical_id)
+            continue;
+
+        if (auto existing_navigable = find(canonical_id); existing_navigable.has_value() && &*existing_navigable != &child_navigable)
+            continue;
+
+        m_navigable_index.remove(child_navigable.id());
+        child_navigable.set_id(canonical_id);
+        m_navigable_index.set(canonical_id, child_navigable.make_weak_ptr());
+    }
 }
 
 NavigationStartResult CanonicalTraversable::did_start_navigation(URL::URL const& url, Web::HTML::DocumentResource document_resource, bool is_redirect, Web::Bindings::NavigationHistoryBehavior history_handling, bool is_showing_crash_page)
@@ -707,6 +738,41 @@ URL::URL CanonicalTraversable::prepare_to_load_session_history_traversal_target_
     prepare_to_seed_web_content_session_history_from_ui_process();
     m_pending_session_history_navigation = PendingSessionHistoryNavigation { target_url, move(previous_session_history) };
     return target_url;
+}
+
+Optional<Web::HTML::ChangingNavigableHistoryStepApplicationData> CanonicalTraversable::prepare_to_apply_history_step_to_changing_navigable(u64 application_id, i32 step, Web::HTML::CrossProcessId navigable_id) const
+{
+    if (m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value()) {
+        if (m_pending_web_content_session_history_seed.history_step_application_id != application_id
+            || *m_pending_web_content_session_history_seed.step_after_loading_top_level_entry != step)
+            return { };
+    } else if (!m_pending_session_history_traversal.has_value()
+        || m_pending_session_history_traversal->application_id != application_id
+        || m_pending_session_history_traversal->target_step != step
+        || m_pending_session_history_traversal->apply_history_step_stage != PendingSessionHistoryTraversal::ApplyHistoryStepStage::ChangingNavigables) {
+        return { };
+    }
+
+    auto navigable = find(navigable_id);
+    if (!navigable.has_value())
+        return { };
+
+    // 7. Let (scriptHistoryLength, scriptHistoryIndex) be the result of getting the history object length and index
+    //    given traversable and targetStep.
+    auto history_object_length_and_index = m_session_history.get_the_history_object_length_and_index(step);
+    if (!history_object_length_and_index.has_value())
+        return { };
+
+    // 9. Let entriesForNavigationAPI be the result of getting session history entries for the navigation API given
+    //    navigable and targetStep.
+    auto entries_for_navigation_api = m_session_history.get_session_history_entries_for_the_navigation_api(*navigable, step);
+    if (!entries_for_navigation_api.has_value())
+        return { };
+
+    return Web::HTML::ChangingNavigableHistoryStepApplicationData {
+        .history_object_length_and_index = *history_object_length_and_index,
+        .entries_for_navigation_api = move(*entries_for_navigation_api),
+    };
 }
 
 Optional<Web::HTML::HistoryObjectLengthAndIndex> CanonicalTraversable::did_finish_applying_history_step_to_changing_navigables(u64 application_id, i32 step)

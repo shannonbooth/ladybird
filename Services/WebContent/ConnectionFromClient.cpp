@@ -362,6 +362,9 @@ void ConnectionFromClient::traverse_the_history_to_step(u64 page_id, u64 applica
     auto& heap = Web::HTML::main_thread_event_loop().heap();
     page->page().top_level_traversable()->traverse_the_history_to_step(
         step,
+        GC::create_function(heap, [page, application_id, step](Web::HTML::CrossProcessId navigable_id, GC::Ref<Web::HTML::ResumeApplyingHistoryStepToChangingNavigable> resume_applying) mutable {
+            page->did_prepare_to_apply_history_step_to_changing_navigable(application_id, step, navigable_id, resume_applying);
+        }),
         GC::create_function(heap, [page, application_id, step](GC::Ref<Web::HTML::ResumeApplyingHistoryStep> resume_applying) mutable {
             page->did_finish_applying_history_step_to_changing_navigables(application_id, step, resume_applying);
         }),
@@ -369,6 +372,20 @@ void ConnectionFromClient::traverse_the_history_to_step(u64 page_id, u64 applica
             page->did_finish_applying_history_step(application_id, step, step_was_available, should_update_current_session_history_step, result, finish_applying);
         }),
         GC::create_function(heap, [](bool, Web::HTML::HistoryStepResult) { }));
+}
+
+void ConnectionFromClient::continue_applying_history_step_to_changing_navigable(u64 page_id, u64 application_id, bool should_continue, u64 script_history_length, u64 script_history_index, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries_for_navigation_api)
+{
+    if (auto page = this->page(page_id); page.has_value()) {
+        Optional<Web::HTML::ChangingNavigableHistoryStepApplicationData> data;
+        if (should_continue) {
+            data = Web::HTML::ChangingNavigableHistoryStepApplicationData {
+                .history_object_length_and_index = { script_history_length, script_history_index },
+                .entries_for_navigation_api = move(entries_for_navigation_api),
+            };
+        }
+        page->continue_applying_history_step_to_changing_navigable(application_id, move(data));
+    }
 }
 
 void ConnectionFromClient::continue_history_step_application(u64 page_id, u64 application_id, bool should_continue, u64 script_history_length, u64 script_history_index)

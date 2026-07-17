@@ -274,6 +274,7 @@ public:
     void did_update_session_history(Badge<WebContentClient>, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32>, size_t current_used_step_index);
     void did_update_session_history_for_testing(Badge<WebContentClient>, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32>, size_t current_used_step_index);
     void did_set_top_level_session_history(Badge<WebContentClient>, bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index);
+    Optional<Web::HTML::ChangingNavigableHistoryStepApplicationData> prepare_to_apply_history_step_to_changing_navigable(Badge<WebContentClient>, u64 application_id, i32 step, Web::HTML::CrossProcessId navigable_id) const;
     Optional<Web::HTML::HistoryObjectLengthAndIndex> did_finish_applying_history_step_to_changing_navigables(Badge<WebContentClient>, u64 application_id, i32 step);
     void did_finish_applying_history_step(Badge<WebContentClient>, u64 application_id, i32 step, bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult);
     void did_check_if_traverse_history_step_is_canceled(

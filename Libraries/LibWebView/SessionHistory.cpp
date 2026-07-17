@@ -1174,6 +1174,80 @@ Optional<Vector<TraversableSessionHistory::Entry> const&> TraversableSessionHist
     return {};
 }
 
+// https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-session-history-entries-for-the-navigation-api
+Optional<Vector<TraversableSessionHistory::Entry>> TraversableSessionHistory::get_session_history_entries_for_the_navigation_api(CanonicalNavigable const& navigable, i32 target_step) const
+{
+    // 1. Let rawEntries be the result of getting session history entries for navigable.
+    auto raw_entries = get_session_history_entries(navigable);
+    if (!raw_entries.has_value())
+        return { };
+
+    // 2. Let entriesForNavigationAPI be a new empty list.
+    Vector<Entry> entries_for_navigation_api;
+
+    // 3. Let startingIndex be the index of the session history entry in rawEntries who has the greatest step less than or equal to targetStep.
+    Optional<size_t> starting_index;
+    Optional<i32> greatest_step;
+    for (size_t i = 0; i < raw_entries->size(); ++i) {
+        auto const& entry = raw_entries->at(i);
+        if (entry.step <= target_step && (!greatest_step.has_value() || entry.step > *greatest_step)) {
+            starting_index = i;
+            greatest_step = entry.step;
+        }
+    }
+    if (!starting_index.has_value())
+        return entries_for_navigation_api;
+
+    // 4. Append rawEntries[startingIndex] to entriesForNavigationAPI.
+    entries_for_navigation_api.append(raw_entries->at(*starting_index));
+
+    // 5. Let startingOrigin be rawEntries[startingIndex]'s document state's origin.
+    auto const& starting_origin = raw_entries->at(*starting_index).document_state.origin;
+
+    // 6. Let i be startingIndex − 1.
+    auto i = static_cast<i64>(*starting_index) - 1;
+
+    // 7. While i > 0:
+    // AD-HOC: Implement "while i >= 0" to avoid dropping a same-origin rawEntries[0].
+    //         https://github.com/whatwg/html/issues/12644
+    while (i >= 0) {
+        auto const& entry = raw_entries->at(static_cast<size_t>(i));
+
+        // 1. If rawEntries[i]'s document state's origin is not same origin with startingOrigin, then break.
+        auto const& entry_origin = entry.document_state.origin;
+        if (starting_origin.has_value() && entry_origin.has_value() && !entry_origin->is_same_origin(*starting_origin))
+            break;
+
+        // 2. Prepend rawEntries[i] to entriesForNavigationAPI.
+        entries_for_navigation_api.prepend(entry);
+
+        // 3. Set i to i − 1.
+        --i;
+    }
+
+    // 8. Set i to startingIndex + 1.
+    i = static_cast<i64>(*starting_index) + 1;
+
+    // 9. While i < rawEntries's size:
+    while (i < static_cast<i64>(raw_entries->size())) {
+        auto const& entry = raw_entries->at(static_cast<size_t>(i));
+
+        // 1. If rawEntries[i]'s document state's origin is not same origin with startingOrigin, then break.
+        auto const& entry_origin = entry.document_state.origin;
+        if (starting_origin.has_value() && entry_origin.has_value() && !entry_origin->is_same_origin(*starting_origin))
+            break;
+
+        // 2. Append rawEntries[i] to entriesForNavigationAPI.
+        entries_for_navigation_api.append(entry);
+
+        // 3. Set i to i + 1.
+        ++i;
+    }
+
+    // 10. Return entriesForNavigationAPI.
+    return entries_for_navigation_api;
+}
+
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-the-target-history-entry
 TraversableSessionHistory::Entry const* TraversableSessionHistory::get_the_target_history_entry(CanonicalNavigable const& navigable, i32 step) const
 {

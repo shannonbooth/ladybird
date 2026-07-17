@@ -73,7 +73,7 @@ public:
 
     HistoryObjectLengthAndIndex get_the_history_object_length_and_index(int) const;
 
-    void apply_the_traverse_history_step(int, GC::Ptr<SourceSnapshotParams>, GC::Ptr<LocalNavigable>, UserNavigationInvolvement, GC::Ptr<OnApplyHistoryStepChangingNavigablesComplete>, GC::Ptr<OnApplyHistoryStepJobsComplete>, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete);
+    void apply_the_traverse_history_step(int, GC::Ptr<SourceSnapshotParams>, GC::Ptr<LocalNavigable>, UserNavigationInvolvement, GC::Ptr<OnApplyHistoryStepReadyToApplyToChangingNavigable>, GC::Ptr<OnApplyHistoryStepChangingNavigablesComplete>, GC::Ptr<OnApplyHistoryStepJobsComplete>, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete);
     void resume_applying_the_traverse_history_step(int, UserNavigationInvolvement, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete);
     void apply_the_reload_history_step(UserNavigationInvolvement, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete);
     enum class SynchronousNavigation : bool {
@@ -93,7 +93,7 @@ public:
     void clear_the_forward_session_history();
     void traverse_the_history_by_delta(int delta, GC::Ptr<DOM::Document> source_document = {});
     void request_the_ui_process_to_apply_the_traverse_history_step(int, GC::Ptr<SourceSnapshotParams>, GC::Ptr<LocalNavigable>, UserNavigationInvolvement, GC::Ref<OnApplyHistoryStepComplete> on_complete);
-    void traverse_the_history_to_step(int step, GC::Ref<OnApplyHistoryStepChangingNavigablesComplete>, GC::Ref<OnApplyHistoryStepJobsComplete> on_jobs_complete, GC::Ref<GC::Function<void(bool step_was_available, HistoryStepResult)>> on_complete);
+    void traverse_the_history_to_step(int step, GC::Ref<OnApplyHistoryStepReadyToApplyToChangingNavigable>, GC::Ref<OnApplyHistoryStepChangingNavigablesComplete>, GC::Ref<OnApplyHistoryStepJobsComplete> on_jobs_complete, GC::Ref<GC::Function<void(bool step_was_available, HistoryStepResult)>> on_complete);
     void check_if_traverse_history_step_is_canceled(int step, GC::Ref<OnApplyHistoryStepComplete> on_complete);
     bool replace_top_level_session_history_entries_from_ui_process(Vector<SessionHistoryEntryDescriptor>, size_t current_top_level_entry_index, bool allow_reconstructing_current_entry);
     void reset_session_history_for_testing(GC::Ref<GC::Function<void()>> on_complete);
@@ -161,6 +161,7 @@ private:
         GC::Ptr<DOM::Document> pending_document,
         GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable,
         Optional<Utf16String> expected_ongoing_navigation_id,
+        GC::Ptr<OnApplyHistoryStepReadyToApplyToChangingNavigable>,
         GC::Ptr<OnApplyHistoryStepChangingNavigablesComplete>,
         GC::Ptr<OnApplyHistoryStepJobsComplete> on_jobs_complete,
         GC::Ref<OnApplyHistoryStepComplete> on_complete);
@@ -178,6 +179,7 @@ private:
         GC::Ptr<DOM::Document> pending_document,
         GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable,
         Optional<Utf16String> expected_ongoing_navigation_id,
+        GC::Ptr<OnApplyHistoryStepReadyToApplyToChangingNavigable>,
         GC::Ptr<OnApplyHistoryStepChangingNavigablesComplete>,
         GC::Ptr<OnApplyHistoryStepJobsComplete>,
         GC::Ref<OnApplyHistoryStepComplete> on_complete);

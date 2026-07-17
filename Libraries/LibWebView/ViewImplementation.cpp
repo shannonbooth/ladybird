@@ -1932,6 +1932,11 @@ void ViewImplementation::did_finish_applying_history_step(Badge<WebContentClient
     dump_session_history(step_result.dump_reason);
 }
 
+Optional<Web::HTML::ChangingNavigableHistoryStepApplicationData> ViewImplementation::prepare_to_apply_history_step_to_changing_navigable(Badge<WebContentClient>, u64 application_id, i32 step, Web::HTML::CrossProcessId navigable_id) const
+{
+    return m_top_level_traversable.prepare_to_apply_history_step_to_changing_navigable(application_id, step, navigable_id);
+}
+
 Optional<Web::HTML::HistoryObjectLengthAndIndex> ViewImplementation::did_finish_applying_history_step_to_changing_navigables(Badge<WebContentClient>, u64 application_id, i32 step)
 {
     return m_top_level_traversable.did_finish_applying_history_step_to_changing_navigables(application_id, step);

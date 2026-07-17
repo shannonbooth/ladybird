@@ -92,6 +92,7 @@ public:
     [[nodiscard]] Optional<TraversalTarget> traversal_target_for_delta(int delta) const;
     [[nodiscard]] Optional<TraversalTarget> traversal_target_for_step(i32 step) const;
     [[nodiscard]] Optional<Vector<Entry> const&> get_session_history_entries(CanonicalNavigable const&) const;
+    [[nodiscard]] Optional<Vector<Entry>> get_session_history_entries_for_the_navigation_api(CanonicalNavigable const&, i32 target_step) const;
     [[nodiscard]] Entry const* get_the_target_history_entry(CanonicalNavigable const&, i32 step) const;
     [[nodiscard]] Vector<Web::HTML::CrossProcessId> get_all_navigables_whose_current_session_history_entry_will_change_or_reload(CanonicalNavigable const& traversable, i32 target_step) const;
     [[nodiscard]] Vector<Web::HTML::CrossProcessId> get_all_navigables_that_only_need_history_object_length_index_update(CanonicalNavigable const& traversable, i32 target_step) const;

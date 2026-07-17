@@ -85,6 +85,8 @@ public:
     void did_resolve_session_history_traversal_target(u64 request_id, Optional<i32> target_step);
     void apply_pending_session_history_traversal(u64 request_id, u64 application_id, Vector<Web::HTML::CrossProcessId> changing_navigables, Vector<Web::HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates);
     void did_complete_session_history_traversal(u64 request_id, Web::HTML::HistoryStepResult);
+    void did_prepare_to_apply_history_step_to_changing_navigable(u64 application_id, int step, Web::HTML::CrossProcessId navigable_id, GC::Ref<Web::HTML::ResumeApplyingHistoryStepToChangingNavigable>);
+    void continue_applying_history_step_to_changing_navigable(u64 application_id, Optional<Web::HTML::ChangingNavigableHistoryStepApplicationData>);
     void did_finish_applying_history_step_to_changing_navigables(u64 application_id, int step, GC::Ref<Web::HTML::ResumeApplyingHistoryStep>);
     void continue_history_step_application(u64 application_id, Optional<Web::HTML::HistoryObjectLengthAndIndex>);
     void did_finish_applying_history_step(u64 application_id, int step, bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult, GC::Ref<Web::HTML::OnApplyHistoryStepComplete> finish_applying);
@@ -326,6 +328,7 @@ private:
     };
     u64 m_next_session_history_traversal_request_id { 0 };
     HashMap<u64, PendingSessionHistoryTraversalRequest> m_pending_session_history_traversal_requests;
+    HashMap<u64, GC::Ref<Web::HTML::ResumeApplyingHistoryStepToChangingNavigable>> m_history_step_applications_waiting_for_changing_navigable;
     HashMap<u64, GC::Ref<Web::HTML::ResumeApplyingHistoryStep>> m_history_step_applications_waiting_for_nonchanging_navigables;
     HashMap<u64, GC::Ref<Web::HTML::OnApplyHistoryStepComplete>> m_pending_history_step_applications;
 
