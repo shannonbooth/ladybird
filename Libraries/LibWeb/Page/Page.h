@@ -429,7 +429,11 @@ enum class HistoryTraversalPrecheck : u8 {
     AlreadyDone,
 };
 
-using ApplyPendingSessionHistoryTraversal = GC::Function<void(Vector<HTML::CrossProcessId> changing_navigables, Vector<HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates, GC::Ref<HTML::OnApplyHistoryStepComplete>)>;
+using ApplyPendingSessionHistoryTraversal = GC::Function<void(
+    Vector<HTML::CrossProcessId> changing_navigables,
+    Vector<HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates,
+    GC::Ref<HTML::OnApplyHistoryStepJobsComplete> on_jobs_complete,
+    GC::Ref<HTML::OnApplyHistoryStepComplete> on_complete)>;
 
 enum class NavigationTarget : u8 {
     TopLevel,

@@ -98,9 +98,10 @@ private:
     virtual void set_page_parent_context(u64 page_id, Optional<Web::Compositor::CompositorContextId>) override;
     virtual void set_remote_child_frame_compositor_context(u64 page_id, Web::HTML::CrossProcessId frame_id, Optional<Web::Compositor::CompositorContextId>) override;
     virtual void resolve_session_history_traversal_target(u64 page_id, u64 request_id, Optional<i32> target_step) override;
-    virtual void apply_pending_session_history_traversal(u64 page_id, u64 request_id, Vector<Web::HTML::CrossProcessId> changing_navigables, Vector<Web::HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates) override;
+    virtual void apply_pending_session_history_traversal(u64 page_id, u64 request_id, u64 application_id, Vector<Web::HTML::CrossProcessId> changing_navigables, Vector<Web::HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates) override;
     virtual void complete_session_history_traversal(u64 page_id, u64 request_id, Web::HTML::HistoryStepResult) override;
-    virtual void traverse_the_history_to_step(u64 page_id, i32 step) override;
+    virtual void traverse_the_history_to_step(u64 page_id, u64 application_id, i32 step) override;
+    virtual void complete_history_step_application(u64 page_id, u64 application_id, Web::HTML::HistoryStepResult) override;
     virtual void check_if_traverse_history_step_is_canceled(u64 page_id, u64 request_id, i32 step) override;
     virtual void set_top_level_session_history(u64 page_id, Vector<Web::HTML::SessionHistoryEntryDescriptor>, size_t current_top_level_entry_index, bool allow_reconstructing_current_entry) override;
     virtual void reset_session_history_for_testing(u64 page_id) override;

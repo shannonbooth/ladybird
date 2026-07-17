@@ -125,7 +125,7 @@ public:
         CheckForCancelation = CheckForCancelation::Yes,
         Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete = nullptr,
         Function<void(Web::HTML::HistoryStepResult)> on_complete = nullptr,
-        Function<void(i32, Vector<Web::HTML::CrossProcessId>, Vector<Web::HTML::CrossProcessId>)> apply_pending_web_content_traversal = nullptr);
+        Function<void(u64 application_id, i32, Vector<Web::HTML::CrossProcessId>, Vector<Web::HTML::CrossProcessId>)> apply_pending_web_content_traversal = nullptr);
     [[nodiscard]] Vector<SessionHistoryTraversalMenuItem> session_history_traversal_menu_items(int direction) const;
 
     void zoom_in();
@@ -274,7 +274,7 @@ public:
     void did_update_session_history(Badge<WebContentClient>, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32>, size_t current_used_step_index);
     void did_update_session_history_for_testing(Badge<WebContentClient>, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32>, size_t current_used_step_index);
     void did_set_top_level_session_history(Badge<WebContentClient>, bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index);
-    void did_traverse_the_history_to_step(Badge<WebContentClient>, i32 step, bool step_was_available, Web::HTML::HistoryStepResult);
+    void did_finish_applying_history_step(Badge<WebContentClient>, u64 application_id, i32 step, bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult);
     void did_check_if_traverse_history_step_is_canceled(
         Badge<WebContentClient>, u64 request_id, i32 step, Web::HTML::HistoryStepResult);
     void did_reset_session_history_for_testing(Badge<WebContentClient>);
@@ -415,7 +415,7 @@ public:
     virtual Gfx::IntPoint to_widget_position(Gfx::IntPoint content_position) const = 0;
 
 protected:
-    HistoryTraversalOutcome start_history_traversal(HistoryTraversalDecision, Function<void(i32, Vector<Web::HTML::CrossProcessId>, Vector<Web::HTML::CrossProcessId>)> apply_pending_web_content_traversal = nullptr);
+    HistoryTraversalOutcome start_history_traversal(HistoryTraversalDecision, Function<void(u64 application_id, i32, Vector<Web::HTML::CrossProcessId>, Vector<Web::HTML::CrossProcessId>)> apply_pending_web_content_traversal = nullptr);
     virtual void insert_clipboard_entry(Web::Clipboard::SystemClipboardRepresentation);
     virtual Vector<Web::Clipboard::SystemClipboardRepresentation> clipboard_entries() const;
 

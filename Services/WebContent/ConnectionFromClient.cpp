@@ -339,10 +339,10 @@ void ConnectionFromClient::resolve_session_history_traversal_target(u64 page_id,
         page->did_resolve_session_history_traversal_target(request_id, target_step);
 }
 
-void ConnectionFromClient::apply_pending_session_history_traversal(u64 page_id, u64 request_id, Vector<Web::HTML::CrossProcessId> changing_navigables, Vector<Web::HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates)
+void ConnectionFromClient::apply_pending_session_history_traversal(u64 page_id, u64 request_id, u64 application_id, Vector<Web::HTML::CrossProcessId> changing_navigables, Vector<Web::HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates)
 {
     if (auto page = this->page(page_id); page.has_value())
-        page->apply_pending_session_history_traversal(request_id, move(changing_navigables), move(nonchanging_navigables_that_still_need_updates));
+        page->apply_pending_session_history_traversal(request_id, application_id, move(changing_navigables), move(nonchanging_navigables_that_still_need_updates));
 }
 
 void ConnectionFromClient::complete_session_history_traversal(u64 page_id, u64 request_id, Web::HTML::HistoryStepResult result)
@@ -351,18 +351,27 @@ void ConnectionFromClient::complete_session_history_traversal(u64 page_id, u64 r
         page->did_complete_session_history_traversal(request_id, result);
 }
 
-void ConnectionFromClient::traverse_the_history_to_step(u64 page_id, i32 step)
+void ConnectionFromClient::traverse_the_history_to_step(u64 page_id, u64 application_id, i32 step)
 {
     auto page = this->page(page_id);
     if (!page.has_value()) {
-        async_did_traverse_the_history_to_step(page_id, step, false, Web::HTML::HistoryStepResult::Applied);
+        async_did_finish_applying_history_step(page_id, application_id, step, false, false, Web::HTML::HistoryStepResult::CanceledByMissingPage);
         return;
     }
 
-    page->page().top_level_traversable()->traverse_the_history_to_step(step,
-        GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, page_id, step](bool step_was_available, Web::HTML::HistoryStepResult result) {
-            async_did_traverse_the_history_to_step(page_id, step, step_was_available, result);
-        }));
+    auto& heap = Web::HTML::main_thread_event_loop().heap();
+    page->page().top_level_traversable()->traverse_the_history_to_step(
+        step,
+        GC::create_function(heap, [page, application_id, step](bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult result, GC::Ref<Web::HTML::OnApplyHistoryStepComplete> finish_applying) mutable {
+            page->did_finish_applying_history_step(application_id, step, step_was_available, should_update_current_session_history_step, result, finish_applying);
+        }),
+        GC::create_function(heap, [](bool, Web::HTML::HistoryStepResult) { }));
+}
+
+void ConnectionFromClient::complete_history_step_application(u64 page_id, u64 application_id, Web::HTML::HistoryStepResult result)
+{
+    if (auto page = this->page(page_id); page.has_value())
+        page->complete_history_step_application(application_id, result);
 }
 
 void ConnectionFromClient::check_if_traverse_history_step_is_canceled(u64 page_id, u64 request_id, i32 step)

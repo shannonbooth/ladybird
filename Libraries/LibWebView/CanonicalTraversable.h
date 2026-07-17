@@ -75,12 +75,14 @@ struct PendingSessionHistoryTraversal {
         RestoringNestedStepAfterSeed,
     };
 
+    u64 application_id { 0 };
     i32 target_step { 0 };
     size_t target_step_index { 0 };
     u64 cancelation_check_request_id { 0 };
     bool will_change_top_level_entry { false };
     bool will_replace_web_content_process { false };
     bool web_content_prechecks_already_done { false };
+    bool webdriver_pending_navigation_completes_with_session_history_update { false };
     Stage stage { Stage::ApplyingInWebContent };
     Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete;
     Function<void(Web::HTML::HistoryStepResult)> on_complete;
@@ -106,6 +108,7 @@ struct WebContentSessionHistorySeedAckResult {
     bool ignored { false };
     StringView dump_reason;
     Optional<URL::URL> current_url {};
+    Optional<u64> history_step_application_id {};
     Optional<i32> step_to_traverse {};
     bool should_complete_webdriver_pending_navigation { false };
     bool should_update_navigation_action_state { false };
@@ -151,6 +154,7 @@ enum class HistoryTraversalAction : u8 {
 struct HistoryTraversalDecision {
     HistoryTraversalOutcome outcome;
     HistoryTraversalAction action { HistoryTraversalAction::None };
+    Optional<u64> application_id {};
     Optional<i32> target_step {};
     Vector<Web::HTML::CrossProcessId> changing_navigables;
     Vector<Web::HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates;
@@ -250,7 +254,7 @@ public:
     HistoryTraversalDecision traverse_the_history_by_delta(int delta, CheckForCancelation, URL::URL const& current_url, Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete);
     HistoryTraversalDecision traverse_the_history_to_step(i32 step, CheckForCancelation, URL::URL const& current_url, Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete, Function<void(Web::HTML::HistoryStepResult)> on_complete);
     URL::URL prepare_to_load_session_history_traversal_target_from_ui_process(TraversableSessionHistory::TraversalTarget const&, URL::URL const& current_url);
-    WebContentHistoryStepResult did_traverse_the_history_to_step(i32 step, bool step_was_available, Web::HTML::HistoryStepResult);
+    WebContentHistoryStepResult did_finish_applying_history_step(u64 application_id, i32 step, bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult);
     HistoryStepCancelationCheckResult did_check_if_traverse_history_step_is_canceled(u64 request_id, i32 step, Web::HTML::HistoryStepResult);
     Optional<WebContentSessionHistorySeed> prepare_web_content_session_history_seed(bool allow_current_entry_reconstruction);
     CurrentSessionHistoryEntryLoad prepare_current_session_history_entry_load(URL::URL const& current_url);
@@ -277,6 +281,7 @@ private:
     bool m_current_web_content_session_history_matches_mirror { false };
     Optional<PendingSessionHistoryNavigation> m_pending_session_history_navigation;
     Optional<PendingSessionHistoryTraversal> m_pending_session_history_traversal;
+    u64 m_next_history_step_application_id { 0 };
     u64 m_next_traverse_history_step_cancelation_check_request_id { 0 };
     Optional<URL::URL> m_session_history_entry_url_loading_from_ui_process;
     PendingWebContentSessionHistorySeed m_pending_web_content_session_history_seed;

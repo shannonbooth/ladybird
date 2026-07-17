@@ -1552,11 +1552,11 @@ void WebContentClient::did_request_traverse_the_history_to_step(u64 page_id, u64
                 return;
             static_cast<WebContentClient&>(*self).async_complete_session_history_traversal(page_id, request_id, result);
         },
-        [weak_this, page_id, request_id](i32, Vector<Web::HTML::CrossProcessId> changing_navigables, Vector<Web::HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates) {
+        [weak_this, page_id, request_id](u64 application_id, i32, Vector<Web::HTML::CrossProcessId> changing_navigables, Vector<Web::HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates) {
             auto self = weak_this.strong_ref();
             if (!self)
                 return;
-            static_cast<WebContentClient&>(*self).async_apply_pending_session_history_traversal(page_id, request_id, move(changing_navigables), move(nonchanging_navigables_that_still_need_updates));
+            static_cast<WebContentClient&>(*self).async_apply_pending_session_history_traversal(page_id, request_id, application_id, move(changing_navigables), move(nonchanging_navigables_that_still_need_updates));
         });
 }
 
@@ -1915,10 +1915,11 @@ void WebContentClient::did_set_top_level_session_history(u64 page_id, bool accep
         view->did_set_top_level_session_history({}, accepted, move(entries), move(used_steps), current_used_step_index);
 }
 
-void WebContentClient::did_traverse_the_history_to_step(u64 page_id, i32 step, bool step_was_available, Web::HTML::HistoryStepResult result)
+void WebContentClient::did_finish_applying_history_step(u64 page_id, u64 application_id, i32 step, bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult result)
 {
     if (auto view = view_for_page_id(page_id); view.has_value())
-        view->did_traverse_the_history_to_step({}, step, step_was_available, result);
+        view->did_finish_applying_history_step({ }, application_id, step, step_was_available, should_update_current_session_history_step, result);
+    async_complete_history_step_application(page_id, application_id, result);
 }
 
 void WebContentClient::did_reset_session_history_for_testing(u64 page_id)

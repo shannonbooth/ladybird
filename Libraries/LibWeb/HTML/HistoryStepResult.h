@@ -27,4 +27,13 @@ enum class HistoryStepResult {
 
 using OnApplyHistoryStepComplete = GC::Function<void(HistoryStepResult)>;
 
+// The document-local jobs from apply the history step have completed, but the traversable-wide
+// current session history step has not yet been committed. The final callback completes the
+// WebContent side after the canonical history owner has performed that commit.
+//
+// An "applied" result can also finish stale reconciliation work without changing the current
+// session history step. Report that separately so the canonical history owner does not infer a
+// current-step update from the algorithm's result.
+using OnApplyHistoryStepJobsComplete = GC::Function<void(bool step_was_available, bool should_update_current_session_history_step, HistoryStepResult, GC::Ref<OnApplyHistoryStepComplete> finish_applying)>;
+
 }

@@ -390,12 +390,12 @@ HistoryTraversalOutcome ViewImplementation::traverse_the_history_to_step(
     CheckForCancelation check_for_cancelation,
     Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete,
     Function<void(Web::HTML::HistoryStepResult)> on_complete,
-    Function<void(i32, Vector<Web::HTML::CrossProcessId>, Vector<Web::HTML::CrossProcessId>)> apply_pending_web_content_traversal)
+    Function<void(u64 application_id, i32, Vector<Web::HTML::CrossProcessId>, Vector<Web::HTML::CrossProcessId>)> apply_pending_web_content_traversal)
 {
     return start_history_traversal(m_top_level_traversable.traverse_the_history_to_step(step, check_for_cancelation, m_url, move(on_cancelation_check_complete), move(on_complete)), move(apply_pending_web_content_traversal));
 }
 
-HistoryTraversalOutcome ViewImplementation::start_history_traversal(HistoryTraversalDecision decision, Function<void(i32, Vector<Web::HTML::CrossProcessId>, Vector<Web::HTML::CrossProcessId>)> apply_pending_web_content_traversal)
+HistoryTraversalOutcome ViewImplementation::start_history_traversal(HistoryTraversalDecision decision, Function<void(u64 application_id, i32, Vector<Web::HTML::CrossProcessId>, Vector<Web::HTML::CrossProcessId>)> apply_pending_web_content_traversal)
 {
     if (decision.outcome.status == HistoryTraversalStatus::NoEntry) {
         dump_session_history("traverse-no-entry"sv);
@@ -417,9 +417,9 @@ HistoryTraversalOutcome ViewImplementation::start_history_traversal(HistoryTrave
     case HistoryTraversalAction::TraverseInWebContent:
         dump_session_history("traverse-delegate-to-webcontent"sv);
         if (apply_pending_web_content_traversal)
-            apply_pending_web_content_traversal(*decision.target_step, move(decision.changing_navigables), move(decision.nonchanging_navigables_that_still_need_updates));
+            apply_pending_web_content_traversal(*decision.application_id, *decision.target_step, move(decision.changing_navigables), move(decision.nonchanging_navigables_that_still_need_updates));
         else
-            client().async_traverse_the_history_to_step(page_id(), *decision.target_step);
+            client().async_traverse_the_history_to_step(page_id(), *decision.application_id, *decision.target_step);
         return decision.outcome;
     case HistoryTraversalAction::CheckForCancelation:
         client().async_check_if_traverse_history_step_is_canceled(page_id(), *decision.cancelation_check_request_id, *decision.target_step);
@@ -1887,8 +1887,10 @@ void ViewImplementation::did_set_top_level_session_history(Badge<WebContentClien
         apply_web_content_session_history_update(update);
     }
 
-    if (ack.step_to_traverse.has_value())
-        client().async_traverse_the_history_to_step(page_id(), *ack.step_to_traverse);
+    if (ack.step_to_traverse.has_value()) {
+        VERIFY(ack.history_step_application_id.has_value());
+        client().async_traverse_the_history_to_step(page_id(), *ack.history_step_application_id, *ack.step_to_traverse);
+    }
     else if (ack.should_complete_webdriver_pending_navigation)
         complete_webdriver_pending_navigation_if_url_matches(m_url);
 
@@ -1897,9 +1899,9 @@ void ViewImplementation::did_set_top_level_session_history(Badge<WebContentClien
     dump_session_history(ack.dump_reason);
 }
 
-void ViewImplementation::did_traverse_the_history_to_step(Badge<WebContentClient>, i32 step, bool step_was_available, Web::HTML::HistoryStepResult result)
+void ViewImplementation::did_finish_applying_history_step(Badge<WebContentClient>, u64 application_id, i32 step, bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult result)
 {
-    auto step_result = m_top_level_traversable.did_traverse_the_history_to_step(step, step_was_available, result);
+    auto step_result = m_top_level_traversable.did_finish_applying_history_step(application_id, step, step_was_available, should_update_current_session_history_step, result);
     if (step_result.should_update_webdriver_pending_navigation_to_current_url && m_webdriver_pending_navigation_url.has_value())
         m_webdriver_pending_navigation_url = m_url;
     if (step_result.should_reset_webdriver_pending_navigation_completion)

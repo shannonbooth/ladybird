@@ -419,8 +419,12 @@ WebContentSessionHistorySeedAckResult CanonicalTraversable::did_receive_web_cont
     m_current_web_content_session_history_matches_mirror = !m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value()
         && !m_pending_session_history_navigation.has_value();
     if (m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value()) {
-        if (m_pending_session_history_traversal.has_value())
+        auto application_id = m_next_history_step_application_id++;
+        result.history_step_application_id = application_id;
+        if (m_pending_session_history_traversal.has_value()) {
             m_pending_session_history_traversal->stage = PendingSessionHistoryTraversal::Stage::RestoringNestedStepAfterSeed;
+            m_pending_session_history_traversal->application_id = application_id;
+        }
         result.step_to_traverse = *m_pending_web_content_session_history_seed.step_after_loading_top_level_entry;
     } else {
         auto is_waiting_for_history_step_cancelation_check = m_pending_session_history_traversal.has_value()
@@ -600,12 +604,17 @@ HistoryTraversalDecision CanonicalTraversable::traverse_the_history(TraversableS
     //        sending anything. Once the UI process owns apply-the-history-step and issues per-navigable load commands,
     //        placement is decided per command and this prediction goes away.
     auto will_replace_web_content_process = SiteIsolationManager::the().navigation_requires_process_swap(current_url, target.target_top_level_entry->url);
+    auto webdriver_pending_navigation_completes_with_session_history_update = false;
+    if (auto const* current_entry = m_session_history.current_entry())
+        webdriver_pending_navigation_completes_with_session_history_update = current_entry->document_state.id == target.target_top_level_entry->document_state.id;
     auto pending_traversal = PendingSessionHistoryTraversal {
+        .application_id = m_next_history_step_application_id++,
         .target_step = target.target_step,
         .target_step_index = target.target_step_index,
         .will_change_top_level_entry = target.changes_top_level_entry,
         .will_replace_web_content_process = will_replace_web_content_process,
         .web_content_prechecks_already_done = check_for_cancelation == CheckForCancelation::No,
+        .webdriver_pending_navigation_completes_with_session_history_update = webdriver_pending_navigation_completes_with_session_history_update,
         .on_cancelation_check_complete = nullptr,
         .on_complete = move(on_complete),
     };
@@ -631,14 +640,12 @@ HistoryTraversalDecision CanonicalTraversable::traverse_the_history(TraversableS
             nonchanging_navigables_that_still_need_updates = m_session_history.get_all_navigables_that_only_need_history_object_length_index_update(*this, target.target_step);
         }
 
+        auto application_id = pending_traversal.application_id;
         m_pending_session_history_traversal = move(pending_traversal);
-        auto webdriver_pending_navigation_completes_with_session_history_update = false;
-        if (auto const* current_entry = m_session_history.current_entry()) {
-            webdriver_pending_navigation_completes_with_session_history_update = current_entry->document_state.id == target.target_top_level_entry->document_state.id;
-        }
         return {
             .outcome = { .status = HistoryTraversalStatus::Started, .will_replace_web_content_process = will_replace_web_content_process, .will_change_top_level_entry = target.changes_top_level_entry },
             .action = HistoryTraversalAction::TraverseInWebContent,
+            .application_id = application_id,
             .target_step = target.target_step,
             .changing_navigables = move(changing_navigables),
             .nonchanging_navigables_that_still_need_updates = move(nonchanging_navigables_that_still_need_updates),
@@ -699,10 +706,12 @@ URL::URL CanonicalTraversable::prepare_to_load_session_history_traversal_target_
     return target_url;
 }
 
-WebContentHistoryStepResult CanonicalTraversable::did_traverse_the_history_to_step(i32 step, bool step_was_available, Web::HTML::HistoryStepResult result)
+WebContentHistoryStepResult CanonicalTraversable::did_finish_applying_history_step(u64 application_id, i32 step, bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult result)
 {
     if (!m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value()) {
-        if (!m_pending_session_history_traversal.has_value() || m_pending_session_history_traversal->target_step != step)
+        if (!m_pending_session_history_traversal.has_value()
+            || m_pending_session_history_traversal->application_id != application_id
+            || m_pending_session_history_traversal->target_step != step)
             return { .dump_reason = "ignored-stale-webcontent-history-step-result"sv };
 
         if (!step_was_available) {
@@ -720,6 +729,11 @@ WebContentHistoryStepResult CanonicalTraversable::did_traverse_the_history_to_st
             return { .dump_reason = "webcontent-history-step-canceled"sv, .should_update_navigation_action_state = true, .should_complete_webdriver_pending_navigation = true, .should_update_webdriver_pending_navigation_to_current_url = true, .should_reset_webdriver_pending_navigation_completion = true };
         }
 
+        if (!should_update_current_session_history_step) {
+            complete_pending_session_history_traversal(result);
+            return { .dump_reason = "webcontent-history-step-finished-without-updating-current-step"sv, .should_update_navigation_action_state = true, .should_complete_webdriver_pending_navigation = true, .should_update_webdriver_pending_navigation_to_current_url = true, .should_reset_webdriver_pending_navigation_completion = true };
+        }
+
         // A WebContent-origin traversal with completed prechecks was planned from the canonical history, so the
         // pending target is authoritative even if the older WebContent-known snapshot did not contain it yet.
         auto did_apply_traversal = m_pending_session_history_traversal->web_content_prechecks_already_done
@@ -735,7 +749,7 @@ WebContentHistoryStepResult CanonicalTraversable::did_traverse_the_history_to_st
         }
 
         m_current_web_content_session_history_matches_mirror = m_session_history.web_content_history_matches_mirror();
-        auto should_complete_webdriver_pending_navigation = !m_pending_session_history_traversal->will_change_top_level_entry;
+        auto should_complete_webdriver_pending_navigation = m_pending_session_history_traversal->webdriver_pending_navigation_completes_with_session_history_update;
         Optional<URL::URL> current_url;
         if (auto const* current_entry = m_session_history.current_entry())
             current_url = current_entry->url;
@@ -746,7 +760,7 @@ WebContentHistoryStepResult CanonicalTraversable::did_traverse_the_history_to_st
     if (*m_pending_web_content_session_history_seed.step_after_loading_top_level_entry != step)
         return { .dump_reason = "ignored-stale-webcontent-history-step-result"sv };
 
-    if (step_was_available && result == Web::HTML::HistoryStepResult::Applied) {
+    if (step_was_available && should_update_current_session_history_step && result == Web::HTML::HistoryStepResult::Applied) {
         m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.clear();
         m_current_web_content_session_history_matches_mirror = m_session_history.did_restore_web_content_to_current_step(step);
         complete_pending_session_history_traversal();

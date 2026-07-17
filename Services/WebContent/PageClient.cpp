@@ -131,6 +131,8 @@ void PageClient::visit_edges(JS::Cell::Visitor& visitor)
         visitor.visit(request.value.apply_in_web_content);
         visitor.visit(request.value.on_complete);
     }
+    for (auto& finish_applying : m_pending_history_step_applications)
+        visitor.visit(finish_applying.value);
     m_pending_dom_mutations.for_each([&](auto& pending_mutation) {
         visitor.visit(pending_mutation.target);
     });
@@ -1147,19 +1149,19 @@ void PageClient::did_resolve_session_history_traversal_target(u64 request_id, Op
     callback.value()->function()(target_step);
 }
 
-void PageClient::apply_pending_session_history_traversal(u64 request_id, Vector<Web::HTML::CrossProcessId> changing_navigables, Vector<Web::HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates)
+void PageClient::apply_pending_session_history_traversal(u64 request_id, u64 application_id, Vector<Web::HTML::CrossProcessId> changing_navigables, Vector<Web::HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates)
 {
-    auto request = m_pending_session_history_traversal_requests.get(request_id);
+    auto request = m_pending_session_history_traversal_requests.take(request_id);
     if (!request.has_value())
         return;
 
     request->apply_in_web_content->function()(
         move(changing_navigables),
         move(nonchanging_navigables_that_still_need_updates),
-        GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, step = request->step](Web::HTML::HistoryStepResult result) {
-            auto step_was_available = result != Web::HTML::HistoryStepResult::CanceledByMissingPage;
-            client().async_did_traverse_the_history_to_step(m_id, step, step_was_available, result);
-        }));
+        GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, application_id, step = request->step](bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult result, GC::Ref<Web::HTML::OnApplyHistoryStepComplete> finish_applying) {
+            did_finish_applying_history_step(application_id, step, step_was_available, should_update_current_session_history_step, result, finish_applying);
+        }),
+        request->on_complete);
 }
 
 void PageClient::did_complete_session_history_traversal(u64 request_id, Web::HTML::HistoryStepResult result)
@@ -1168,6 +1170,20 @@ void PageClient::did_complete_session_history_traversal(u64 request_id, Web::HTM
     if (!request.has_value())
         return;
     request->on_complete->function()(result);
+}
+
+void PageClient::did_finish_applying_history_step(u64 application_id, int step, bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult result, GC::Ref<Web::HTML::OnApplyHistoryStepComplete> finish_applying)
+{
+    m_pending_history_step_applications.set(application_id, finish_applying);
+    client().async_did_finish_applying_history_step(m_id, application_id, step, step_was_available, should_update_current_session_history_step, result);
+}
+
+void PageClient::complete_history_step_application(u64 application_id, Web::HTML::HistoryStepResult result)
+{
+    auto finish_applying = m_pending_history_step_applications.take(application_id);
+    if (!finish_applying.has_value())
+        return;
+    finish_applying.value()->function()(result);
 }
 
 void PageClient::request_webdriver_history_traversal(int delta, Function<void(WebDriverHistoryTraversalResult)> on_complete)
