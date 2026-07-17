@@ -83,7 +83,8 @@ public:
         bool will_change_top_level_entry { false };
     };
     void did_resolve_session_history_traversal_target(u64 request_id, Optional<i32> target_step);
-    void did_complete_session_history_traversal(u64 request_id);
+    void apply_pending_session_history_traversal(u64 request_id, Vector<Web::HTML::CrossProcessId> changing_navigables, Vector<Web::HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates);
+    void did_complete_session_history_traversal(u64 request_id, Web::HTML::HistoryStepResult);
     void request_webdriver_history_traversal(int delta, Function<void(WebDriverHistoryTraversalResult)>);
     void did_complete_webdriver_history_traversal(u64 request_id, bool accepted, bool will_replace_web_content_process, bool will_change_top_level_entry);
     Web::WebDriver::Response request_webdriver_load_url_from_ui(URL::URL const&);
@@ -249,7 +250,7 @@ private:
     virtual String page_did_update_session_history_and_request_ui_process_session_history_for_testing(Vector<Web::HTML::SessionHistoryEntryDescriptor> const&, Vector<i32> const& used_steps, size_t current_used_step_index) override;
     virtual void page_did_request_traverse_the_history_by_delta(int delta, Web::HistoryTraversalPrecheck) override;
     virtual void page_did_request_history_traversal_target_by_delta(int delta, GC::Ref<GC::Function<void(Optional<int>)>> on_complete) override;
-    virtual void page_did_request_traverse_the_history_to_step(int step, Web::HistoryTraversalPrecheck, GC::Ref<GC::Function<void()>> on_complete) override;
+    virtual void page_did_request_traverse_the_history_to_step(int step, Web::HistoryTraversalPrecheck, GC::Ref<Web::ApplyPendingSessionHistoryTraversal> apply_in_web_content, GC::Ref<Web::HTML::OnApplyHistoryStepComplete> on_complete) override;
     virtual void page_did_request_navigation_api_traversal_target(Web::HTML::CrossProcessId navigable_id, Utf16String const& navigation_api_key, GC::Ref<GC::Function<void(Optional<int>)>> on_complete) override;
     virtual void request_file(Web::FileRequest) override;
     virtual void page_did_request_color_picker(Color current_color) override;
@@ -314,8 +315,13 @@ private:
     HashMap<u64, Function<void(WebDriverHistoryTraversalResult)>> m_pending_webdriver_history_traversal_requests;
     u64 m_next_session_history_traversal_target_request_id { 0 };
     HashMap<u64, GC::Ref<GC::Function<void(Optional<int>)>>> m_pending_session_history_traversal_target_requests;
+    struct PendingSessionHistoryTraversalRequest {
+        int step;
+        GC::Ref<Web::ApplyPendingSessionHistoryTraversal> apply_in_web_content;
+        GC::Ref<Web::HTML::OnApplyHistoryStepComplete> on_complete;
+    };
     u64 m_next_session_history_traversal_request_id { 0 };
-    HashMap<u64, GC::Ref<GC::Function<void()>>> m_pending_session_history_traversal_requests;
+    HashMap<u64, PendingSessionHistoryTraversalRequest> m_pending_session_history_traversal_requests;
 
     RefPtr<WebDriverConnection> m_webdriver;
     RefPtr<WebUIConnection> m_web_ui;

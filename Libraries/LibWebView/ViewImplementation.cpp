@@ -389,12 +389,13 @@ HistoryTraversalOutcome ViewImplementation::traverse_the_history_to_step(
     i32 step,
     CheckForCancelation check_for_cancelation,
     Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete,
-    Function<void()> on_complete)
+    Function<void(Web::HTML::HistoryStepResult)> on_complete,
+    Function<void(i32, Vector<Web::HTML::CrossProcessId>, Vector<Web::HTML::CrossProcessId>)> apply_pending_web_content_traversal)
 {
-    return start_history_traversal(m_top_level_traversable.traverse_the_history_to_step(step, check_for_cancelation, m_url, move(on_cancelation_check_complete), move(on_complete)));
+    return start_history_traversal(m_top_level_traversable.traverse_the_history_to_step(step, check_for_cancelation, m_url, move(on_cancelation_check_complete), move(on_complete)), move(apply_pending_web_content_traversal));
 }
 
-HistoryTraversalOutcome ViewImplementation::start_history_traversal(HistoryTraversalDecision decision)
+HistoryTraversalOutcome ViewImplementation::start_history_traversal(HistoryTraversalDecision decision, Function<void(i32, Vector<Web::HTML::CrossProcessId>, Vector<Web::HTML::CrossProcessId>)> apply_pending_web_content_traversal)
 {
     if (decision.outcome.status == HistoryTraversalStatus::NoEntry) {
         dump_session_history("traverse-no-entry"sv);
@@ -415,7 +416,10 @@ HistoryTraversalOutcome ViewImplementation::start_history_traversal(HistoryTrave
         return decision.outcome;
     case HistoryTraversalAction::TraverseInWebContent:
         dump_session_history("traverse-delegate-to-webcontent"sv);
-        client().async_traverse_the_history_to_step(page_id(), *decision.target_step);
+        if (apply_pending_web_content_traversal)
+            apply_pending_web_content_traversal(*decision.target_step, move(decision.changing_navigables), move(decision.nonchanging_navigables_that_still_need_updates));
+        else
+            client().async_traverse_the_history_to_step(page_id(), *decision.target_step);
         return decision.outcome;
     case HistoryTraversalAction::CheckForCancelation:
         client().async_check_if_traverse_history_step_is_canceled(page_id(), *decision.cancelation_check_request_id, *decision.target_step);

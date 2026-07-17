@@ -124,7 +124,8 @@ public:
         i32 step,
         CheckForCancelation = CheckForCancelation::Yes,
         Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete = nullptr,
-        Function<void()> on_complete = nullptr);
+        Function<void(Web::HTML::HistoryStepResult)> on_complete = nullptr,
+        Function<void(i32, Vector<Web::HTML::CrossProcessId>, Vector<Web::HTML::CrossProcessId>)> apply_pending_web_content_traversal = nullptr);
     [[nodiscard]] Vector<SessionHistoryTraversalMenuItem> session_history_traversal_menu_items(int direction) const;
 
     void zoom_in();
@@ -414,7 +415,7 @@ public:
     virtual Gfx::IntPoint to_widget_position(Gfx::IntPoint content_position) const = 0;
 
 protected:
-    HistoryTraversalOutcome start_history_traversal(HistoryTraversalDecision);
+    HistoryTraversalOutcome start_history_traversal(HistoryTraversalDecision, Function<void(i32, Vector<Web::HTML::CrossProcessId>, Vector<Web::HTML::CrossProcessId>)> apply_pending_web_content_traversal = nullptr);
     virtual void insert_clipboard_entry(Web::Clipboard::SystemClipboardRepresentation);
     virtual Vector<Web::Clipboard::SystemClipboardRepresentation> clipboard_entries() const;
 

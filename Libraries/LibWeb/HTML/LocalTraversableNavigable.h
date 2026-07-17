@@ -96,6 +96,7 @@ public:
     Vector<int> get_all_used_history_steps() const;
     void clear_the_forward_session_history();
     void traverse_the_history_by_delta(int delta, GC::Ptr<DOM::Document> source_document = {});
+    void request_the_ui_process_to_apply_the_traverse_history_step(int, GC::Ptr<SourceSnapshotParams>, GC::Ptr<LocalNavigable>, UserNavigationInvolvement, GC::Ref<OnApplyHistoryStepComplete> on_complete);
     void traverse_the_history_to_step(int step, GC::Ref<GC::Function<void(bool step_was_available, HistoryStepResult)>> on_complete);
     void check_if_traverse_history_step_is_canceled(int step, GC::Ref<OnApplyHistoryStepComplete> on_complete);
     bool replace_top_level_session_history_entries_from_ui_process(Vector<SessionHistoryEntryDescriptor>, size_t current_top_level_entry_index, bool allow_reconstructing_current_entry);
@@ -174,6 +175,8 @@ private:
         Optional<Bindings::NavigationType> navigation_type,
         SynchronousNavigation,
         LocalNavigable::NavigationAPIAbortBehavior,
+        Optional<Vector<CrossProcessId>> changing_navigables,
+        Optional<Vector<CrossProcessId>> nonchanging_navigables_that_still_need_updates,
         GC::Ptr<DOM::Document> pending_document,
         GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable,
         Optional<Utf16String> expected_ongoing_navigation_id,

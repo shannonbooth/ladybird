@@ -1528,26 +1528,36 @@ void WebContentClient::did_request_traverse_the_history_to_step(u64 page_id, u64
 {
     auto* page_host = navigable_for_page(page_id);
     if (!page_host) {
-        async_complete_session_history_traversal(page_id, request_id);
+        async_complete_session_history_traversal(page_id, request_id, Web::HTML::HistoryStepResult::CanceledByMissingPage);
         return;
     }
 
     auto view = ViewImplementation::find_view_for_traversable(page_host->top_level_traversable());
     if (!view.has_value()) {
-        async_complete_session_history_traversal(page_id, request_id);
+        async_complete_session_history_traversal(page_id, request_id, Web::HTML::HistoryStepResult::CanceledByMissingPage);
         return;
     }
 
     auto check_for_cancelation = history_traversal_precheck == Web::HistoryTraversalPrecheck::Needed
         ? CheckForCancelation::Yes
-        : CheckForCancelation::IfWebContentCannotTraverseTarget;
+        : CheckForCancelation::No;
     auto weak_this = static_cast<Core::EventReceiver&>(*this).make_weak_ptr();
-    (void)view->traverse_the_history_to_step(step, check_for_cancelation, nullptr, [weak_this, page_id, request_id] {
-        auto self = weak_this.strong_ref();
-        if (!self)
-            return;
-        static_cast<WebContentClient&>(*self).async_complete_session_history_traversal(page_id, request_id);
-    });
+    (void)view->traverse_the_history_to_step(
+        step,
+        check_for_cancelation,
+        nullptr,
+        [weak_this, page_id, request_id](Web::HTML::HistoryStepResult result) {
+            auto self = weak_this.strong_ref();
+            if (!self)
+                return;
+            static_cast<WebContentClient&>(*self).async_complete_session_history_traversal(page_id, request_id, result);
+        },
+        [weak_this, page_id, request_id](i32, Vector<Web::HTML::CrossProcessId> changing_navigables, Vector<Web::HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates) {
+            auto self = weak_this.strong_ref();
+            if (!self)
+                return;
+            static_cast<WebContentClient&>(*self).async_apply_pending_session_history_traversal(page_id, request_id, move(changing_navigables), move(nonchanging_navigables_that_still_need_updates));
+        });
 }
 
 void WebContentClient::did_request_navigation_api_traversal_target(u64 page_id, u64 request_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_api_key)

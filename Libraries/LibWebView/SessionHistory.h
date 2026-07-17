@@ -14,6 +14,8 @@
 
 namespace WebView {
 
+class CanonicalNavigable;
+
 // AD-HOC: The HTML Standard stores a traversable navigable's session history entries on the traversable. Ladybird
 //         keeps an IPC-serializable mirror in the UI process so browser history survives WebContent process swaps
 //         and crash recovery. The mirror still uses the spec's session history entry and all used history steps model.
@@ -69,6 +71,7 @@ public:
     void did_seed_web_content_from_ui_process(size_t current_top_level_entry_index);
     [[nodiscard]] bool did_restore_web_content_to_current_step(i32 step);
     [[nodiscard]] bool did_apply_web_content_traversal_to_step(i32 step);
+    [[nodiscard]] bool set_current_session_history_step(i32 step);
     void forget_web_content_state();
     Vector<Entry> entries() const;
     Vector<i32> used_steps() const;
@@ -87,6 +90,9 @@ public:
     [[nodiscard]] Optional<TraversalTarget> traversal_target_for_delta(int delta) const;
     [[nodiscard]] Optional<TraversalTarget> traversal_target_for_step(i32 step) const;
     [[nodiscard]] Optional<Vector<Entry> const&> get_session_history_entries(CanonicalNavigable const&) const;
+    [[nodiscard]] Entry const* get_the_target_history_entry(CanonicalNavigable const&, i32 step) const;
+    [[nodiscard]] Vector<Web::HTML::CrossProcessId> get_all_navigables_whose_current_session_history_entry_will_change_or_reload(CanonicalNavigable const& traversable, i32 target_step) const;
+    [[nodiscard]] Vector<Web::HTML::CrossProcessId> get_all_navigables_that_only_need_history_object_length_index_update(CanonicalNavigable const& traversable, i32 target_step) const;
     [[nodiscard]] Optional<size_t> target_step_index_for_delta(int delta) const;
     [[nodiscard]] Optional<i32> step_at(size_t index) const;
     [[nodiscard]] Entry const* current_entry() const;

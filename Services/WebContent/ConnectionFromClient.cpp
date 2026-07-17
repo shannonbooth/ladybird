@@ -339,10 +339,16 @@ void ConnectionFromClient::resolve_session_history_traversal_target(u64 page_id,
         page->did_resolve_session_history_traversal_target(request_id, target_step);
 }
 
-void ConnectionFromClient::complete_session_history_traversal(u64 page_id, u64 request_id)
+void ConnectionFromClient::apply_pending_session_history_traversal(u64 page_id, u64 request_id, Vector<Web::HTML::CrossProcessId> changing_navigables, Vector<Web::HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates)
 {
     if (auto page = this->page(page_id); page.has_value())
-        page->did_complete_session_history_traversal(request_id);
+        page->apply_pending_session_history_traversal(request_id, move(changing_navigables), move(nonchanging_navigables_that_still_need_updates));
+}
+
+void ConnectionFromClient::complete_session_history_traversal(u64 page_id, u64 request_id, Web::HTML::HistoryStepResult result)
+{
+    if (auto page = this->page(page_id); page.has_value())
+        page->did_complete_session_history_traversal(request_id, result);
 }
 
 void ConnectionFromClient::traverse_the_history_to_step(u64 page_id, i32 step)

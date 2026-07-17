@@ -127,8 +127,10 @@ void PageClient::visit_edges(JS::Cell::Visitor& visitor)
         visitor.visit(reader.value);
     for (auto& callback : m_pending_session_history_traversal_target_requests)
         visitor.visit(callback.value);
-    for (auto& callback : m_pending_session_history_traversal_requests)
-        visitor.visit(callback.value);
+    for (auto& request : m_pending_session_history_traversal_requests) {
+        visitor.visit(request.value.apply_in_web_content);
+        visitor.visit(request.value.on_complete);
+    }
     m_pending_dom_mutations.for_each([&](auto& pending_mutation) {
         visitor.visit(pending_mutation.target);
     });
@@ -1123,10 +1125,10 @@ void PageClient::page_did_request_history_traversal_target_by_delta(int delta, G
     client().async_did_request_history_traversal_target_by_delta(m_id, request_id, delta);
 }
 
-void PageClient::page_did_request_traverse_the_history_to_step(int step, Web::HistoryTraversalPrecheck history_traversal_precheck, GC::Ref<GC::Function<void()>> on_complete)
+void PageClient::page_did_request_traverse_the_history_to_step(int step, Web::HistoryTraversalPrecheck history_traversal_precheck, GC::Ref<Web::ApplyPendingSessionHistoryTraversal> apply_in_web_content, GC::Ref<Web::HTML::OnApplyHistoryStepComplete> on_complete)
 {
     auto request_id = m_next_session_history_traversal_request_id++;
-    m_pending_session_history_traversal_requests.set(request_id, on_complete);
+    m_pending_session_history_traversal_requests.set(request_id, { step, apply_in_web_content, on_complete });
     client().async_did_request_traverse_the_history_to_step(m_id, request_id, step, history_traversal_precheck);
 }
 
@@ -1145,12 +1147,27 @@ void PageClient::did_resolve_session_history_traversal_target(u64 request_id, Op
     callback.value()->function()(target_step);
 }
 
-void PageClient::did_complete_session_history_traversal(u64 request_id)
+void PageClient::apply_pending_session_history_traversal(u64 request_id, Vector<Web::HTML::CrossProcessId> changing_navigables, Vector<Web::HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates)
 {
-    auto callback = m_pending_session_history_traversal_requests.take(request_id);
-    if (!callback.has_value())
+    auto request = m_pending_session_history_traversal_requests.get(request_id);
+    if (!request.has_value())
         return;
-    callback.value()->function()();
+
+    request->apply_in_web_content->function()(
+        move(changing_navigables),
+        move(nonchanging_navigables_that_still_need_updates),
+        GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, step = request->step](Web::HTML::HistoryStepResult result) {
+            auto step_was_available = result != Web::HTML::HistoryStepResult::CanceledByMissingPage;
+            client().async_did_traverse_the_history_to_step(m_id, step, step_was_available, result);
+        }));
+}
+
+void PageClient::did_complete_session_history_traversal(u64 request_id, Web::HTML::HistoryStepResult result)
+{
+    auto request = m_pending_session_history_traversal_requests.take(request_id);
+    if (!request.has_value())
+        return;
+    request->on_complete->function()(result);
 }
 
 void PageClient::request_webdriver_history_traversal(int delta, Function<void(WebDriverHistoryTraversalResult)> on_complete)
