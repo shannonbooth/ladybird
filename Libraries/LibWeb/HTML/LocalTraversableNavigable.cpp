@@ -762,6 +762,10 @@ struct ChangingNavigableContinuationState : public JS::Cell {
     GC::Ptr<LocalNavigable> navigable;
     bool update_only = false;
 
+    // AD-HOC: DocumentState stores a Document's ID rather than a pointer. When finalizing a cross-document
+    //         navigation, retain the already-populated Document on the continuation for its navigable so it stands
+    //         in for the specification's targetEntry's document throughout the remaining steps.
+    GC::Ptr<DOM::Document> pending_document;
     GC::Ptr<PopulateSessionHistoryEntryDocumentOutput> population_output;
     GC::Ptr<DOM::Document> resolved_document;
     Optional<URL::Origin> old_origin;
@@ -771,6 +775,7 @@ struct ChangingNavigableContinuationState : public JS::Cell {
         Base::visit_edges(visitor);
         visitor.visit(displayed_document);
         visitor.visit(navigable);
+        visitor.visit(pending_document);
         visitor.visit(population_output);
         visitor.visit(resolved_document);
     }
@@ -936,6 +941,7 @@ private:
 
     void process_continuations();
     void queue_changing_navigable_job(GC::Ref<LocalNavigable>);
+    void apply_changing_navigable_continuation(GC::Ref<ChangingNavigableContinuationState>);
     void queue_nonchanging_navigable_job(GC::Ref<LocalNavigable>, int script_history_length, int script_history_index);
     void enter_waiting_for_non_changing_jobs();
     void complete();
@@ -1096,6 +1102,8 @@ void ApplyHistoryStepState::queue_changing_navigable_job(GC::Ref<LocalNavigable>
         changing_navigable_continuation->target_entry = target_entry;
         changing_navigable_continuation->navigable = navigable;
         changing_navigable_continuation->update_only = false;
+        if (navigable == m_expected_ongoing_navigation_navigable)
+            changing_navigable_continuation->pending_document = m_pending_document;
         changing_navigable_continuation->population_output = nullptr;
 
         // 4. If displayedEntry is targetEntry and targetEntry's document state's reload pending is false, then:
@@ -1171,11 +1179,11 @@ void ApplyHistoryStepState::queue_changing_navigable_job(GC::Ref<LocalNavigable>
             changing_navigable_continuation->population_output = output;
             changing_navigable_continuation->old_origin = old_origin;
 
-            // Compute the resolved document: pending_document (from finalize path),
+            // Compute the resolved document: pending document (from the finalize path),
             // population output (from traversal path), or active document (same-document).
             GC::Ptr<DOM::Document> resolved_document;
-            if (m_pending_document)
-                resolved_document = m_pending_document;
+            if (changing_navigable_continuation->pending_document)
+                resolved_document = changing_navigable_continuation->pending_document;
             else if (output && output->document)
                 resolved_document = output->document;
             else
@@ -1183,7 +1191,7 @@ void ApplyHistoryStepState::queue_changing_navigable_job(GC::Ref<LocalNavigable>
             changing_navigable_continuation->resolved_document = resolved_document;
 
             // 1. If targetEntry's document is null, then set changingNavigableContinuation's update-only to true.
-            bool has_fresh_document = m_pending_document || (output && output->document);
+            bool has_fresh_document = changing_navigable_continuation->pending_document || (output && output->document);
             if (!has_fresh_document && target_entry->document_state()->document_id() != navigable->active_document_id())
                 changing_navigable_continuation->update_only = true;
 
@@ -1200,7 +1208,7 @@ void ApplyHistoryStepState::queue_changing_navigable_job(GC::Ref<LocalNavigable>
         });
 
         // 8. If targetEntry's document is null, or targetEntry's document state's reload pending is true, then:
-        bool needs_population = !m_pending_document
+        bool needs_population = !changing_navigable_continuation->pending_document
             && (target_entry->document_state()->document_id() != navigable->active_document_id()
                 || target_entry->document_state()->reload_pending());
         if (needs_population) {
@@ -1327,148 +1335,152 @@ void ApplyHistoryStepState::process_continuations()
         // 3. If changingNavigableContinuation is nothing, then continue.
 
         auto continuation = m_continuations[m_continuation_index++];
+        apply_changing_navigable_continuation(continuation);
+    }
+}
 
-        // 4. Let displayedDocument be changingNavigableContinuation's displayed document.
-        auto displayed_document = continuation->displayed_document;
+void ApplyHistoryStepState::apply_changing_navigable_continuation(GC::Ref<ChangingNavigableContinuationState> continuation)
+{
+    // 4. Let displayedDocument be changingNavigableContinuation's displayed document.
+    auto displayed_document = continuation->displayed_document;
 
-        // 5. Let targetEntry be changingNavigableContinuation's target entry.
-        auto population_output = continuation->population_output;
-        auto old_origin = continuation->old_origin;
+    // 5. Let targetEntry be changingNavigableContinuation's target entry.
+    auto population_output = continuation->population_output;
+    auto old_origin = continuation->old_origin;
 
-        // 6. Let navigable be changingNavigableContinuation's navigable.
-        auto navigable = continuation->navigable;
+    // 6. Let navigable be changingNavigableContinuation's navigable.
+    auto navigable = continuation->navigable;
 
-        // AD-HOC: We should not continue navigation if navigable has been destroyed.
-        if (navigable->has_been_destroyed()) {
-            signal_progress();
-            continue;
-        }
-        // AD-HOC: The displayed document may have been destroyed during the nested step execution above.
-        if (!displayed_document->navigable()) {
-            signal_progress();
-            continue;
-        }
+    // AD-HOC: We should not continue navigation if navigable has been destroyed.
+    if (navigable->has_been_destroyed()) {
+        signal_progress();
+        return;
+    }
+    // AD-HOC: The displayed document may have been destroyed during the nested step execution above.
+    if (!displayed_document->navigable()) {
+        signal_progress();
+        return;
+    }
 
-        m_target_step = m_traversable->get_the_used_step(m_step);
+    m_target_step = m_traversable->get_the_used_step(m_step);
 
-        // 7. Let (scriptHistoryLength, scriptHistoryIndex) be the result of getting the history object length and index given traversable and targetStep.
-        auto history_object_length_and_index = m_traversable->get_the_history_object_length_and_index(m_target_step);
-        auto script_history_length = history_object_length_and_index.script_history_length;
-        auto script_history_index = history_object_length_and_index.script_history_index;
+    // 7. Let (scriptHistoryLength, scriptHistoryIndex) be the result of getting the history object length and index given traversable and targetStep.
+    auto history_object_length_and_index = m_traversable->get_the_history_object_length_and_index(m_target_step);
+    auto script_history_length = history_object_length_and_index.script_history_length;
+    auto script_history_index = history_object_length_and_index.script_history_index;
 
-        // 8. Append navigable to navigablesThatMustWaitBeforeHandlingSyncNavigation.
-        m_navigables_that_must_wait_before_handling_sync_navigation.set(*navigable);
+    // 8. Append navigable to navigablesThatMustWaitBeforeHandlingSyncNavigation.
+    m_navigables_that_must_wait_before_handling_sync_navigation.set(*navigable);
 
-        // 9. Let entriesForNavigationAPI be the result of getting session history entries for the navigation API given navigable and targetStep.
-        auto entries_for_navigation_api = m_traversable->get_session_history_entries_for_the_navigation_api(*navigable, m_target_step);
+    // 9. Let entriesForNavigationAPI be the result of getting session history entries for the navigation API given navigable and targetStep.
+    auto entries_for_navigation_api = m_traversable->get_session_history_entries_for_the_navigation_api(*navigable, m_target_step);
 
-        // NOTE: Steps 10 and 11 come after step 12.
+    // NOTE: Steps 10 and 11 come after step 12.
 
-        // 12. In both cases, let afterPotentialUnloads be the following steps:
-        bool const update_only = continuation->update_only;
-        RefPtr<SessionHistoryEntry> const target_entry = continuation->target_entry;
-        auto const displayed_document_id = continuation->displayed_document_id;
-        auto after_potential_unload = GC::create_function(heap(), [this, navigable, update_only, target_entry, continuation, population_output, old_origin, displayed_document_id, script_history_length, script_history_index, entries_for_navigation_api = move(entries_for_navigation_api), navigation_type = m_navigation_type] {
-            if (update_only || continuation->resolved_document.ptr() == continuation->displayed_document.ptr()) {
-                // AD-HOC: Child navigable same-document/update-only tasks are queued without an associated Document so
-                //         they can survive the old active Document being deactivated. That also lets them run after the
-                //         child frame was destroyed or after a newer navigation claimed the frame. Browser engines let
-                //         the newer frame state win, so skip this stale continuation in that case.
-                if (!changing_navigable_is_still_current(navigable, displayed_document_id)) {
-                    complete_change_job_without_applying(navigable);
-                    return;
-                }
+    // 12. In both cases, let afterPotentialUnloads be the following steps:
+    bool const update_only = continuation->update_only;
+    RefPtr<SessionHistoryEntry> const target_entry = continuation->target_entry;
+    auto const displayed_document_id = continuation->displayed_document_id;
+    auto after_potential_unload = GC::create_function(heap(), [this, navigable, update_only, target_entry, continuation, population_output, old_origin, displayed_document_id, script_history_length, script_history_index, entries_for_navigation_api = move(entries_for_navigation_api), navigation_type = m_navigation_type] {
+        if (update_only || continuation->resolved_document.ptr() == continuation->displayed_document.ptr()) {
+            // AD-HOC: Child navigable same-document/update-only tasks are queued without an associated Document so
+            //         they can survive the old active Document being deactivated. That also lets them run after the
+            //         child frame was destroyed or after a newer navigation claimed the frame. Browser engines let
+            //         the newer frame state win, so skip this stale continuation in that case.
+            if (!changing_navigable_is_still_current(navigable, displayed_document_id)) {
+                complete_change_job_without_applying(navigable);
+                return;
             }
+        }
 
-            if (population_output)
-                population_output->apply_to(*target_entry);
+        if (population_output)
+            population_output->apply_to(*target_entry);
 
-            // Post-population adjustments — only run when a fresh document was produced
-            // (not for 204/205 no-document outcomes where resolved_document is the old active document).
-            bool has_fresh_document = m_pending_document || (population_output && population_output->document);
-            if (has_fresh_document) {
-                auto resolved_document = continuation->resolved_document;
-                // 2. If targetEntry's document's origin is not oldOrigin, then set targetEntry's classic history API state to StructuredSerializeForStorage(null).
-                if (resolved_document->origin() != old_origin) {
-                    auto& vm = navigable->vm();
-                    target_entry->set_classic_history_api_state(MUST(structured_serialize_for_storage(vm, JS::js_null())));
-                }
-
-                // 3. If all of the following are true:
-                //     - navigable's parent is null;
-                //     - targetEntry's document's browsing context is not an auxiliary browsing context whose opener browsing context is non-null; and
-                //     - targetEntry's document's origin is not oldOrigin,
-                //    then set targetEntry's document state's navigable target name to the empty string.
-                if (navigable->parent() == nullptr
-                    && !(resolved_document->browsing_context()->is_auxiliary() && resolved_document->browsing_context()->opener_browsing_context() != nullptr)
-                    && target_entry->document_state()->origin() != old_origin) {
-                    target_entry->document_state()->set_navigable_target_name(Utf16String {});
-                }
-            }
-
-            // 1. Let previousEntry be navigable's active session history entry.
-            auto previous_entry = navigable->active_session_history_entry();
-
-            // 2. If changingNavigableContinuation's update-only is false, then activate history entry targetEntry for navigable.
+        // Post-population adjustments — only run when a fresh document was produced
+        // (not for 204/205 no-document outcomes where resolved_document is the old active document).
+        bool has_fresh_document = continuation->pending_document || (population_output && population_output->document);
+        if (has_fresh_document) {
             auto resolved_document = continuation->resolved_document;
-            if (!update_only)
-                navigable->activate_history_entry(*target_entry, *resolved_document);
-
-            // 3. Let updateDocument be an algorithm step which performs update document for history step application given
-            //    targetEntry's document, targetEntry, changingNavigableContinuation's update-only, scriptHistoryLength,
-            //    scriptHistoryIndex, navigationType, entriesForNavigationAPI, and previousEntry.
-            auto update_document = [script_history_length, script_history_index, entries_for_navigation_api = move(entries_for_navigation_api), target_entry, update_only, navigation_type, previous_entry, resolved_document] {
-                resolved_document->update_for_history_step_application(*target_entry, update_only, script_history_length, script_history_index, navigation_type, entries_for_navigation_api, previous_entry, navigation_type.has_value());
-            };
-
-            // 4. If targetEntry's document is equal to displayedDocument, then perform updateDocument.
-            // NOTE: We compare against the pre-activation displayed_document_id (not the current
-            //       active entry) because activate_history_entry() has already updated the active entry above.
-            if (target_entry->document_state()->document_id() == displayed_document_id) {
-                update_document();
-            }
-            // AD-HOC: When the document already has its parser pre-loaded with in-memory data (currently set up
-            //         only for about:srcdoc), perform updateDocument synchronously instead of queueing it.
-            //         updateDocument calls Document::set_ready_to_run_scripts(), which kicks off the deferred
-            //         parser. Running it in the same task as activation guarantees the body element exists before
-            //         script in the parent navigable can observe the new document — matching Chrome and Firefox
-            //         behavior for srcdoc iframes.
-            else if (resolved_document->has_deferred_parser_start()) {
-                update_document();
-            }
-            // 5. Otherwise, queue a global task on the navigation and traversal task source given targetEntry's document's relevant global object to perform updateDocument
-            else {
-                queue_global_task(Task::Source::NavigationAndTraversal, relevant_global_object(*resolved_document), GC::create_function(heap(), move(update_document)));
+            // 2. If targetEntry's document's origin is not oldOrigin, then set targetEntry's classic history API state to StructuredSerializeForStorage(null).
+            if (resolved_document->origin() != old_origin) {
+                auto& vm = navigable->vm();
+                target_entry->set_classic_history_api_state(MUST(structured_serialize_for_storage(vm, JS::js_null())));
             }
 
-            // 6. Increment completedChangeJobs.
-            signal_progress();
-        });
-
-        // 10. If changingNavigableContinuation's update-only is true, or targetEntry's document is displayedDocument, then:
-        if (continuation->update_only || continuation->resolved_document.ptr() == displayed_document.ptr()) {
-            // 1. Set the ongoing navigation for navigable to null.
-            navigable->set_ongoing_navigation({}, m_navigation_api_abort_behavior);
-
-            // 2. Queue a global task on the navigation and traversal task source given navigable's active window to perform afterPotentialUnloads.
-            queue_apply_history_step_task(*navigable, navigable->active_document(), after_potential_unload);
+            // 3. If all of the following are true:
+            //     - navigable's parent is null;
+            //     - targetEntry's document's browsing context is not an auxiliary browsing context whose opener browsing context is non-null; and
+            //     - targetEntry's document's origin is not oldOrigin,
+            //    then set targetEntry's document state's navigable target name to the empty string.
+            if (navigable->parent() == nullptr
+                && !(resolved_document->browsing_context()->is_auxiliary() && resolved_document->browsing_context()->opener_browsing_context() != nullptr)
+                && target_entry->document_state()->origin() != old_origin) {
+                target_entry->document_state()->set_navigable_target_name(Utf16String { });
+            }
         }
-        // AD-HOC: During navigable creation, the initial about:blank document can be
-        //         replaced by the container's initial navigation while applying the
-        //         creation/destruction history step. That hook passes a null
-        //         navigationType per spec, and there is no outgoing document to unload.
-        else if (!m_navigation_type.has_value() && displayed_document->is_initial_about_blank()) {
-            navigable->set_ongoing_navigation({ }, m_navigation_api_abort_behavior);
-            after_potential_unload->function()();
+
+        // 1. Let previousEntry be navigable's active session history entry.
+        auto previous_entry = navigable->active_session_history_entry();
+
+        // 2. If changingNavigableContinuation's update-only is false, then activate history entry targetEntry for navigable.
+        auto resolved_document = continuation->resolved_document;
+        if (!update_only)
+            navigable->activate_history_entry(*target_entry, *resolved_document);
+
+        // 3. Let updateDocument be an algorithm step which performs update document for history step application given
+        //    targetEntry's document, targetEntry, changingNavigableContinuation's update-only, scriptHistoryLength,
+        //    scriptHistoryIndex, navigationType, entriesForNavigationAPI, and previousEntry.
+        auto update_document = [script_history_length, script_history_index, entries_for_navigation_api = move(entries_for_navigation_api), target_entry, update_only, navigation_type, previous_entry, resolved_document] {
+            resolved_document->update_for_history_step_application(*target_entry, update_only, script_history_length, script_history_index, navigation_type, entries_for_navigation_api, previous_entry, navigation_type.has_value());
+        };
+
+        // 4. If targetEntry's document is equal to displayedDocument, then perform updateDocument.
+        // NOTE: We compare against the pre-activation displayed_document_id (not the current
+        //       active entry) because activate_history_entry() has already updated the active entry above.
+        if (target_entry->document_state()->document_id() == displayed_document_id) {
+            update_document();
         }
-        // 11. Otherwise:
+        // AD-HOC: When the document already has its parser pre-loaded with in-memory data (currently set up
+        //         only for about:srcdoc), perform updateDocument synchronously instead of queueing it.
+        //         updateDocument calls Document::set_ready_to_run_scripts(), which kicks off the deferred
+        //         parser. Running it in the same task as activation guarantees the body element exists before
+        //         script in the parent navigable can observe the new document — matching Chrome and Firefox
+        //         behavior for srcdoc iframes.
+        else if (resolved_document->has_deferred_parser_start()) {
+            update_document();
+        }
+        // 5. Otherwise, queue a global task on the navigation and traversal task source given targetEntry's document's relevant global object to perform updateDocument
         else {
-            // 1. Assert: navigationType is not null.
-            VERIFY(m_navigation_type.has_value());
-
-            // 2. Deactivate displayedDocument, given userInvolvement, targetEntry, navigationType, and afterPotentialUnloads.
-            deactivate_a_document_for_cross_document_navigation(*displayed_document, m_user_involvement, *target_entry, continuation->resolved_document, after_potential_unload);
+            queue_global_task(Task::Source::NavigationAndTraversal, relevant_global_object(*resolved_document), GC::create_function(heap(), move(update_document)));
         }
+
+        // 6. Increment completedChangeJobs.
+        signal_progress();
+    });
+
+    // 10. If changingNavigableContinuation's update-only is true, or targetEntry's document is displayedDocument, then:
+    if (continuation->update_only || continuation->resolved_document.ptr() == displayed_document.ptr()) {
+        // 1. Set the ongoing navigation for navigable to null.
+        navigable->set_ongoing_navigation({ }, m_navigation_api_abort_behavior);
+
+        // 2. Queue a global task on the navigation and traversal task source given navigable's active window to perform afterPotentialUnloads.
+        queue_apply_history_step_task(*navigable, navigable->active_document(), after_potential_unload);
+    }
+    // AD-HOC: During navigable creation, the initial about:blank document can be
+    //         replaced by the container's initial navigation while applying the
+    //         creation/destruction history step. That hook passes a null
+    //         navigationType per spec, and there is no outgoing document to unload.
+    else if (!m_navigation_type.has_value() && displayed_document->is_initial_about_blank()) {
+        navigable->set_ongoing_navigation({ }, m_navigation_api_abort_behavior);
+        after_potential_unload->function()();
+    }
+    // 11. Otherwise:
+    else {
+        // 1. Assert: navigationType is not null.
+        VERIFY(m_navigation_type.has_value());
+
+        // 2. Deactivate displayedDocument, given userInvolvement, targetEntry, navigationType, and afterPotentialUnloads.
+        deactivate_a_document_for_cross_document_navigation(*displayed_document, m_user_involvement, *target_entry, continuation->resolved_document, after_potential_unload);
     }
 }
 
