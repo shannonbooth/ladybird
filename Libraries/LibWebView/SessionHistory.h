@@ -67,6 +67,12 @@ public:
     bool update_nested_navigation_api_state(Web::HTML::CrossProcessId nested_history_id, Utf16String const& navigation_api_key, Web::HTML::StorageSerializationRecord navigation_api_state);
     bool update_top_level_scroll_restoration_mode(Utf16String const& navigation_api_key, Web::HTML::ScrollRestorationMode scroll_restoration_mode);
     bool update_nested_scroll_restoration_mode(Web::HTML::CrossProcessId nested_history_id, Utf16String const& navigation_api_key, Web::HTML::ScrollRestorationMode scroll_restoration_mode);
+    bool update_top_level_scroll_position_data(Utf16String const& navigation_api_key, Web::HTML::SessionHistoryEntryScrollPositionData scroll_position_data);
+    bool update_nested_scroll_position_data(Web::HTML::CrossProcessId nested_history_id, Utf16String const& navigation_api_key, Web::HTML::SessionHistoryEntryScrollPositionData scroll_position_data);
+    bool update_top_level_document_state_navigable_target_name(Utf16String const& navigation_api_key, Utf16String navigable_target_name);
+    bool update_nested_document_state_navigable_target_name(Web::HTML::CrossProcessId nested_history_id, Utf16String const& navigation_api_key, Utf16String navigable_target_name);
+    bool set_top_level_document_state_reload_pending(Utf16String const& navigation_api_key, bool reload_pending);
+    bool set_nested_document_state_reload_pending(Web::HTML::CrossProcessId nested_history_id, Utf16String const& navigation_api_key, bool reload_pending);
     UpdateResult update_from_web_content(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index);
     [[nodiscard]] bool did_seed_web_content_from_ui_process(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index);
     void did_seed_web_content_from_ui_process(size_t current_top_level_entry_index);

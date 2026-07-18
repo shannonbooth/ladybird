@@ -279,6 +279,9 @@ bool CanonicalTraversable::update_session_history_entry_navigation_api_state(Can
 {
     VERIFY(&navigable.top_level_traversable() == this);
 
+    if (m_pending_web_content_session_history_seed.ignore_updates_until_seed)
+        return false;
+
     if (&navigable == this)
         return m_session_history.update_top_level_navigation_api_state(navigation_api_key, move(navigation_api_state));
     return m_session_history.update_nested_navigation_api_state(navigable.id(), navigation_api_key, move(navigation_api_state));
@@ -288,9 +291,51 @@ bool CanonicalTraversable::update_session_history_entry_scroll_restoration_mode(
 {
     VERIFY(&navigable.top_level_traversable() == this);
 
+    if (m_pending_web_content_session_history_seed.ignore_updates_until_seed)
+        return false;
+
     if (&navigable == this)
         return m_session_history.update_top_level_scroll_restoration_mode(navigation_api_key, scroll_restoration_mode);
     return m_session_history.update_nested_scroll_restoration_mode(navigable.id(), navigation_api_key, scroll_restoration_mode);
+}
+
+bool CanonicalTraversable::update_session_history_entry_scroll_position_data(CanonicalNavigable const& navigable, Utf16String const& navigation_api_key, Web::HTML::SessionHistoryEntryScrollPositionData scroll_position_data)
+{
+    VERIFY(&navigable.top_level_traversable() == this);
+
+    if (m_pending_web_content_session_history_seed.ignore_updates_until_seed)
+        return false;
+
+    if (&navigable == this)
+        return m_session_history.update_top_level_scroll_position_data(navigation_api_key, move(scroll_position_data));
+    return m_session_history.update_nested_scroll_position_data(navigable.id(), navigation_api_key, move(scroll_position_data));
+}
+
+bool CanonicalTraversable::update_session_history_entry_document_state_navigable_target_name(CanonicalNavigable const& navigable, Utf16String const& navigation_api_key, Utf16String navigable_target_name)
+{
+    VERIFY(&navigable.top_level_traversable() == this);
+
+    if (m_pending_web_content_session_history_seed.ignore_updates_until_seed)
+        return false;
+
+    if (&navigable == this)
+        return m_session_history.update_top_level_document_state_navigable_target_name(navigation_api_key, move(navigable_target_name));
+    return m_session_history.update_nested_document_state_navigable_target_name(navigable.id(), navigation_api_key, move(navigable_target_name));
+}
+
+bool CanonicalTraversable::set_session_history_entry_document_state_reload_pending(CanonicalNavigable const& navigable, Utf16String const& navigation_api_key, bool reload_pending)
+{
+    VERIFY(&navigable.top_level_traversable() == this);
+
+    if (m_pending_web_content_session_history_seed.ignore_updates_until_seed)
+        return false;
+
+    auto did_update = &navigable == this
+        ? m_session_history.set_top_level_document_state_reload_pending(navigation_api_key, reload_pending)
+        : m_session_history.set_nested_document_state_reload_pending(navigable.id(), navigation_api_key, reload_pending);
+    if (did_update)
+        m_current_web_content_session_history_matches_mirror = m_session_history.web_content_history_matches_mirror();
+    return did_update;
 }
 
 Optional<i32> CanonicalTraversable::navigation_api_traversal_target(CanonicalNavigable const& navigable, Utf16String const& navigation_api_key) const
