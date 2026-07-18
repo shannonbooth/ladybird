@@ -361,6 +361,16 @@ bool CanonicalTraversable::remove_nested_history(CanonicalNavigable const& paren
     return m_session_history.remove_nested_history(parent_navigable, child_navigable_id);
 }
 
+bool CanonicalTraversable::finalize_same_document_navigation(CanonicalNavigable const& navigable, Web::HTML::SessionHistoryEntryDescriptor target_entry, Optional<Utf16String> entry_to_replace_navigation_api_key)
+{
+    VERIFY(&navigable.top_level_traversable() == this);
+
+    if (m_pending_web_content_session_history_seed.ignore_updates_until_seed)
+        return false;
+
+    return m_session_history.finalize_same_document_navigation(navigable, move(target_entry), move(entry_to_replace_navigation_api_key));
+}
+
 Optional<i32> CanonicalTraversable::navigation_api_traversal_target(CanonicalNavigable const& navigable, Utf16String const& navigation_api_key) const
 {
     VERIFY(&navigable.top_level_traversable() == this);
