@@ -64,6 +64,7 @@ public:
         Yes,
     };
     SessionHistorySnapshot create_session_history_snapshot(SaveActiveEntryPersistedState = SaveActiveEntryPersistedState::Yes);
+    SessionHistoryEntryDescriptor create_session_history_entry_descriptor_for_ui_process(SessionHistoryEntry const&);
 
     VisibilityState system_visibility_state() const { return m_system_visibility_state; }
     void set_system_visibility_state(VisibilityState);

@@ -1694,6 +1694,14 @@ LocalTraversableNavigable::SessionHistorySnapshot LocalTraversableNavigable::cre
     };
 }
 
+SessionHistoryEntryDescriptor LocalTraversableNavigable::create_session_history_entry_descriptor_for_ui_process(SessionHistoryEntry const& entry)
+{
+    SessionHistoryEntryDescriptorCreationState creation_state { [this] {
+        return page().client().allocate_cross_process_id();
+    } };
+    return create_session_history_entry_descriptor(entry, creation_state);
+}
+
 void ApplyHistoryStepState::did_finish_local_jobs(UpdateCurrentSessionHistoryStep update_current_session_history_step)
 {
     if (m_phase == Phase::Completed || m_phase == Phase::WaitingForUIProcess)
