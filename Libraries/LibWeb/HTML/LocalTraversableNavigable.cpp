@@ -541,9 +541,6 @@ void LocalTraversableNavigable::reset_session_history_for_testing(GC::Ref<GC::Fu
         auto entries_for_navigation_api = get_session_history_entries_for_the_navigation_api(*this, m_current_session_history_step);
         active_window()->navigation()->initialize_the_navigation_api_entries_for_reconstructed_session_history(entries_for_navigation_api, active_entry);
 
-        auto session_history_snapshot = create_session_history_snapshot();
-        page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
-
         signal->resolve({});
         on_complete->function()();
     }));
@@ -1755,7 +1752,6 @@ void ApplyHistoryStepState::complete()
         // 20. Set traversable's current session history step to targetStep.
         m_traversable->m_current_session_history_step = used_target_step;
 
-        // AD-HOC: Report the updated session history descriptors to the UI-process mirror.
         auto save_active_entry_persisted_state = LocalTraversableNavigable::SaveActiveEntryPersistedState::Yes;
         // NB: During history traversal, the active entry can point at the target
         //     entry before the active document's queued history-step update has
@@ -1767,8 +1763,11 @@ void ApplyHistoryStepState::complete()
             if (document && active_entry && document->latest_entry() != active_entry)
                 save_active_entry_persisted_state = LocalTraversableNavigable::SaveActiveEntryPersistedState::No;
         }
-        auto session_history_snapshot = m_traversable->create_session_history_snapshot(save_active_entry_persisted_state);
-        m_traversable->page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
+        if (save_active_entry_persisted_state == LocalTraversableNavigable::SaveActiveEntryPersistedState::Yes)
+            m_traversable->save_persisted_state_to_active_session_history_entry();
+
+        // AD-HOC: Report step 20 to the UI-owned traversable session history.
+        m_traversable->page().client().page_did_set_current_session_history_step(used_target_step);
 
         VERIFY(m_traversable->m_session_history_entries.size() > 0);
         m_traversable->page().client().page_did_change_url(m_traversable->current_session_history_entry()->url());
@@ -2704,8 +2703,8 @@ bool LocalTraversableNavigable::try_to_synchronously_commit_same_document_naviga
         }
     }
 
-    auto session_history_snapshot = create_session_history_snapshot(SaveActiveEntryPersistedState::Yes);
-    page().client().page_did_update_session_history(session_history_snapshot.top_level_session_history_entries, session_history_snapshot.used_session_history_steps, session_history_snapshot.current_used_step_index);
+    save_persisted_state_to_active_session_history_entry();
+    page().client().page_did_set_current_session_history_step(m_current_session_history_step);
 
     VERIFY(session_history_entries().size() > 0);
     page().client().page_did_change_url(current_session_history_entry()->url());

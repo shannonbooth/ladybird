@@ -1298,6 +1298,28 @@ bool TraversableSessionHistory::did_apply_web_content_traversal_to_step(i32 step
     return set_current_session_history_step(step);
 }
 
+bool TraversableSessionHistory::did_set_web_content_current_session_history_step(i32 step)
+{
+    if (!m_web_content_known_used_steps.contains_slow(step))
+        return false;
+
+    // A fresh or replacement WebContent process numbers its local history independently until it has accepted the
+    // UI-owned session history. Typed commit events can establish that coordinate space without reproducing the UI-only
+    // prefix: the reported step must select the same top-level entry in both histories. The document state identity in
+    // that entry is cross-process, so an equal descriptor cannot merely be an unrelated local step with the same value.
+    if (!m_web_content_uses_ui_step_coordinates) {
+        auto target = traversal_target_for_step(step);
+        auto const* web_content_target_top_level_entry = WebView::top_level_entry_for_step(m_web_content_known_entries, step);
+        if (!target.has_value() || !target->target_top_level_entry || !web_content_target_top_level_entry)
+            return false;
+        if (!Web::HTML::session_history_entry_descriptors_match(*web_content_target_top_level_entry, *target->target_top_level_entry))
+            return false;
+        m_web_content_uses_ui_step_coordinates = true;
+    }
+
+    return set_current_session_history_step(step);
+}
+
 bool TraversableSessionHistory::set_current_session_history_step(i32 step)
 {
     auto target = traversal_target_for_step(step);
@@ -1308,6 +1330,8 @@ bool TraversableSessionHistory::set_current_session_history_step(i32 step)
     // Set traversable's current session history step to targetStep.
     m_current_used_step_index = target->target_step_index;
     m_web_content_current_step = step;
+    if (entries_match(m_entries, m_web_content_known_entries) && steps_match(m_used_steps, m_web_content_known_used_steps))
+        m_web_content_uses_ui_step_coordinates = true;
     return true;
 }
 
