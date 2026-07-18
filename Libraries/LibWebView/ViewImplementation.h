@@ -116,11 +116,11 @@ public:
         String url;
         Optional<String> favicon_base64_png;
     };
-    [[nodiscard]] HistoryTraversalOutcome traverse_the_history_by_delta(
+    void traverse_the_history_by_delta(
         int delta,
         CheckForCancelation = CheckForCancelation::Yes,
         Function<void(HistoryTraversalOutcome)> = nullptr);
-    [[nodiscard]] HistoryTraversalOutcome traverse_the_history_to_step(
+    void traverse_the_history_to_step(
         i32 step,
         CheckForCancelation = CheckForCancelation::Yes,
         Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete = nullptr,

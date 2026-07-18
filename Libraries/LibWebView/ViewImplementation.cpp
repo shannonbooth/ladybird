@@ -335,20 +335,20 @@ void ViewImplementation::load_navigation_error_page(StringView text)
 
 void ViewImplementation::reload()
 {
-    m_history_visit_transition_for_next_load = HistoryVisitTransition::Reload;
-
     if (m_last_stopped_load_url.has_value()) {
         // AD-HOC: If a UI-requested navigation was stopped before its document committed, WebContent still considers
         //         the previous document active. Reissue the stopped URL instead of reloading that previous document.
+        m_history_visit_transition_for_next_load = HistoryVisitTransition::Reload;
         auto url = m_last_stopped_load_url.release_value();
         load(url, Web::Bindings::NavigationHistoryBehavior::Replace);
         return;
     }
 
-    set_loading_state(true);
-    m_is_waiting_for_navigation_start = true;
-    m_loading_navigation_id.clear();
     if (m_is_showing_crash_page) {
+        m_history_visit_transition_for_next_load = HistoryVisitTransition::Reload;
+        set_loading_state(true);
+        m_is_waiting_for_navigation_start = true;
+        m_loading_navigation_id.clear();
         m_is_showing_crash_page = false;
         m_should_suppress_history_for_current_load = false;
         m_should_suppress_history_for_next_load = false;
@@ -357,13 +357,19 @@ void ViewImplementation::reload()
         return;
     }
 
-    m_is_showing_crash_page = false;
-    m_should_suppress_history_for_current_load = false;
-    m_should_suppress_history_for_next_load = false;
-    m_top_level_traversable.prepare_for_reload();
-    update_navigation_action_state();
-    dump_session_history("reload-mark-current-entry-reload-pending"sv);
-    client().async_reload(page_id());
+    m_top_level_traversable.append_reload_history_step([this] {
+        m_history_visit_transition_for_next_load = HistoryVisitTransition::Reload;
+        set_loading_state(true);
+        m_is_waiting_for_navigation_start = true;
+        m_loading_navigation_id.clear();
+        m_is_showing_crash_page = false;
+        m_should_suppress_history_for_current_load = false;
+        m_should_suppress_history_for_next_load = false;
+        m_top_level_traversable.prepare_for_reload();
+        update_navigation_action_state();
+        dump_session_history("reload-mark-current-entry-reload-pending"sv);
+        client().async_reload(page_id());
+    });
 }
 
 void ViewImplementation::stop_loading()
@@ -377,22 +383,30 @@ void ViewImplementation::stop_loading()
     client().async_stop_loading(page_id());
 }
 
-HistoryTraversalOutcome ViewImplementation::traverse_the_history_by_delta(
+void ViewImplementation::traverse_the_history_by_delta(
     int delta,
     CheckForCancelation check_for_cancelation,
     Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete)
 {
-    return start_history_traversal(m_top_level_traversable.traverse_the_history_by_delta(delta, check_for_cancelation, m_url, move(on_cancelation_check_complete)));
+    m_top_level_traversable.traverse_the_history_by_delta(
+        delta, check_for_cancelation, m_url, move(on_cancelation_check_complete),
+        [this](HistoryTraversalDecision decision) {
+            (void)start_history_traversal(move(decision));
+        });
 }
 
-HistoryTraversalOutcome ViewImplementation::traverse_the_history_to_step(
+void ViewImplementation::traverse_the_history_to_step(
     i32 step,
     CheckForCancelation check_for_cancelation,
     Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete,
     Function<void(Web::HTML::HistoryStepResult)> on_complete,
     Function<void(u64 application_id, i32, Vector<Web::HTML::CrossProcessId>, Vector<Web::HTML::CrossProcessId>)> apply_pending_web_content_traversal)
 {
-    return start_history_traversal(m_top_level_traversable.traverse_the_history_to_step(step, check_for_cancelation, m_url, move(on_cancelation_check_complete), move(on_complete)), move(apply_pending_web_content_traversal));
+    m_top_level_traversable.traverse_the_history_to_step(
+        step, check_for_cancelation, m_url, move(on_cancelation_check_complete), move(on_complete),
+        [this, apply_pending_web_content_traversal = move(apply_pending_web_content_traversal)](HistoryTraversalDecision decision) mutable {
+            (void)start_history_traversal(move(decision), move(apply_pending_web_content_traversal));
+        });
 }
 
 HistoryTraversalOutcome ViewImplementation::start_history_traversal(HistoryTraversalDecision decision, Function<void(u64 application_id, i32, Vector<Web::HTML::CrossProcessId>, Vector<Web::HTML::CrossProcessId>)> apply_pending_web_content_traversal)

@@ -1773,6 +1773,52 @@ Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_
     return results;
 }
 
+// https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-all-navigables-that-might-experience-a-cross-document-traversal
+Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_that_might_experience_a_cross_document_traversal(CanonicalNavigable const& traversable, i32 target_step) const
+{
+    // NOTE: From traversable's session history traversal queue's perspective, these documents are candidates for going
+    //       cross-document during the traversal described by targetStep. They will not experience a cross-document
+    //       traversal if the status code for their target document is HTTP 204 No Content.
+    //       Note that if a given navigable might experience a cross-document traversal, this algorithm will return
+    //       navigable but not its child navigables. Those would end up unloaded, not traversed.
+
+    // 1. Let results be an empty list.
+    Vector<Web::HTML::CrossProcessId> results;
+
+    if (!m_current_used_step_index.has_value())
+        return results;
+    auto current_step = m_used_steps[*m_current_used_step_index];
+
+    // 2. Let navigablesToCheck be « traversable ».
+    Vector<CanonicalNavigable const*> navigables_to_check { &traversable };
+
+    // 3. For each navigable of navigablesToCheck:
+    while (!navigables_to_check.is_empty()) {
+        auto const* navigable = navigables_to_check.take_first();
+
+        // 1. Let targetEntry be the result of getting the target history entry given navigable and targetStep.
+        auto const* target_entry = get_the_target_history_entry(*navigable, target_step);
+        auto const* current_entry = get_the_target_history_entry(*navigable, current_step);
+        if (!target_entry || !current_entry)
+            continue;
+
+        // 2. If targetEntry's document is not navigable's document or targetEntry's document state's reload pending is
+        //    true, then append navigable to results.
+        if (target_entry->document_state.id != current_entry->document_state.id || target_entry->document_state.reload_pending) {
+            results.append(navigable->id());
+        }
+
+        // 3. Otherwise, extend navigablesToCheck with navigable's child navigables.
+        else {
+            for (auto const& child : navigable->children())
+                navigables_to_check.append(child.ptr());
+        }
+    }
+
+    // 4. Return results.
+    return results;
+}
+
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-all-navigables-that-only-need-history-object-length/index-update
 Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_that_only_need_history_object_length_index_update(CanonicalNavigable const& traversable, i32 target_step) const
 {
