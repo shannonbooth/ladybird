@@ -1342,6 +1342,15 @@ void ViewImplementation::apply_web_content_session_history_update(WebContentSess
     update_navigation_action_state();
 }
 
+void ViewImplementation::did_create_top_level_traversable(Badge<WebContentClient>, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry)
+{
+    if (!m_top_level_traversable.did_create_top_level_traversable(move(initial_history_entry)))
+        return;
+
+    update_navigation_action_state();
+    dump_session_history("created-top-level-traversable"sv);
+}
+
 void ViewImplementation::did_set_current_session_history_step(Badge<WebContentClient>, i32 current_session_history_step)
 {
     if (!m_top_level_traversable.did_set_current_session_history_step(current_session_history_step))
@@ -1925,9 +1934,15 @@ void ViewImplementation::did_finish_applying_history_step(Badge<WebContentClient
     dump_session_history(step_result.dump_reason);
 }
 
-Optional<Web::HTML::ChangingNavigableHistoryStepApplicationData> ViewImplementation::prepare_to_apply_history_step_to_changing_navigable(Badge<WebContentClient>, u64 application_id, i32 step, Web::HTML::CrossProcessId navigable_id) const
+Optional<Web::HTML::ChangingNavigableHistoryStepApplicationData> ViewImplementation::prepare_to_apply_history_step_to_changing_navigable(Badge<WebContentClient>, u64 application_id, i32 step, Web::HTML::CrossProcessId navigable_id)
 {
     return m_top_level_traversable.prepare_to_apply_history_step_to_changing_navigable(application_id, step, navigable_id);
+}
+
+void ViewImplementation::did_finalize_same_document_navigation(Badge<WebContentClient>)
+{
+    update_navigation_action_state();
+    dump_session_history("finalized-same-document-navigation"sv);
 }
 
 Optional<Web::HTML::HistoryObjectLengthAndIndex> ViewImplementation::did_finish_applying_history_step_to_changing_navigables(Badge<WebContentClient>, u64 application_id, i32 step)

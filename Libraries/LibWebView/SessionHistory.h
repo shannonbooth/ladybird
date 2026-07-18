@@ -9,6 +9,7 @@
 #include <AK/Optional.h>
 #include <AK/Vector.h>
 #include <LibWeb/HTML/HistoryStepResult.h>
+#include <LibWeb/HTML/SameDocumentNavigationEntry.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWebView/Export.h>
 #include <LibWebView/Forward.h>
@@ -35,6 +36,12 @@ public:
         bool changes_top_level_entry { false };
     };
 
+    struct SameDocumentNavigationCommitResult {
+        i32 entry_step { 0 };
+        i32 target_step { 0 };
+        Web::HTML::HistoryObjectLengthAndIndex history_object_length_and_index;
+    };
+
     enum class UpdateResult {
         // WebContent sent the same complete top-level traversable session
         // history that the UI process stores authoritatively.
@@ -57,6 +64,7 @@ public:
     Optional<size_t> current_top_level_entry_index() const;
 
     void clear();
+    [[nodiscard]] bool initialize_with_initial_history_entry(Entry initial_history_entry);
     void navigate(URL::URL, Web::HTML::CrossProcessId document_state_id);
     void navigate(URL::URL, Web::HTML::CrossProcessId document_state_id, Web::HTML::DocumentResource);
     void replace_current_entry_url(URL::URL, Web::HTML::CrossProcessId document_state_id);
@@ -75,7 +83,7 @@ public:
     bool set_nested_document_state_reload_pending(Web::HTML::CrossProcessId nested_history_id, Utf16String const& navigation_api_key, bool reload_pending);
     bool append_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::SessionHistoryNestedHistoryDescriptor);
     bool remove_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::CrossProcessId child_navigable_id);
-    bool finalize_same_document_navigation(CanonicalNavigable const&, Entry target_entry, Optional<Utf16String> entry_to_replace_navigation_api_key);
+    Optional<SameDocumentNavigationCommitResult> finalize_same_document_navigation(CanonicalNavigable const&, Utf16String const& expected_current_navigation_api_key, Web::HTML::SameDocumentNavigationEntry target_entry, Optional<Utf16String> entry_to_replace_navigation_api_key);
     bool finalize_cross_document_navigation(CanonicalNavigable const&, Entry history_entry, Optional<Utf16String> entry_to_replace_navigation_api_key);
     UpdateResult update_from_web_content(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index);
     [[nodiscard]] bool did_seed_web_content_from_ui_process(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index);

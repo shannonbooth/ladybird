@@ -23,6 +23,7 @@ void CanonicalTraversable::complete_pending_session_history_traversal(Web::HTML:
 
     auto on_complete = move(m_pending_session_history_traversal->on_complete);
     m_pending_session_history_traversal.clear();
+    run_queued_synchronous_navigation_steps();
     if (on_complete)
         on_complete(result);
 }
@@ -255,6 +256,15 @@ WebContentSessionHistoryUpdateDecision CanonicalTraversable::did_receive_web_con
     };
 }
 
+bool CanonicalTraversable::did_create_top_level_traversable(Web::HTML::SessionHistoryEntryDescriptor initial_history_entry)
+{
+    if (!m_session_history.initialize_with_initial_history_entry(move(initial_history_entry)))
+        return false;
+
+    m_current_web_content_session_history_matches_mirror = true;
+    return true;
+}
+
 bool CanonicalTraversable::update_session_history_entry_navigation_api_state(CanonicalNavigable const& navigable, Utf16String const& navigation_api_key, Web::HTML::StorageSerializationRecord navigation_api_state)
 {
     VERIFY(&navigable.top_level_traversable() == this);
@@ -341,14 +351,68 @@ bool CanonicalTraversable::remove_nested_history(CanonicalNavigable const& paren
     return m_session_history.remove_nested_history(parent_navigable, child_navigable_id);
 }
 
-bool CanonicalTraversable::finalize_same_document_navigation(CanonicalNavigable const& navigable, Web::HTML::SessionHistoryEntryDescriptor target_entry, Optional<Utf16String> entry_to_replace_navigation_api_key)
+void CanonicalTraversable::request_to_finalize_same_document_navigation(CanonicalNavigable const& navigable, Utf16String expected_current_navigation_api_key, Web::HTML::SameDocumentNavigationEntry target_entry, Optional<Utf16String> entry_to_replace_navigation_api_key, Function<void(Optional<SameDocumentNavigationCommitResult>)> on_complete)
 {
     VERIFY(&navigable.top_level_traversable() == this);
 
-    if (m_pending_web_content_session_history_seed.ignore_updates_until_seed)
+    if (m_pending_web_content_session_history_seed.ignore_updates_until_seed) {
+        on_complete({});
+        return;
+    }
+
+    // https://html.spec.whatwg.org/multipage/document-sequences.html#tn-session-history-traversal-queue
+    // Append session history synchronous navigation steps involving navigable to traversable.
+    m_queued_synchronous_navigation_steps.append({
+        .target_navigable_id = navigable.id(),
+        .expected_current_navigation_api_key = move(expected_current_navigation_api_key),
+        .target_entry = move(target_entry),
+        .entry_to_replace_navigation_api_key = move(entry_to_replace_navigation_api_key),
+        .on_complete = move(on_complete),
+    });
+
+    // WebContent has synchronously installed the provisional entry. Use the canonical must-wait set to insert this item
+    // at the specification's queue-jumping point before replying. Once apply the history step is coordinated here, the
+    // same queue item will be consumed directly by that algorithm.
+    if (!m_pending_session_history_traversal.has_value()) {
+        run_queued_synchronous_navigation_steps();
+    } else if (m_pending_session_history_traversal->stage == PendingSessionHistoryTraversal::Stage::ApplyingInWebContent
+        && m_pending_session_history_traversal->apply_history_step_stage == PendingSessionHistoryTraversal::ApplyHistoryStepStage::ChangingNavigables) {
+        while (run_first_queued_synchronous_navigation_steps_not_targeting(
+            m_pending_session_history_traversal->navigables_that_must_wait_before_handling_sync_navigation)) {
+        }
+    }
+}
+
+bool CanonicalTraversable::run_first_queued_synchronous_navigation_steps_not_targeting(HashTable<Web::HTML::CrossProcessId> const& excluded_navigables)
+{
+    auto index = m_queued_synchronous_navigation_steps.find_first_index_if([&](auto const& steps) {
+        return !excluded_navigables.contains(steps.target_navigable_id);
+    });
+    if (!index.has_value())
         return false;
 
-    return m_session_history.finalize_same_document_navigation(navigable, move(target_entry), move(entry_to_replace_navigation_api_key));
+    auto steps = m_queued_synchronous_navigation_steps.take(*index);
+    Optional<SameDocumentNavigationCommitResult> result;
+    if (auto navigable = find(steps.target_navigable_id); navigable.has_value()) {
+        // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-same-document-navigation
+        result = m_session_history.finalize_same_document_navigation(
+            *navigable,
+            steps.expected_current_navigation_api_key,
+            move(steps.target_entry),
+            move(steps.entry_to_replace_navigation_api_key));
+    }
+    steps.on_complete(move(result));
+    return true;
+}
+
+void CanonicalTraversable::run_queued_synchronous_navigation_steps()
+{
+    if (m_pending_session_history_traversal.has_value())
+        return;
+
+    HashTable<Web::HTML::CrossProcessId> no_excluded_navigables;
+    while (run_first_queued_synchronous_navigation_steps_not_targeting(no_excluded_navigables)) {
+    }
 }
 
 bool CanonicalTraversable::finalize_cross_document_navigation(CanonicalNavigable const& navigable, Web::HTML::SessionHistoryEntryDescriptor history_entry, Optional<Utf16String> entry_to_replace_navigation_api_key)
@@ -828,7 +892,7 @@ URL::URL CanonicalTraversable::prepare_to_load_session_history_traversal_target_
     return target_url;
 }
 
-Optional<Web::HTML::ChangingNavigableHistoryStepApplicationData> CanonicalTraversable::prepare_to_apply_history_step_to_changing_navigable(u64 application_id, i32 step, Web::HTML::CrossProcessId navigable_id) const
+Optional<Web::HTML::ChangingNavigableHistoryStepApplicationData> CanonicalTraversable::prepare_to_apply_history_step_to_changing_navigable(u64 application_id, i32 step, Web::HTML::CrossProcessId navigable_id)
 {
     if (m_pending_web_content_session_history_seed.step_after_loading_top_level_entry.has_value()) {
         if (m_pending_web_content_session_history_seed.history_step_application_id != application_id
@@ -839,6 +903,13 @@ Optional<Web::HTML::ChangingNavigableHistoryStepApplicationData> CanonicalTraver
         || m_pending_session_history_traversal->target_step != step
         || m_pending_session_history_traversal->apply_history_step_stage != PendingSessionHistoryTraversal::ApplyHistoryStepStage::ChangingNavigables) {
         return { };
+    }
+
+    // NOTE: Synchronous navigations intended to take place before this traversal jump the queue at this point.
+    if (m_pending_session_history_traversal.has_value()) {
+        while (run_first_queued_synchronous_navigation_steps_not_targeting(
+            m_pending_session_history_traversal->navigables_that_must_wait_before_handling_sync_navigation)) {
+        }
     }
 
     auto navigable = find(navigable_id);
@@ -856,6 +927,10 @@ Optional<Web::HTML::ChangingNavigableHistoryStepApplicationData> CanonicalTraver
     auto entries_for_navigation_api = m_session_history.get_session_history_entries_for_the_navigation_api(*navigable, step);
     if (!entries_for_navigation_api.has_value())
         return { };
+
+    // Append navigable to navigablesThatMustWaitBeforeHandlingSyncNavigation.
+    if (m_pending_session_history_traversal.has_value())
+        m_pending_session_history_traversal->navigables_that_must_wait_before_handling_sync_navigation.set(navigable_id);
 
     return Web::HTML::ChangingNavigableHistoryStepApplicationData {
         .history_object_length_and_index = *history_object_length_and_index,

@@ -434,6 +434,21 @@ void TraversableSessionHistory::clear()
     forget_web_content_state();
 }
 
+bool TraversableSessionHistory::initialize_with_initial_history_entry(Entry initial_history_entry)
+{
+    if (!m_entries.is_empty() || initial_history_entry.step != 0)
+        return false;
+
+    m_entries.append(move(initial_history_entry));
+    m_used_steps.append(0);
+    m_current_used_step_index = 0;
+    m_web_content_known_entries = m_entries;
+    m_web_content_known_used_steps = m_used_steps;
+    m_web_content_current_step = 0;
+    m_web_content_uses_ui_step_coordinates = true;
+    return true;
+}
+
 void TraversableSessionHistory::replace_current_entry_url(URL::URL url, Web::HTML::CrossProcessId document_state_id)
 {
     if (!m_current_used_step_index.has_value()) {
@@ -829,24 +844,73 @@ static bool append_or_replace_session_history_entry(Vector<TraversableSessionHis
     return true;
 }
 
-bool TraversableSessionHistory::finalize_same_document_navigation(CanonicalNavigable const& navigable, Entry target_entry, Optional<Utf16String> entry_to_replace_navigation_api_key)
+// https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-same-document-navigation
+Optional<TraversableSessionHistory::SameDocumentNavigationCommitResult> TraversableSessionHistory::finalize_same_document_navigation(CanonicalNavigable const& navigable, Utf16String const& expected_current_navigation_api_key, Web::HTML::SameDocumentNavigationEntry target_entry, Optional<Utf16String> entry_to_replace_navigation_api_key)
 {
-    if (!m_current_used_step_index.has_value() || target_entry.step < 0)
-        return false;
+    // 1. Assert: this is running on traversable's session history traversal queue.
+
+    // 2. If targetNavigable's active session history entry is not targetEntry, then return.
+    // The process boundary cannot preserve targetEntry's object identity. Verify the current entry, shared document
+    // state, and the key captured before WebContent installed targetEntry as its provisional active entry. This is also
+    // the stale-operation check for the asynchronous request.
+    if (!m_current_used_step_index.has_value())
+        return {};
 
     auto current_step = m_used_steps[*m_current_used_step_index];
-    auto const* document_state = find_session_history_document_state(m_entries, target_entry.document_state.id);
+    auto const* current_entry = get_the_target_history_entry(navigable, current_step);
+    if (!current_entry
+        || current_entry->navigation_api_key != expected_current_navigation_api_key
+        || current_entry->document_state.id != target_entry.document_state_id)
+        return {};
+
+    auto const* document_state = find_session_history_document_state(m_entries, target_entry.document_state_id);
     if (!document_state)
-        return false;
+        return {};
 
-    auto canonical_target_entry = target_entry;
-    canonical_target_entry.document_state = *document_state;
+    auto canonical_target_entry = Entry {
+        .step = -1,
+        .url = move(target_entry.url),
+        .document_state = *document_state,
+        .classic_history_api_state = move(target_entry.classic_history_api_state),
+        .navigation_api_state = move(target_entry.navigation_api_state),
+        .navigation_api_key = move(target_entry.navigation_api_key),
+        .navigation_api_id = move(target_entry.navigation_api_id),
+        .scroll_restoration_mode = target_entry.scroll_restoration_mode,
+        .scroll_position_data = move(target_entry.scroll_position_data),
+    };
 
-    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-same-document-navigation
-    // If entryToReplace is null, then clear the forward session history of traversable.
+    // 3. Let targetStep be null.
+    i32 target_step;
+
+    // 4. Let targetEntries be the result of getting session history entries for targetNavigable.
+
+    // 5. If entryToReplace is null:
     if (!entry_to_replace_navigation_api_key.has_value()) {
-        clear_forward_session_history_entries(m_entries, current_step);
-        clear_forward_session_history_entries(m_web_content_known_entries, current_step);
+        if (*m_current_used_step_index + 1 < m_used_steps.size()) {
+            clear_forward_session_history_entries(m_entries, current_step);
+            clear_forward_session_history_entries(m_web_content_known_entries, current_step);
+            m_used_steps.remove_all_matching([current_step](auto step) { return step > current_step; });
+            m_web_content_known_used_steps.remove_all_matching([current_step](auto step) { return step > current_step; });
+        }
+
+        // Set targetStep to traversable's current session history step + 1, and set targetEntry's step to targetStep.
+        VERIFY(current_step < NumericLimits<i32>::max());
+        target_step = current_step + 1;
+        canonical_target_entry.step = target_step;
+    } else {
+        if (*entry_to_replace_navigation_api_key != expected_current_navigation_api_key)
+            return {};
+        auto entries = get_session_history_entries(navigable);
+        if (!entries.has_value())
+            return {};
+        auto entry_to_replace = entries->find_if([&](auto const& entry) {
+            return entry.navigation_api_key == *entry_to_replace_navigation_api_key;
+        });
+        if (entry_to_replace == entries->end())
+            return {};
+
+        canonical_target_entry.step = entry_to_replace->step;
+        target_step = current_step;
     }
 
     auto did_update = navigable.is_top_level_traversable()
@@ -855,21 +919,40 @@ bool TraversableSessionHistory::finalize_same_document_navigation(CanonicalNavig
               return append_or_replace_session_history_entry(entries, canonical_target_entry, entry_to_replace_navigation_api_key);
           });
     if (!did_update)
-        return false;
+        return {};
 
+    auto did_update_web_content_entries = false;
     if (navigable.is_top_level_traversable() && !m_web_content_known_entries.is_empty()) {
-        append_or_replace_session_history_entry(m_web_content_known_entries, target_entry, entry_to_replace_navigation_api_key);
+        did_update_web_content_entries = append_or_replace_session_history_entry(m_web_content_known_entries, canonical_target_entry, entry_to_replace_navigation_api_key);
     } else if (!navigable.is_top_level_traversable()) {
-        update_nested_session_history_entries_for_navigable(m_web_content_known_entries, navigable.id(), [&](auto& entries) {
-            return append_or_replace_session_history_entry(entries, target_entry, entry_to_replace_navigation_api_key);
+        did_update_web_content_entries = update_nested_session_history_entries_for_navigable(m_web_content_known_entries, navigable.id(), [&](auto& entries) {
+            return append_or_replace_session_history_entry(entries, canonical_target_entry, entry_to_replace_navigation_api_key);
         });
     }
 
-    m_used_steps = get_all_used_history_steps(m_entries);
-    m_current_used_step_index = m_used_steps.find_first_index(current_step);
+    if (!entry_to_replace_navigation_api_key.has_value()) {
+        VERIFY(m_used_steps.is_empty() || m_used_steps.last() < target_step);
+        m_used_steps.append(target_step);
+        if (did_update_web_content_entries) {
+            VERIFY(m_web_content_known_used_steps.is_empty() || m_web_content_known_used_steps.last() < target_step);
+            m_web_content_known_used_steps.append(target_step);
+        }
+    }
+    m_current_used_step_index = m_used_steps.find_first_index(target_step);
     VERIFY(m_current_used_step_index.has_value());
-    m_web_content_known_used_steps = get_all_used_history_steps(m_web_content_known_entries);
-    return true;
+    m_web_content_current_step = target_step;
+    m_web_content_uses_ui_step_coordinates = true;
+
+    // 6. Apply the push/replace history step targetStep to traversable given historyHandling and userInvolvement.
+    // During the coordinator transition, WebContent installs the returned target step and History object values before
+    // releasing its synchronous-navigation queue item.
+    auto history_object_length_and_index = get_the_history_object_length_and_index(target_step);
+    VERIFY(history_object_length_and_index.has_value());
+    return SameDocumentNavigationCommitResult {
+        .entry_step = canonical_target_entry.step,
+        .target_step = target_step,
+        .history_object_length_and_index = *history_object_length_and_index,
+    };
 }
 
 bool TraversableSessionHistory::finalize_cross_document_navigation(CanonicalNavigable const& navigable, Entry history_entry, Optional<Utf16String> entry_to_replace_navigation_api_key)

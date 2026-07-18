@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <AK/HashMap.h>
 #include <AK/Utf16String.h>
 #include <AK/Vector.h>
 #include <LibWeb/Bindings/NavigationType.h>
@@ -81,7 +82,8 @@ public:
         Yes,
         No,
     };
-    [[nodiscard]] bool try_to_synchronously_commit_same_document_navigation(GC::Ref<LocalNavigable>, NonnullRefPtr<SessionHistoryEntry>, RefPtr<SessionHistoryEntry> entry_to_replace);
+    void request_to_finalize_same_document_navigation(GC::Ref<LocalNavigable>, NonnullRefPtr<SessionHistoryEntry>, Utf16String const& expected_current_navigation_api_key, RefPtr<SessionHistoryEntry> entry_to_replace);
+    void did_complete_finalize_same_document_navigation(u64 operation_id, bool committed, int entry_step, int target_step, HistoryObjectLengthAndIndex);
     void apply_the_push_or_replace_history_step(int step, HistoryHandlingBehavior history_handling, UserNavigationInvolvement, SynchronousNavigation, GC::Ptr<DOM::Document> pending_document, GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable, Optional<Utf16String> expected_ongoing_navigation_id, GC::Ref<OnApplyHistoryStepComplete> on_complete);
     void update_for_navigable_creation_or_destruction(GC::Ref<OnApplyHistoryStepComplete> on_complete);
 
@@ -238,6 +240,16 @@ private:
     GC::Ptr<ApplyHistoryStepState> m_paused_apply_history_step_state;
     GC::Ptr<ApplyHistoryStepState> m_apply_history_step_state;
 
+    struct PendingSameDocumentNavigation {
+        GC::Ref<LocalNavigable> target_navigable;
+        NonnullRefPtr<SessionHistoryEntry> target_entry;
+        RefPtr<SessionHistoryEntry> entry_to_replace;
+        RefPtr<Core::Promise<Empty>> signal;
+    };
+    void request_to_finalize_same_document_navigation_now(GC::Ref<LocalNavigable>, NonnullRefPtr<SessionHistoryEntry>, Utf16String const& expected_current_navigation_api_key, RefPtr<SessionHistoryEntry> entry_to_replace, RefPtr<Core::Promise<Empty>> signal);
+    u64 m_next_same_document_navigation_operation_id { 1 };
+    HashMap<u64, PendingSameDocumentNavigation> m_pending_same_document_navigations;
+
     // https://html.spec.whatwg.org/multipage/document-sequences.html#system-visibility-state
     VisibilityState m_system_visibility_state { VisibilityState::Hidden };
 
@@ -267,8 +279,6 @@ struct BrowsingContextAndDocument {
 };
 
 BrowsingContextAndDocument create_a_new_top_level_browsing_context_and_document(GC::Ref<Page> page);
-void finalize_a_same_document_navigation(GC::Ref<LocalTraversableNavigable> traversable, GC::Ref<LocalNavigable> target_navigable, NonnullRefPtr<SessionHistoryEntry> target_entry, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior, UserNavigationInvolvement, GC::Ref<OnApplyHistoryStepComplete> on_complete);
-
 template<>
 inline bool LocalNavigable::fast_is<LocalTraversableNavigable>() const { return is_traversable(); }
 
