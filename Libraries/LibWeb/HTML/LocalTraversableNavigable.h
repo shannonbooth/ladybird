@@ -31,6 +31,7 @@
 namespace Web::HTML {
 
 class ApplyHistoryStepState;
+struct ChangingNavigableContinuationState;
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#traversable-navigable
 class WEB_API LocalTraversableNavigable final : public LocalNavigable {
@@ -82,6 +83,40 @@ public:
         Yes,
         No,
     };
+
+    struct ChangingNavigableHistoryStepJob {
+        GC::Ref<LocalNavigable> navigable;
+        NonnullRefPtr<SessionHistoryEntry> target_entry;
+        GC::Ptr<SourceSnapshotParams> source_snapshot_params;
+        UserNavigationInvolvement user_involvement;
+        Optional<Bindings::NavigationType> navigation_type;
+        SynchronousNavigation synchronous_navigation;
+        LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior;
+        GC::Ptr<DOM::Document> pending_document;
+    };
+    enum class ChangingNavigableHistoryStepJobDisposition {
+        Ready,
+        Skipped,
+        Stale,
+    };
+    struct ChangingNavigableHistoryStepJobResult {
+        ChangingNavigableHistoryStepJobDisposition disposition;
+        GC::Ptr<ChangingNavigableContinuationState> continuation;
+    };
+    using OnChangingNavigableHistoryStepJobComplete = GC::Function<void(ChangingNavigableHistoryStepJobResult)>;
+    void run_changing_navigable_history_step_job(ChangingNavigableHistoryStepJob, GC::Ref<OnChangingNavigableHistoryStepJobComplete>);
+
+    struct ApplyChangingNavigableHistoryStepContinuation {
+        GC::Ref<ChangingNavigableContinuationState> continuation;
+        HistoryObjectLengthAndIndex history_object_length_and_index;
+        Vector<NonnullRefPtr<SessionHistoryEntry>> entries_for_navigation_api;
+        Optional<Bindings::NavigationType> navigation_type;
+        LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior;
+        UserNavigationInvolvement user_involvement;
+    };
+    void apply_changing_navigable_history_step_continuation(ApplyChangingNavigableHistoryStepContinuation, GC::Ref<GC::Function<void()>> on_complete);
+    void update_nonchanging_navigable_history_step_state(GC::Ref<LocalNavigable>, HistoryObjectLengthAndIndex, GC::Ref<GC::Function<void()>> on_complete);
+
     void request_to_finalize_same_document_navigation(GC::Ref<LocalNavigable>, NonnullRefPtr<SessionHistoryEntry>, Utf16String const& expected_current_navigation_api_key, RefPtr<SessionHistoryEntry> entry_to_replace);
     void did_complete_finalize_same_document_navigation(u64 operation_id, bool committed, int entry_step, int target_step, HistoryObjectLengthAndIndex);
     void apply_the_push_or_replace_history_step(int step, HistoryHandlingBehavior history_handling, UserNavigationInvolvement, SynchronousNavigation, GC::Ptr<DOM::Document> pending_document, GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable, Optional<Utf16String> expected_ongoing_navigation_id, GC::Ref<OnApplyHistoryStepComplete> on_complete);
