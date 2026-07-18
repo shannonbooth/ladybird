@@ -275,11 +275,10 @@ public:
     Web::ScreenWakeLockState screen_wake_lock_state() const { return m_screen_wake_lock_state; }
 
     void did_create_top_level_traversable(Badge<WebContentClient>, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry);
-    void did_update_session_history_for_testing(Badge<WebContentClient>, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32>, size_t current_used_step_index);
     void did_set_top_level_session_history(Badge<WebContentClient>, bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index);
     void did_finalize_same_document_navigation(Badge<WebContentClient>);
     void did_finalize_cross_document_navigation(Badge<WebContentClient>);
-    void did_reset_session_history_for_testing(Badge<WebContentClient>);
+    void did_reset_session_history_for_testing(Badge<WebContentClient>, u64 operation_id);
     void mark_web_content_session_history_stale_for_testing(Badge<WebContentClient>);
     void did_start_webdriver_navigation(Badge<WebContentClient>, URL::URL const&);
     String ui_process_session_history_for_testing(Badge<WebContentClient>) const;

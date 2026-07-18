@@ -94,7 +94,6 @@ public:
     void request_webdriver_history_traversal(int delta, Function<void(WebDriverHistoryTraversalResult)>);
     void did_complete_webdriver_history_traversal(u64 request_id, bool accepted, bool will_replace_web_content_process, bool will_change_top_level_entry);
     Web::WebDriver::Response request_webdriver_load_url_from_ui(URL::URL const&);
-    Web::WebDriver::Response request_webdriver_traverse_history_from_ui(int delta);
     Web::WebDriver::Response request_webdriver_mark_web_content_session_history_stale();
     Web::WebDriver::Response request_webdriver_session_history();
     void set_is_scripting_enabled(bool);
@@ -260,7 +259,6 @@ private:
     virtual void page_did_request_finalize_same_document_navigation(u64 operation_id, Web::HTML::CrossProcessId navigable_id, Utf16String const& expected_current_navigation_api_key, Web::HTML::SameDocumentNavigationEntry const& target_entry, Optional<Utf16String> const& entry_to_replace_navigation_api_key) override;
     virtual void page_did_finalize_cross_document_navigation(Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor const& history_entry, Optional<Utf16String> const& entry_to_replace_navigation_api_key) override;
     virtual String page_did_request_ui_process_session_history_for_testing() override;
-    virtual String page_did_update_session_history_and_request_ui_process_session_history_for_testing(Vector<Web::HTML::SessionHistoryEntryDescriptor> const&, Vector<i32> const& used_steps, size_t current_used_step_index) override;
     virtual void page_did_request_traverse_the_history_by_delta(int delta, Web::HistoryTraversalPrecheck) override;
     virtual void page_did_request_history_traversal(Web::HistoryTraversalRequestType, int delta_or_step, Web::HTML::CrossProcessId navigable_id, Utf16String const& navigation_api_key, GC::Ptr<Web::HTML::SourceSnapshotParams>, GC::Ptr<Web::HTML::LocalNavigable> initiator_to_check, Web::HTML::UserNavigationInvolvement, GC::Ref<GC::Function<void()>> release_local_queue_slot, GC::Ref<Web::HTML::OnApplyHistoryStepComplete> on_complete) override;
     virtual void request_file(Web::FileRequest) override;

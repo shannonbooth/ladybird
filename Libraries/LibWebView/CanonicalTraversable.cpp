@@ -245,23 +245,6 @@ void CanonicalTraversable::prepare_for_reload()
     m_current_web_content_session_history_matches_mirror = false;
 }
 
-WebContentSessionHistoryUpdateDecision CanonicalTraversable::did_receive_web_content_session_history_update_for_testing(Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url)
-{
-    // NB: dumpUIProcessSessionHistory() first sends WebContent's current snapshot to the UI process, then returns
-    //     the UI mirror. If a stale seed ack is still pending, normal async snapshots are intentionally ignored, so
-    //     use the same convergence path as a rejected seed ack to make this testing hook deterministic.
-    if (m_pending_web_content_session_history_seed.waiting_for_ack) {
-        auto update = adopt_web_content_session_history_after_rejected_seed(move(entries), move(used_steps), current_used_step_index, current_url);
-        if (update.update_result == TraversableSessionHistory::UpdateResult::InvalidSnapshot)
-            return { .ignore_reason = "ignored-session-history-for-testing-before-ui-seed-ack"sv };
-        return { .update = move(update) };
-    }
-
-    return {
-        .update = update_session_history_from_web_content(move(entries), move(used_steps), current_used_step_index, false, true, current_url),
-    };
-}
-
 bool CanonicalTraversable::did_create_top_level_traversable(Web::HTML::SessionHistoryEntryDescriptor initial_history_entry)
 {
     if (!m_session_history.initialize_with_initial_history_entry(move(initial_history_entry)))
@@ -852,6 +835,14 @@ void CanonicalTraversable::start_running_traversal_operation()
     VERIFY(m_running_traversal_operation.has_value());
     auto& operation = *m_running_traversal_operation;
 
+    if (operation.requested_traversal.has<TraversalOperation::ResetForTesting>()) {
+        auto operation_id = operation.operation_id;
+        auto start = move(operation.requested_traversal.get<TraversalOperation::ResetForTesting>().start);
+        VERIFY(start);
+        start(operation_id);
+        return;
+    }
+
     // FIXME: Reload still enters the canonical traversal queue but its document-population path has not yet been
     // routed through the per-navigable job protocol. Convert it after cross-document finalize joins this queue.
     if (operation.requested_traversal.has<TraversalOperation::Reload>()) {
@@ -1414,14 +1405,35 @@ void CanonicalTraversable::did_crash_requiring_web_content_session_history_seed(
     };
 }
 
-void CanonicalTraversable::reset_session_history_for_testing()
+void CanonicalTraversable::reset_session_history_for_testing(Function<void(u64 operation_id)> start, Function<void()> on_complete)
 {
+    append_session_history_traversal_operation({
+        .requested_traversal = TraversalOperation::ResetForTesting {
+            .start = move(start),
+            .on_complete = move(on_complete),
+        },
+        .check_for_cancelation = CheckForCancelation::No,
+    });
+}
+
+void CanonicalTraversable::did_reset_session_history_for_testing(u64 operation_id)
+{
+    if (!m_running_traversal_operation.has_value()
+        || m_running_traversal_operation->operation_id != operation_id
+        || !m_running_traversal_operation->requested_traversal.has<TraversalOperation::ResetForTesting>()) {
+        dbgln("Ignoring reset result for unknown history operation {}", operation_id);
+        return;
+    }
+
+    auto on_complete = move(m_running_traversal_operation->requested_traversal.get<TraversalOperation::ResetForTesting>().on_complete);
     m_session_history.clear();
     m_current_web_content_session_history_matches_mirror = false;
     m_pending_session_history_navigation.clear();
-    complete_running_traversal_operation();
     m_session_history_entry_url_loading_from_ui_process.clear();
     abandon_pending_web_content_session_history_seed();
+    complete_running_traversal_operation();
+    if (on_complete)
+        on_complete();
 }
 
 void CanonicalTraversable::mark_web_content_session_history_stale_for_testing()

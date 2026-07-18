@@ -78,12 +78,6 @@ struct WebContentSessionHistoryUpdateResult {
     bool should_seed_web_content { false };
 };
 
-struct WebContentSessionHistoryUpdateDecision {
-    // When set, the snapshot was ignored and the UI mirror was left untouched.
-    Optional<StringView> ignore_reason {};
-    WebContentSessionHistoryUpdateResult update {};
-};
-
 struct WebContentSessionHistorySeedAckResult {
     bool ignored { false };
     StringView dump_reason;
@@ -190,6 +184,11 @@ public:
         struct Reload {
             Function<void()> steps;
         };
+        // AD-HOC: Test reset uses the traversal queue as a barrier so it cannot race a history operation.
+        struct ResetForTesting {
+            Function<void(u64 operation_id)> start;
+            Function<void()> on_complete;
+        };
 
         enum class Stage : u8 {
             ApplyingHistoryStep,
@@ -223,7 +222,7 @@ public:
             Optional<i32> web_content_current_step;
         };
 
-        Variant<ByDelta, ToStep, ByNavigationAPIKey, Reload> requested_traversal;
+        Variant<ByDelta, ToStep, ByNavigationAPIKey, Reload, ResetForTesting> requested_traversal;
         CheckForCancelation check_for_cancelation { CheckForCancelation::Yes };
         Web::HTML::UserNavigationInvolvement user_involvement { Web::HTML::UserNavigationInvolvement::BrowserUI };
         URL::URL current_url;
@@ -269,7 +268,6 @@ public:
     void prepare_for_non_history_page_load();
     void prepare_for_reload();
     void prepare_to_seed_web_content_session_history_from_ui_process();
-    WebContentSessionHistoryUpdateDecision did_receive_web_content_session_history_update_for_testing(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url);
     bool did_create_top_level_traversable(Web::HTML::SessionHistoryEntryDescriptor initial_history_entry);
     bool update_session_history_entry_navigation_api_state(CanonicalNavigable const&, Utf16String const& navigation_api_key, Web::HTML::StorageSerializationRecord navigation_api_state);
     bool update_session_history_entry_scroll_restoration_mode(CanonicalNavigable const&, Utf16String const& navigation_api_key, Web::HTML::ScrollRestorationMode scroll_restoration_mode);
@@ -300,7 +298,8 @@ public:
     void did_send_web_content_session_history_seed();
     bool prepare_to_restore_current_session_history_entry_from_ui_process();
     void did_crash_requiring_web_content_session_history_seed();
-    void reset_session_history_for_testing();
+    void reset_session_history_for_testing(Function<void(u64 operation_id)> start, Function<void()> on_complete);
+    void did_reset_session_history_for_testing(u64 operation_id);
     void mark_web_content_session_history_stale_for_testing();
 
     static StringView pending_session_history_navigation_web_content_restore_mode_to_string(PendingSessionHistoryNavigation::WebContentRestoreMode);

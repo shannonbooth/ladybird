@@ -475,7 +475,7 @@ HistoryTraversalOutcome ViewImplementation::start_history_traversal(HistoryTrave
             auto load = m_top_level_traversable.prepare_current_session_history_entry_load(m_url);
             create_new_process_for_cross_site_navigation(load.url, move(load.document_resource), load.history_handling);
         } else {
-        load_current_session_history_entry_from_ui_process();
+            load_current_session_history_entry_from_ui_process();
         }
         return decision.outcome;
     }
@@ -1398,17 +1398,6 @@ void ViewImplementation::did_create_top_level_traversable(Badge<WebContentClient
     dump_session_history("created-top-level-traversable"sv);
 }
 
-void ViewImplementation::did_update_session_history_for_testing(Badge<WebContentClient>, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index)
-{
-    auto update = m_top_level_traversable.did_receive_web_content_session_history_update_for_testing(move(entries), move(used_steps), current_used_step_index, m_url);
-    if (update.ignore_reason.has_value()) {
-        dump_session_history(*update.ignore_reason);
-        return;
-    }
-    apply_web_content_session_history_update(update.update);
-    dump_session_history("did-update-session-history-for-testing"sv);
-}
-
 void ViewImplementation::did_change_needs_beforeunload_check(Badge<WebContentClient>, bool needs_beforeunload_check)
 {
     m_needs_beforeunload_check = needs_beforeunload_check;
@@ -1900,7 +1889,18 @@ void ViewImplementation::load_session_history_traversal_target_from_ui_process(T
 NonnullRefPtr<Core::Promise<Empty>> ViewImplementation::reset_session_history_for_testing()
 {
     m_pending_session_history_reset_for_testing = Core::Promise<Empty>::construct();
-    client().async_reset_session_history_for_testing(page_id());
+    m_top_level_traversable.reset_session_history_for_testing(
+        [this](u64 operation_id) {
+            client().async_reset_session_history_for_testing(page_id(), operation_id);
+        },
+        [this] {
+            auto promise = move(m_pending_session_history_reset_for_testing);
+            m_webdriver_pending_navigation_url.clear();
+            m_webdriver_pending_navigation_completes_with_session_history_update = false;
+            update_navigation_action_state();
+            if (promise)
+                promise->resolve({});
+        });
     return *m_pending_session_history_reset_for_testing;
 }
 
@@ -1945,20 +1945,13 @@ void ViewImplementation::did_finalize_same_document_navigation(Badge<WebContentC
 
 void ViewImplementation::did_finalize_cross_document_navigation(Badge<WebContentClient>)
 {
-        update_navigation_action_state();
+    update_navigation_action_state();
     dump_session_history("finalized-cross-document-navigation"sv);
 }
 
-void ViewImplementation::did_reset_session_history_for_testing(Badge<WebContentClient>)
+void ViewImplementation::did_reset_session_history_for_testing(Badge<WebContentClient>, u64 operation_id)
 {
-    auto promise = move(m_pending_session_history_reset_for_testing);
-    m_top_level_traversable.reset_session_history_for_testing();
-    m_webdriver_pending_navigation_url.clear();
-    m_webdriver_pending_navigation_completes_with_session_history_update = false;
-    update_navigation_action_state();
-
-    if (promise)
-        promise->resolve({});
+    m_top_level_traversable.did_reset_session_history_for_testing(operation_id);
 }
 
 void ViewImplementation::mark_web_content_session_history_stale_for_testing(Badge<WebContentClient>)

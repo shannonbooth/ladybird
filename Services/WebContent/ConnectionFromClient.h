@@ -105,7 +105,7 @@ private:
     virtual void release_history_operation_local_queue_slot(u64 page_id, u64 operation_id) override;
     virtual void complete_history_operation(u64 page_id, u64 operation_id, Web::HTML::HistoryStepResult, Optional<i32> committed_step, Optional<u64> initiation_id) override;
     virtual void set_top_level_session_history(u64 page_id, Vector<Web::HTML::SessionHistoryEntryDescriptor>, size_t current_top_level_entry_index, bool allow_reconstructing_current_entry) override;
-    virtual void reset_session_history_for_testing(u64 page_id) override;
+    virtual void reset_session_history_for_testing(u64 page_id, u64 operation_id) override;
     virtual void set_viewport(u64 page_id, Web::DevicePixelSize, double device_pixel_ratio, Web::ViewportIsFullscreen is_fullscreen) override;
     virtual void key_event(u64 page_id, Web::KeyEvent) override;
     virtual void mouse_event(u64 page_id, Web::MouseEvent) override;

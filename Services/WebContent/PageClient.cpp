@@ -1154,11 +1154,6 @@ String PageClient::dump_site_isolation_process_tree_for_testing()
     return client().did_request_site_isolation_process_tree_for_testing(m_id);
 }
 
-String PageClient::page_did_update_session_history_and_request_ui_process_session_history_for_testing(Vector<Web::HTML::SessionHistoryEntryDescriptor> const& entries, Vector<i32> const& used_steps, size_t current_used_step_index)
-{
-    return client().did_update_session_history_and_request_ui_process_session_history_for_testing(m_id, entries, used_steps, current_used_step_index);
-}
-
 void PageClient::page_did_request_traverse_the_history_by_delta(int delta, Web::HistoryTraversalPrecheck history_traversal_precheck)
 {
     client().async_did_request_traverse_the_history_by_delta(m_id, delta, history_traversal_precheck);
@@ -1394,11 +1389,6 @@ void PageClient::did_complete_webdriver_history_traversal(u64 request_id, bool a
 Web::WebDriver::Response PageClient::request_webdriver_load_url_from_ui(URL::URL const& url)
 {
     return client().did_request_webdriver_load_url_from_ui(m_id, url);
-}
-
-Web::WebDriver::Response PageClient::request_webdriver_traverse_history_from_ui(int delta)
-{
-    return client().did_request_webdriver_traverse_history_from_ui(m_id, delta);
 }
 
 Web::WebDriver::Response PageClient::request_webdriver_mark_web_content_session_history_stale()

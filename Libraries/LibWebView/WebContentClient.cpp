@@ -1626,24 +1626,6 @@ Messages::WebContentClient::DidRequestWebdriverLoadUrlFromUiResponse WebContentC
     return { Web::WebDriver::Error::from_code(Web::WebDriver::ErrorCode::NoSuchWindow, "Window not found"sv) };
 }
 
-Messages::WebContentClient::DidRequestWebdriverTraverseHistoryFromUiResponse WebContentClient::did_request_webdriver_traverse_history_from_ui(u64 page_id, i32 delta)
-{
-    if (auto view = view_for_page_id(page_id); view.has_value()) {
-        auto view_id = view->view_id();
-        // This request is already a synchronous IPC from WebContent, so defer the
-        // UI traversal before running cancelation checks against WebContent.
-        Core::deferred_invoke([view_id, delta] {
-            auto view = ViewImplementation::find_view_by_id(view_id);
-            if (!view.has_value())
-                return;
-            (void)view->traverse_the_history_by_delta(delta, CheckForCancelation::Yes);
-        });
-        return { JsonValue {} };
-    }
-
-    return { Web::WebDriver::Error::from_code(Web::WebDriver::ErrorCode::NoSuchWindow, "Window not found"sv) };
-}
-
 Messages::WebContentClient::DidRequestWebdriverMarkWebContentSessionHistoryStaleResponse WebContentClient::did_request_webdriver_mark_web_content_session_history_stale(u64 page_id)
 {
     if (auto view = view_for_page_id(page_id); view.has_value()) {
@@ -1970,26 +1952,16 @@ Messages::WebContentClient::DidRequestSiteIsolationProcessTreeForTestingResponse
     return { SiteIsolationManager::the().dump_process_tree(*this, page_id) };
 }
 
-Messages::WebContentClient::DidUpdateSessionHistoryAndRequestUiProcessSessionHistoryForTestingResponse WebContentClient::did_update_session_history_and_request_ui_process_session_history_for_testing(u64 page_id, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index)
-{
-    if (auto view = view_for_page_id(page_id); view.has_value()) {
-        view->did_update_session_history_for_testing({}, move(entries), move(used_steps), current_used_step_index);
-        return { view->ui_process_session_history_for_testing({}) };
-    }
-
-    return { "{}"_string };
-}
-
 void WebContentClient::did_set_top_level_session_history(u64 page_id, bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index)
 {
     if (auto view = view_for_page_id(page_id); view.has_value())
         view->did_set_top_level_session_history({}, accepted, move(entries), move(used_steps), current_used_step_index);
 }
 
-void WebContentClient::did_reset_session_history_for_testing(u64 page_id)
+void WebContentClient::did_reset_session_history_for_testing(u64 page_id, u64 operation_id)
 {
     if (auto view = view_for_page_id(page_id); view.has_value())
-        view->did_reset_session_history_for_testing({});
+        view->did_reset_session_history_for_testing({}, operation_id);
 }
 
 void WebContentClient::did_present_backing_stores(u64 page_id, Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores)
