@@ -147,9 +147,10 @@ endpoint WebContentClient
     did_close_browsing_context(u64 page_id) =|
     did_change_needs_beforeunload_check(u64 page_id, bool needs_beforeunload_check) =|
     did_request_traverse_the_history_by_delta(u64 page_id, i32 delta, Web::HistoryTraversalPrecheck history_traversal_precheck) =|
-    did_request_history_traversal_target_by_delta(u64 page_id, u64 request_id, i32 delta) =|
-    did_request_traverse_the_history_to_step(u64 page_id, u64 request_id, i32 step, Web::HistoryTraversalPrecheck history_traversal_precheck) =|
-    did_request_navigation_api_traversal_target(u64 page_id, u64 request_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_api_key) =|
+    request_history_traversal(u64 page_id, u64 initiation_id, Web::HistoryTraversalRequestType request_type, i32 delta_or_step, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_api_key, Web::HTML::UserNavigationInvolvement user_involvement) =|
+    history_step_cancelation_job_result(u64 page_id, u64 operation_id, Web::HTML::HistoryStepResult result) =|
+    changing_navigable_history_job_ready(u64 page_id, u64 operation_id, Web::HTML::CrossProcessId navigable_id, Web::ChangingNavigableHistoryStepJobDisposition disposition) =|
+    changing_navigable_continuation_applied(u64 page_id, u64 operation_id, Web::HTML::CrossProcessId navigable_id) =|
     did_request_webdriver_history_traversal(u64 page_id, u64 request_id, i32 delta) =|
     did_request_webdriver_load_url_from_ui(u64 page_id, URL::URL url) => (Web::WebDriver::Response response)
     did_request_webdriver_traverse_history_from_ui(u64 page_id, i32 delta) => (Web::WebDriver::Response response)
@@ -187,15 +188,10 @@ endpoint WebContentClient
     did_remove_nested_history(u64 page_id, Web::HTML::CrossProcessId parent_navigable_id, Web::HTML::CrossProcessId child_navigable_id) =|
     did_request_finalize_same_document_navigation(u64 page_id, u64 operation_id, Web::HTML::CrossProcessId navigable_id, Utf16String expected_current_navigation_api_key, Web::HTML::SameDocumentNavigationEntry target_entry, Optional<Utf16String> entry_to_replace_navigation_api_key) =|
     did_finalize_cross_document_navigation(u64 page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor history_entry, Optional<Utf16String> entry_to_replace_navigation_api_key) =|
-    did_set_current_session_history_step(u64 page_id, i32 current_session_history_step) =|
     did_request_ui_process_session_history_for_testing(u64 page_id) => (String session_history)
     did_request_site_isolation_process_tree_for_testing(u64 page_id) => (String process_tree)
     did_update_session_history_and_request_ui_process_session_history_for_testing(u64 page_id, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index) => (String session_history)
     did_set_top_level_session_history(u64 page_id, bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index) =|
-    did_prepare_to_apply_history_step_to_changing_navigable(u64 page_id, u64 application_id, i32 step, Web::HTML::CrossProcessId navigable_id) =|
-    did_finish_applying_history_step_to_changing_navigables(u64 page_id, u64 application_id, i32 step) =|
-    did_finish_applying_history_step(u64 page_id, u64 application_id, i32 step, bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult result) =|
-    did_check_if_traverse_history_step_is_canceled(u64 page_id, u64 request_id, i32 step, Web::HTML::HistoryStepResult result) =|
     did_reset_session_history_for_testing(u64 page_id) =|
 
     did_change_audio_play_state(u64 page_id, Web::HTML::AudioPlayState play_state) =|

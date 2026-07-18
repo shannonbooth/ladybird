@@ -961,6 +961,7 @@ bool TraversableSessionHistory::finalize_cross_document_navigation(CanonicalNavi
         return false;
 
     auto current_step = m_used_steps[*m_current_used_step_index];
+    auto target_step = history_entry.step;
 
     // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-cross-document-navigation
     // If entryToReplace is null, then clear the forward session history of traversable.
@@ -1001,9 +1002,11 @@ bool TraversableSessionHistory::finalize_cross_document_navigation(CanonicalNavi
     }
 
     m_used_steps = get_all_used_history_steps(m_entries);
-    m_current_used_step_index = m_used_steps.find_first_index(current_step);
+    m_current_used_step_index = m_used_steps.find_first_index(target_step);
     VERIFY(m_current_used_step_index.has_value());
     m_web_content_known_used_steps = get_all_used_history_steps(m_web_content_known_entries);
+    m_web_content_current_step = target_step;
+    m_web_content_uses_ui_step_coordinates = true;
     return true;
 }
 
@@ -1350,59 +1353,6 @@ bool TraversableSessionHistory::did_seed_web_content_from_ui_process(Vector<Entr
     return true;
 }
 
-bool TraversableSessionHistory::did_restore_web_content_to_current_step(i32 step)
-{
-    if (!m_current_used_step_index.has_value())
-        return false;
-    if (m_used_steps[*m_current_used_step_index] != step)
-        return false;
-    if (!m_web_content_uses_ui_step_coordinates)
-        return false;
-    if (!m_web_content_known_used_steps.contains_slow(step))
-        return false;
-
-    auto const* web_content_current_top_level_entry = WebView::top_level_entry_for_step(m_web_content_known_entries, step);
-    auto const* ui_current_top_level_entry = current_entry();
-    if (!web_content_current_top_level_entry || !ui_current_top_level_entry)
-        return false;
-    if (!Web::HTML::session_history_entry_descriptors_match(*web_content_current_top_level_entry, *ui_current_top_level_entry))
-        return false;
-
-    m_web_content_current_step = step;
-    return true;
-}
-
-bool TraversableSessionHistory::did_apply_web_content_traversal_to_step(i32 step)
-{
-    auto target = traversal_target_for_step(step);
-    if (!target.has_value() || !web_content_can_traverse_to(*target))
-        return false;
-
-    return set_current_session_history_step(step);
-}
-
-bool TraversableSessionHistory::did_set_web_content_current_session_history_step(i32 step)
-{
-    if (!m_web_content_known_used_steps.contains_slow(step))
-        return false;
-
-    // A fresh or replacement WebContent process numbers its local history independently until it has accepted the
-    // UI-owned session history. Typed commit events can establish that coordinate space without reproducing the UI-only
-    // prefix: the reported step must select the same top-level entry in both histories. The document state identity in
-    // that entry is cross-process, so an equal descriptor cannot merely be an unrelated local step with the same value.
-    if (!m_web_content_uses_ui_step_coordinates) {
-        auto target = traversal_target_for_step(step);
-        auto const* web_content_target_top_level_entry = WebView::top_level_entry_for_step(m_web_content_known_entries, step);
-        if (!target.has_value() || !target->target_top_level_entry || !web_content_target_top_level_entry)
-            return false;
-        if (!Web::HTML::session_history_entry_descriptors_match(*web_content_target_top_level_entry, *target->target_top_level_entry))
-            return false;
-        m_web_content_uses_ui_step_coordinates = true;
-    }
-
-    return set_current_session_history_step(step);
-}
-
 bool TraversableSessionHistory::set_current_session_history_step(i32 step)
 {
     auto target = traversal_target_for_step(step);
@@ -1487,6 +1437,13 @@ Vector<i32> TraversableSessionHistory::web_content_known_used_steps() const
 Optional<i32> TraversableSessionHistory::web_content_current_step() const
 {
     return m_web_content_current_step;
+}
+
+Optional<i32> TraversableSessionHistory::current_step() const
+{
+    if (!m_current_used_step_index.has_value())
+        return { };
+    return m_used_steps[*m_current_used_step_index];
 }
 
 bool TraversableSessionHistory::can_go_back() const
@@ -1734,14 +1691,14 @@ TraversableSessionHistory::Entry const* TraversableSessionHistory::get_the_targe
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#get-all-navigables-whose-current-session-history-entry-will-change-or-reload
-Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_whose_current_session_history_entry_will_change_or_reload(CanonicalNavigable const& traversable, i32 target_step) const
+Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_whose_current_session_history_entry_will_change_or_reload(CanonicalNavigable const& traversable, i32 target_step, Optional<i32> current_step_override) const
 {
     // 1. Let results be an empty list.
     Vector<Web::HTML::CrossProcessId> results;
 
     if (!m_current_used_step_index.has_value())
         return results;
-    auto current_step = m_used_steps[*m_current_used_step_index];
+    auto current_step = current_step_override.value_or(m_used_steps[*m_current_used_step_index]);
 
     // 2. Let navigablesToCheck be « traversable ».
     Vector<CanonicalNavigable const*> navigables_to_check { &traversable };
@@ -1820,14 +1777,14 @@ Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-all-navigables-that-only-need-history-object-length/index-update
-Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_that_only_need_history_object_length_index_update(CanonicalNavigable const& traversable, i32 target_step) const
+Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_that_only_need_history_object_length_index_update(CanonicalNavigable const& traversable, i32 target_step, Optional<i32> current_step_override) const
 {
     // 1. Let results be an empty list.
     Vector<Web::HTML::CrossProcessId> results;
 
     if (!m_current_used_step_index.has_value())
         return results;
-    auto current_step = m_used_steps[*m_current_used_step_index];
+    auto current_step = current_step_override.value_or(m_used_steps[*m_current_used_step_index]);
 
     // 2. Let navigablesToCheck be « traversable ».
     Vector<CanonicalNavigable const*> navigables_to_check { &traversable };

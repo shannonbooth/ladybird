@@ -119,13 +119,16 @@ public:
     void traverse_the_history_by_delta(
         int delta,
         CheckForCancelation = CheckForCancelation::Yes,
-        Function<void(HistoryTraversalOutcome)> = nullptr);
+        Function<void(HistoryTraversalOutcome)> = nullptr,
+        Optional<CanonicalTraversable::TraversalOperation::Endpoint> initiating_endpoint = { },
+        Web::HTML::UserNavigationInvolvement = Web::HTML::UserNavigationInvolvement::BrowserUI);
+    void traverse_the_history_by_navigation_api_key(Web::HTML::CrossProcessId navigable_id, Utf16String key, CanonicalTraversable::TraversalOperation::Endpoint initiating_endpoint);
     void traverse_the_history_to_step(
         i32 step,
         CheckForCancelation = CheckForCancelation::Yes,
         Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete = nullptr,
-        Function<void(Web::HTML::HistoryStepResult)> on_complete = nullptr,
-        Function<void(u64 application_id, i32, Vector<Web::HTML::CrossProcessId>, Vector<Web::HTML::CrossProcessId>)> apply_pending_web_content_traversal = nullptr);
+        Optional<CanonicalTraversable::TraversalOperation::Endpoint> initiating_endpoint = { },
+        Web::HTML::UserNavigationInvolvement = Web::HTML::UserNavigationInvolvement::BrowserUI);
     [[nodiscard]] Vector<SessionHistoryTraversalMenuItem> session_history_traversal_menu_items(int direction) const;
 
     void zoom_in();
@@ -272,15 +275,10 @@ public:
     Web::ScreenWakeLockState screen_wake_lock_state() const { return m_screen_wake_lock_state; }
 
     void did_create_top_level_traversable(Badge<WebContentClient>, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry);
-    void did_set_current_session_history_step(Badge<WebContentClient>, i32 current_session_history_step);
     void did_update_session_history_for_testing(Badge<WebContentClient>, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32>, size_t current_used_step_index);
     void did_set_top_level_session_history(Badge<WebContentClient>, bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index);
-    Optional<Web::HTML::ChangingNavigableHistoryStepApplicationData> prepare_to_apply_history_step_to_changing_navigable(Badge<WebContentClient>, u64 application_id, i32 step, Web::HTML::CrossProcessId navigable_id);
     void did_finalize_same_document_navigation(Badge<WebContentClient>);
-    Optional<Web::HTML::HistoryObjectLengthAndIndex> did_finish_applying_history_step_to_changing_navigables(Badge<WebContentClient>, u64 application_id, i32 step);
-    void did_finish_applying_history_step(Badge<WebContentClient>, u64 application_id, i32 step, bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult);
-    void did_check_if_traverse_history_step_is_canceled(
-        Badge<WebContentClient>, u64 request_id, i32 step, Web::HTML::HistoryStepResult);
+    void did_finalize_cross_document_navigation(Badge<WebContentClient>);
     void did_reset_session_history_for_testing(Badge<WebContentClient>);
     void mark_web_content_session_history_stale_for_testing(Badge<WebContentClient>);
     void did_start_webdriver_navigation(Badge<WebContentClient>, URL::URL const&);
@@ -419,7 +417,7 @@ public:
     virtual Gfx::IntPoint to_widget_position(Gfx::IntPoint content_position) const = 0;
 
 protected:
-    HistoryTraversalOutcome start_history_traversal(HistoryTraversalDecision, Function<void(u64 application_id, i32, Vector<Web::HTML::CrossProcessId>, Vector<Web::HTML::CrossProcessId>)> apply_pending_web_content_traversal = nullptr);
+    HistoryTraversalOutcome start_history_traversal(HistoryTraversalDecision);
     virtual void insert_clipboard_entry(Web::Clipboard::SystemClipboardRepresentation);
     virtual Vector<Web::Clipboard::SystemClipboardRepresentation> clipboard_entries() const;
 

@@ -17,6 +17,7 @@
 #include <LibWeb/HTML/AudioPlayState.h>
 #include <LibWeb/HTML/CrossProcessId.h>
 #include <LibWeb/HTML/FileFilter.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/ReplicatedNavigableState.h>
 #include <LibWeb/HTML/SameDocumentNavigationEntry.h>
 #include <LibWeb/HTML/Scripting/ScriptRegistry.h>
@@ -83,16 +84,13 @@ public:
         bool will_replace_web_content_process { false };
         bool will_change_top_level_entry { false };
     };
-    void did_resolve_session_history_traversal_target(u64 request_id, Optional<i32> target_step);
     void did_complete_finalize_same_document_navigation(u64 operation_id, bool committed, int entry_step, int target_step, Web::HTML::HistoryObjectLengthAndIndex);
-    void apply_pending_session_history_traversal(u64 request_id, u64 application_id, Vector<Web::HTML::CrossProcessId> changing_navigables, Vector<Web::HTML::CrossProcessId> nonchanging_navigables_that_still_need_updates);
-    void did_complete_session_history_traversal(u64 request_id, Web::HTML::HistoryStepResult);
-    void did_prepare_to_apply_history_step_to_changing_navigable(u64 application_id, int step, Web::HTML::CrossProcessId navigable_id, GC::Ref<Web::HTML::ResumeApplyingHistoryStepToChangingNavigable>);
-    void continue_applying_history_step_to_changing_navigable(u64 application_id, Optional<Web::HTML::ChangingNavigableHistoryStepApplicationData>);
-    void did_finish_applying_history_step_to_changing_navigables(u64 application_id, int step, GC::Ref<Web::HTML::ResumeApplyingHistoryStep>);
-    void continue_history_step_application(u64 application_id, Optional<Web::HTML::HistoryObjectLengthAndIndex>);
-    void did_finish_applying_history_step(u64 application_id, int step, bool step_was_available, bool should_update_current_session_history_step, Web::HTML::HistoryStepResult, GC::Ref<Web::HTML::OnApplyHistoryStepComplete> finish_applying);
-    void complete_history_step_application(u64 application_id, Web::HTML::HistoryStepResult);
+    void run_history_step_cancelation_job(u64 operation_id, int target_step, Vector<Web::HTML::CrossProcessId>, Web::HTML::UserNavigationInvolvement, Optional<u64> initiation_id, bool check_for_cancelation);
+    void run_changing_navigable_history_job(u64 operation_id, Web::HTML::CrossProcessId navigable_id, int target_step, Web::HTML::SessionHistoryEntryDescriptor, Web::HTML::UserNavigationInvolvement, Optional<u64> initiation_id);
+    void apply_changing_navigable_continuation(u64 operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::HistoryObjectLengthAndIndex, Vector<Web::HTML::SessionHistoryEntryDescriptor>);
+    void update_nonchanging_navigable_history_state(u64 operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::HistoryObjectLengthAndIndex);
+    void release_history_operation_local_queue_slot(u64 operation_id);
+    void complete_history_operation(u64 operation_id, Web::HTML::HistoryStepResult, Optional<int> committed_step, Optional<u64> initiation_id);
     void request_webdriver_history_traversal(int delta, Function<void(WebDriverHistoryTraversalResult)>);
     void did_complete_webdriver_history_traversal(u64 request_id, bool accepted, bool will_replace_web_content_process, bool will_change_top_level_entry);
     Web::WebDriver::Response request_webdriver_load_url_from_ui(URL::URL const&);
@@ -261,13 +259,10 @@ private:
     virtual void page_did_remove_nested_history(Web::HTML::CrossProcessId parent_navigable_id, Web::HTML::CrossProcessId child_navigable_id) override;
     virtual void page_did_request_finalize_same_document_navigation(u64 operation_id, Web::HTML::CrossProcessId navigable_id, Utf16String const& expected_current_navigation_api_key, Web::HTML::SameDocumentNavigationEntry const& target_entry, Optional<Utf16String> const& entry_to_replace_navigation_api_key) override;
     virtual void page_did_finalize_cross_document_navigation(Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor const& history_entry, Optional<Utf16String> const& entry_to_replace_navigation_api_key) override;
-    virtual void page_did_set_current_session_history_step(int current_session_history_step) override;
     virtual String page_did_request_ui_process_session_history_for_testing() override;
     virtual String page_did_update_session_history_and_request_ui_process_session_history_for_testing(Vector<Web::HTML::SessionHistoryEntryDescriptor> const&, Vector<i32> const& used_steps, size_t current_used_step_index) override;
     virtual void page_did_request_traverse_the_history_by_delta(int delta, Web::HistoryTraversalPrecheck) override;
-    virtual void page_did_request_history_traversal_target_by_delta(int delta, GC::Ref<GC::Function<void(Optional<int>)>> on_complete) override;
-    virtual void page_did_request_traverse_the_history_to_step(int step, Web::HistoryTraversalPrecheck, GC::Ref<Web::ApplyPendingSessionHistoryTraversal> apply_in_web_content, GC::Ref<Web::HTML::OnApplyHistoryStepComplete> on_complete) override;
-    virtual void page_did_request_navigation_api_traversal_target(Web::HTML::CrossProcessId navigable_id, Utf16String const& navigation_api_key, GC::Ref<GC::Function<void(Optional<int>)>> on_complete) override;
+    virtual void page_did_request_history_traversal(Web::HistoryTraversalRequestType, int delta_or_step, Web::HTML::CrossProcessId navigable_id, Utf16String const& navigation_api_key, GC::Ptr<Web::HTML::SourceSnapshotParams>, GC::Ptr<Web::HTML::LocalNavigable> initiator_to_check, Web::HTML::UserNavigationInvolvement, GC::Ref<GC::Function<void()>> release_local_queue_slot, GC::Ref<Web::HTML::OnApplyHistoryStepComplete> on_complete) override;
     virtual void request_file(Web::FileRequest) override;
     virtual void page_did_request_color_picker(Color current_color) override;
     virtual void page_did_request_file_picker(Web::HTML::FileFilter const& accepted_file_types, Web::HTML::AllowMultipleFiles) override;
@@ -329,18 +324,28 @@ private:
     HashMap<u64, Function<void(Web::WebDriver::Response)>> m_pending_webdriver_navigation_completion_requests;
     u64 m_next_webdriver_history_traversal_request_id { 0 };
     HashMap<u64, Function<void(WebDriverHistoryTraversalResult)>> m_pending_webdriver_history_traversal_requests;
-    u64 m_next_session_history_traversal_target_request_id { 0 };
-    HashMap<u64, GC::Ref<GC::Function<void(Optional<int>)>>> m_pending_session_history_traversal_target_requests;
-    struct PendingSessionHistoryTraversalRequest {
-        int step;
-        GC::Ref<Web::ApplyPendingSessionHistoryTraversal> apply_in_web_content;
+    struct ParkedHistoryTraversal {
+        GC::Ptr<Web::HTML::SourceSnapshotParams> source_snapshot_params;
+        GC::Ptr<Web::HTML::LocalNavigable> initiator_to_check;
+        Web::HTML::UserNavigationInvolvement user_involvement { Web::HTML::UserNavigationInvolvement::None };
+        GC::Ref<GC::Function<void()>> release_local_queue_slot;
         GC::Ref<Web::HTML::OnApplyHistoryStepComplete> on_complete;
+        bool local_queue_slot_released { false };
     };
-    u64 m_next_session_history_traversal_request_id { 0 };
-    HashMap<u64, PendingSessionHistoryTraversalRequest> m_pending_session_history_traversal_requests;
-    HashMap<u64, GC::Ref<Web::HTML::ResumeApplyingHistoryStepToChangingNavigable>> m_history_step_applications_waiting_for_changing_navigable;
-    HashMap<u64, GC::Ref<Web::HTML::ResumeApplyingHistoryStep>> m_history_step_applications_waiting_for_nonchanging_navigables;
-    HashMap<u64, GC::Ref<Web::HTML::OnApplyHistoryStepComplete>> m_pending_history_step_applications;
+    u64 m_next_history_traversal_initiation_id { 1 };
+    HashMap<u64, ParkedHistoryTraversal> m_parked_history_traversals;
+
+    struct PendingUIHistoryOperation {
+        Optional<u64> initiation_id;
+        RefPtr<Core::Promise<Empty>> browser_ui_queue_signal;
+        bool browser_ui_queue_slot_started { false };
+        Web::HTML::UserNavigationInvolvement user_involvement { Web::HTML::UserNavigationInvolvement::BrowserUI };
+        Web::HTML::LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior { Web::HTML::LocalNavigable::NavigationAPIAbortBehavior::Abort };
+        Vector<GC::Ref<GC::Function<void()>>> queued_commands;
+        HashMap<Web::HTML::CrossProcessId, GC::Ptr<Web::HTML::ChangingNavigableContinuationState>> changing_navigable_continuations;
+    };
+    void queue_history_operation_command(u64 operation_id, Optional<u64> initiation_id, GC::Ref<GC::Function<void()>>);
+    HashMap<u64, PendingUIHistoryOperation> m_pending_ui_history_operations;
 
     RefPtr<WebDriverConnection> m_webdriver;
     RefPtr<WebUIConnection> m_web_ui;
