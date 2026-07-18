@@ -65,10 +65,6 @@ public:
 
     void clear();
     [[nodiscard]] bool initialize_with_initial_history_entry(Entry initial_history_entry);
-    void navigate(URL::URL, Web::HTML::CrossProcessId document_state_id);
-    void navigate(URL::URL, Web::HTML::CrossProcessId document_state_id, Web::HTML::DocumentResource);
-    void replace_current_entry_url(URL::URL, Web::HTML::CrossProcessId document_state_id);
-    void replace_current_entry(URL::URL, Web::HTML::CrossProcessId document_state_id, Web::HTML::DocumentResource);
     void mark_current_entry_reload_pending();
     void clear_current_entry_reload_pending();
     bool update_top_level_navigation_api_state(Utf16String const& navigation_api_key, Web::HTML::StorageSerializationRecord navigation_api_state);
@@ -84,7 +80,19 @@ public:
     bool append_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::SessionHistoryNestedHistoryDescriptor);
     bool remove_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::CrossProcessId child_navigable_id);
     Optional<SameDocumentNavigationCommitResult> finalize_same_document_navigation(CanonicalNavigable const&, Utf16String const& expected_current_navigation_api_key, Web::HTML::SameDocumentNavigationEntry target_entry, Optional<Utf16String> entry_to_replace_navigation_api_key);
-    bool finalize_cross_document_navigation(CanonicalNavigable const&, Entry history_entry, Optional<Utf16String> entry_to_replace_navigation_api_key);
+
+    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-cross-document-navigation
+    // Applies the canonical entry-list mutation for a cross-document commit and resolves the canonical step
+    // coordinates. The committed entry's step can differ from the wire value: a replacement inherits the replaced
+    // entry's step and a provisional top-level entry keeps the step the UI assigned when it was created. Returns
+    // nothing when the commit is stale (unknown navigable or replaced entry); a stale commit does not mutate the
+    // canonical history.
+    struct CrossDocumentNavigationCommitResult {
+        i32 entry_step { 0 };
+        i32 target_step { 0 };
+        size_t target_step_index { 0 };
+    };
+    Optional<CrossDocumentNavigationCommitResult> finalize_cross_document_navigation(CanonicalNavigable const&, Entry history_entry, Optional<Utf16String> entry_to_replace_navigation_api_key);
     UpdateResult update_from_web_content(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index);
     [[nodiscard]] bool did_seed_web_content_from_ui_process(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index);
     void did_seed_web_content_from_ui_process(size_t current_top_level_entry_index);

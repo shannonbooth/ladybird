@@ -257,7 +257,7 @@ private:
     virtual void page_did_append_nested_history(Web::HTML::CrossProcessId parent_navigable_id, Web::HTML::SessionHistoryNestedHistoryDescriptor const& nested_history) override;
     virtual void page_did_remove_nested_history(Web::HTML::CrossProcessId parent_navigable_id, Web::HTML::CrossProcessId child_navigable_id) override;
     virtual void page_did_request_finalize_same_document_navigation(u64 operation_id, Web::HTML::CrossProcessId navigable_id, Utf16String const& expected_current_navigation_api_key, Web::HTML::SameDocumentNavigationEntry const& target_entry, Optional<Utf16String> const& entry_to_replace_navigation_api_key) override;
-    virtual void page_did_finalize_cross_document_navigation(Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor const& history_entry, Optional<Utf16String> const& entry_to_replace_navigation_api_key) override;
+    virtual void page_did_request_finalize_cross_document_navigation(Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor const& history_entry, Optional<Utf16String> const& entry_to_replace_navigation_api_key, Web::HTML::HistoryHandlingBehavior, Web::HTML::UserNavigationInvolvement, GC::Ptr<Web::DOM::Document> pending_document, GC::Ptr<Web::HTML::LocalNavigable> navigated_navigable, RefPtr<Web::HTML::SessionHistoryEntry> committed_history_entry, Optional<Utf16String> const& expected_ongoing_navigation_id, GC::Ref<Web::HTML::OnApplyHistoryStepComplete> on_complete) override;
     virtual String page_did_request_ui_process_session_history_for_testing() override;
     virtual void page_did_request_traverse_the_history_by_delta(int delta, Web::HistoryTraversalPrecheck) override;
     virtual void page_did_request_history_traversal(Web::HistoryTraversalRequestType, int delta_or_step, Web::HTML::CrossProcessId navigable_id, Utf16String const& navigation_api_key, GC::Ptr<Web::HTML::SourceSnapshotParams>, GC::Ptr<Web::HTML::LocalNavigable> initiator_to_check, Web::HTML::UserNavigationInvolvement, GC::Ref<GC::Function<void()>> release_local_queue_slot, GC::Ref<Web::HTML::OnApplyHistoryStepComplete> on_complete) override;
@@ -329,6 +329,14 @@ private:
         GC::Ref<GC::Function<void()>> release_local_queue_slot;
         GC::Ref<Web::HTML::OnApplyHistoryStepComplete> on_complete;
         bool local_queue_slot_released { false };
+        // Set for a parked cross-document finalization: the already-populated document and the provisionally
+        // committed entry the UI operation's changing-navigable job consumes.
+        GC::Ptr<Web::DOM::Document> pending_document;
+        GC::Ptr<Web::HTML::LocalNavigable> navigated_navigable;
+        RefPtr<Web::HTML::SessionHistoryEntry> committed_history_entry;
+        Optional<Utf16String> expected_ongoing_navigation_id;
+        Optional<Web::HTML::HistoryHandlingBehavior> history_handling;
+        bool cross_document_commit_consumed { false };
     };
     u64 m_next_history_traversal_initiation_id { 1 };
     HashMap<u64, ParkedHistoryTraversal> m_parked_history_traversals;
@@ -339,6 +347,9 @@ private:
         bool browser_ui_queue_slot_started { false };
         Web::HTML::UserNavigationInvolvement user_involvement { Web::HTML::UserNavigationInvolvement::BrowserUI };
         Web::HTML::LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior { Web::HTML::LocalNavigable::NavigationAPIAbortBehavior::Abort };
+        // Set when this operation finalizes a cross-document navigation; its continuation applies as a push or
+        // replace instead of a traverse.
+        Optional<Web::HTML::HistoryHandlingBehavior> history_handling;
         Vector<GC::Ref<GC::Function<void()>>> queued_commands;
         HashMap<Web::HTML::CrossProcessId, GC::Ptr<Web::HTML::ChangingNavigableContinuationState>> changing_navigable_continuations;
     };

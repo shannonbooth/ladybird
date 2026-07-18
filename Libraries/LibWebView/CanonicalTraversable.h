@@ -189,6 +189,15 @@ public:
             Function<void(u64 operation_id)> start;
             Function<void()> on_complete;
         };
+        // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-cross-document-navigation
+        // WebContent has already committed the document and its provisional entry locally; this operation orders the
+        // canonical entry-list mutation on the traversal queue and then applies the push/replace history step.
+        struct FinalizeCrossDocument {
+            Web::HTML::CrossProcessId navigable_id;
+            Web::HTML::SessionHistoryEntryDescriptor history_entry;
+            Optional<Utf16String> entry_to_replace_navigation_api_key;
+            Function<void()> on_committed;
+        };
 
         enum class Stage : u8 {
             ApplyingHistoryStep,
@@ -222,7 +231,7 @@ public:
             Optional<i32> web_content_current_step;
         };
 
-        Variant<ByDelta, ToStep, ByNavigationAPIKey, Reload, ResetForTesting> requested_traversal;
+        Variant<ByDelta, ToStep, ByNavigationAPIKey, Reload, ResetForTesting, FinalizeCrossDocument> requested_traversal;
         CheckForCancelation check_for_cancelation { CheckForCancelation::Yes };
         Web::HTML::UserNavigationInvolvement user_involvement { Web::HTML::UserNavigationInvolvement::BrowserUI };
         URL::URL current_url;
@@ -277,7 +286,7 @@ public:
     bool append_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::SessionHistoryNestedHistoryDescriptor);
     bool remove_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::CrossProcessId child_navigable_id);
     void request_to_finalize_same_document_navigation(CanonicalNavigable const&, Utf16String expected_current_navigation_api_key, Web::HTML::SameDocumentNavigationEntry target_entry, Optional<Utf16String> entry_to_replace_navigation_api_key, Function<void(Optional<SameDocumentNavigationCommitResult>)> on_complete);
-    bool finalize_cross_document_navigation(CanonicalNavigable const&, Web::HTML::SessionHistoryEntryDescriptor history_entry, Optional<Utf16String> entry_to_replace_navigation_api_key);
+    void request_to_finalize_cross_document_navigation(WebContentClient&, u64 page_id, u64 initiation_id, CanonicalNavigable const&, Web::HTML::SessionHistoryEntryDescriptor history_entry, Optional<Utf16String> entry_to_replace_navigation_api_key, Function<void()> on_committed);
     Optional<i32> navigation_api_traversal_target(CanonicalNavigable const&, Utf16String const& navigation_api_key) const;
     WebContentSessionHistorySeedAckResult did_receive_web_content_session_history_seed_ack(bool accepted, Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index, URL::URL const& current_url);
     NavigationStartResult did_start_navigation(URL::URL const&, Web::HTML::DocumentResource, bool is_redirect, Web::Bindings::NavigationHistoryBehavior, bool is_showing_crash_page);
@@ -299,7 +308,7 @@ public:
     bool prepare_to_restore_current_session_history_entry_from_ui_process();
     void did_crash_requiring_web_content_session_history_seed();
     void reset_session_history_for_testing(Function<void(u64 operation_id)> start, Function<void()> on_complete);
-    void did_reset_session_history_for_testing(u64 operation_id);
+    void did_reset_session_history_for_testing(u64 operation_id, Optional<Web::HTML::SessionHistoryEntryDescriptor> initial_history_entry);
     void mark_web_content_session_history_stale_for_testing();
 
     static StringView pending_session_history_navigation_web_content_restore_mode_to_string(PendingSessionHistoryNavigation::WebContentRestoreMode);
@@ -311,6 +320,7 @@ private:
     void run_session_history_traversal_queue();
     void schedule_session_history_traversal_queue();
     void start_running_traversal_operation();
+    void start_running_finalize_cross_document_operation();
     HistoryTraversalDecision traverse_the_history(TraversableSessionHistory::TraversalTarget const&);
     void dispatch_history_step_cancelation_job();
     void dispatch_changing_navigable_history_jobs();

@@ -130,6 +130,8 @@ void PageClient::visit_edges(JS::Cell::Visitor& visitor)
         visitor.visit(traversal.value.initiator_to_check);
         visitor.visit(traversal.value.release_local_queue_slot);
         visitor.visit(traversal.value.on_complete);
+        visitor.visit(traversal.value.pending_document);
+        visitor.visit(traversal.value.navigated_navigable);
     }
     for (auto& operation : m_pending_ui_history_operations) {
         for (auto& command : operation.value.queued_commands)
@@ -1139,9 +1141,24 @@ void PageClient::did_complete_finalize_same_document_navigation(u64 operation_id
     page().top_level_traversable()->did_complete_finalize_same_document_navigation(operation_id, committed, entry_step, target_step, history_object_length_and_index);
 }
 
-void PageClient::page_did_finalize_cross_document_navigation(Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor const& history_entry, Optional<Utf16String> const& entry_to_replace_navigation_api_key)
+void PageClient::page_did_request_finalize_cross_document_navigation(Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor const& history_entry, Optional<Utf16String> const& entry_to_replace_navigation_api_key, Web::HTML::HistoryHandlingBehavior history_handling, Web::HTML::UserNavigationInvolvement user_involvement, GC::Ptr<Web::DOM::Document> pending_document, GC::Ptr<Web::HTML::LocalNavigable> navigated_navigable, RefPtr<Web::HTML::SessionHistoryEntry> committed_history_entry, Optional<Utf16String> const& expected_ongoing_navigation_id, GC::Ref<Web::HTML::OnApplyHistoryStepComplete> on_complete)
 {
-    client().async_did_finalize_cross_document_navigation(m_id, navigable_id, history_entry, entry_to_replace_navigation_api_key);
+    auto initiation_id = m_next_history_traversal_initiation_id++;
+    m_parked_history_traversals.set(initiation_id, {
+                                                       .source_snapshot_params = nullptr,
+                                                       .initiator_to_check = nullptr,
+                                                       .user_involvement = user_involvement,
+                                                       // The finalization runs inside the navigate() traversal-queue entry; on_complete resolves that
+                                                       // entry's own signal, so there is no separate slot to release.
+                                                       .release_local_queue_slot = GC::create_function(Web::HTML::main_thread_event_loop().heap(), [] { }),
+                                                       .on_complete = on_complete,
+                                                       .pending_document = pending_document,
+                                                       .navigated_navigable = navigated_navigable,
+                                                       .committed_history_entry = move(committed_history_entry),
+                                                       .expected_ongoing_navigation_id = expected_ongoing_navigation_id,
+                                                       .history_handling = history_handling,
+                                                   });
+    client().async_request_finalize_cross_document_navigation(m_id, initiation_id, navigable_id, history_entry, entry_to_replace_navigation_api_key);
 }
 
 String PageClient::page_did_request_ui_process_session_history_for_testing()
@@ -1191,8 +1208,10 @@ void PageClient::queue_history_operation_command(u64 operation_id, Optional<u64>
     auto is_new_operation = !m_pending_ui_history_operations.contains(operation_id);
     auto& operation = m_pending_ui_history_operations.ensure(operation_id, [] { return PendingUIHistoryOperation { }; });
     if (initiation_id.has_value()) {
+        auto parked = m_parked_history_traversals.find(*initiation_id);
         operation.initiation_id = initiation_id;
-        operation.user_involvement = m_parked_history_traversals.get(*initiation_id)->user_involvement;
+        operation.user_involvement = parked->value.user_involvement;
+        operation.history_handling = parked->value.history_handling;
         operation.browser_ui_queue_slot_started = true;
 }
 
@@ -1261,14 +1280,25 @@ void PageClient::run_changing_navigable_history_job(u64 operation_id, Web::HTML:
         return;
 
             GC::Ptr<Web::HTML::SourceSnapshotParams> source_snapshot_params;
+            Web::HTML::LocalTraversableNavigable::PendingCrossDocumentCommit pending_cross_document_commit;
             if (initiation_id.has_value()) {
                 auto parked = m_parked_history_traversals.find(*initiation_id);
-                if (parked != m_parked_history_traversals.end())
+                if (parked != m_parked_history_traversals.end()) {
                     source_snapshot_params = parked->value.source_snapshot_params;
+                    pending_cross_document_commit = {
+                        .pending_document = parked->value.pending_document,
+                        .navigated_navigable = parked->value.navigated_navigable,
+                        .committed_history_entry = parked->value.committed_history_entry,
+                        .expected_ongoing_navigation_id = parked->value.expected_ongoing_navigation_id,
+                        .history_handling = parked->value.history_handling,
+                    };
+                    if (parked->value.navigated_navigable && parked->value.navigated_navigable->id() == navigable_id)
+                        parked->value.cross_document_commit_consumed = true;
+                }
 }
 
             page().top_level_traversable()->run_ui_changing_navigable_history_step_job(
-                navigable_id, target_step, target_entry, source_snapshot_params, user_involvement, operation->value.navigation_api_abort_behavior,
+                navigable_id, target_step, target_entry, source_snapshot_params, pending_cross_document_commit, user_involvement, operation->value.navigation_api_abort_behavior,
                 GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, operation_id, navigable_id](Web::HTML::LocalTraversableNavigable::ChangingNavigableHistoryStepJobResult result) {
                     auto operation = m_pending_ui_history_operations.find(operation_id);
                     if (operation == m_pending_ui_history_operations.end())
@@ -1298,8 +1328,9 @@ void PageClient::apply_changing_navigable_continuation(u64 operation_id, Web::HT
     queue_history_operation_command(operation_id, { },
         GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, operation_id, navigable_id, length_and_index, entries_for_navigation_api = move(entries_for_navigation_api)]() mutable {
             auto operation = m_pending_ui_history_operations.find(operation_id);
-            if (operation == m_pending_ui_history_operations.end())
+            if (operation == m_pending_ui_history_operations.end()) {
         return;
+            }
             auto continuation = operation->value.changing_navigable_continuations.take(navigable_id);
             if (!continuation.has_value() || !*continuation) {
                 client().async_changing_navigable_continuation_applied(m_id, operation_id, navigable_id);
@@ -1307,7 +1338,7 @@ void PageClient::apply_changing_navigable_continuation(u64 operation_id, Web::HT
             }
             page().top_level_traversable()->apply_ui_changing_navigable_history_step_continuation(
                 **continuation, length_and_index, move(entries_for_navigation_api), operation->value.user_involvement,
-                operation->value.navigation_api_abort_behavior,
+                operation->value.history_handling, operation->value.navigation_api_abort_behavior,
                 GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, operation_id, navigable_id] {
                     client().async_changing_navigable_continuation_applied(m_id, operation_id, navigable_id);
                 }));
@@ -1363,6 +1394,28 @@ void PageClient::complete_history_operation(u64 operation_id, Web::HTML::History
         return;
     if (!parked->local_queue_slot_released)
         parked->release_local_queue_slot->function()();
+
+    // The UI process can complete a cross-document finalization without dispatching its changing-navigable job (a
+    // pending seed after a process swap, or a commit its canonical history rejected as stale). The populated document
+    // must still activate locally; keep the initiating traversal-queue entry held until that activation completes.
+    if (result == Web::HTML::HistoryStepResult::Applied
+        && !parked->cross_document_commit_consumed
+        && parked->navigated_navigable
+        && parked->committed_history_entry) {
+        auto on_complete = parked->on_complete;
+        page().top_level_traversable()->apply_unacknowledged_cross_document_commit_locally(
+            *parked->navigated_navigable,
+            parked->committed_history_entry.release_nonnull(),
+            parked->pending_document,
+            parked->expected_ongoing_navigation_id,
+            parked->history_handling.value_or(Web::HTML::HistoryHandlingBehavior::Push),
+            parked->user_involvement,
+            GC::create_function(Web::HTML::main_thread_event_loop().heap(), [on_complete, result] {
+                on_complete->function()(result);
+            }));
+        return;
+    }
+
     parked->on_complete->function()(result);
 }
 

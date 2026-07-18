@@ -1928,15 +1928,24 @@ void WebContentClient::did_request_finalize_same_document_navigation(u64 page_id
         });
 }
 
-void WebContentClient::did_finalize_cross_document_navigation(u64 page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor history_entry, Optional<Utf16String> entry_to_replace_navigation_api_key)
+void WebContentClient::request_finalize_cross_document_navigation(u64 page_id, u64 initiation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor history_entry, Optional<Utf16String> entry_to_replace_navigation_api_key)
 {
     auto navigable = hosted_navigable_for_page(page_id, navigable_id);
-    if (!navigable.has_value())
+    if (!navigable.has_value()) {
+        // Always send the terminal completion so the requesting process releases its parked finalization state.
+        async_complete_history_operation(page_id, 0, Web::HTML::HistoryStepResult::Applied, {}, initiation_id);
         return;
-    if (!navigable->top_level_traversable().finalize_cross_document_navigation(*navigable, move(history_entry), move(entry_to_replace_navigation_api_key)))
-        return;
-    if (auto view = view_for_page_id(page_id); view.has_value())
-        view->did_finalize_cross_document_navigation({ });
+    }
+
+    Function<void()> on_committed;
+    if (auto view = view_for_page_id(page_id); view.has_value()) {
+        on_committed = [view_id = view->view_id()] {
+            if (auto view = ViewImplementation::find_view_by_id(view_id); view.has_value())
+                view->did_finalize_cross_document_navigation({ });
+        };
+    }
+    navigable->top_level_traversable().request_to_finalize_cross_document_navigation(
+        *this, page_id, initiation_id, *navigable, move(history_entry), move(entry_to_replace_navigation_api_key), move(on_committed));
 }
 
 Messages::WebContentClient::DidRequestUiProcessSessionHistoryForTestingResponse WebContentClient::did_request_ui_process_session_history_for_testing(u64 page_id)
@@ -1958,10 +1967,10 @@ void WebContentClient::did_set_top_level_session_history(u64 page_id, bool accep
         view->did_set_top_level_session_history({}, accepted, move(entries), move(used_steps), current_used_step_index);
 }
 
-void WebContentClient::did_reset_session_history_for_testing(u64 page_id, u64 operation_id)
+void WebContentClient::did_reset_session_history_for_testing(u64 page_id, u64 operation_id, Optional<Web::HTML::SessionHistoryEntryDescriptor> initial_history_entry)
 {
     if (auto view = view_for_page_id(page_id); view.has_value())
-        view->did_reset_session_history_for_testing({}, operation_id);
+        view->did_reset_session_history_for_testing({}, operation_id, move(initial_history_entry));
 }
 
 void WebContentClient::did_present_backing_stores(u64 page_id, Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores)

@@ -1949,9 +1949,9 @@ void ViewImplementation::did_finalize_cross_document_navigation(Badge<WebContent
     dump_session_history("finalized-cross-document-navigation"sv);
 }
 
-void ViewImplementation::did_reset_session_history_for_testing(Badge<WebContentClient>, u64 operation_id)
+void ViewImplementation::did_reset_session_history_for_testing(Badge<WebContentClient>, u64 operation_id, Optional<Web::HTML::SessionHistoryEntryDescriptor> initial_history_entry)
 {
-    m_top_level_traversable.did_reset_session_history_for_testing(operation_id);
+    m_top_level_traversable.did_reset_session_history_for_testing(operation_id, move(initial_history_entry));
 }
 
 void ViewImplementation::mark_web_content_session_history_stale_for_testing(Badge<WebContentClient>)

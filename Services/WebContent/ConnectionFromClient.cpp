@@ -402,11 +402,11 @@ void ConnectionFromClient::reset_session_history_for_testing(u64 page_id, u64 op
     if (auto page = this->page(page_id); page.has_value()) {
         auto& event_loop = Web::HTML::main_thread_event_loop();
         page->page().top_level_traversable()->reset_session_history_for_testing(
-            GC::create_function(event_loop.heap(), [this, page_id, operation_id] {
-                async_did_reset_session_history_for_testing(page_id, operation_id);
+            GC::create_function(event_loop.heap(), [this, page_id, operation_id](Web::HTML::SessionHistoryEntryDescriptor initial_history_entry) {
+                async_did_reset_session_history_for_testing(page_id, operation_id, move(initial_history_entry));
             }));
     } else {
-        async_did_reset_session_history_for_testing(page_id, operation_id);
+        async_did_reset_session_history_for_testing(page_id, operation_id, {});
     }
 }
 

@@ -198,12 +198,6 @@ static bool entries_have_nested_histories(Vector<TraversableSessionHistory::Entr
     return false;
 }
 
-static void recompute_used_steps(Vector<TraversableSessionHistory::Entry> const& entries, Vector<i32>& used_steps, Optional<size_t>& current_used_step_index, i32 current_step)
-{
-    used_steps = get_all_used_history_steps(entries);
-    current_used_step_index = used_steps.find_first_index(current_step);
-}
-
 static Optional<size_t> top_level_entry_index_for_step(Vector<TraversableSessionHistory::Entry> const& entries, i32 step)
 {
     Optional<size_t> result;
@@ -358,74 +352,6 @@ static void clear_forward_session_history_entries(Vector<TraversableSessionHisto
     }
 }
 
-static TraversableSessionHistory::Entry create_ui_process_session_history_entry(
-    i32 step,
-    URL::URL url,
-    Web::HTML::CrossProcessId document_state_id,
-    Web::HTML::DocumentResource document_resource)
-{
-    return {
-        .step = step,
-        .url = move(url),
-        .document_state = {
-            .id = document_state_id,
-            .history_policy_container = Web::HTML::DocumentState::Client::Tag,
-            .request_referrer = Web::Fetch::Infrastructure::Request::Referrer::Client,
-            .request_referrer_policy = Web::ReferrerPolicy::DEFAULT_REFERRER_POLICY,
-            .initiator_origin = {},
-            .origin = {},
-            .about_base_url = {},
-            .resource = move(document_resource),
-            .reload_pending = false,
-            .ever_populated = false,
-            .is_provisional = true,
-            .navigable_target_name = {},
-            .nested_histories = {},
-        },
-        .classic_history_api_state = {},
-        .navigation_api_state = {},
-        .navigation_api_key = {},
-        .navigation_api_id = {},
-        .scroll_restoration_mode = Web::HTML::ScrollRestorationMode::Auto,
-        .scroll_position_data = {},
-    };
-}
-
-void TraversableSessionHistory::navigate(URL::URL url, Web::HTML::CrossProcessId document_state_id)
-{
-    navigate(move(url), document_state_id, Empty {});
-}
-
-void TraversableSessionHistory::navigate(URL::URL url, Web::HTML::CrossProcessId document_state_id, Web::HTML::DocumentResource document_resource)
-{
-    if (!m_current_used_step_index.has_value()) {
-        forget_web_content_state();
-        m_entries.clear();
-        m_used_steps.clear();
-        m_entries.append(create_ui_process_session_history_entry(0, move(url), document_state_id, move(document_resource)));
-        m_used_steps.append(0);
-        m_current_used_step_index = 0;
-        return;
-    }
-
-    auto current_step = m_used_steps[*m_current_used_step_index];
-    VERIFY(current_step < NumericLimits<i32>::max());
-    if (m_web_content_uses_ui_step_coordinates && m_web_content_current_step == current_step) {
-        clear_forward_session_history_entries(m_web_content_known_entries, current_step);
-        m_web_content_known_used_steps = get_all_used_history_steps(m_web_content_known_entries);
-    } else {
-        forget_web_content_state();
-    }
-    clear_forward_session_history_entries(m_entries, current_step);
-    auto step = current_step + 1;
-    m_used_steps.remove_all_matching([current_step](auto const& used_step) {
-        return used_step > current_step;
-    });
-    m_entries.append(create_ui_process_session_history_entry(step, move(url), document_state_id, move(document_resource)));
-    m_used_steps.append(step);
-    m_current_used_step_index = m_used_steps.size() - 1;
-}
-
 void TraversableSessionHistory::clear()
 {
     m_entries.clear();
@@ -447,35 +373,6 @@ bool TraversableSessionHistory::initialize_with_initial_history_entry(Entry init
     m_web_content_current_step = 0;
     m_web_content_uses_ui_step_coordinates = true;
     return true;
-}
-
-void TraversableSessionHistory::replace_current_entry_url(URL::URL url, Web::HTML::CrossProcessId document_state_id)
-{
-    if (!m_current_used_step_index.has_value()) {
-        navigate(move(url), document_state_id);
-        return;
-    }
-
-    auto current_top_level_entry_index = this->current_top_level_entry_index();
-    VERIFY(current_top_level_entry_index.has_value());
-    m_entries[*current_top_level_entry_index].url = move(url);
-}
-
-void TraversableSessionHistory::replace_current_entry(URL::URL url, Web::HTML::CrossProcessId document_state_id, Web::HTML::DocumentResource document_resource)
-{
-    if (!m_current_used_step_index.has_value()) {
-        navigate(move(url), document_state_id, move(document_resource));
-        return;
-    }
-
-    auto current_top_level_entry_index = this->current_top_level_entry_index();
-    VERIFY(current_top_level_entry_index.has_value());
-
-    auto current_step = m_used_steps[*m_current_used_step_index];
-    m_entries[*current_top_level_entry_index] = create_ui_process_session_history_entry(
-        current_step, move(url), document_state_id, move(document_resource));
-    recompute_used_steps(m_entries, m_used_steps, m_current_used_step_index, current_step);
-    VERIFY(m_current_used_step_index.has_value());
 }
 
 void TraversableSessionHistory::mark_current_entry_reload_pending()
@@ -825,23 +722,27 @@ static Web::HTML::SessionHistoryDocumentStateDescriptor const* find_session_hist
     return nullptr;
 }
 
-static bool append_or_replace_session_history_entry(Vector<TraversableSessionHistory::Entry>& entries, TraversableSessionHistory::Entry const& entry, Optional<Utf16String> const& entry_to_replace_navigation_api_key)
+// Returns the committed entry's resolved step: the appended entry's own step for a push, or the replaced entry's
+// step for a replacement. Callers must use the returned step, not the incoming entry's step, to locate the entry
+// afterwards.
+static Optional<i32> append_or_replace_session_history_entry(Vector<TraversableSessionHistory::Entry>& entries, TraversableSessionHistory::Entry const& entry, Optional<Utf16String> const& entry_to_replace_navigation_api_key)
 {
     if (!entry_to_replace_navigation_api_key.has_value()) {
         entries.append(entry);
-        return true;
+        return entry.step;
     }
 
     auto entry_to_replace = entries.find_if([&](auto const& existing_entry) {
         return existing_entry.navigation_api_key == *entry_to_replace_navigation_api_key;
     });
     if (entry_to_replace == entries.end())
-        return false;
+        return {};
 
     auto replacement_entry = entry;
     replacement_entry.step = entry_to_replace->step;
+    auto resolved_step = replacement_entry.step;
     *entry_to_replace = move(replacement_entry);
-    return true;
+    return resolved_step;
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-same-document-navigation
@@ -914,19 +815,19 @@ Optional<TraversableSessionHistory::SameDocumentNavigationCommitResult> Traversa
     }
 
     auto did_update = navigable.is_top_level_traversable()
-        ? append_or_replace_session_history_entry(m_entries, canonical_target_entry, entry_to_replace_navigation_api_key)
+        ? append_or_replace_session_history_entry(m_entries, canonical_target_entry, entry_to_replace_navigation_api_key).has_value()
         : update_nested_session_history_entries_for_navigable(m_entries, navigable.id(), [&](auto& entries) {
-              return append_or_replace_session_history_entry(entries, canonical_target_entry, entry_to_replace_navigation_api_key);
+              return append_or_replace_session_history_entry(entries, canonical_target_entry, entry_to_replace_navigation_api_key).has_value();
           });
     if (!did_update)
         return {};
 
     auto did_update_web_content_entries = false;
     if (navigable.is_top_level_traversable() && !m_web_content_known_entries.is_empty()) {
-        did_update_web_content_entries = append_or_replace_session_history_entry(m_web_content_known_entries, canonical_target_entry, entry_to_replace_navigation_api_key);
+        did_update_web_content_entries = append_or_replace_session_history_entry(m_web_content_known_entries, canonical_target_entry, entry_to_replace_navigation_api_key).has_value();
     } else if (!navigable.is_top_level_traversable()) {
         did_update_web_content_entries = update_nested_session_history_entries_for_navigable(m_web_content_known_entries, navigable.id(), [&](auto& entries) {
-            return append_or_replace_session_history_entry(entries, canonical_target_entry, entry_to_replace_navigation_api_key);
+            return append_or_replace_session_history_entry(entries, canonical_target_entry, entry_to_replace_navigation_api_key).has_value();
         });
     }
 
@@ -955,51 +856,90 @@ Optional<TraversableSessionHistory::SameDocumentNavigationCommitResult> Traversa
     };
 }
 
-bool TraversableSessionHistory::finalize_cross_document_navigation(CanonicalNavigable const& navigable, Entry history_entry, Optional<Utf16String> entry_to_replace_navigation_api_key)
+Optional<TraversableSessionHistory::CrossDocumentNavigationCommitResult> TraversableSessionHistory::finalize_cross_document_navigation(CanonicalNavigable const& navigable, Entry history_entry, Optional<Utf16String> entry_to_replace_navigation_api_key)
 {
-    if (!m_current_used_step_index.has_value() || history_entry.step < 0)
-        return false;
+    if (history_entry.step < 0)
+        return {};
+
+    // AD-HOC: A fresh or reset traversable has no canonical entries until its first commit bootstraps the list.
+    if (!m_current_used_step_index.has_value()) {
+        if (!navigable.is_top_level_traversable())
+            return {};
+        m_entries.clear();
+        m_entries.append(history_entry);
+        m_web_content_known_entries = m_entries;
+        m_used_steps = get_all_used_history_steps(m_entries);
+        m_current_used_step_index = m_used_steps.find_first_index(history_entry.step);
+        VERIFY(m_current_used_step_index.has_value());
+        m_web_content_known_used_steps = m_used_steps;
+        m_web_content_current_step = history_entry.step;
+        m_web_content_uses_ui_step_coordinates = true;
+        return CrossDocumentNavigationCommitResult {
+            .entry_step = history_entry.step,
+            .target_step = history_entry.step,
+            .target_step_index = *m_current_used_step_index,
+        };
+    }
 
     auto current_step = m_used_steps[*m_current_used_step_index];
-    auto target_step = history_entry.step;
+
+    // Resolve the mutation before touching the canonical lists, so a stale commit cannot clear the forward history
+    // and then fail to apply.
+    {
+        auto entries = get_session_history_entries(navigable);
+        if (!entries.has_value())
+            return {};
+        if (entry_to_replace_navigation_api_key.has_value()) {
+            auto entry_to_replace = entries->find_if([&](auto const& entry) {
+                return entry.navigation_api_key == *entry_to_replace_navigation_api_key;
+            });
+            if (entry_to_replace == entries->end()) {
+                // AD-HOC: The canonical entry list can lack the entry WebContent is replacing when the canonical
+                //         history has not recorded the navigable's initial entry (a fresh or reset traversable
+                //         replacing its initial about:blank). The commit then bootstraps the list as an append.
+                if (!entries->is_empty())
+                    return {};
+                entry_to_replace_navigation_api_key.clear();
+            }
+        }
+    }
 
     // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-cross-document-navigation
-    // If entryToReplace is null, then clear the forward session history of traversable.
+    // 9.1. If entryToReplace is null, then clear the forward session history of traversable.
     if (!entry_to_replace_navigation_api_key.has_value()) {
         clear_forward_session_history_entries(m_entries, current_step);
         clear_forward_session_history_entries(m_web_content_known_entries, m_web_content_current_step.value_or(current_step));
     }
 
-    auto did_update = false;
+    // The wire step is WebContent's claim in its local coordinates. The canonical step is resolved here: a
+    // replacement inherits the replaced entry's step, and a push keeps the claimed step relative to the
+    // just-cleared forward history.
+    Optional<i32> resolved_entry_step;
     if (navigable.is_top_level_traversable()) {
-        auto current_entry_index = current_top_level_entry_index();
-        if (current_entry_index.has_value() && m_entries[*current_entry_index].document_state.is_provisional) {
-            // A redirect can change the URL between creating the UI process's provisional entry and WebContent
-            // finalizing the cross-document navigation. The committed entry replaces that provisional entry.
-            history_entry.step = m_entries[*current_entry_index].step;
-            m_entries[*current_entry_index] = history_entry;
-            did_update = true;
-        } else {
-            did_update = append_or_replace_session_history_entry(m_entries, history_entry, entry_to_replace_navigation_api_key);
-        }
+        resolved_entry_step = append_or_replace_session_history_entry(m_entries, history_entry, entry_to_replace_navigation_api_key);
     } else {
-        did_update = update_nested_session_history_entries_for_navigable(m_entries, navigable.id(), [&](auto& entries) {
-            return append_or_replace_session_history_entry(entries, history_entry, entry_to_replace_navigation_api_key);
+        update_nested_session_history_entries_for_navigable(m_entries, navigable.id(), [&](auto& entries) {
+            resolved_entry_step = append_or_replace_session_history_entry(entries, history_entry, entry_to_replace_navigation_api_key);
+            return resolved_entry_step.has_value();
         });
     }
-    if (!did_update)
-        return false;
+    if (!resolved_entry_step.has_value())
+        return {};
+    history_entry.step = *resolved_entry_step;
 
     if (navigable.is_top_level_traversable()) {
         if (m_web_content_known_entries.is_empty())
             m_web_content_known_entries.append(history_entry);
         else
-            append_or_replace_session_history_entry(m_web_content_known_entries, history_entry, entry_to_replace_navigation_api_key);
-    } else if (!navigable.is_top_level_traversable()) {
+            (void)append_or_replace_session_history_entry(m_web_content_known_entries, history_entry, entry_to_replace_navigation_api_key);
+    } else {
         update_nested_session_history_entries_for_navigable(m_web_content_known_entries, navigable.id(), [&](auto& entries) {
-            return append_or_replace_session_history_entry(entries, history_entry, entry_to_replace_navigation_api_key);
+            return append_or_replace_session_history_entry(entries, history_entry, entry_to_replace_navigation_api_key).has_value();
         });
     }
+
+    // 9.2 / 10.4. A push targets the committed entry's step; a replacement leaves the current step in place.
+    auto target_step = entry_to_replace_navigation_api_key.has_value() ? current_step : *resolved_entry_step;
 
     m_used_steps = get_all_used_history_steps(m_entries);
     m_current_used_step_index = m_used_steps.find_first_index(target_step);
@@ -1007,7 +947,11 @@ bool TraversableSessionHistory::finalize_cross_document_navigation(CanonicalNavi
     m_web_content_known_used_steps = get_all_used_history_steps(m_web_content_known_entries);
     m_web_content_current_step = target_step;
     m_web_content_uses_ui_step_coordinates = true;
-    return true;
+    return CrossDocumentNavigationCommitResult {
+        .entry_step = *resolved_entry_step,
+        .target_step = target_step,
+        .target_step_index = *m_current_used_step_index,
+    };
 }
 
 Optional<size_t> TraversableSessionHistory::current_top_level_entry_index() const

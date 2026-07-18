@@ -521,7 +521,7 @@ bool LocalTraversableNavigable::replace_top_level_session_history_entries_from_u
     return true;
 }
 
-void LocalTraversableNavigable::reset_session_history_for_testing(GC::Ref<GC::Function<void()>> on_complete)
+void LocalTraversableNavigable::reset_session_history_for_testing(GC::Ref<GC::Function<void(SessionHistoryEntryDescriptor)>> on_complete)
 {
     append_session_history_traversal_steps(GC::create_function(heap(), [this, on_complete](NonnullRefPtr<Core::Promise<Empty>> signal) {
         auto maybe_active_entry = active_session_history_entry();
@@ -545,7 +545,9 @@ void LocalTraversableNavigable::reset_session_history_for_testing(GC::Ref<GC::Fu
         active_window()->navigation()->initialize_the_navigation_api_entries_for_reconstructed_session_history(entries_for_navigation_api, active_entry);
 
         signal->resolve({});
-        on_complete->function()();
+        // Report the post-reset entry so the canonical history reseeds in the same step coordinate space instead of
+        // starting empty and diverging from this process's entry list.
+        on_complete->function()(create_session_history_entry_descriptor_for_ui_process(active_entry));
     }));
 }
 
@@ -1372,6 +1374,7 @@ void LocalTraversableNavigable::run_ui_changing_navigable_history_step_job(
     int target_step,
     SessionHistoryEntryDescriptor const& target_entry_descriptor,
     GC::Ptr<SourceSnapshotParams> source_snapshot_params,
+    PendingCrossDocumentCommit const& pending_cross_document_commit,
     UserNavigationInvolvement user_involvement,
     LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior,
     GC::Ref<OnChangingNavigableHistoryStepJobComplete> on_complete)
@@ -1385,6 +1388,51 @@ void LocalTraversableNavigable::run_ui_changing_navigable_history_step_job(
     }
     if (!navigable || navigable->has_been_destroyed()) {
         on_complete->function()({ ChangingNavigableHistoryStepJobDisposition::Skipped, nullptr });
+        return;
+    }
+
+    // A cross-document commit's job consumes the parked pending document and the provisionally committed local
+    // entry. The entry object was held across the asynchronous round trip, so the job does not re-resolve it from
+    // the canonical step.
+    if (pending_cross_document_commit.navigated_navigable == navigable && pending_cross_document_commit.committed_history_entry) {
+        auto committed_entry = NonnullRefPtr { *pending_cross_document_commit.committed_history_entry };
+
+        // The navigation is stale if a newer navigation took ownership of the navigable while finalization was in
+        // flight.
+        if (pending_cross_document_commit.expected_ongoing_navigation_id.has_value()
+            && (!navigable->ongoing_navigation().has<Utf16String>()
+                || navigable->ongoing_navigation().get<Utf16String>() != *pending_cross_document_commit.expected_ongoing_navigation_id)) {
+            on_complete->function()({ ChangingNavigableHistoryStepJobDisposition::Skipped, nullptr });
+            return;
+        }
+
+        auto& local_entries = navigable->get_session_history_entries();
+        if (!local_entries.contains_slow(committed_entry)) {
+            on_complete->function()({ ChangingNavigableHistoryStepJobDisposition::Skipped, nullptr });
+            return;
+        }
+
+        // Install the canonical step coordinate resolved by the UI process on the provisional local entry.
+        committed_entry->set_step(target_entry_descriptor.step);
+
+        // 2. Set navigable's current session history entry to targetEntry.
+        navigable->set_current_session_history_entry(committed_entry);
+
+        auto navigation_type = pending_cross_document_commit.history_handling == HistoryHandlingBehavior::Replace
+            ? Bindings::NavigationType::Replace
+            : Bindings::NavigationType::Push;
+        run_changing_navigable_history_step_job(
+            {
+                .navigable = *navigable,
+                .target_entry = move(committed_entry),
+                .source_snapshot_params = source_snapshot_params,
+                .user_involvement = user_involvement,
+                .navigation_type = navigation_type,
+                .synchronous_navigation = SynchronousNavigation::No,
+                .navigation_api_abort_behavior = navigation_api_abort_behavior,
+                .pending_document = pending_cross_document_commit.pending_document,
+            },
+            on_complete);
         return;
     }
 
@@ -1688,6 +1736,7 @@ void LocalTraversableNavigable::apply_ui_changing_navigable_history_step_continu
     HistoryObjectLengthAndIndex history_object_length_and_index,
     Vector<SessionHistoryEntryDescriptor> entry_descriptors_for_navigation_api,
     UserNavigationInvolvement user_involvement,
+    Optional<HistoryHandlingBehavior> history_handling,
     LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior,
     GC::Ref<GC::Function<void()>> on_complete)
 {
@@ -1697,12 +1746,20 @@ void LocalTraversableNavigable::apply_ui_changing_navigable_history_step_continu
             *navigable, move(entry_descriptors_for_navigation_api));
     }
 
+    // A traversal operation applies as "traverse"; a cross-document finalization applies as "push" or "replace".
+    auto navigation_type = Bindings::NavigationType::Traverse;
+    if (history_handling.has_value()) {
+        navigation_type = *history_handling == HistoryHandlingBehavior::Replace
+            ? Bindings::NavigationType::Replace
+            : Bindings::NavigationType::Push;
+    }
+
     apply_changing_navigable_history_step_continuation(
         {
             .continuation = continuation,
             .history_object_length_and_index = history_object_length_and_index,
             .entries_for_navigation_api = move(entries_for_navigation_api),
-            .navigation_type = Bindings::NavigationType::Traverse,
+            .navigation_type = navigation_type,
             .navigation_api_abort_behavior = navigation_api_abort_behavior,
             .user_involvement = user_involvement,
         },
@@ -2547,11 +2604,30 @@ void LocalTraversableNavigable::apply_the_reload_history_step(UserNavigationInvo
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#apply-the-push/replace-history-step
-void LocalTraversableNavigable::apply_the_push_or_replace_history_step(int step, HistoryHandlingBehavior history_handling, UserNavigationInvolvement user_involvement, SynchronousNavigation synchronous_navigation, GC::Ptr<DOM::Document> pending_document, GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable, Optional<Utf16String> expected_ongoing_navigation_id, GC::Ref<OnApplyHistoryStepComplete> on_complete)
+// https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-cross-document-navigation (step 10)
+void LocalTraversableNavigable::request_to_finalize_cross_document_navigation(GC::Ref<LocalNavigable> navigable, NonnullRefPtr<SessionHistoryEntry> history_entry, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior history_handling, UserNavigationInvolvement user_involvement, GC::Ptr<DOM::Document> pending_document, Optional<Utf16String> expected_ongoing_navigation_id, Optional<int> claimed_step, GC::Ref<OnApplyHistoryStepComplete> on_complete)
 {
-    // 1. Return the result of applying the history step step to traversable given false, null, null, userInvolvement, and historyHandling.
-    auto navigation_type = history_handling == HistoryHandlingBehavior::Replace ? Bindings::NavigationType::Replace : Bindings::NavigationType::Push;
-    apply_the_history_step(step, false, { }, { }, user_involvement, navigation_type, synchronous_navigation, LocalNavigable::NavigationAPIAbortBehavior::Abort, pending_document, expected_ongoing_navigation_navigable, move(expected_ongoing_navigation_id), on_complete);
+    Optional<Utf16String> entry_to_replace_navigation_api_key;
+    if (entry_to_replace)
+        entry_to_replace_navigation_api_key = entry_to_replace->navigation_api_key();
+
+    page().client().page_did_request_finalize_cross_document_navigation(
+        navigable->id(),
+        create_session_history_entry_descriptor_for_ui_process(history_entry),
+        entry_to_replace_navigation_api_key,
+        history_handling,
+        user_involvement,
+        pending_document,
+        navigable,
+        history_entry,
+        move(expected_ongoing_navigation_id),
+        GC::create_function(heap(), [this, claimed_step, on_complete](HistoryStepResult result) {
+            // The claim is retired on the operation's terminal completion; the canonical current step arrives
+            // through the same completion via complete_ui_history_operation().
+            if (claimed_step.has_value())
+                retire_claimed_session_history_step(*claimed_step);
+            on_complete->function()(result);
+        }));
 }
 
 static bool commit_same_document_navigation_to_local_session_history(GC::Ref<LocalNavigable> target_navigable, NonnullRefPtr<SessionHistoryEntry> target_entry, RefPtr<SessionHistoryEntry> entry_to_replace, int entry_step)
@@ -2732,6 +2808,63 @@ void LocalTraversableNavigable::did_complete_finalize_same_document_navigation(u
     }
 
     complete();
+}
+
+// AD-HOC: The UI process can drop a cross-document commit it cannot apply canonically (a pending seed after a
+//         process swap, or a stale navigable). The document is already populated and must still activate locally, as
+//         the pre-coordinator local apply run did; the canonical history catches up through the reseed fallback.
+void LocalTraversableNavigable::apply_unacknowledged_cross_document_commit_locally(GC::Ref<LocalNavigable> navigable, NonnullRefPtr<SessionHistoryEntry> history_entry, GC::Ptr<DOM::Document> pending_document, Optional<Utf16String> const& expected_ongoing_navigation_id, HistoryHandlingBehavior history_handling, UserNavigationInvolvement user_involvement, GC::Ref<GC::Function<void()>> on_complete)
+{
+    if (navigable->has_been_destroyed() || !navigable->get_session_history_entries().contains_slow(history_entry)) {
+        on_complete->function()();
+        return;
+    }
+    if (expected_ongoing_navigation_id.has_value()
+        && (!navigable->ongoing_navigation().has<Utf16String>()
+            || navigable->ongoing_navigation().get<Utf16String>() != *expected_ongoing_navigation_id)) {
+        on_complete->function()();
+        return;
+    }
+
+    auto entry_step = history_entry->step();
+    if (!entry_step.has<int>()) {
+        on_complete->function()();
+        return;
+    }
+
+    navigable->set_current_session_history_entry(history_entry);
+    m_current_session_history_step = get_the_used_step(entry_step.get<int>());
+
+    auto navigation_type = history_handling == HistoryHandlingBehavior::Replace
+        ? Bindings::NavigationType::Replace
+        : Bindings::NavigationType::Push;
+    run_changing_navigable_history_step_job(
+        {
+            .navigable = navigable,
+            .target_entry = history_entry,
+            .source_snapshot_params = nullptr,
+            .user_involvement = user_involvement,
+            .navigation_type = navigation_type,
+            .synchronous_navigation = SynchronousNavigation::No,
+            .navigation_api_abort_behavior = LocalNavigable::NavigationAPIAbortBehavior::Abort,
+            .pending_document = pending_document,
+        },
+        GC::create_function(heap(), [this, navigable, navigation_type, user_involvement, on_complete](ChangingNavigableHistoryStepJobResult result) {
+            if (result.disposition != ChangingNavigableHistoryStepJobDisposition::Ready || !result.continuation) {
+                on_complete->function()();
+                return;
+            }
+            apply_changing_navigable_history_step_continuation(
+                {
+                    .continuation = *result.continuation,
+                    .history_object_length_and_index = get_the_history_object_length_and_index(m_current_session_history_step),
+                    .entries_for_navigation_api = get_session_history_entries_for_the_navigation_api(*navigable, m_current_session_history_step),
+                    .navigation_type = navigation_type,
+                    .navigation_api_abort_behavior = LocalNavigable::NavigationAPIAbortBehavior::Abort,
+                    .user_involvement = user_involvement,
+                },
+                on_complete);
+        }));
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#resume-applying-the-traverse-history-step

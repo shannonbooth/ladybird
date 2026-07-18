@@ -3305,18 +3305,6 @@ TargetSnapshotParams LocalNavigable::snapshot_target_snapshot_params()
     };
 }
 
-static void report_finalized_cross_document_navigation_to_ui_process(LocalTraversableNavigable& traversable, LocalNavigable const& navigable, SessionHistoryEntry const& history_entry, RefPtr<SessionHistoryEntry> const& entry_to_replace)
-{
-    Optional<Utf16String> entry_to_replace_navigation_api_key;
-    if (entry_to_replace)
-        entry_to_replace_navigation_api_key = entry_to_replace->navigation_api_key();
-
-    traversable.page().client().page_did_finalize_cross_document_navigation(
-        navigable.id(),
-        traversable.create_session_history_entry_descriptor_for_ui_process(history_entry),
-        entry_to_replace_navigation_api_key);
-}
-
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-cross-document-navigation
 void finalize_a_cross_document_navigation(GC::Ref<LocalNavigable> navigable, HistoryHandlingBehavior history_handling, UserNavigationInvolvement user_involvement, NonnullRefPtr<SessionHistoryEntry> history_entry, GC::Ptr<DOM::Document> pending_document, Optional<Utf16String> expected_ongoing_navigation_id, GC::Ref<OnApplyHistoryStepComplete> on_complete)
 {
@@ -3400,6 +3388,11 @@ void finalize_a_cross_document_navigation(GC::Ref<LocalNavigable> navigable, His
     }
     auto& target_entries = *target_entries_pointer;
 
+    // The local mutation below is a provisional commit in this process's step coordinates. The UI process orders the
+    // canonical commit on its traversal queue and resolves the canonical steps; the claim is retired when that
+    // operation completes.
+    Optional<int> claimed_step;
+
     // 9. If entryToReplace is null, then:
     if (entry_to_replace == nullptr) {
         // 1. Clear the forward session history of traversable.
@@ -3409,13 +3402,13 @@ void finalize_a_cross_document_navigation(GC::Ref<LocalNavigable> navigable, His
         // AD-HOC: Claim the step instead — so a step claimed by an apply-history-step run still in flight can't be
         //         handed out twice. See https://github.com/whatwg/html/issues/12576.
         target_step = traversable->claim_next_session_history_step();
+        claimed_step = target_step;
 
         // 3. Set historyEntry's step to targetStep.
         history_entry->set_step(target_step);
 
         // 4. Append historyEntry to targetEntries.
         target_entries.append(history_entry);
-        report_finalized_cross_document_navigation_to_ui_process(*traversable, navigable, history_entry, nullptr);
     } else {
         // 1. Replace entryToReplace with historyEntry in targetEntries.
         auto entry_to_replace_iterator = target_entries.find(*entry_to_replace);
@@ -3466,11 +3459,13 @@ void finalize_a_cross_document_navigation(GC::Ref<LocalNavigable> navigable, His
 
         // 4. Set targetStep to traversable's current session history step.
         target_step = traversable->current_session_history_step();
-        report_finalized_cross_document_navigation_to_ui_process(*traversable, navigable, history_entry, entry_to_replace);
     }
+    (void)target_step;
 
     // 10. Apply the push/replace history step targetStep to traversable given historyHandling and userInvolvement.
-    traversable->apply_the_push_or_replace_history_step(target_step, history_handling, user_involvement, LocalTraversableNavigable::SynchronousNavigation::No, pending_document, navigable, move(expected_ongoing_navigation_id),
+    // The UI process owns the traversal queue: it orders this commit, assigns the canonical target step, and
+    // dispatches the changing-navigable job that consumes pending_document back to this process.
+    traversable->request_to_finalize_cross_document_navigation(navigable, history_entry, entry_to_replace, history_handling, user_involvement, pending_document, move(expected_ongoing_navigation_id), claimed_step,
         GC::create_function(navigable->heap(), [on_complete, navigable](HistoryStepResult result) {
             // AD-HOC: Trigger a relayout in the container document for size negotiation with SVG documents.
             if (auto container = navigable->container())

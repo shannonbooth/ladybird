@@ -121,11 +121,21 @@ public:
     using OnChangingNavigableHistoryStepJobComplete = GC::Function<void(ChangingNavigableHistoryStepJobResult)>;
     void run_changing_navigable_history_step_job(ChangingNavigableHistoryStepJob, GC::Ref<OnChangingNavigableHistoryStepJobComplete>);
 
+    // The pending state of a cross-document commit parked by this process, consumed by the UI operation's
+    // changing-navigable job for the navigated navigable.
+    struct PendingCrossDocumentCommit {
+        GC::Ptr<DOM::Document> pending_document;
+        GC::Ptr<LocalNavigable> navigated_navigable;
+        RefPtr<SessionHistoryEntry> committed_history_entry;
+        Optional<Utf16String> expected_ongoing_navigation_id;
+        Optional<HistoryHandlingBehavior> history_handling;
+    };
+
     // AD-HOC: The UI process owns the traversal-wide apply-the-history-step operation. These entry points run only
     // the document-touching jobs assigned to this WebContent process; they do not select a target step, construct the
     // changing sets, order continuations, or commit the traversable's canonical current step.
     void run_ui_history_step_cancelation_job(int target_step, Vector<CrossProcessId> const& navigables_that_might_experience_a_cross_document_traversal, GC::Ptr<SourceSnapshotParams>, GC::Ptr<LocalNavigable> initiator_to_check, UserNavigationInvolvement, bool check_for_cancelation, GC::Ref<GC::Function<void(HistoryStepResult, LocalNavigable::NavigationAPIAbortBehavior)>> on_complete);
-    void run_ui_changing_navigable_history_step_job(CrossProcessId navigable_id, int target_step, SessionHistoryEntryDescriptor const& target_entry_descriptor, GC::Ptr<SourceSnapshotParams>, UserNavigationInvolvement, LocalNavigable::NavigationAPIAbortBehavior, GC::Ref<OnChangingNavigableHistoryStepJobComplete>);
+    void run_ui_changing_navigable_history_step_job(CrossProcessId navigable_id, int target_step, SessionHistoryEntryDescriptor const& target_entry_descriptor, GC::Ptr<SourceSnapshotParams>, PendingCrossDocumentCommit const&, UserNavigationInvolvement, LocalNavigable::NavigationAPIAbortBehavior, GC::Ref<OnChangingNavigableHistoryStepJobComplete>);
 
     struct ApplyChangingNavigableHistoryStepContinuation {
         GC::Ref<ChangingNavigableContinuationState> continuation;
@@ -136,14 +146,19 @@ public:
         UserNavigationInvolvement user_involvement;
     };
     void apply_changing_navigable_history_step_continuation(ApplyChangingNavigableHistoryStepContinuation, GC::Ref<GC::Function<void()>> on_complete);
-    void apply_ui_changing_navigable_history_step_continuation(GC::Ref<ChangingNavigableContinuationState>, HistoryObjectLengthAndIndex, Vector<SessionHistoryEntryDescriptor>, UserNavigationInvolvement, LocalNavigable::NavigationAPIAbortBehavior, GC::Ref<GC::Function<void()>> on_complete);
+    void apply_ui_changing_navigable_history_step_continuation(GC::Ref<ChangingNavigableContinuationState>, HistoryObjectLengthAndIndex, Vector<SessionHistoryEntryDescriptor>, UserNavigationInvolvement, Optional<HistoryHandlingBehavior>, LocalNavigable::NavigationAPIAbortBehavior, GC::Ref<GC::Function<void()>> on_complete);
     void update_nonchanging_navigable_history_step_state(GC::Ref<LocalNavigable>, HistoryObjectLengthAndIndex, GC::Ref<GC::Function<void()>> on_complete);
     void update_ui_nonchanging_navigable_history_state(CrossProcessId navigable_id, HistoryObjectLengthAndIndex);
     void complete_ui_history_operation(HistoryStepResult, Optional<int> committed_step);
 
     void request_to_finalize_same_document_navigation(GC::Ref<LocalNavigable>, NonnullRefPtr<SessionHistoryEntry>, Utf16String const& expected_current_navigation_api_key, RefPtr<SessionHistoryEntry> entry_to_replace);
     void did_complete_finalize_same_document_navigation(u64 operation_id, bool committed, int entry_step, int target_step, HistoryObjectLengthAndIndex);
-    void apply_the_push_or_replace_history_step(int step, HistoryHandlingBehavior history_handling, UserNavigationInvolvement, SynchronousNavigation, GC::Ptr<DOM::Document> pending_document, GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable, Optional<Utf16String> expected_ongoing_navigation_id, GC::Ref<OnApplyHistoryStepComplete> on_complete);
+    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-cross-document-navigation
+    // The local entry-list mutation has already run; this parks the pending document and asks the UI-owned traversal
+    // queue to order the canonical commit and apply the push/replace history step. on_complete is the operation's
+    // terminal signal and resolves the navigate() traversal-queue entry.
+    void request_to_finalize_cross_document_navigation(GC::Ref<LocalNavigable> navigable, NonnullRefPtr<SessionHistoryEntry> history_entry, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior, UserNavigationInvolvement, GC::Ptr<DOM::Document> pending_document, Optional<Utf16String> expected_ongoing_navigation_id, Optional<int> claimed_step, GC::Ref<OnApplyHistoryStepComplete> on_complete);
+    void apply_unacknowledged_cross_document_commit_locally(GC::Ref<LocalNavigable> navigable, NonnullRefPtr<SessionHistoryEntry> history_entry, GC::Ptr<DOM::Document> pending_document, Optional<Utf16String> const& expected_ongoing_navigation_id, HistoryHandlingBehavior, UserNavigationInvolvement, GC::Ref<GC::Function<void()>> on_complete);
     void update_for_navigable_creation_or_destruction(GC::Ref<OnApplyHistoryStepComplete> on_complete);
 
     int get_the_used_step(int step) const;
@@ -155,7 +170,7 @@ public:
     void clear_the_forward_session_history();
     void traverse_the_history_by_delta(int delta, GC::Ptr<DOM::Document> source_document = {});
     bool replace_top_level_session_history_entries_from_ui_process(Vector<SessionHistoryEntryDescriptor>, size_t current_top_level_entry_index, bool allow_reconstructing_current_entry);
-    void reset_session_history_for_testing(GC::Ref<GC::Function<void()>> on_complete);
+    void reset_session_history_for_testing(GC::Ref<GC::Function<void(SessionHistoryEntryDescriptor)>> on_complete);
 
     void close_top_level_traversable();
     void definitely_close_top_level_traversable();

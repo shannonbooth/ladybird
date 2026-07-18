@@ -48,6 +48,7 @@
 #include <LibWeb/HTML/ColorPickerUpdateState.h>
 #include <LibWeb/HTML/CrossProcessId.h>
 #include <LibWeb/HTML/FileFilter.h>
+#include <LibWeb/HTML/HistoryHandlingBehavior.h>
 #include <LibWeb/HTML/HistoryStepResult.h>
 #include <LibWeb/HTML/POSTResource.h>
 #include <LibWeb/HTML/ReplicatedNavigableState.h>
@@ -608,7 +609,9 @@ public:
     virtual void page_did_append_nested_history([[maybe_unused]] HTML::CrossProcessId parent_navigable_id, [[maybe_unused]] HTML::SessionHistoryNestedHistoryDescriptor const& nested_history) { }
     virtual void page_did_remove_nested_history([[maybe_unused]] HTML::CrossProcessId parent_navigable_id, [[maybe_unused]] HTML::CrossProcessId child_navigable_id) { }
     virtual void page_did_request_finalize_same_document_navigation([[maybe_unused]] u64 operation_id, [[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] Utf16String const& expected_current_navigation_api_key, [[maybe_unused]] HTML::SameDocumentNavigationEntry const& target_entry, [[maybe_unused]] Optional<Utf16String> const& entry_to_replace_navigation_api_key) { }
-    virtual void page_did_finalize_cross_document_navigation([[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] HTML::SessionHistoryEntryDescriptor const& history_entry, [[maybe_unused]] Optional<Utf16String> const& entry_to_replace_navigation_api_key) { }
+    // The requesting process parks the pending document and its finalization context until the UI process's
+    // history-step jobs consume them; on_complete is the operation's terminal signal.
+    virtual void page_did_request_finalize_cross_document_navigation([[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] HTML::SessionHistoryEntryDescriptor const& history_entry, [[maybe_unused]] Optional<Utf16String> const& entry_to_replace_navigation_api_key, [[maybe_unused]] HTML::HistoryHandlingBehavior history_handling, [[maybe_unused]] HTML::UserNavigationInvolvement user_involvement, [[maybe_unused]] GC::Ptr<DOM::Document> pending_document, [[maybe_unused]] GC::Ptr<HTML::LocalNavigable> navigated_navigable, [[maybe_unused]] RefPtr<HTML::SessionHistoryEntry> committed_history_entry, [[maybe_unused]] Optional<Utf16String> const& expected_ongoing_navigation_id, [[maybe_unused]] GC::Ref<HTML::OnApplyHistoryStepComplete> on_complete) { VERIFY_NOT_REACHED(); }
     virtual String page_did_request_ui_process_session_history_for_testing() { return "{}"_string; }
     virtual void page_did_request_traverse_the_history_by_delta([[maybe_unused]] int delta, [[maybe_unused]] HistoryTraversalPrecheck history_traversal_precheck) { }
     virtual void page_did_request_history_traversal([[maybe_unused]] HistoryTraversalRequestType request_type, [[maybe_unused]] int delta_or_step, [[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] Utf16String const& navigation_api_key, [[maybe_unused]] GC::Ptr<HTML::SourceSnapshotParams> source_snapshot_params, [[maybe_unused]] GC::Ptr<HTML::LocalNavigable> initiator_to_check, [[maybe_unused]] HTML::UserNavigationInvolvement user_involvement, [[maybe_unused]] GC::Ref<GC::Function<void()>> release_local_queue_slot, [[maybe_unused]] GC::Ref<HTML::OnApplyHistoryStepComplete> on_complete) { VERIFY_NOT_REACHED(); }
