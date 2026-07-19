@@ -30,8 +30,6 @@
 
 namespace Web::HTML {
 
-class ApplyHistoryStepState;
-
 struct ChangingNavigableContinuationState : public JS::Cell {
     GC_CELL(ChangingNavigableContinuationState, JS::Cell);
     GC_DECLARE_ALLOCATOR(ChangingNavigableContinuationState);
@@ -214,41 +212,11 @@ public:
     }
 
 private:
-    friend class ApplyHistoryStepState;
-
     LocalTraversableNavigable(GC::Ref<Page>);
 
     virtual bool is_traversable() const override { return true; }
 
     virtual void visit_edges(Cell::Visitor&) override;
-
-    // NB: The HTML Standard spells this algorithm argument "checkForCancelation".
-    void apply_the_history_step(
-        int step,
-        bool check_for_cancelation,
-        GC::Ptr<SourceSnapshotParams>,
-        GC::Ptr<LocalNavigable> initiator_to_check,
-        UserNavigationInvolvement user_involvement,
-        Optional<Bindings::NavigationType> navigation_type,
-        SynchronousNavigation,
-        LocalNavigable::NavigationAPIAbortBehavior,
-        GC::Ptr<DOM::Document> pending_document,
-        GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable,
-        Optional<Utf16String> expected_ongoing_navigation_id,
-        GC::Ref<OnApplyHistoryStepComplete> on_complete);
-
-    void apply_the_history_step_after_unload_check(
-        int step,
-        int target_step,
-        GC::Ptr<SourceSnapshotParams> source_snapshot_params,
-        UserNavigationInvolvement user_involvement,
-        Optional<Bindings::NavigationType> navigation_type,
-        SynchronousNavigation,
-        LocalNavigable::NavigationAPIAbortBehavior,
-        GC::Ptr<DOM::Document> pending_document,
-        GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable,
-        Optional<Utf16String> expected_ongoing_navigation_id,
-        GC::Ref<OnApplyHistoryStepComplete> on_complete);
 
     using OnHistoryStepPrechecksComplete = GC::Function<void(HistoryStepResult, int target_step, LocalNavigable::NavigationAPIAbortBehavior)>;
     void run_the_history_step_prechecks(
@@ -271,37 +239,15 @@ private:
     // https://html.spec.whatwg.org/multipage/document-sequences.html#tn-current-session-history-step
     int m_current_session_history_step { 0 };
 
-    // Concurrent apply-history-step runs share the step numbering below. Runs are serialized through the session
-    // history traversal queue — but a synchronous navigation can jump the queue while another run is paused (see the
-    // "sync navigations jump queue" in the spec). So, a nested run mutates this state while an outer run is mid-flight.
-    // The spec describes that concurrency — but not the necessary bookkeeping it ends up requiring in implementations.
+    // Steps are claimed past every claimed-but-uncommitted step so a step number cannot be handed out twice while
+    // provisional local commits await their canonical ordering. A claim is retired when its operation completes.
     // See https://github.com/whatwg/html/issues/12576.
-    //
-    // Four invariants keep the numbering coherent under that nesting:
-    //
-    //  - uniqueness: a new step number is claimed past every claimed-but-uncommitted step — never just current step + 1
-    //    (claim_next_session_history_step);
-    //
-    //  - ordering: a run commits its target step only if no newer run has committed first — so the current step can't
-    //    move backwards past a newer run's commit (ApplyHistoryStepState::complete);
-    //
-    //  - integrity: clearing the forward session history spares entries whose steps are claimed by runs still in flight
-    //    (clear_the_forward_session_history);
-    //
-    //  - initialization: step numbers are only compared once assigned; a pushed entry is the active session history
-    //    entry before its queued synchronous step assigns its step number (the Push assertion in
-    //    ApplyHistoryStepState::start).
-    u64 m_apply_history_step_generation_counter { 0 };
-    u64 m_committed_apply_history_step_generation { 0 };
     Vector<int> m_outstanding_claimed_session_history_steps;
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#tn-session-history-entries
     Vector<NonnullRefPtr<SessionHistoryEntry>> m_session_history_entries;
 
     // FIXME: https://html.spec.whatwg.org/multipage/document-sequences.html#tn-session-history-traversal-queue
-
-    GC::Ptr<ApplyHistoryStepState> m_paused_apply_history_step_state;
-    GC::Ptr<ApplyHistoryStepState> m_apply_history_step_state;
 
     struct PendingSameDocumentNavigation {
         GC::Ref<LocalNavigable> target_navigable;
