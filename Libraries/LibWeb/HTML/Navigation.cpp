@@ -704,7 +704,7 @@ WebIDL::ExceptionOr<Bindings::NavigationResult> Navigation::perform_a_navigation
         // the key as the request coordinate avoids resolving a stale local step before the operation reaches the head.
         traversable->page().client().page_did_request_history_traversal(
             HistoryTraversalRequestType::ByNavigationAPIKey, 0, navigable->id(), key, source_snapshot_params, navigable,
-            UserNavigationInvolvement::None,
+            UserNavigationInvolvement::None, false, { },
             GC::create_function(heap(), [signal] { signal->resolve({ }); }),
             GC::create_function(heap(), [this, api_method_tracker, reject_finished_promise_with_invalid_state_error](HistoryStepResult result) {
                 if (result == HistoryStepResult::CanceledByMissingPage) {

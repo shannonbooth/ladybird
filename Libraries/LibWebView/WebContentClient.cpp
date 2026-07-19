@@ -1544,6 +1544,16 @@ void WebContentClient::request_history_traversal(u64 page_id, u64 initiation_id,
         // intercepted traverse navigate event.
         view->traverse_the_history_to_step(delta_or_step, CheckForCancelation::No, nullptr, move(endpoint), user_involvement);
                 return;
+    case Web::HistoryTraversalRequestType::Reload:
+        // https://html.spec.whatwg.org/multipage/browsing-the-web.html#apply-the-reload-history-step
+        // The requesting process has already marked its current entry's document state reload pending, so the
+        // canonical changing-navigable query classifies it as reloading.
+        view->traverse_the_history_to_step(delta_or_step, CheckForCancelation::Yes, nullptr, move(endpoint), user_involvement);
+        return;
+    case Web::HistoryTraversalRequestType::UpdateForNavigableCreationOrDestruction:
+        // https://html.spec.whatwg.org/multipage/browsing-the-web.html#update-for-navigable-creation/destruction
+        view->traverse_the_history_to_step(delta_or_step, CheckForCancelation::No, nullptr, move(endpoint), user_involvement);
+        return;
     }
     VERIFY_NOT_REACHED();
 }

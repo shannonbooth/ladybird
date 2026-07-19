@@ -36,6 +36,7 @@
 #include <LibURL/URL.h>
 #include <LibWeb/Bindings/AgentType.h>
 #include <LibWeb/Bindings/Navigation.h>
+#include <LibWeb/Bindings/NavigationType.h>
 #include <LibWeb/CSS/PreferredColorScheme.h>
 #include <LibWeb/CSS/PreferredContrast.h>
 #include <LibWeb/CSS/PreferredMotion.h>
@@ -438,6 +439,8 @@ enum class HistoryTraversalRequestType : u8 {
     ByDelta,
     ByNavigationAPIKey,
     ToStep,
+    Reload,
+    UpdateForNavigableCreationOrDestruction,
 };
 
 enum class ChangingNavigableHistoryStepJobDisposition : u8 {
@@ -614,7 +617,9 @@ public:
     virtual void page_did_request_finalize_cross_document_navigation([[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] HTML::SessionHistoryEntryDescriptor const& history_entry, [[maybe_unused]] Optional<Utf16String> const& entry_to_replace_navigation_api_key, [[maybe_unused]] HTML::HistoryHandlingBehavior history_handling, [[maybe_unused]] HTML::UserNavigationInvolvement user_involvement, [[maybe_unused]] GC::Ptr<DOM::Document> pending_document, [[maybe_unused]] GC::Ptr<HTML::LocalNavigable> navigated_navigable, [[maybe_unused]] RefPtr<HTML::SessionHistoryEntry> committed_history_entry, [[maybe_unused]] Optional<Utf16String> const& expected_ongoing_navigation_id, [[maybe_unused]] GC::Ref<HTML::OnApplyHistoryStepComplete> on_complete) { VERIFY_NOT_REACHED(); }
     virtual String page_did_request_ui_process_session_history_for_testing() { return "{}"_string; }
     virtual void page_did_request_traverse_the_history_by_delta([[maybe_unused]] int delta, [[maybe_unused]] HistoryTraversalPrecheck history_traversal_precheck) { }
-    virtual void page_did_request_history_traversal([[maybe_unused]] HistoryTraversalRequestType request_type, [[maybe_unused]] int delta_or_step, [[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] Utf16String const& navigation_api_key, [[maybe_unused]] GC::Ptr<HTML::SourceSnapshotParams> source_snapshot_params, [[maybe_unused]] GC::Ptr<HTML::LocalNavigable> initiator_to_check, [[maybe_unused]] HTML::UserNavigationInvolvement user_involvement, [[maybe_unused]] GC::Ref<GC::Function<void()>> release_local_queue_slot, [[maybe_unused]] GC::Ref<HTML::OnApplyHistoryStepComplete> on_complete) { VERIFY_NOT_REACHED(); }
+    // When navigation_type_overridden is set, the operation's document updates use navigation_type_override instead
+    // of "traverse": "reload" for a reload, or null for a navigable creation/destruction update.
+    virtual void page_did_request_history_traversal([[maybe_unused]] HistoryTraversalRequestType request_type, [[maybe_unused]] int delta_or_step, [[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] Utf16String const& navigation_api_key, [[maybe_unused]] GC::Ptr<HTML::SourceSnapshotParams> source_snapshot_params, [[maybe_unused]] GC::Ptr<HTML::LocalNavigable> initiator_to_check, [[maybe_unused]] HTML::UserNavigationInvolvement user_involvement, [[maybe_unused]] bool navigation_type_overridden, [[maybe_unused]] Optional<Bindings::NavigationType> navigation_type_override, [[maybe_unused]] GC::Ref<GC::Function<void()>> release_local_queue_slot, [[maybe_unused]] GC::Ref<HTML::OnApplyHistoryStepComplete> on_complete) { VERIFY_NOT_REACHED(); }
     virtual void page_did_change_needs_beforeunload_check([[maybe_unused]] bool needs_beforeunload_check) { }
 
     virtual void request_file(FileRequest) = 0;

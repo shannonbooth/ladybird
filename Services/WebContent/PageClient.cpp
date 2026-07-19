@@ -1184,6 +1184,8 @@ void PageClient::page_did_request_history_traversal(
     GC::Ptr<Web::HTML::SourceSnapshotParams> source_snapshot_params,
     GC::Ptr<Web::HTML::LocalNavigable> initiator_to_check,
     Web::HTML::UserNavigationInvolvement user_involvement,
+    bool navigation_type_overridden,
+    Optional<Web::Bindings::NavigationType> navigation_type_override,
     GC::Ref<GC::Function<void()>> release_local_queue_slot,
     GC::Ref<Web::HTML::OnApplyHistoryStepComplete> on_complete)
 {
@@ -1194,6 +1196,8 @@ void PageClient::page_did_request_history_traversal(
                                                        .user_involvement = user_involvement,
                                                        .release_local_queue_slot = release_local_queue_slot,
                                                        .on_complete = on_complete,
+                                                       .navigation_type_overridden = navigation_type_overridden,
+                                                       .navigation_type_override = navigation_type_override,
                                                    });
     client().async_request_history_traversal(m_id, initiation_id, request_type, delta_or_step, navigable_id, navigation_api_key, user_involvement);
 }
@@ -1212,6 +1216,8 @@ void PageClient::queue_history_operation_command(u64 operation_id, Optional<u64>
         operation.initiation_id = initiation_id;
         operation.user_involvement = parked->value.user_involvement;
         operation.history_handling = parked->value.history_handling;
+        operation.navigation_type_overridden = parked->value.navigation_type_overridden;
+        operation.navigation_type_override = parked->value.navigation_type_override;
         operation.browser_ui_queue_slot_started = true;
 }
 
@@ -1261,8 +1267,11 @@ void PageClient::run_history_step_cancelation_job(u64 operation_id, int target_s
                 initiator_to_check = parked->value.initiator_to_check;
 }
 
+            auto navigation_type = operation->value.navigation_type_overridden
+                ? operation->value.navigation_type_override
+                : Web::Bindings::NavigationType::Traverse;
             page().top_level_traversable()->run_ui_history_step_cancelation_job(
-                target_step, navigables, source_snapshot_params, initiator_to_check, user_involvement, check_for_cancelation,
+                target_step, navigables, source_snapshot_params, initiator_to_check, user_involvement, navigation_type, check_for_cancelation,
                 GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, operation_id](Web::HTML::HistoryStepResult result, Web::HTML::LocalNavigable::NavigationAPIAbortBehavior abort_behavior) {
                     if (auto operation = m_pending_ui_history_operations.find(operation_id); operation != m_pending_ui_history_operations.end())
                         operation->value.navigation_api_abort_behavior = abort_behavior;
@@ -1297,8 +1306,11 @@ void PageClient::run_changing_navigable_history_job(u64 operation_id, Web::HTML:
                 }
 }
 
+            auto navigation_type = operation->value.navigation_type_overridden
+                ? operation->value.navigation_type_override
+                : Web::Bindings::NavigationType::Traverse;
             page().top_level_traversable()->run_ui_changing_navigable_history_step_job(
-                navigable_id, target_step, target_entry, source_snapshot_params, pending_cross_document_commit, user_involvement, operation->value.navigation_api_abort_behavior,
+                navigable_id, target_step, target_entry, source_snapshot_params, pending_cross_document_commit, user_involvement, navigation_type, operation->value.navigation_api_abort_behavior,
                 GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, operation_id, navigable_id](Web::HTML::LocalTraversableNavigable::ChangingNavigableHistoryStepJobResult result) {
                     auto operation = m_pending_ui_history_operations.find(operation_id);
                     if (operation == m_pending_ui_history_operations.end())
@@ -1336,9 +1348,16 @@ void PageClient::apply_changing_navigable_continuation(u64 operation_id, Web::HT
                 client().async_changing_navigable_continuation_applied(m_id, operation_id, navigable_id);
                 return;
             }
+            Optional<Web::Bindings::NavigationType> navigation_type = Web::Bindings::NavigationType::Traverse;
+            if (operation->value.navigation_type_overridden)
+                navigation_type = operation->value.navigation_type_override;
+            else if (operation->value.history_handling.has_value())
+                navigation_type = *operation->value.history_handling == Web::HTML::HistoryHandlingBehavior::Replace
+                    ? Web::Bindings::NavigationType::Replace
+                    : Web::Bindings::NavigationType::Push;
             page().top_level_traversable()->apply_ui_changing_navigable_history_step_continuation(
                 **continuation, length_and_index, move(entries_for_navigation_api), operation->value.user_involvement,
-                operation->value.history_handling, operation->value.navigation_api_abort_behavior,
+                navigation_type, operation->value.navigation_api_abort_behavior,
                 GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, operation_id, navigable_id] {
                     client().async_changing_navigable_continuation_applied(m_id, operation_id, navigable_id);
                 }));

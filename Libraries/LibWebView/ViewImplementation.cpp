@@ -357,19 +357,19 @@ void ViewImplementation::reload()
         return;
     }
 
-    m_top_level_traversable.append_reload_history_step([this] {
-        m_history_visit_transition_for_next_load = HistoryVisitTransition::Reload;
-        set_loading_state(true);
-        m_is_waiting_for_navigation_start = true;
-        m_loading_navigation_id.clear();
-        m_is_showing_crash_page = false;
-        m_should_suppress_history_for_current_load = false;
-        m_should_suppress_history_for_next_load = false;
-        m_top_level_traversable.prepare_for_reload();
-        update_navigation_action_state();
-        dump_session_history("reload-mark-current-entry-reload-pending"sv);
-        client().async_reload(page_id());
-    });
+    // Reloading enters the canonical traversal queue when WebContent requests the reload history step; that
+    // operation, not this trigger, owns the ordering.
+    m_history_visit_transition_for_next_load = HistoryVisitTransition::Reload;
+    set_loading_state(true);
+    m_is_waiting_for_navigation_start = true;
+    m_loading_navigation_id.clear();
+    m_is_showing_crash_page = false;
+    m_should_suppress_history_for_current_load = false;
+    m_should_suppress_history_for_next_load = false;
+    m_top_level_traversable.prepare_for_reload();
+    update_navigation_action_state();
+    dump_session_history("reload-mark-current-entry-reload-pending"sv);
+    client().async_reload(page_id());
 }
 
 void ViewImplementation::stop_loading()

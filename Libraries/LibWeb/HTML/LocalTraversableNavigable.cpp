@@ -1325,6 +1325,7 @@ void LocalTraversableNavigable::run_ui_history_step_cancelation_job(
     GC::Ptr<SourceSnapshotParams> source_snapshot_params,
     GC::Ptr<LocalNavigable> initiator_to_check,
     UserNavigationInvolvement user_involvement,
+    Optional<Bindings::NavigationType> navigation_type,
     bool check_for_cancelation,
     GC::Ref<GC::Function<void(HistoryStepResult, LocalNavigable::NavigationAPIAbortBehavior)>> on_complete)
 {
@@ -1363,7 +1364,7 @@ void LocalTraversableNavigable::run_ui_history_step_cancelation_job(
     }
 
     run_the_history_step_prechecks(target_step, check_for_cancelation, source_snapshot_params, initiator_to_check,
-        user_involvement, Bindings::NavigationType::Traverse, navigation_api_abort_behavior,
+        user_involvement, navigation_type, navigation_api_abort_behavior,
         GC::create_function(heap(), [on_complete](HistoryStepResult result, int, LocalNavigable::NavigationAPIAbortBehavior abort_behavior) {
             on_complete->function()(result, abort_behavior);
         }));
@@ -1376,6 +1377,7 @@ void LocalTraversableNavigable::run_ui_changing_navigable_history_step_job(
     GC::Ptr<SourceSnapshotParams> source_snapshot_params,
     PendingCrossDocumentCommit const& pending_cross_document_commit,
     UserNavigationInvolvement user_involvement,
+    Optional<Bindings::NavigationType> navigation_type,
     LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior,
     GC::Ref<OnChangingNavigableHistoryStepJobComplete> on_complete)
 {
@@ -1476,7 +1478,7 @@ void LocalTraversableNavigable::run_ui_changing_navigable_history_step_job(
             .target_entry = target_entry.release_nonnull(),
             .source_snapshot_params = source_snapshot_params,
             .user_involvement = user_involvement,
-            .navigation_type = Bindings::NavigationType::Traverse,
+            .navigation_type = navigation_type,
             .synchronous_navigation = SynchronousNavigation::No,
             .navigation_api_abort_behavior = navigation_api_abort_behavior,
             .pending_document = nullptr,
@@ -1736,7 +1738,7 @@ void LocalTraversableNavigable::apply_ui_changing_navigable_history_step_continu
     HistoryObjectLengthAndIndex history_object_length_and_index,
     Vector<SessionHistoryEntryDescriptor> entry_descriptors_for_navigation_api,
     UserNavigationInvolvement user_involvement,
-    Optional<HistoryHandlingBehavior> history_handling,
+    Optional<Bindings::NavigationType> navigation_type,
     LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior,
     GC::Ref<GC::Function<void()>> on_complete)
 {
@@ -1744,14 +1746,6 @@ void LocalTraversableNavigable::apply_ui_changing_navigable_history_step_continu
     if (auto navigable = continuation->navigable; navigable && !navigable->has_been_destroyed()) {
         entries_for_navigation_api = session_history_entries_for_navigation_api_from_ui_process(
             *navigable, move(entry_descriptors_for_navigation_api));
-    }
-
-    // A traversal operation applies as "traverse"; a cross-document finalization applies as "push" or "replace".
-    auto navigation_type = Bindings::NavigationType::Traverse;
-    if (history_handling.has_value()) {
-        navigation_type = *history_handling == HistoryHandlingBehavior::Replace
-            ? Bindings::NavigationType::Replace
-            : Bindings::NavigationType::Push;
     }
 
     apply_changing_navigable_history_step_continuation(
@@ -2565,7 +2559,7 @@ void LocalTraversableNavigable::traverse_the_history_by_delta(int delta, GC::Ptr
         // item remains pending until the UI process sends the operation's terminal completion.
         page().client().page_did_request_history_traversal(
             HistoryTraversalRequestType::ByDelta, delta, { }, { }, source_snapshot_params, initiator_to_check,
-            user_involvement,
+            user_involvement, false, { },
             GC::create_function(heap(), [signal] { signal->resolve({ }); }),
             GC::create_function(heap(), [](HistoryStepResult) { }));
     }));
@@ -2578,7 +2572,12 @@ void LocalTraversableNavigable::update_for_navigable_creation_or_destruction(GC:
     auto step = current_session_history_step();
 
     // 2. Return the result of applying the history step to traversable given false, null, null, null, and null.
-    apply_the_history_step(step, false, { }, { }, UserNavigationInvolvement::None, { }, SynchronousNavigation::No, LocalNavigable::NavigationAPIAbortBehavior::Abort, nullptr, nullptr, { }, on_complete);
+    // The UI process owns the traversal queue and apply-the-history-step operation; the null navigation type
+    // reaches the document updates through the request's navigation-type override.
+    page().client().page_did_request_history_traversal(
+        HistoryTraversalRequestType::UpdateForNavigableCreationOrDestruction, step, { }, { }, { }, { },
+        UserNavigationInvolvement::None, true, { },
+        GC::create_function(heap(), [] { }), on_complete);
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#apply-the-reload-history-step
@@ -2588,7 +2587,10 @@ void LocalTraversableNavigable::apply_the_reload_history_step(UserNavigationInvo
     auto step = current_session_history_step();
 
     // 2. Return the result of applying the history step step to traversable given true, null, null, null, and "reload".
-    apply_the_history_step(step, true, { }, { }, user_involvement, Bindings::NavigationType::Reload, SynchronousNavigation::No, LocalNavigable::NavigationAPIAbortBehavior::Abort, nullptr, nullptr, { },
+    // The UI process owns the traversal queue and apply-the-history-step operation.
+    page().client().page_did_request_history_traversal(
+        HistoryTraversalRequestType::Reload, step, { }, { }, { }, { }, user_involvement, true, Bindings::NavigationType::Reload,
+        GC::create_function(heap(), [] { }),
         GC::create_function(heap(), [this, on_complete](HistoryStepResult result) {
             if (result != HistoryStepResult::Applied) {
                 // NB: A canceled reload must not keep treating the active
@@ -2880,7 +2882,7 @@ void LocalTraversableNavigable::resume_applying_the_traverse_history_step(int st
     //     the navigate event intercept commit handler steps. The UI process owns the traversal queue
     //     and apply-the-history-step operation, so ask it to resume at the already-selected step.
     page().client().page_did_request_history_traversal(
-        HistoryTraversalRequestType::ToStep, step, { }, { }, { }, { }, user_involvement,
+        HistoryTraversalRequestType::ToStep, step, { }, { }, { }, { }, user_involvement, false, { },
         GC::create_function(heap(), [] { }), on_complete);
 }
 

@@ -809,14 +809,6 @@ RestorePendingSessionHistoryNavigationResult CanonicalTraversable::restore_pendi
     return result;
 }
 
-void CanonicalTraversable::append_reload_history_step(Function<void()> steps)
-{
-    append_session_history_traversal_operation({
-        .requested_traversal = TraversalOperation::Reload { move(steps) },
-        .check_for_cancelation = CheckForCancelation::No,
-    });
-}
-
 void CanonicalTraversable::traverse_the_history_by_delta(int delta, CheckForCancelation check_for_cancelation, URL::URL const& current_url, Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete, Function<void(HistoryTraversalDecision)> on_ready_to_start, Optional<TraversalOperation::Endpoint> initiating_endpoint, Web::HTML::UserNavigationInvolvement user_involvement)
 {
     append_session_history_traversal_operation({
@@ -884,17 +876,6 @@ void CanonicalTraversable::start_running_traversal_operation()
 
     if (operation.requested_traversal.has<TraversalOperation::FinalizeCrossDocument>()) {
         start_running_finalize_cross_document_operation();
-        return;
-    }
-
-    // FIXME: Reload still enters the canonical traversal queue but its document-population path has not yet been
-    // routed through the per-navigable job protocol. Convert it after cross-document finalize joins this queue.
-    if (operation.requested_traversal.has<TraversalOperation::Reload>()) {
-        auto steps = move(operation.requested_traversal.get<TraversalOperation::Reload>().steps);
-        m_running_traversal_operation.clear();
-        if (steps)
-            steps();
-        schedule_session_history_traversal_queue();
         return;
     }
 

@@ -181,9 +181,6 @@ public:
             Web::HTML::CrossProcessId navigable_id;
             Utf16String key;
         };
-        struct Reload {
-            Function<void()> steps;
-        };
         // AD-HOC: Test reset uses the traversal queue as a barrier so it cannot race a history operation.
         struct ResetForTesting {
             Function<void(u64 operation_id)> start;
@@ -231,7 +228,7 @@ public:
             Optional<i32> web_content_current_step;
         };
 
-        Variant<ByDelta, ToStep, ByNavigationAPIKey, Reload, ResetForTesting, FinalizeCrossDocument> requested_traversal;
+        Variant<ByDelta, ToStep, ByNavigationAPIKey, ResetForTesting, FinalizeCrossDocument> requested_traversal;
         CheckForCancelation check_for_cancelation { CheckForCancelation::Yes };
         Web::HTML::UserNavigationInvolvement user_involvement { Web::HTML::UserNavigationInvolvement::BrowserUI };
         URL::URL current_url;
@@ -293,7 +290,6 @@ public:
     NavigationCancelResult did_cancel_navigation(URL::URL const&, bool has_webdriver_pending_navigation);
     NavigationFinishResult did_finish_navigation(URL::URL const&);
     RestorePendingSessionHistoryNavigationResult restore_pending_session_history_navigation();
-    void append_reload_history_step(Function<void()> steps);
     void traverse_the_history_by_delta(int delta, CheckForCancelation, URL::URL const& current_url, Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete, Function<void(HistoryTraversalDecision)> on_ready_to_start, Optional<TraversalOperation::Endpoint> initiating_endpoint = { }, Web::HTML::UserNavigationInvolvement = Web::HTML::UserNavigationInvolvement::BrowserUI);
     void traverse_the_history_by_navigation_api_key(Web::HTML::CrossProcessId navigable_id, Utf16String key, URL::URL const& current_url, Function<void(HistoryTraversalDecision)> on_ready_to_start, TraversalOperation::Endpoint initiating_endpoint);
     void traverse_the_history_to_step(i32 step, CheckForCancelation, URL::URL const& current_url, Function<void(HistoryTraversalOutcome)> on_cancelation_check_complete, Function<void(HistoryTraversalDecision)> on_ready_to_start, Optional<TraversalOperation::Endpoint> initiating_endpoint = { }, Web::HTML::UserNavigationInvolvement = Web::HTML::UserNavigationInvolvement::BrowserUI);
