@@ -7,6 +7,7 @@ set(TEST_SOURCES
     TestOmnibox.cpp
     TestProfile.cpp
     TestSessionHistory.cpp
+    TestSessionHistoryTraversalQueue.cpp
     TestStorageJar.cpp
     TestWebViewURL.cpp
 )

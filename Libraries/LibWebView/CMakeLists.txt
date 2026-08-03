@@ -37,6 +37,7 @@ set(SOURCES
     Profile.cpp
     SearchEngine.cpp
     SessionHistory.cpp
+    SessionHistoryTraversalQueue.cpp
     Settings.cpp
     SiteIsolation.cpp
     SiteIsolationManager.cpp
