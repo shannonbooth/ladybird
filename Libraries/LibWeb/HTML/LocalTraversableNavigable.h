@@ -78,10 +78,10 @@ public:
 
     HistoryObjectLengthAndIndex get_the_history_object_length_and_index(int) const;
 
-    void apply_the_traverse_history_step(int, GC::Ptr<SourceSnapshotParams>, GC::Ptr<LocalNavigable>, UserNavigationInvolvement, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete);
-    void resume_applying_the_traverse_history_step(int, UserNavigationInvolvement, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete);
-    void apply_the_reload_history_step(UserNavigationInvolvement, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete);
-    void start_apply_history_step_operation(u64 operation_id, LocalNavigable::NavigationAPIAbortBehavior);
+    void apply_the_traverse_history_step(u64 history_initiation_id, int, GC::Ptr<SourceSnapshotParams>, GC::Ptr<LocalNavigable>, UserNavigationInvolvement, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete);
+    void resume_applying_the_traverse_history_step(u64 history_initiation_id, int, UserNavigationInvolvement, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete);
+    void apply_the_reload_history_step(u64 history_initiation_id, UserNavigationInvolvement, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete);
+    void start_apply_history_step_operation(u64 operation_id, u64 history_initiation_id, LocalNavigable::NavigationAPIAbortBehavior);
     void complete_apply_history_step_operation(u64 operation_id);
     void run_initiator_sandboxing_check_job(GC::Ref<LocalNavigable> initiator_to_check, GC::Ref<SourceSnapshotParams>, Vector<CrossProcessId>, GC::Ref<OnInitiatorSandboxingCheckComplete>);
     void run_history_step_unload_cancelation_job(int target_step, Vector<CrossProcessId>, UserNavigationInvolvement, GC::Ref<OnHistoryStepUnloadCancelationComplete>);
@@ -105,8 +105,8 @@ public:
 
     void finalize_same_document_navigation(GC::Ref<LocalNavigable>, NonnullRefPtr<SessionHistoryEntry>, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior, UserNavigationInvolvement);
     void did_complete_finalize_same_document_navigation(u64 operation_id, bool committed, int entry_step, int target_step, HistoryObjectLengthAndIndex);
-    void apply_the_push_or_replace_history_step(int step, HistoryHandlingBehavior history_handling, UserNavigationInvolvement, SynchronousNavigation, GC::Ptr<DOM::Document> pending_document, GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable, Optional<Utf16String> expected_ongoing_navigation_id, GC::Ref<OnApplyHistoryStepComplete> on_complete);
-    void update_for_navigable_creation_or_destruction(GC::Ref<OnApplyHistoryStepComplete> on_complete);
+    void apply_the_push_or_replace_history_step(u64 history_initiation_id, int step, HistoryHandlingBehavior history_handling, UserNavigationInvolvement, SynchronousNavigation, GC::Ptr<DOM::Document> pending_document, GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable, Optional<Utf16String> expected_ongoing_navigation_id, GC::Ref<OnApplyHistoryStepComplete> on_complete);
+    void update_for_navigable_creation_or_destruction(u64 history_initiation_id, GC::Ref<OnApplyHistoryStepComplete> on_complete);
 
     int get_the_used_step(int step) const;
     Vector<GC::Root<LocalNavigable>> get_all_local_navigables_whose_current_session_history_entry_will_change_or_reload(int) const;
@@ -184,6 +184,7 @@ private:
 
     // NB: The HTML Standard spells this algorithm argument "checkForCancelation".
     void apply_the_history_step(
+        u64 history_initiation_id,
         int step,
         bool check_for_cancelation,
         GC::Ptr<SourceSnapshotParams>,
@@ -198,6 +199,7 @@ private:
         GC::Ref<OnApplyHistoryStepComplete> on_complete);
 
     void apply_the_history_step_after_unload_check(
+        u64 history_initiation_id,
         int step,
         int target_step,
         GC::Ptr<SourceSnapshotParams> source_snapshot_params,
