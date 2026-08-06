@@ -50,12 +50,10 @@ using OnHistoryStepUnloadCancelationComplete = GC::Function<void(HistoryStepResu
 struct ChangingNavigableHistoryStepJob {
     CrossProcessId navigable_id;
     int target_step { 0 };
-    GC::Ptr<SourceSnapshotParams> source_snapshot_params;
     UserNavigationInvolvement user_involvement;
     Optional<Bindings::NavigationType> navigation_type;
     SynchronousNavigation synchronous_navigation;
     LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior;
-    GC::Ptr<DOM::Document> pending_document;
 };
 
 using OnChangingNavigableHistoryStepJobComplete = GC::Function<void(ChangingNavigableHistoryStepJobDisposition)>;

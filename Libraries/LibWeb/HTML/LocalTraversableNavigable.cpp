@@ -877,12 +877,10 @@ public:
 
     ApplyHistoryStepState(
         GC::Ref<LocalTraversableNavigable> traversable, u64 history_initiation_id, int step, int target_step,
-        GC::Ptr<SourceSnapshotParams> source_snapshot_params,
         UserNavigationInvolvement user_involvement,
         Optional<Bindings::NavigationType> navigation_type,
         SynchronousNavigation synchronous_navigation,
         LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior,
-        GC::Ptr<DOM::Document> pending_document,
         GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable,
         Optional<Utf16String> expected_ongoing_navigation_id,
         GC::Ref<OnApplyHistoryStepComplete> on_complete)
@@ -891,12 +889,10 @@ public:
         , m_traversable(traversable)
         , m_step(step)
         , m_target_step(target_step)
-        , m_source_snapshot_params(source_snapshot_params)
         , m_user_involvement(user_involvement)
         , m_navigation_type(navigation_type)
         , m_synchronous_navigation(synchronous_navigation)
         , m_navigation_api_abort_behavior(navigation_api_abort_behavior)
-        , m_pending_document(pending_document)
         , m_expected_ongoing_navigation_navigable_id(expected_ongoing_navigation_navigable ? Optional<CrossProcessId> { expected_ongoing_navigation_navigable->id() } : OptionalNone {})
         , m_expected_ongoing_navigation_id(move(expected_ongoing_navigation_id))
         , m_on_complete(on_complete)
@@ -958,8 +954,6 @@ private:
     {
         Base::visit_edges(visitor);
         visitor.visit(m_traversable);
-        visitor.visit(m_source_snapshot_params);
-        visitor.visit(m_pending_document);
         visitor.visit(m_on_complete);
         visitor.visit(m_timeout);
     }
@@ -1001,12 +995,10 @@ private:
     GC::Ref<LocalTraversableNavigable> m_traversable;
     int m_step;
     int m_target_step;
-    GC::Ptr<SourceSnapshotParams> m_source_snapshot_params;
     UserNavigationInvolvement m_user_involvement;
     Optional<Bindings::NavigationType> m_navigation_type;
     SynchronousNavigation m_synchronous_navigation;
     LocalNavigable::NavigationAPIAbortBehavior m_navigation_api_abort_behavior;
-    GC::Ptr<DOM::Document> m_pending_document;
     Optional<CrossProcessId> m_expected_ongoing_navigation_navigable_id;
     Optional<Utf16String> m_expected_ongoing_navigation_id;
     GC::Ptr<OnApplyHistoryStepComplete> m_on_complete;
@@ -1055,12 +1047,10 @@ void ApplyHistoryStepState::start()
             {
                 .navigable_id = navigable_id,
                 .target_step = m_target_step,
-                .source_snapshot_params = m_source_snapshot_params,
                 .user_involvement = m_user_involvement,
                 .navigation_type = m_navigation_type,
                 .synchronous_navigation = m_synchronous_navigation,
                 .navigation_api_abort_behavior = m_navigation_api_abort_behavior,
-                .pending_document = m_pending_document,
             },
             GC::create_function(heap(), [this, navigable_id](ChangingNavigableHistoryStepJobDisposition disposition) {
                 switch (disposition) {
@@ -1104,9 +1094,12 @@ void LocalTraversableNavigable::run_changing_navigable_history_step_job(u64 oper
     VERIFY(operation_iterator != m_apply_history_step_operations.end());
 
     auto operation = operation_iterator->value;
+    auto initiation_iterator = m_history_operation_states.find(operation->history_initiation_id());
+    VERIFY(initiation_iterator != m_history_operation_states.end());
+
     auto navigable_id = job.navigable_id;
     auto navigation_api_abort_behavior = job.navigation_api_abort_behavior;
-    auto did_claim_navigable = run_changing_navigable_history_step_job_impl(move(job),
+    auto did_claim_navigable = run_changing_navigable_history_step_job_impl(move(job), initiation_iterator->value.source_snapshot_params, initiation_iterator->value.pending_document,
         GC::create_function(heap(), [operation, navigable_id, navigation_api_abort_behavior, on_complete](LocalChangingNavigableHistoryStepJobResult result) {
             if (operation->completed()) {
                 VERIFY(operation->release_navigable(navigable_id));
@@ -1129,7 +1122,7 @@ void LocalTraversableNavigable::run_changing_navigable_history_step_job(u64 oper
         operation->did_claim_navigable(navigable_id);
 }
 
-bool LocalTraversableNavigable::run_changing_navigable_history_step_job_impl(ChangingNavigableHistoryStepJob job, GC::Ref<OnLocalChangingNavigableHistoryStepJobComplete> on_complete)
+bool LocalTraversableNavigable::run_changing_navigable_history_step_job_impl(ChangingNavigableHistoryStepJob job, GC::Ptr<SourceSnapshotParams> source_snapshot_params, GC::Ptr<DOM::Document> pending_document, GC::Ref<OnLocalChangingNavigableHistoryStepJobComplete> on_complete)
 {
     auto navigable = local_navigable_with_id(job.navigable_id);
     if (!navigable) {
@@ -1198,7 +1191,7 @@ bool LocalTraversableNavigable::run_changing_navigable_history_step_job_impl(Cha
     // 3. Set navigable's ongoing navigation to "traversal".
     navigable->set_ongoing_navigation(HTML::LocalNavigable::Traversal::Tag, job.navigation_api_abort_behavior);
 
-    queue_apply_history_step_task(*navigable, navigable->active_document(), GC::create_function(heap(), [this, job = move(job), claimed_target_entry = claimed_target_entry.release_nonnull(), navigable, on_complete] {
+    queue_apply_history_step_task(*navigable, navigable->active_document(), GC::create_function(heap(), [this, job = move(job), source_snapshot_params, pending_document, claimed_target_entry = claimed_target_entry.release_nonnull(), navigable, on_complete] {
 
         // NOTE: This check is not in the spec but we should not continue navigation if navigable has been destroyed.
         if (navigable->has_been_destroyed() || !navigable->active_window() || !navigable->active_document()) {
@@ -1238,7 +1231,7 @@ bool LocalTraversableNavigable::run_changing_navigable_history_step_job_impl(Cha
         changing_navigable_continuation->target_entry = target_entry;
         changing_navigable_continuation->navigable = navigable;
         changing_navigable_continuation->update_only = false;
-        changing_navigable_continuation->pending_document = job.pending_document;
+        changing_navigable_continuation->pending_document = pending_document;
         changing_navigable_continuation->population_output = nullptr;
 
         // 4. If displayedEntry is targetEntry and targetEntry's document state's reload pending is false, then:
@@ -1363,7 +1356,7 @@ bool LocalTraversableNavigable::run_changing_navigable_history_step_job_impl(Cha
             auto target_snapshot_params = navigable->snapshot_target_snapshot_params();
 
             // 3. Let potentiallyTargetSpecificSourceSnapshotParams be sourceSnapshotParams.
-            auto potentially_target_specific_source_snapshot_params = job.source_snapshot_params;
+            auto potentially_target_specific_source_snapshot_params = source_snapshot_params;
 
             // 4. If potentiallyTargetSpecificSourceSnapshotParams is null, then set it to the result of snapshotting source snapshot params given navigable's active document.
             if (!potentially_target_specific_source_snapshot_params)
@@ -1934,7 +1927,6 @@ void LocalTraversableNavigable::apply_the_history_step(
     Optional<Bindings::NavigationType> navigation_type,
     SynchronousNavigation synchronous_navigation,
     LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior,
-    GC::Ptr<DOM::Document> pending_document,
     GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable,
     Optional<Utf16String> expected_ongoing_navigation_id,
     GC::Ref<OnApplyHistoryStepComplete> on_complete)
@@ -1944,7 +1936,7 @@ void LocalTraversableNavigable::apply_the_history_step(
     VERIFY(!m_apply_history_step_state || m_paused_apply_history_step_state);
 
     run_the_history_step_prechecks(step, check_for_cancelation, source_snapshot_params, initiator_to_check, user_involvement, navigation_type, navigation_api_abort_behavior,
-        GC::create_function(heap(), [this, history_initiation_id, step, source_snapshot_params, user_involvement, navigation_type, synchronous_navigation, pending_document, expected_ongoing_navigation_navigable, expected_ongoing_navigation_id = move(expected_ongoing_navigation_id), on_complete](HistoryStepResult result, int target_step, LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior) mutable {
+        GC::create_function(heap(), [this, history_initiation_id, step, user_involvement, navigation_type, synchronous_navigation, expected_ongoing_navigation_navigable, expected_ongoing_navigation_id = move(expected_ongoing_navigation_id), on_complete](HistoryStepResult result, int target_step, LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior) mutable {
             if (result != HistoryStepResult::Applied) {
                 on_complete->function()(result);
                 return;
@@ -1952,7 +1944,7 @@ void LocalTraversableNavigable::apply_the_history_step(
 
             // 6. Let changingNavigables be the result of get all navigables whose current session history entry will
             //    change or reload given traversable and targetStep.
-            apply_the_history_step_after_unload_check(history_initiation_id, step, target_step, source_snapshot_params, user_involvement, navigation_type, synchronous_navigation, navigation_api_abort_behavior, pending_document, expected_ongoing_navigation_navigable, move(expected_ongoing_navigation_id), on_complete);
+            apply_the_history_step_after_unload_check(history_initiation_id, step, target_step, user_involvement, navigation_type, synchronous_navigation, navigation_api_abort_behavior, expected_ongoing_navigation_navigable, move(expected_ongoing_navigation_id), on_complete);
         }));
 }
 
@@ -2068,12 +2060,10 @@ void LocalTraversableNavigable::apply_the_history_step_after_unload_check(
     u64 history_initiation_id,
     int step,
     int target_step,
-    GC::Ptr<SourceSnapshotParams> source_snapshot_params,
     UserNavigationInvolvement user_involvement,
     Optional<Bindings::NavigationType> navigation_type,
     SynchronousNavigation synchronous_navigation,
     LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior,
-    GC::Ptr<DOM::Document> pending_document,
     GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable,
     Optional<Utf16String> expected_ongoing_navigation_id,
     GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete)
@@ -2083,8 +2073,8 @@ void LocalTraversableNavigable::apply_the_history_step_after_unload_check(
         return;
     }
 
-    auto state = heap().allocate<ApplyHistoryStepState>(*this, history_initiation_id, step, target_step, source_snapshot_params,
-        user_involvement, navigation_type, synchronous_navigation, navigation_api_abort_behavior, pending_document,
+    auto state = heap().allocate<ApplyHistoryStepState>(*this, history_initiation_id, step, target_step,
+        user_involvement, navigation_type, synchronous_navigation, navigation_api_abort_behavior,
         expected_ongoing_navigation_navigable, move(expected_ongoing_navigation_id), on_complete);
 
     VERIFY(!m_apply_history_step_state || m_paused_apply_history_step_state);
@@ -2543,7 +2533,6 @@ GC::Ref<SessionHistoryTraversalSteps> LocalTraversableNavigable::create_history_
                     history_handling,
                     parameters.user_involvement,
                     SynchronousNavigation::No,
-                    initiation->value.pending_document,
                     initiation->value.expected_ongoing_navigation_navigable,
                     move(initiation->value.expected_ongoing_navigation_id),
                     on_apply_complete);
@@ -2584,7 +2573,7 @@ GC::Ref<SessionHistoryTraversalSteps> LocalTraversableNavigable::create_history_
                 },
                 [&](FinalizeSameDocumentNavigationHistoryOperationParameters const& parameters) {
                     VERIFY(step_override.has_value());
-                    apply_the_push_or_replace_history_step(initiation_id, *step_override, parameters.history_handling, parameters.user_involvement, SynchronousNavigation::Yes, nullptr, nullptr, {}, on_apply_complete);
+                    apply_the_push_or_replace_history_step(initiation_id, *step_override, parameters.history_handling, parameters.user_involvement, SynchronousNavigation::Yes, nullptr, {}, on_apply_complete);
                 },
                 [&](CloseTopLevelTraversableHistoryOperationParameters const& parameters) {
                     VERIFY(!step_override.has_value());
@@ -2763,7 +2752,7 @@ void LocalTraversableNavigable::update_for_navigable_creation_or_destruction(u64
     auto step = current_session_history_step();
 
     // 2. Return the result of applying the history step to traversable given false, null, null, null, and null.
-    apply_the_history_step(history_initiation_id, step, false, {}, {}, UserNavigationInvolvement::None, {}, SynchronousNavigation::No, LocalNavigable::NavigationAPIAbortBehavior::Abort, nullptr, nullptr, {}, on_complete);
+    apply_the_history_step(history_initiation_id, step, false, {}, {}, UserNavigationInvolvement::None, {}, SynchronousNavigation::No, LocalNavigable::NavigationAPIAbortBehavior::Abort, nullptr, {}, on_complete);
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#apply-the-reload-history-step
@@ -2773,15 +2762,15 @@ void LocalTraversableNavigable::apply_the_reload_history_step(u64 history_initia
     auto step = current_session_history_step();
 
     // 2. Return the result of applying the history step step to traversable given true, null, null, null, and "reload".
-    apply_the_history_step(history_initiation_id, step, true, {}, {}, user_involvement, Bindings::NavigationType::Reload, SynchronousNavigation::No, LocalNavigable::NavigationAPIAbortBehavior::Abort, nullptr, nullptr, {}, on_complete);
+    apply_the_history_step(history_initiation_id, step, true, {}, {}, user_involvement, Bindings::NavigationType::Reload, SynchronousNavigation::No, LocalNavigable::NavigationAPIAbortBehavior::Abort, nullptr, {}, on_complete);
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#apply-the-push/replace-history-step
-void LocalTraversableNavigable::apply_the_push_or_replace_history_step(u64 history_initiation_id, int step, HistoryHandlingBehavior history_handling, UserNavigationInvolvement user_involvement, SynchronousNavigation synchronous_navigation, GC::Ptr<DOM::Document> pending_document, GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable, Optional<Utf16String> expected_ongoing_navigation_id, GC::Ref<OnApplyHistoryStepComplete> on_complete)
+void LocalTraversableNavigable::apply_the_push_or_replace_history_step(u64 history_initiation_id, int step, HistoryHandlingBehavior history_handling, UserNavigationInvolvement user_involvement, SynchronousNavigation synchronous_navigation, GC::Ptr<LocalNavigable> expected_ongoing_navigation_navigable, Optional<Utf16String> expected_ongoing_navigation_id, GC::Ref<OnApplyHistoryStepComplete> on_complete)
 {
     // 1. Return the result of applying the history step step to traversable given false, null, null, userInvolvement, and historyHandling.
     auto navigation_type = history_handling == HistoryHandlingBehavior::Replace ? Bindings::NavigationType::Replace : Bindings::NavigationType::Push;
-    apply_the_history_step(history_initiation_id, step, false, {}, {}, user_involvement, navigation_type, synchronous_navigation, LocalNavigable::NavigationAPIAbortBehavior::Abort, pending_document, expected_ongoing_navigation_navigable, move(expected_ongoing_navigation_id), on_complete);
+    apply_the_history_step(history_initiation_id, step, false, {}, {}, user_involvement, navigation_type, synchronous_navigation, LocalNavigable::NavigationAPIAbortBehavior::Abort, expected_ongoing_navigation_navigable, move(expected_ongoing_navigation_id), on_complete);
 }
 
 static void reconcile_same_document_navigation_with_local_session_history(GC::Ref<LocalNavigable> target_navigable, NonnullRefPtr<SessionHistoryEntry> target_entry, RefPtr<SessionHistoryEntry> entry_to_replace, int entry_step)
@@ -2968,7 +2957,7 @@ void LocalTraversableNavigable::did_complete_finalize_same_document_navigation(u
 void LocalTraversableNavigable::apply_the_traverse_history_step(u64 history_initiation_id, int step, GC::Ptr<SourceSnapshotParams> source_snapshot_params, GC::Ptr<LocalNavigable> initiator_to_check, UserNavigationInvolvement user_involvement, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete)
 {
     // 1. Return the result of applying the history step step to traversable given true, sourceSnapshotParams, initiatorToCheck, userInvolvement, and "traverse".
-    apply_the_history_step(history_initiation_id, step, true, source_snapshot_params, initiator_to_check, user_involvement, Bindings::NavigationType::Traverse, SynchronousNavigation::No, LocalNavigable::NavigationAPIAbortBehavior::Abort, nullptr, nullptr, {}, on_complete);
+    apply_the_history_step(history_initiation_id, step, true, source_snapshot_params, initiator_to_check, user_involvement, Bindings::NavigationType::Traverse, SynchronousNavigation::No, LocalNavigable::NavigationAPIAbortBehavior::Abort, nullptr, {}, on_complete);
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#resume-applying-the-traverse-history-step
@@ -2982,7 +2971,7 @@ void LocalTraversableNavigable::resume_applying_the_traverse_history_step(u64 hi
     //       same-document traversal. Hence, we can pass false and null for those arguments.
     // NB: The committed navigate event remains ongoing until the same-document entry update runs
     //     the navigate event intercept commit handler steps.
-    apply_the_history_step(history_initiation_id, step, false, {}, {}, user_involvement, Bindings::NavigationType::Traverse, SynchronousNavigation::No, LocalNavigable::NavigationAPIAbortBehavior::Preserve, nullptr, nullptr, {}, on_complete);
+    apply_the_history_step(history_initiation_id, step, false, {}, {}, user_involvement, Bindings::NavigationType::Traverse, SynchronousNavigation::No, LocalNavigable::NavigationAPIAbortBehavior::Preserve, nullptr, {}, on_complete);
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#close-a-top-level-traversable
