@@ -120,7 +120,7 @@ void NavigableContainer::create_new_child_navigable()
             .navigable_id = navigable->id(),
         },
         {
-            .pre_steps = GC::create_function(heap(), [this, navigable, parent_navigable, history_entry, traversable](GC::Ref<LocalTraversableNavigable::OnHistoryOperationReady> ready) mutable {
+            .pre_steps = GC::create_function(heap(), [this, navigable, parent_navigable, history_entry, traversable](u64, GC::Ref<LocalTraversableNavigable::OnHistoryOperationReady> ready) mutable {
                 if (navigable->has_been_destroyed() || parent_navigable->has_been_destroyed()) {
                     ready->function()(false, {}, HistoryStepResult::Applied);
                     return;
