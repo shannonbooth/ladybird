@@ -157,6 +157,15 @@ private:
 
     virtual void visit_edges(Cell::Visitor&) override;
 
+    // One iteration of "12. For each navigable of changingNavigables, queue a global task ...".
+    struct ChangingNavigableHistoryStepJob {
+        CrossProcessId navigable_id;
+        int target_step { 0 };
+        UserNavigationInvolvement user_involvement;
+        Optional<Bindings::NavigationType> navigation_type;
+        SynchronousNavigation synchronous_navigation;
+        LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior;
+    };
     struct LocalChangingNavigableHistoryStepJobResult {
         ChangingNavigableHistoryStepJobDisposition disposition;
         GC::Ptr<ChangingNavigableContinuationState> continuation;
