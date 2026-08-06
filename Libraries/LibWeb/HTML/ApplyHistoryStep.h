@@ -65,7 +65,7 @@ using OnChangingNavigableHistoryStepJobComplete = GC::Function<void(ChangingNavi
 struct ApplyChangingNavigableHistoryStepContinuation {
     CrossProcessId navigable_id;
     HistoryObjectLengthAndIndex history_object_length_and_index;
-    Vector<NonnullRefPtr<SessionHistoryEntry>> entries_for_navigation_api;
+    Vector<SessionHistoryEntryDescriptor> entries_for_navigation_api;
     Optional<Bindings::NavigationType> navigation_type;
     LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior;
     UserNavigationInvolvement user_involvement;
