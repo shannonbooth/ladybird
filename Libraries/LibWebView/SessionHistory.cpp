@@ -1737,14 +1737,15 @@ Optional<Vector<TraversableSessionHistory::Entry>> TraversableSessionHistory::ge
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#get-all-navigables-whose-current-session-history-entry-will-change-or-reload
-Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_whose_current_session_history_entry_will_change_or_reload(CanonicalNavigable const& traversable, i32 target_step) const
+Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_whose_current_session_history_entry_will_change_or_reload(CanonicalNavigable const& traversable, i32 target_step, Optional<i32> current_step) const
 {
     // 1. Let results be an empty list.
     Vector<Web::HTML::CrossProcessId> results;
 
     if (!m_current_used_step_index.has_value())
         return results;
-    auto current_step = m_used_steps[*m_current_used_step_index];
+    if (!current_step.has_value())
+        current_step = m_used_steps[*m_current_used_step_index];
 
     // 2. Let navigablesToCheck be « traversable ».
     Vector<CanonicalNavigable const*> navigables_to_check { &traversable };
@@ -1757,7 +1758,7 @@ Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_
         // NB: The navigable's current session history entry lives in its own process; the canonical equivalent is the
         //     target history entry at the traversable's current session history step.
         auto const* target_entry = get_the_target_history_entry(*navigable, target_step);
-        auto const* current_entry = get_the_target_history_entry(*navigable, current_step);
+        auto const* current_entry = get_the_target_history_entry(*navigable, *current_step);
         if (!target_entry || !current_entry)
             continue;
 
@@ -1779,14 +1780,15 @@ Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-all-navigables-that-might-experience-a-cross-document-traversal
-Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_that_might_experience_a_cross_document_traversal(CanonicalNavigable const& traversable, i32 target_step) const
+Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_that_might_experience_a_cross_document_traversal(CanonicalNavigable const& traversable, i32 target_step, Optional<i32> current_step) const
 {
     // 1. Let results be an empty list.
     Vector<Web::HTML::CrossProcessId> results;
 
     if (!m_current_used_step_index.has_value())
         return results;
-    auto current_step = m_used_steps[*m_current_used_step_index];
+    if (!current_step.has_value())
+        current_step = m_used_steps[*m_current_used_step_index];
 
     // 2. Let navigablesToCheck be « traversable ».
     Vector<CanonicalNavigable const*> navigables_to_check { &traversable };
@@ -1797,7 +1799,7 @@ Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_
 
         // 1. Let targetEntry be the result of getting the target history entry given navigable and targetStep.
         auto const* target_entry = get_the_target_history_entry(*navigable, target_step);
-        auto const* current_entry = get_the_target_history_entry(*navigable, current_step);
+        auto const* current_entry = get_the_target_history_entry(*navigable, *current_step);
         if (!target_entry || !current_entry)
             continue;
 
@@ -1819,14 +1821,15 @@ Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-all-navigables-that-only-need-history-object-length/index-update
-Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_that_only_need_history_object_length_index_update(CanonicalNavigable const& traversable, i32 target_step) const
+Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_that_only_need_history_object_length_index_update(CanonicalNavigable const& traversable, i32 target_step, Optional<i32> current_step) const
 {
     // 1. Let results be an empty list.
     Vector<Web::HTML::CrossProcessId> results;
 
     if (!m_current_used_step_index.has_value())
         return results;
-    auto current_step = m_used_steps[*m_current_used_step_index];
+    if (!current_step.has_value())
+        current_step = m_used_steps[*m_current_used_step_index];
 
     // 2. Let navigablesToCheck be « traversable ».
     Vector<CanonicalNavigable const*> navigables_to_check { &traversable };
@@ -1837,7 +1840,7 @@ Vector<Web::HTML::CrossProcessId> TraversableSessionHistory::get_all_navigables_
 
         // 1. Let targetEntry be the result of getting the target history entry given navigable and targetStep.
         auto const* target_entry = get_the_target_history_entry(*navigable, target_step);
-        auto const* current_entry = get_the_target_history_entry(*navigable, current_step);
+        auto const* current_entry = get_the_target_history_entry(*navigable, *current_step);
         if (!target_entry || !current_entry)
             continue;
 

@@ -518,10 +518,19 @@ struct CloseTopLevelTraversableHistoryOperationParameters {
     HTML::CrossProcessId traversable_id;
 };
 
+struct ResetSessionHistoryForTestingOperationParameters {
+    HTML::CrossProcessId traversable_id;
+};
+
+struct FlushSessionHistoryTraversalQueueOperationParameters {
+    HTML::CrossProcessId traversable_id;
+};
+
 // A WebContent-initiated operation with value-shaped parameters. Process-local state remains under its initiation ID.
 // Delta and Navigation API traversals resolve their target at their queued position; traverse-to-step and resume carry
 // a fixed step; reload and creation/destruction use the current step when they run; push/replace finalization supplies
-// its claimed canonical step when the requester reports ready; close only uses the queue position and applies no step.
+// its claimed canonical step when the requester reports ready. Close, reset, and the test barrier only use their queue
+// position and apply no step.
 using HistoryOperationParameters = Variant<
     PushHistoryOperationParameters,
     ReplaceHistoryOperationParameters,
@@ -533,7 +542,9 @@ using HistoryOperationParameters = Variant<
     NavigableCreationHistoryOperationParameters,
     NavigableDestructionHistoryOperationParameters,
     FinalizeSameDocumentNavigationHistoryOperationParameters,
-    CloseTopLevelTraversableHistoryOperationParameters>;
+    CloseTopLevelTraversableHistoryOperationParameters,
+    ResetSessionHistoryForTestingOperationParameters,
+    FlushSessionHistoryTraversalQueueOperationParameters>;
 
 enum class NavigationTarget : u8 {
     TopLevel,
@@ -831,6 +842,16 @@ template<>
 WEB_API ErrorOr<void> encode(Encoder&, Web::CloseTopLevelTraversableHistoryOperationParameters const&);
 template<>
 WEB_API ErrorOr<Web::CloseTopLevelTraversableHistoryOperationParameters> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::ResetSessionHistoryForTestingOperationParameters const&);
+template<>
+WEB_API ErrorOr<Web::ResetSessionHistoryForTestingOperationParameters> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::FlushSessionHistoryTraversalQueueOperationParameters const&);
+template<>
+WEB_API ErrorOr<Web::FlushSessionHistoryTraversalQueueOperationParameters> decode(Decoder&);
 
 template<>
 WEB_API ErrorOr<void> encode(Encoder&, Web::Page::MediaContextMenu const&);

@@ -120,7 +120,7 @@ void NavigableContainer::create_new_child_navigable()
             .navigable_id = navigable->id(),
         },
         {
-            .pre_steps = GC::create_function(heap(), [this, navigable, parent_navigable, history_entry, traversable](u64, GC::Ref<LocalTraversableNavigable::OnHistoryOperationReady> ready) mutable {
+            .pre_steps = GC::create_function(heap(), [navigable, parent_navigable, history_entry](u64, GC::Ref<LocalTraversableNavigable::OnHistoryOperationReady> ready) mutable {
                 if (navigable->has_been_destroyed() || parent_navigable->has_been_destroyed()) {
                     ready->function()(false, {}, HistoryStepResult::Applied);
                     return;
@@ -131,16 +131,11 @@ void NavigableContainer::create_new_child_navigable()
 
                 // 7. Update for navigable creation/destruction given traversable
                 ready->function()(true, {}, HistoryStepResult::Applied);
-
-                traversable->append_session_history_traversal_steps(GC::create_function(traversable->heap(), [this, navigable](NonnullRefPtr<Core::Promise<Empty>> signal) {
-                    if (navigable->has_been_destroyed() || content_navigable() != navigable) {
-                        signal->resolve({});
-                        return;
-                    }
-
-                    set_content_navigable_has_session_history_entry_and_ready_for_navigation();
-                    signal->resolve({});
-                }));
+            }),
+            .on_complete = GC::create_function(heap(), [this, navigable](HistoryStepResult) {
+                if (navigable->has_been_destroyed() || content_navigable() != navigable)
+                    return;
+                set_content_navigable_has_session_history_entry_and_ready_for_navigation();
             }),
         });
 }
