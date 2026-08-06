@@ -473,9 +473,40 @@ struct ReloadHistoryOperationParameters {
     HTML::UserNavigationInvolvement user_involvement;
 };
 
+struct TraverseByDeltaHistoryOperationParameters {
+    HTML::CrossProcessId traversable_id;
+    i32 delta;
+    HTML::UserNavigationInvolvement user_involvement;
+};
+
+struct TraverseToStepHistoryOperationParameters {
+    HTML::CrossProcessId traversable_id;
+    i32 target_step;
+    HTML::UserNavigationInvolvement user_involvement;
+};
+
+struct NavigationAPITraverseHistoryOperationParameters {
+    HTML::CrossProcessId navigable_id;
+    Utf16String key;
+    HTML::UserNavigationInvolvement user_involvement;
+};
+
+struct ResumeTraverseHistoryOperationParameters {
+    HTML::CrossProcessId navigable_id;
+    i32 target_step;
+    HTML::UserNavigationInvolvement user_involvement;
+};
+
 // A WebContent-initiated operation with value-shaped parameters. The request boundary retains any process-local
 // state under a private initiation ID; the queue and coordinator remain local until the later ownership switch.
-using HistoryOperationParameters = Variant<PushHistoryOperationParameters, ReplaceHistoryOperationParameters, ReloadHistoryOperationParameters>;
+using HistoryOperationParameters = Variant<
+    PushHistoryOperationParameters,
+    ReplaceHistoryOperationParameters,
+    ReloadHistoryOperationParameters,
+    TraverseByDeltaHistoryOperationParameters,
+    TraverseToStepHistoryOperationParameters,
+    NavigationAPITraverseHistoryOperationParameters,
+    ResumeTraverseHistoryOperationParameters>;
 
 enum class NavigationTarget : u8 {
     TopLevel,
