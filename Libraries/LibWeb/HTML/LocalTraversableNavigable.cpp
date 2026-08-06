@@ -1196,7 +1196,6 @@ bool LocalTraversableNavigable::run_changing_navigable_history_step_job_impl(Cha
     navigable->set_ongoing_navigation(HTML::LocalNavigable::Traversal::Tag, job.navigation_api_abort_behavior);
 
     queue_apply_history_step_task(*navigable, navigable->active_document(), GC::create_function(heap(), [this, job = move(job), source_snapshot_params, pending_document, claimed_target_entry = claimed_target_entry.release_nonnull(), navigable, on_complete] {
-
         // NOTE: This check is not in the spec but we should not continue navigation if navigable has been destroyed.
         if (navigable->has_been_destroyed() || !navigable->active_window() || !navigable->active_document()) {
             on_complete->function()({ ChangingNavigableHistoryStepJobDisposition::Skipped, nullptr });
@@ -2641,6 +2640,7 @@ void LocalTraversableNavigable::traverse_the_history_by_delta(int delta, GC::Ptr
         TraverseByDeltaHistoryOperationParameters {
             .traversable_id = id(),
             .delta = delta,
+            .initiator_to_check = initiator_to_check ? Optional<CrossProcessId> { initiator_to_check->id() } : OptionalNone {},
             .user_involvement = user_involvement,
         },
         {

@@ -476,6 +476,7 @@ struct ReloadHistoryOperationParameters {
 struct TraverseByDeltaHistoryOperationParameters {
     HTML::CrossProcessId traversable_id;
     i32 delta;
+    Optional<HTML::CrossProcessId> initiator_to_check;
     HTML::UserNavigationInvolvement user_involvement;
 };
 
@@ -517,8 +518,10 @@ struct CloseTopLevelTraversableHistoryOperationParameters {
     HTML::CrossProcessId traversable_id;
 };
 
-// A WebContent-initiated operation with value-shaped parameters. The request boundary retains any process-local
-// state under a private initiation ID; the queue and coordinator remain local until the later ownership switch.
+// A WebContent-initiated operation with value-shaped parameters. Process-local state remains under its initiation ID.
+// Delta and Navigation API traversals resolve their target at their queued position; traverse-to-step and resume carry
+// a fixed step; reload and creation/destruction use the current step when they run; push/replace finalization supplies
+// its claimed canonical step when the requester reports ready; close only uses the queue position and applies no step.
 using HistoryOperationParameters = Variant<
     PushHistoryOperationParameters,
     ReplaceHistoryOperationParameters,
@@ -697,7 +700,7 @@ public:
     virtual void page_did_set_session_history_entry_document_state_reload_pending([[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] Utf16String const& navigation_api_key, [[maybe_unused]] bool reload_pending) { }
     virtual void page_did_append_nested_history([[maybe_unused]] HTML::CrossProcessId parent_navigable_id, [[maybe_unused]] HTML::SessionHistoryNestedHistoryDescriptor const& nested_history) { }
     virtual void page_did_remove_nested_history([[maybe_unused]] HTML::CrossProcessId parent_navigable_id, [[maybe_unused]] HTML::CrossProcessId child_navigable_id) { }
-    virtual void page_did_request_finalize_same_document_navigation([[maybe_unused]] u64 operation_id, [[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] HTML::SameDocumentNavigationEntry const& target_entry, [[maybe_unused]] bool replaces_current_entry, [[maybe_unused]] HTML::HistoryHandlingBehavior history_handling, [[maybe_unused]] HTML::UserNavigationInvolvement user_involvement) { }
+    virtual void page_did_request_finalize_same_document_navigation([[maybe_unused]] u64 operation_id, [[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] HTML::SameDocumentNavigationEntry const& target_entry, [[maybe_unused]] bool replaces_current_entry, [[maybe_unused]] HTML::HistoryHandlingBehavior history_handling, [[maybe_unused]] HTML::UserNavigationInvolvement user_involvement, [[maybe_unused]] bool applies_history_step_in_coordinator = false) { }
     virtual void page_did_finalize_cross_document_navigation([[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] HTML::SessionHistoryEntryDescriptor const& history_entry, [[maybe_unused]] Optional<Utf16String> const& entry_to_replace_navigation_api_key) { }
     virtual void page_did_set_current_session_history_step([[maybe_unused]] int current_session_history_step) { }
     virtual String page_did_request_ui_process_session_history_for_testing() { return "{}"_string; }
@@ -706,6 +709,9 @@ public:
     virtual void page_did_request_history_traversal_target_by_delta([[maybe_unused]] int delta, [[maybe_unused]] GC::Ref<GC::Function<void(Optional<int>)>> on_complete) { VERIFY_NOT_REACHED(); }
     virtual void page_did_request_traverse_the_history_to_step([[maybe_unused]] int step, [[maybe_unused]] HistoryTraversalPrecheck history_traversal_precheck) { VERIFY_NOT_REACHED(); }
     virtual void page_did_request_navigation_api_traversal_target([[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] Utf16String const& navigation_api_key, [[maybe_unused]] GC::Ref<GC::Function<void(Optional<int>)>> on_complete) { VERIFY_NOT_REACHED(); }
+    // NB: Pages without a UI-process coordinator (for example SVG image pages) drop the request: navigables on such
+    //     pages never apply queued history work.
+    virtual void page_did_request_history_operation([[maybe_unused]] u64 initiation_id, [[maybe_unused]] HistoryOperationParameters parameters) { }
     virtual void page_did_change_needs_beforeunload_check([[maybe_unused]] bool needs_beforeunload_check) { }
 
     virtual void request_file(FileRequest) = 0;
@@ -770,6 +776,61 @@ protected:
 }
 
 namespace IPC {
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::PushHistoryOperationParameters const&);
+template<>
+WEB_API ErrorOr<Web::PushHistoryOperationParameters> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::ReplaceHistoryOperationParameters const&);
+template<>
+WEB_API ErrorOr<Web::ReplaceHistoryOperationParameters> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::ReloadHistoryOperationParameters const&);
+template<>
+WEB_API ErrorOr<Web::ReloadHistoryOperationParameters> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::TraverseByDeltaHistoryOperationParameters const&);
+template<>
+WEB_API ErrorOr<Web::TraverseByDeltaHistoryOperationParameters> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::TraverseToStepHistoryOperationParameters const&);
+template<>
+WEB_API ErrorOr<Web::TraverseToStepHistoryOperationParameters> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::NavigationAPITraverseHistoryOperationParameters const&);
+template<>
+WEB_API ErrorOr<Web::NavigationAPITraverseHistoryOperationParameters> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::ResumeTraverseHistoryOperationParameters const&);
+template<>
+WEB_API ErrorOr<Web::ResumeTraverseHistoryOperationParameters> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::NavigableCreationHistoryOperationParameters const&);
+template<>
+WEB_API ErrorOr<Web::NavigableCreationHistoryOperationParameters> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::NavigableDestructionHistoryOperationParameters const&);
+template<>
+WEB_API ErrorOr<Web::NavigableDestructionHistoryOperationParameters> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::FinalizeSameDocumentNavigationHistoryOperationParameters const&);
+template<>
+WEB_API ErrorOr<Web::FinalizeSameDocumentNavigationHistoryOperationParameters> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::CloseTopLevelTraversableHistoryOperationParameters const&);
+template<>
+WEB_API ErrorOr<Web::CloseTopLevelTraversableHistoryOperationParameters> decode(Decoder&);
 
 template<>
 WEB_API ErrorOr<void> encode(Encoder&, Web::Page::MediaContextMenu const&);
