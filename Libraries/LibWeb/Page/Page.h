@@ -458,6 +458,20 @@ enum class HistoryTraversalPrecheck : u8 {
     AlreadyDone,
 };
 
+struct PushHistoryOperationParameters {
+    HTML::CrossProcessId navigable_id;
+    HTML::UserNavigationInvolvement user_involvement;
+};
+
+struct ReplaceHistoryOperationParameters {
+    HTML::CrossProcessId navigable_id;
+    HTML::UserNavigationInvolvement user_involvement;
+};
+
+// A WebContent-initiated operation with value-shaped parameters. The request boundary retains any process-local
+// state under a private initiation ID; the queue and coordinator remain local until the later ownership switch.
+using HistoryOperationParameters = Variant<PushHistoryOperationParameters, ReplaceHistoryOperationParameters>;
+
 enum class NavigationTarget : u8 {
     TopLevel,
     IFrame,
