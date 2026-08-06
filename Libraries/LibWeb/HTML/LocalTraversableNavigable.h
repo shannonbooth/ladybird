@@ -14,6 +14,7 @@
 #include <LibWeb/Bindings/NavigationType.h>
 #include <LibWeb/Export.h>
 #include <LibWeb/Geolocation/Geolocation.h>
+#include <LibWeb/HTML/ApplyHistoryStep.h>
 #include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/SessionHistoryTraversalQueue.h>
 #include <LibWeb/HTML/VisibilityState.h>
@@ -31,6 +32,7 @@
 namespace Web::HTML {
 
 class ApplyHistoryStepState;
+class ApplyHistoryStepOperationState;
 struct ChangingNavigableContinuationState;
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#traversable-navigable
@@ -74,51 +76,17 @@ public:
     bool is_created_by_web_content() const { return m_is_created_by_web_content; }
     void set_is_created_by_web_content(bool value) { m_is_created_by_web_content = value; }
 
-    struct HistoryObjectLengthAndIndex {
-        u64 script_history_length;
-        u64 script_history_index;
-    };
     HistoryObjectLengthAndIndex get_the_history_object_length_and_index(int) const;
 
     void apply_the_traverse_history_step(int, GC::Ptr<SourceSnapshotParams>, GC::Ptr<LocalNavigable>, UserNavigationInvolvement, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete);
     void resume_applying_the_traverse_history_step(int, UserNavigationInvolvement, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete);
     void apply_the_reload_history_step(UserNavigationInvolvement, GC::Ref<GC::Function<void(HistoryStepResult)>> on_complete);
-    enum class SynchronousNavigation : bool {
-        Yes,
-        No,
-    };
-
-    struct ChangingNavigableHistoryStepJob {
-        CrossProcessId navigable_id;
-        NonnullRefPtr<SessionHistoryEntry> target_entry;
-        GC::Ptr<SourceSnapshotParams> source_snapshot_params;
-        UserNavigationInvolvement user_involvement;
-        Optional<Bindings::NavigationType> navigation_type;
-        SynchronousNavigation synchronous_navigation;
-        LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior;
-        GC::Ptr<DOM::Document> pending_document;
-    };
-    enum class ChangingNavigableHistoryStepJobDisposition {
-        Ready,
-        Skipped,
-        Stale,
-    };
-    struct ChangingNavigableHistoryStepJobResult {
-        ChangingNavigableHistoryStepJobDisposition disposition;
-        GC::Ptr<ChangingNavigableContinuationState> continuation;
-    };
-    using OnChangingNavigableHistoryStepJobComplete = GC::Function<void(ChangingNavigableHistoryStepJobResult)>;
-    void run_changing_navigable_history_step_job(ChangingNavigableHistoryStepJob, GC::Ref<OnChangingNavigableHistoryStepJobComplete>);
-
-    struct ApplyChangingNavigableHistoryStepContinuation {
-        GC::Ref<ChangingNavigableContinuationState> continuation;
-        HistoryObjectLengthAndIndex history_object_length_and_index;
-        Vector<NonnullRefPtr<SessionHistoryEntry>> entries_for_navigation_api;
-        Optional<Bindings::NavigationType> navigation_type;
-        LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior;
-        UserNavigationInvolvement user_involvement;
-    };
-    void apply_changing_navigable_history_step_continuation(ApplyChangingNavigableHistoryStepContinuation, GC::Ref<GC::Function<void()>> on_complete);
+    void start_apply_history_step_operation(u64 operation_id, LocalNavigable::NavigationAPIAbortBehavior);
+    void complete_apply_history_step_operation(u64 operation_id);
+    void run_initiator_sandboxing_check_job(GC::Ref<LocalNavigable> initiator_to_check, GC::Ref<SourceSnapshotParams>, Vector<CrossProcessId>, GC::Ref<OnInitiatorSandboxingCheckComplete>);
+    void run_history_step_unload_cancelation_job(int target_step, Vector<CrossProcessId>, UserNavigationInvolvement, GC::Ref<OnHistoryStepUnloadCancelationComplete>);
+    void run_changing_navigable_history_step_job(u64 operation_id, ChangingNavigableHistoryStepJob, GC::Ref<OnChangingNavigableHistoryStepJobComplete>);
+    void apply_changing_navigable_history_step_continuation(u64 operation_id, ApplyChangingNavigableHistoryStepContinuation, GC::Ref<GC::Function<void()>> on_complete);
     void update_nonchanging_navigable_history_step_state(CrossProcessId navigable_id, HistoryObjectLengthAndIndex, GC::Ref<GC::Function<void()>> on_complete);
 
     void finalize_same_document_navigation(GC::Ref<LocalNavigable>, NonnullRefPtr<SessionHistoryEntry>, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior, UserNavigationInvolvement);
@@ -191,6 +159,14 @@ private:
     virtual bool is_traversable() const override { return true; }
 
     virtual void visit_edges(Cell::Visitor&) override;
+
+    struct LocalChangingNavigableHistoryStepJobResult {
+        ChangingNavigableHistoryStepJobDisposition disposition;
+        GC::Ptr<ChangingNavigableContinuationState> continuation;
+    };
+    using OnLocalChangingNavigableHistoryStepJobComplete = GC::Function<void(LocalChangingNavigableHistoryStepJobResult)>;
+    bool run_changing_navigable_history_step_job_impl(ChangingNavigableHistoryStepJob, GC::Ref<OnLocalChangingNavigableHistoryStepJobComplete>);
+    void apply_changing_navigable_history_step_continuation_impl(GC::Ref<ChangingNavigableContinuationState>, ApplyChangingNavigableHistoryStepContinuation, GC::Ref<GC::Function<void()>> on_complete);
 
     // NB: The HTML Standard spells this algorithm argument "checkForCancelation".
     void apply_the_history_step(
@@ -272,6 +248,7 @@ private:
 
     GC::Ptr<ApplyHistoryStepState> m_paused_apply_history_step_state;
     GC::Ptr<ApplyHistoryStepState> m_apply_history_step_state;
+    HashMap<u64, GC::Ref<ApplyHistoryStepOperationState>> m_apply_history_step_operations;
 
     struct PendingSameDocumentNavigation {
         GC::Ref<LocalNavigable> target_navigable;
