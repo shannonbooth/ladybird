@@ -20,6 +20,7 @@
 #include <LibWeb/HTML/ApplyHistoryStep.h>
 #include <LibWeb/HTML/CrossProcessId.h>
 #include <LibWeb/HTML/NavigationSourceSnapshot.h>
+#include <LibWeb/Page/Page.h>
 #include <LibWeb/HTML/SelectedFile.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/VisibilityState.h>
@@ -73,6 +74,7 @@ endpoint WebContentServer
     stop_loading(u64 page_id) =|
     cancel_download(u64 page_id, u64 download_id) =|
     run_iframe_load_event_steps(u64 page_id, Web::HTML::CrossProcessId frame_id) =|
+    navigation_hosting_decided(u64 page_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id, Web::NavigationProcessDecision decision) =|
     set_page_parent_context(u64 page_id, Optional<Web::Compositor::CompositorContextId> parent_context_id) =|
     set_remote_child_frame_compositor_context(u64 page_id, Web::HTML::CrossProcessId frame_id, Optional<Web::Compositor::CompositorContextId> context_id) =|
     history_operation_started(u64 page_id, u64 operation_id, u64 initiation_id, Optional<Web::HTML::SessionHistoryEntryDescriptor> creation_target_entry) =|

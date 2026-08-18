@@ -488,23 +488,41 @@ void WebContentClient::did_present_bitmap(u64 page_id, Gfx::IntRect rect, Gfx::I
     }
 }
 
-void WebContentClient::did_request_new_process_for_navigation(u64 page_id, URL::URL url, Web::HTML::DocumentResource document_resource, Web::Bindings::NavigationHistoryBehavior history_handling, Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot)
+void WebContentClient::did_request_navigation_hosting(u64 page_id, Web::HTML::CrossProcessId navigable_id, URL::URL current_url, URL::URL target_url, Web::NavigationTarget target, Web::HTML::DocumentResource document_resource, Web::Bindings::NavigationHistoryBehavior history_handling, Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot, Utf16String navigation_id)
 {
-    if (auto view = view_for_page_id(page_id); view.has_value())
-        view->create_new_process_for_cross_site_navigation(url, move(document_resource), history_handling, move(source_snapshot));
-}
+    Optional<CanonicalNavigable&> child_frame;
+    if (target == Web::NavigationTarget::IFrame)
+        child_frame = this->child_frame(page_id, navigable_id);
 
-Messages::WebContentClient::DecideNavigationProcessResponse WebContentClient::decide_navigation_process(u64 page_id, Optional<Web::HTML::CrossProcessId> frame_id, URL::URL current_url, URL::URL target_url, Web::NavigationTarget target)
-{
-    return SiteIsolationManager::the().decide_navigation_process(*this, page_id, move(frame_id), move(current_url), move(target_url), target);
-}
+    auto requires_process_swap = child_frame.has_value()
+        ? SiteIsolationManager::the().child_frame_navigation_requires_process_swap(*child_frame, current_url, target_url)
+        : SiteIsolationManager::the().navigation_requires_process_swap(current_url, target_url, target);
+    auto decision = requires_process_swap
+        ? Web::NavigationProcessDecision::Remote
+        : Web::NavigationProcessDecision::Local;
 
-void WebContentClient::did_request_new_process_for_child_frame_navigation(u64 page_id, Web::HTML::CrossProcessId frame_id, URL::URL url, Web::HTML::DocumentResource document_resource, Web::Bindings::NavigationHistoryBehavior history_handling, Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot)
-{
-    auto child_frame = this->child_frame(page_id, frame_id);
-    if (!child_frame.has_value())
+    if (child_frame.has_value()) {
+        child_frame->ongoing_navigation() = CanonicalNavigable::OngoingNavigation {
+            .url = target_url,
+            .navigation_id = navigation_id,
+            .target_locality = decision == Web::NavigationProcessDecision::Remote
+                ? CanonicalNavigable::HostLocality::Remote
+                : CanonicalNavigable::HostLocality::Local,
+        };
+        if (decision == Web::NavigationProcessDecision::Local)
+            SiteIsolationManager::the().transition_child_frame_to_local(*child_frame);
+    }
+
+    async_navigation_hosting_decided(page_id, navigable_id, navigation_id, decision);
+    if (decision == Web::NavigationProcessDecision::Local)
         return;
-    if (!child_frame->has_matching_ongoing_navigation(url, CanonicalNavigable::HostLocality::Remote))
+
+    if (target == Web::NavigationTarget::TopLevel) {
+        if (auto view = view_for_page_id(page_id); view.has_value())
+            view->create_new_process_for_cross_site_navigation(target_url, move(document_resource), history_handling, move(source_snapshot));
+        return;
+    }
+    if (!child_frame.has_value())
         return;
 
     auto current_step = child_frame->top_level_traversable().session_history().current_step();
@@ -512,7 +530,7 @@ void WebContentClient::did_request_new_process_for_child_frame_navigation(u64 pa
     auto const* current_entry = child_frame->top_level_traversable().session_history().get_the_target_history_entry(*child_frame, *current_step);
     VERIFY(current_entry);
 
-    auto remote_process_or_error = Application::the().launch_child_frame_web_content_process(m_is_private, frame_id, current_entry->document_state.id);
+    auto remote_process_or_error = Application::the().launch_child_frame_web_content_process(m_is_private, navigable_id, current_entry->document_state.id);
     if (remote_process_or_error.is_error()) {
         warnln("Unable to create WebContent process for child frame navigation: {}", remote_process_or_error.error());
         child_frame->clear_ongoing_navigation();
@@ -522,11 +540,7 @@ void WebContentClient::did_request_new_process_for_child_frame_navigation(u64 pa
     auto remote_process = remote_process_or_error.release_value();
     auto remote_page_id = remote_process.page_id;
     auto remote_client = move(remote_process.client);
-    child_frame->ongoing_navigation() = CanonicalNavigable::OngoingNavigation {
-        .url = url,
-        .target_locality = CanonicalNavigable::HostLocality::Remote,
-        .remote_page_id = remote_page_id,
-    };
+    child_frame->ongoing_navigation()->remote_page_id = remote_page_id;
     remote_client->register_embedded_page(remote_page_id, *child_frame);
     remote_client->async_set_page_parent_context(remote_page_id, Web::Compositor::compositor_context_id_for_page(page_id));
     if (child_frame->viewport_rect().has_value()) {
@@ -537,9 +551,9 @@ void WebContentClient::did_request_new_process_for_child_frame_navigation(u64 pa
             Web::ViewportIsFullscreen::No);
     }
     remote_client->async_set_system_visibility_state(remote_page_id, Web::HTML::VisibilityState::Visible);
-    remote_client->async_load_url_with_document_resource(remote_page_id, url, move(document_resource), history_handling, move(source_snapshot));
+    remote_client->async_load_url_with_document_resource(remote_page_id, target_url, move(document_resource), history_handling, move(source_snapshot));
 
-    SiteIsolationManager::the().transition_child_frame_to_remote(*this, page_id, frame_id, move(remote_client), remote_page_id);
+    SiteIsolationManager::the().transition_child_frame_to_remote(*this, page_id, navigable_id, move(remote_client), remote_page_id);
 }
 
 void WebContentClient::did_create_child_frame(u64 page_id, Web::HTML::CrossProcessId parent_frame_id, Web::HTML::CrossProcessId frame_id, Web::HTML::ReplicatedNavigableState replicated_state)

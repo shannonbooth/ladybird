@@ -1406,6 +1406,11 @@ void Page::set_viewport_is_fullscreen(ViewportIsFullscreen is_fullscreen)
     process_pending_fullscreen_operations();
 }
 
+void PageClient::request_navigation_hosting(HTML::LocalNavigable& navigable, URL::URL const&, URL::URL const&, NavigationTarget, HTML::DocumentResource, Bindings::NavigationHistoryBehavior, Optional<HTML::NavigationSourceSnapshot>, Utf16String const& navigation_id)
+{
+    navigable.navigation_hosting_decided(navigation_id, NavigationProcessDecision::Local);
+}
+
 }
 
 template<>
