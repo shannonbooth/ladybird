@@ -2549,11 +2549,11 @@ void LocalNavigable::begin_navigation(NavigateParams params)
     // 4. Let initiatorBaseURLSnapshot be about:blank.
     auto initiator_base_url_snapshot = URL::about_blank();
 
-    // FIXME: 5. If sourceDocument is null:
-    if (false) {
-        // 1. Assert: userInvolvement is "browser UI".
-        VERIFY(user_involvement == UserNavigationInvolvement::BrowserUI);
-
+    // 5. If sourceDocument is null:
+    // AD-HOC: Our sourceDocument is not nullable yet, but per the spec it is null exactly when userInvolvement is
+    //         "browser UI", so key the branch on that. Without this, a browser-initiated navigation snapshots the
+    //         active document's origin, and a subsequent about:blank inherits it instead of an opaque origin.
+    if (user_involvement == UserNavigationInvolvement::BrowserUI) {
         // 2. If url's scheme is "javascript", then set initiatorOriginSnapshot to navigable's active document's origin.
         if (url.scheme() == "javascript"sv)
             initiator_origin_snapshot = active_document.origin();
@@ -2561,8 +2561,7 @@ void LocalNavigable::begin_navigation(NavigateParams params)
     // 6. Otherwise:
     else {
         // 1. Assert: userInvolvement is not "browser UI".
-        // FIXME: We currently crash if we do this! Uncomment once other places are fixed to handle browser UI navigation.
-        // VERIFY(user_involvement != UserNavigationInvolvement::BrowserUI);
+        // NB: Guaranteed by the branch condition above.
 
         // 2. If sourceDocument's node navigable is not allowed by sandboxing to navigate navigable given sourceSnapshotParams:
         // NB: This step is handled in LocalNavigable::navigate()
