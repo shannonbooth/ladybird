@@ -887,6 +887,7 @@ static void run_test(TestWebView& view, TestRunContext& context, size_t test_ind
         if (!test.did_start_test)
             dbgln("Timeout during pre-navigation for {}, WebContent process may be unresponsive", test.relative_path);
 
+        dbgln("Timeout autopsy for {}: {}", test.relative_path, view.navigation_timeout_autopsy());
         view.on_test_complete({ test_index, TestResult::Timeout });
     });
     test.timeout_timer->start();

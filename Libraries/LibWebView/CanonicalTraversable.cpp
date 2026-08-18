@@ -632,6 +632,113 @@ Function<void()> CanonicalTraversable::take_pending_browser_history_traversal_on
     };
 }
 
+JsonObject CanonicalTraversable::navigation_diagnostics() const
+{
+    JsonObject diagnostics;
+
+    JsonObject queue;
+    JsonArray queue_items;
+    for (auto const& item : m_history_traversal_queue.queued_items_for_diagnostics()) {
+        JsonObject queue_item;
+        queue_item.set("sequenceNumber"sv, item.sequence_number);
+        if (item.target_navigable.has_value())
+            queue_item.set("targetNavigable"sv, MUST(String::formatted("{}", *item.target_navigable)));
+        queue_items.must_append(move(queue_item));
+    }
+    queue.set("items"sv, move(queue_items));
+    queue.set("runningSteps"sv, m_history_traversal_queue.has_running_steps_for_diagnostics());
+    diagnostics.set("traversalQueue"sv, move(queue));
+
+    auto operation_kind = [](Web::HistoryOperationParameters const& parameters) {
+        return parameters.visit(
+            [](Web::PushHistoryOperationParameters const&) { return "push"sv; },
+            [](Web::ReplaceHistoryOperationParameters const&) { return "replace"sv; },
+            [](Web::ReloadHistoryOperationParameters const&) { return "reload"sv; },
+            [](Web::TraverseByDeltaHistoryOperationParameters const&) { return "traverse-by-delta"sv; },
+            [](Web::TraverseToStepHistoryOperationParameters const&) { return "traverse-to-step"sv; },
+            [](Web::NavigationAPITraverseHistoryOperationParameters const&) { return "navigation-api-traverse"sv; },
+            [](Web::ResumeTraverseHistoryOperationParameters const&) { return "resume-traverse"sv; },
+            [](Web::NavigableCreationHistoryOperationParameters const&) { return "navigable-creation"sv; },
+            [](Web::NavigableDestructionHistoryOperationParameters const&) { return "navigable-destruction"sv; },
+            [](Web::FinalizeSameDocumentNavigationHistoryOperationParameters const&) { return "finalize-same-document"sv; },
+            [](Web::CloseTopLevelTraversableHistoryOperationParameters const&) { return "close-top-level-traversable"sv; },
+            [](Web::ResetSessionHistoryForTestingOperationParameters const&) { return "reset-for-testing"sv; },
+            [](Web::FlushSessionHistoryTraversalQueueOperationParameters const&) { return "flush-queue"sv; });
+    };
+    auto phase_name = [](HistoryOperation::PendingChangingJob::Phase phase) {
+        switch (phase) {
+        case HistoryOperation::PendingChangingJob::Phase::Dispatched:
+            return "dispatched"sv;
+        case HistoryOperation::PendingChangingJob::Phase::ReadyReported:
+            return "ready-reported"sv;
+        case HistoryOperation::PendingChangingJob::Phase::ContinuationDispatched:
+            return "continuation-dispatched"sv;
+        case HistoryOperation::PendingChangingJob::Phase::RedispatchedBeforeReady:
+            return "redispatched-before-ready"sv;
+        case HistoryOperation::PendingChangingJob::Phase::RedispatchedAfterReady:
+            return "redispatched-after-ready"sv;
+        case HistoryOperation::PendingChangingJob::Phase::RedispatchFailed:
+            return "redispatch-failed"sv;
+        }
+        VERIFY_NOT_REACHED();
+    };
+
+    JsonArray operations;
+    for (auto const& operation_entry : m_history_operations) {
+        auto const& operation = *operation_entry.value;
+        JsonObject operation_diagnostic;
+        operation_diagnostic.set("id"sv, operation.operation_id);
+        operation_diagnostic.set("kind"sv, operation_kind(operation.parameters));
+        operation_diagnostic.set("browserTraversal"sv, operation.was_initiated_by_browser);
+        if (operation.resolved_step.has_value())
+            operation_diagnostic.set("resolvedStep"sv, *operation.resolved_step);
+        operation_diagnostic.set("pendingUnloadCancelation"sv, !!operation.pending_unload_cancelation);
+        operation_diagnostic.set("deferredCompletion"sv, operation.deferred_completion.has_value());
+
+        JsonArray changing_jobs;
+        for (auto const& job_entry : operation.pending_changing_jobs) {
+            JsonObject job;
+            job.set("navigable"sv, MUST(String::formatted("{}", job_entry.key)));
+            job.set("phase"sv, phase_name(job_entry.value->phase));
+            job.set("crashRecovery"sv, job_entry.value->purpose == HistoryOperation::PendingChangingJob::Purpose::CrashRecovery);
+            changing_jobs.must_append(move(job));
+        }
+        operation_diagnostic.set("pendingChangingJobs"sv, move(changing_jobs));
+
+        JsonArray nonchanging_updates;
+        for (auto const& update_entry : operation.pending_nonchanging_updates)
+            nonchanging_updates.must_append(MUST(String::formatted("{}", update_entry.key)));
+        operation_diagnostic.set("pendingNonchangingUpdates"sv, move(nonchanging_updates));
+
+        operations.must_append(move(operation_diagnostic));
+    }
+    diagnostics.set("queuedOperations"sv, move(operations));
+
+    JsonArray ongoing_navigations;
+    for_each_in_inclusive_subtree([&](CanonicalNavigable const& navigable) {
+        auto const& ongoing = navigable.ongoing_navigation();
+        if (!ongoing.has_value())
+            return IterationDecision::Continue;
+        JsonObject record;
+        record.set("navigable"sv, MUST(String::formatted("{}", navigable.id())));
+        if (ongoing->url.has_value())
+            record.set("url"sv, ongoing->url->serialize());
+        if (ongoing->navigation_id.has_value())
+            record.set("navigationId"sv, ongoing->navigation_id->to_utf8());
+        record.set("hasStarted"sv, ongoing->has_started);
+        record.set("isUncommitted"sv, ongoing->is_uncommitted);
+        record.set("usesReplacementProcess"sv, ongoing->uses_replacement_process);
+        record.set("remote"sv, ongoing->target_locality == CanonicalNavigable::HostLocality::Remote);
+        if (ongoing->remote_page_id.has_value())
+            record.set("remotePageId"sv, *ongoing->remote_page_id);
+        ongoing_navigations.must_append(move(record));
+        return IterationDecision::Continue;
+    });
+    diagnostics.set("ongoingNavigations"sv, move(ongoing_navigations));
+
+    return diagnostics;
+}
+
 Optional<CanonicalTraversable::BrowserHistoryTraversalDiagnostic> CanonicalTraversable::browser_history_traversal_for_testing() const
 {
     for (auto const& operation : m_history_operations) {
