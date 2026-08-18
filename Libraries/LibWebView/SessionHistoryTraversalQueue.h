@@ -53,7 +53,12 @@ public:
     bool is_empty() const { return m_algorithm_set.is_empty(); }
 
     Vector<Item> const& queued_items_for_diagnostics() const { return m_algorithm_set; }
-    bool has_running_steps_for_diagnostics() const { return m_running_steps; }
+    bool has_running_steps_for_diagnostics() const { return m_running_steps && !m_running_steps->is_resolved() && !m_running_steps->is_rejected(); }
+    struct RunningItemDiagnostic {
+        u64 sequence_number { 0 };
+        Optional<Web::HTML::CrossProcessId> target_navigable;
+    };
+    Optional<RunningItemDiagnostic> const& running_item_for_diagnostics() const { return m_running_item_for_diagnostics; }
 
 private:
     void process_queue();
@@ -66,6 +71,7 @@ private:
     bool m_processing_scheduled { false };
     bool m_current_item_is_synchronous_navigation_steps { false };
     RefPtr<Core::Promise<Empty>> m_running_steps;
+    Optional<RunningItemDiagnostic> m_running_item_for_diagnostics;
 };
 
 }

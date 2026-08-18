@@ -55,6 +55,7 @@ void SessionHistoryTraversalQueue::process_queue()
 
         auto item = m_algorithm_set.take_first();
         m_current_item_is_synchronous_navigation_steps = item.target_navigable.has_value();
+        m_running_item_for_diagnostics = RunningItemDiagnostic { item.sequence_number, item.target_navigable };
         m_running_steps = Core::Promise<Empty>::construct();
         item.steps(*m_running_steps);
     }
