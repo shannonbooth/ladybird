@@ -122,9 +122,6 @@ public:
     void navigable_document_destroyed(Badge<DOM::Document>, HTML::LocalNavigable&);
 
     void load(URL::URL const&, Bindings::NavigationHistoryBehavior = Bindings::NavigationHistoryBehavior::Auto);
-    void load(URL::URL const&, HTML::DocumentResource,
-        Bindings::NavigationHistoryBehavior = Bindings::NavigationHistoryBehavior::Auto,
-        Optional<HTML::NavigationSourceSnapshot> = {});
     void load_html(StringView);
     void load_html(StringView, URL::URL const&);
 
@@ -477,9 +474,10 @@ public:
     virtual bool has_focus() const { return true; }
     virtual void set_has_focus([[maybe_unused]] bool has_focus) { }
     virtual bool has_active_devtools_client() const { return false; }
-    // In Ladybird, a Remote decision hands the navigation to another WebContent process. The
-    // default answers Local immediately, which keeps the navigation in this process.
-    virtual void request_navigation_hosting(HTML::LocalNavigable&, URL::URL const& current_url, URL::URL const& target_url, NavigationTarget, HTML::DocumentResource, Bindings::NavigationHistoryBehavior, Optional<HTML::NavigationSourceSnapshot>, Utf16String const& navigation_id);
+    // In Ladybird, a Remote decision hands the navigation to another WebContent process, which
+    // populates the pending entry's document. The default answers Local immediately, which keeps
+    // the navigation in this process.
+    virtual void request_navigation_hosting(HTML::LocalNavigable&, URL::URL const& current_url, NavigationTarget, HTML::PendingSessionHistoryEntryDescriptor, Optional<HTML::NavigationSourceSnapshot>, HTML::TargetSnapshotParams const&, ContentSecurityPolicy::Directives::Directive::NavigationType, Bindings::NavigationHistoryBehavior, HTML::UserNavigationInvolvement, Utf16String const& navigation_id);
     virtual void page_did_create_child_frame(HTML::CrossProcessId, HTML::CrossProcessId, HTML::ReplicatedNavigableState const&) { }
     virtual void page_did_update_child_frame_viewport(HTML::CrossProcessId, CSSPixelRect) { }
     virtual void page_did_destroy_child_frame(HTML::CrossProcessId) { }

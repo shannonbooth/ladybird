@@ -488,8 +488,10 @@ void WebContentClient::did_present_bitmap(u64 page_id, Gfx::IntRect rect, Gfx::I
     }
 }
 
-void WebContentClient::did_request_navigation_hosting(u64 page_id, Web::HTML::CrossProcessId navigable_id, URL::URL current_url, URL::URL target_url, Web::NavigationTarget target, Web::HTML::DocumentResource document_resource, Web::Bindings::NavigationHistoryBehavior history_handling, Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot, Utf16String navigation_id)
+void WebContentClient::did_request_navigation_hosting(u64 page_id, Web::HTML::CrossProcessId navigable_id, URL::URL current_url, Web::NavigationTarget target, Web::HTML::PendingSessionHistoryEntryDescriptor pending_entry, Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot, Web::HTML::SandboxingFlagSet target_sandboxing_flags, Web::ReferrerPolicy::ReferrerPolicy iframe_element_referrer_policy, Web::ContentSecurityPolicy::Directives::Directive::NavigationType csp_navigation_type, Web::Bindings::NavigationHistoryBehavior history_handling, Web::HTML::UserNavigationInvolvement user_involvement, Utf16String navigation_id)
 {
+    auto const& target_url = pending_entry.url;
+
     Optional<CanonicalNavigable&> child_frame;
     if (target == Web::NavigationTarget::IFrame)
         child_frame = this->child_frame(page_id, navigable_id);
@@ -519,7 +521,7 @@ void WebContentClient::did_request_navigation_hosting(u64 page_id, Web::HTML::Cr
 
     if (target == Web::NavigationTarget::TopLevel) {
         if (auto view = view_for_page_id(page_id); view.has_value())
-            view->create_new_process_for_cross_site_navigation(target_url, move(document_resource), history_handling, move(source_snapshot));
+            view->create_new_process_for_cross_site_navigation(move(pending_entry), move(source_snapshot), target_sandboxing_flags, iframe_element_referrer_policy, csp_navigation_type, history_handling, user_involvement, move(navigation_id));
         return;
     }
     if (!child_frame.has_value())
@@ -551,7 +553,7 @@ void WebContentClient::did_request_navigation_hosting(u64 page_id, Web::HTML::Cr
             Web::ViewportIsFullscreen::No);
     }
     remote_client->async_set_system_visibility_state(remote_page_id, Web::HTML::VisibilityState::Visible);
-    remote_client->async_load_url_with_document_resource(remote_page_id, target_url, move(document_resource), history_handling, move(source_snapshot));
+    remote_client->async_populate_navigation(remote_page_id, move(pending_entry), move(source_snapshot), target_sandboxing_flags, iframe_element_referrer_policy, csp_navigation_type, history_handling, user_involvement, move(navigation_id));
 
     SiteIsolationManager::the().transition_child_frame_to_remote(*this, page_id, navigable_id, move(remote_client), remote_page_id);
 }

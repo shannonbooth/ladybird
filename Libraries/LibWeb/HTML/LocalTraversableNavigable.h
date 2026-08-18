@@ -80,6 +80,7 @@ public:
     void finalize_same_document_navigation(GC::Ref<LocalNavigable>, NonnullRefPtr<SessionHistoryEntry>, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior, UserNavigationInvolvement, Optional<SessionHistoryEntryPersistedState> previous_entry_persisted_state);
     void traverse_the_history_by_delta(int delta, GC::Ptr<DOM::Document> source_document = {});
     void restore_session_history_entry_from_ui_process(LocalNavigable&, SessionHistoryEntry&, SessionHistoryEntryDescriptor);
+    void continue_cross_process_navigation(PendingSessionHistoryEntryDescriptor, Optional<NavigationSourceSnapshot>, TargetSnapshotParams const&, ContentSecurityPolicy::Directives::Directive::NavigationType, Bindings::NavigationHistoryBehavior, UserNavigationInvolvement, Utf16String navigation_id);
     bool adopt_canonical_id_for_child_created_during_history_reconstruction(LocalNavigable& parent, LocalNavigable& child);
     bool route_child_created_during_history_reconstruction(LocalNavigable& parent, LocalNavigable& child, SessionHistoryEntry& initial_entry, SessionHistoryEntryDescriptor target_entry);
     void reset_session_history_for_testing(GC::Ref<GC::Function<void()>> on_complete);

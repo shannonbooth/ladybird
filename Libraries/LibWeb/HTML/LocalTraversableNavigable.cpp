@@ -397,6 +397,75 @@ void LocalTraversableNavigable::restore_session_history_entry_from_ui_process(Lo
     }
 }
 
+// AD-HOC: Enter a navigation whose navigate steps ran in the process that initiated it. This process hosts the
+//         pending entry's document, so what remains is attempting to populate the entry's document and finalizing.
+//         This mirrors the tail of LocalNavigable::begin_navigation.
+void LocalTraversableNavigable::continue_cross_process_navigation(PendingSessionHistoryEntryDescriptor pending_entry, Optional<NavigationSourceSnapshot> source_snapshot, TargetSnapshotParams const& target_snapshot_params, ContentSecurityPolicy::Directives::Directive::NavigationType csp_navigation_type, Bindings::NavigationHistoryBehavior history_handling, UserNavigationInvolvement user_involvement, Utf16String navigation_id)
+{
+    VERIFY(active_document());
+
+    SessionHistoryEntryReconstructionState reconstruction_state;
+    auto history_entry = create_session_history_entry_from_ui_process(create_session_history_entry_descriptor(move(pending_entry), 0), reconstruction_state);
+    history_entry->set_step(SessionHistoryEntry::Pending::Tag);
+
+    // The initiating process snapshotted the source snapshot params. The fetch client cannot cross the process
+    // boundary, so this document's environment stands in for it as the request client.
+    auto source_snapshot_params = active_document()->snapshot_source_snapshot_params();
+    Optional<URL::Origin> initiator_origin_snapshot;
+    if (source_snapshot.has_value()) {
+        source_snapshot_params = heap().allocate<SourceSnapshotParams>(
+            source_snapshot->has_transient_activation,
+            source_snapshot->sandboxing_flags,
+            source_snapshot->allows_downloading,
+            source_snapshot_params->fetch_client,
+            create_a_policy_container_from_serialized_policy_container(source_snapshot->source_policy_container));
+        initiator_origin_snapshot = history_entry->document_state()->initiator_origin();
+    }
+
+    set_ongoing_navigation(navigation_id);
+
+    // The initiating process ran the navigate algorithm's abort of its own active document. This
+    // process's active document is the replacement about:blank, whose pending completion work
+    // must not fire load progress signals for the navigation this populate is about to perform.
+    if (active_window()) {
+        queue_global_task(Task::Source::NavigationAndTraversal, HTML::relevant_global_object(*active_window()), GC::create_function(heap(), [this] {
+            this->active_document()->abort_a_document_and_its_descendants();
+        }));
+    }
+
+    if (is_top_level_traversable())
+        active_browsing_context()->page().client().page_did_start_loading(navigation_id, history_entry->url(), false);
+
+    populate_session_history_entry_document(
+        history_entry->url(),
+        history_entry->document_state()->resource(),
+        history_entry->document_state()->request_referrer(),
+        history_entry->document_state()->request_referrer_policy(),
+        history_entry->document_state()->initiator_origin(),
+        initiator_origin_snapshot,
+        history_entry->document_state()->origin(),
+        history_entry->document_state()->history_policy_container(),
+        history_entry->document_state()->about_base_url(),
+        history_entry->document_state()->navigable_target_name(),
+        history_entry->document_state()->reload_pending(),
+        history_entry->document_state()->ever_populated(),
+        source_snapshot_params, target_snapshot_params, user_involvement, navigation_id, NullOrError {}, csp_navigation_type, true,
+        GC::create_function(heap(), [this, history_entry, history_handling, navigation_id, user_involvement](GC::Ptr<PopulateSessionHistoryEntryDocumentOutput> output) mutable {
+            if (output && output->download_handled) {
+                if (is_top_level_traversable())
+                    active_browsing_context()->page().client().page_did_cancel_loading(navigation_id, history_entry->url());
+                set_ongoing_navigation({});
+                set_delaying_load_events(false);
+                return;
+            }
+
+            if (output)
+                output->apply_to(*history_entry);
+            auto pending_document = output ? output->document : GC::Ptr<DOM::Document> {};
+            finalize_a_cross_document_navigation(*this, to_history_handling_behavior(history_handling), user_involvement, history_entry, pending_document, navigation_id, GC::create_function(heap(), [](HistoryStepResult) { }), {});
+        }));
+}
+
 bool LocalTraversableNavigable::adopt_canonical_id_for_child_created_during_history_reconstruction(LocalNavigable& parent, LocalNavigable& child)
 {
     VERIFY(child.parent().ptr() == &parent);

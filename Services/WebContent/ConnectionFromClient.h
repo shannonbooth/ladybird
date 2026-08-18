@@ -92,9 +92,12 @@ private:
     virtual void update_system_theme(u64 page_id, Core::AnonymousBuffer) override;
     virtual void update_screen_rects(u64 page_id, Vector<Web::DevicePixelRect>, u32) override;
     virtual void load_url(u64 page_id, URL::URL, Web::Bindings::NavigationHistoryBehavior) override;
-    virtual void load_url_with_document_resource(u64 page_id, URL::URL,
-        Web::HTML::DocumentResource, Web::Bindings::NavigationHistoryBehavior,
-        Optional<Web::HTML::NavigationSourceSnapshot>) override;
+    virtual void populate_navigation(u64 page_id, Web::HTML::PendingSessionHistoryEntryDescriptor,
+        Optional<Web::HTML::NavigationSourceSnapshot>, Web::HTML::SandboxingFlagSet target_sandboxing_flags,
+        Web::ReferrerPolicy::ReferrerPolicy iframe_element_referrer_policy,
+        Web::ContentSecurityPolicy::Directives::Directive::NavigationType,
+        Web::Bindings::NavigationHistoryBehavior, Web::HTML::UserNavigationInvolvement,
+        Utf16String navigation_id) override;
     virtual void load_html(u64 page_id, ByteString) override;
     virtual void load_html_with_url(u64 page_id, ByteString, URL::URL) override;
     virtual void reload(u64 page_id) override;

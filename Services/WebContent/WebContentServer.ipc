@@ -19,8 +19,11 @@
 #include <LibWeb/HTML/BroadcastChannelMessage.h>
 #include <LibWeb/HTML/ApplyHistoryStep.h>
 #include <LibWeb/HTML/CrossProcessId.h>
+#include <LibWeb/ContentSecurityPolicy/Directives/Directive.h>
 #include <LibWeb/HTML/NavigationSourceSnapshot.h>
+#include <LibWeb/HTML/SandboxingFlagSet.h>
 #include <LibWeb/Page/Page.h>
+#include <LibWeb/ReferrerPolicy/ReferrerPolicy.h>
 #include <LibWeb/HTML/SelectedFile.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/VisibilityState.h>
@@ -64,10 +67,14 @@ endpoint WebContentServer
     update_screen_rects(u64 page_id, Vector<Web::DevicePixelRect> rects, u32 main_screen_index) =|
 
     load_url(u64 page_id, URL::URL url, Web::Bindings::NavigationHistoryBehavior history_handling) =|
-    load_url_with_document_resource(u64 page_id, URL::URL url,
-        Variant<Empty, Utf16String, Web::HTML::POSTResource> document_resource,
+    populate_navigation(u64 page_id, Web::HTML::PendingSessionHistoryEntryDescriptor pending_entry,
+        Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot,
+        Web::HTML::SandboxingFlagSet target_sandboxing_flags,
+        Web::ReferrerPolicy::ReferrerPolicy iframe_element_referrer_policy,
+        Web::ContentSecurityPolicy::Directives::Directive::NavigationType csp_navigation_type,
         Web::Bindings::NavigationHistoryBehavior history_handling,
-        Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot) =|
+        Web::HTML::UserNavigationInvolvement user_involvement,
+        Utf16String navigation_id) =|
     load_html(u64 page_id, ByteString html) =|
     load_html_with_url(u64 page_id, ByteString html, URL::URL url) =|
     reload(u64 page_id) =|

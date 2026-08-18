@@ -237,9 +237,18 @@ Web::HTML::CrossProcessId PageClient::allocate_navigable_id()
     return allocate_cross_process_id();
 }
 
-void PageClient::request_navigation_hosting(Web::HTML::LocalNavigable& navigable, URL::URL const& current_url, URL::URL const& target_url, Web::NavigationTarget target, Web::HTML::DocumentResource document_resource, Web::Bindings::NavigationHistoryBehavior history_handling, Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot, Utf16String const& navigation_id)
+void PageClient::request_navigation_hosting(Web::HTML::LocalNavigable& navigable, URL::URL const& current_url, Web::NavigationTarget target, Web::HTML::PendingSessionHistoryEntryDescriptor pending_entry, Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot, Web::HTML::TargetSnapshotParams const& target_snapshot_params, Web::ContentSecurityPolicy::Directives::Directive::NavigationType csp_navigation_type, Web::Bindings::NavigationHistoryBehavior history_handling, Web::HTML::UserNavigationInvolvement user_involvement, Utf16String const& navigation_id)
 {
-    client().async_did_request_navigation_hosting(m_id, navigable.id(), current_url, target_url, target, move(document_resource), history_handling, move(source_snapshot), navigation_id);
+    client().async_did_request_navigation_hosting(m_id, navigable.id(), current_url, target, move(pending_entry), move(source_snapshot), target_snapshot_params.sandboxing_flags, target_snapshot_params.iframe_element_referrer_policy, csp_navigation_type, history_handling, user_involvement, navigation_id);
+}
+
+void PageClient::populate_navigation(Web::HTML::PendingSessionHistoryEntryDescriptor pending_entry, Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot, Web::HTML::SandboxingFlagSet target_sandboxing_flags, Web::ReferrerPolicy::ReferrerPolicy iframe_element_referrer_policy, Web::ContentSecurityPolicy::Directives::Directive::NavigationType csp_navigation_type, Web::Bindings::NavigationHistoryBehavior history_handling, Web::HTML::UserNavigationInvolvement user_involvement, Utf16String navigation_id)
+{
+    Web::HTML::TargetSnapshotParams target_snapshot_params {
+        .sandboxing_flags = target_sandboxing_flags,
+        .iframe_element_referrer_policy = iframe_element_referrer_policy,
+    };
+    page().top_level_traversable()->continue_cross_process_navigation(move(pending_entry), move(source_snapshot), target_snapshot_params, csp_navigation_type, history_handling, user_involvement, move(navigation_id));
 }
 
 void PageClient::navigation_hosting_decided(Web::HTML::CrossProcessId navigable_id, Utf16String const& navigation_id, Web::NavigationProcessDecision decision)
