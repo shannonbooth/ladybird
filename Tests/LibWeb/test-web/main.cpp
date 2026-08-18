@@ -888,7 +888,22 @@ static void run_test(TestWebView& view, TestRunContext& context, size_t test_ind
             dbgln("Timeout during pre-navigation for {}, WebContent process may be unresponsive", test.relative_path);
 
         dbgln("Timeout autopsy for {}: {}", test.relative_path, view.navigation_timeout_autopsy());
-        view.on_test_complete({ test_index, TestResult::Timeout });
+
+        auto completed = Core::Promise<Empty>::construct();
+        auto complete_once = [&view, test_index, completed]() {
+            if (completed->is_resolved())
+                return;
+            completed->resolve({});
+            view.on_test_complete({ test_index, TestResult::Timeout });
+        };
+        view.request_internal_page_info(WebView::PageInfoType::Text)->when_resolved([&context, test_index, complete_once](auto const& text) {
+            dbgln("Timeout page text for {}: <<<{}>>>", context.tests[test_index].relative_path, text);
+            complete_once();
+        });
+        context.tests[test_index].timeout_autopsy_fallback_timer = Core::Timer::create_single_shot(5000, [complete_once]() {
+            complete_once();
+        });
+        context.tests[test_index].timeout_autopsy_fallback_timer->start();
     });
     test.timeout_timer->start();
 

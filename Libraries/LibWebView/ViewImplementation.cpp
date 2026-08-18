@@ -2295,6 +2295,7 @@ String ViewImplementation::ui_process_session_history_for_testing(Badge<WebConte
 String ViewImplementation::navigation_timeout_autopsy() const
 {
     JsonObject autopsy;
+    autopsy.set("pageId"sv, page_id());
     autopsy.set("isLoading"sv, m_is_loading);
     autopsy.set("webdriverObservationActive"sv, m_webdriver_navigation_observation.has_value());
     autopsy.set("sessionHistory"sv, webdriver_session_history());

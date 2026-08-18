@@ -647,6 +647,14 @@ JsonObject CanonicalTraversable::navigation_diagnostics() const
     }
     queue.set("items"sv, move(queue_items));
     queue.set("runningSteps"sv, m_history_traversal_queue.has_running_steps_for_diagnostics());
+    if (auto const& running_item = m_history_traversal_queue.running_item_for_diagnostics(); running_item.has_value()) {
+        JsonObject running;
+        running.set("sequenceNumber"sv, running_item->sequence_number);
+        if (running_item->target_navigable.has_value())
+            running.set("targetNavigable"sv, MUST(String::formatted("{}", *running_item->target_navigable)));
+        queue.set("runningItem"sv, move(running));
+    }
+    queue.set("lastEnqueuedSequenceNumber"sv, m_history_traversal_queue.last_enqueued_sequence_number());
     diagnostics.set("traversalQueue"sv, move(queue));
 
     auto operation_kind = [](Web::HistoryOperationParameters const& parameters) {

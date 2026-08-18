@@ -113,6 +113,7 @@ struct Test {
     u8 diff_maximum_error { 0 };
 
     RefPtr<Core::Timer> timeout_timer {};
+    RefPtr<Core::Timer> timeout_autopsy_fallback_timer {};
 };
 
 struct TestCompletion {
