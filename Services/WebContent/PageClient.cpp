@@ -237,19 +237,23 @@ Web::HTML::CrossProcessId PageClient::allocate_navigable_id()
     return allocate_cross_process_id();
 }
 
-Web::NavigationProcessDecision PageClient::decide_navigation_process(URL::URL const& current_url, URL::URL const& target_url, Web::NavigationTarget target, Optional<Web::HTML::CrossProcessId> frame_id) const
+void PageClient::request_navigation_hosting(Web::HTML::LocalNavigable& navigable, URL::URL const& current_url, URL::URL const& target_url, Web::NavigationTarget target, Web::HTML::DocumentResource document_resource, Web::Bindings::NavigationHistoryBehavior history_handling, Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot, Utf16String const& navigation_id)
 {
-    return client().decide_navigation_process(m_id, move(frame_id), current_url, target_url, target);
+    client().async_did_request_navigation_hosting(m_id, navigable.id(), current_url, target_url, target, move(document_resource), history_handling, move(source_snapshot), navigation_id);
 }
 
-void PageClient::request_new_process_for_navigation(URL::URL const& url, Web::HTML::DocumentResource document_resource, Web::Bindings::NavigationHistoryBehavior history_handling, Optional<Web::HTML::NavigationSourceSnapshot> const& source_snapshot)
+void PageClient::navigation_hosting_decided(Web::HTML::CrossProcessId navigable_id, Utf16String const& navigation_id, Web::NavigationProcessDecision decision)
 {
-    client().async_did_request_new_process_for_navigation(m_id, url, move(document_resource), history_handling, source_snapshot);
-}
+    auto active_document = page().top_level_traversable()->active_document();
+    if (!active_document)
+        return;
 
-void PageClient::request_new_process_for_child_frame_navigation(Web::HTML::CrossProcessId frame_id, URL::URL const& url, Web::HTML::DocumentResource document_resource, Web::Bindings::NavigationHistoryBehavior history_handling, Optional<Web::HTML::NavigationSourceSnapshot> const& source_snapshot)
-{
-    client().async_did_request_new_process_for_child_frame_navigation(m_id, frame_id, url, move(document_resource), history_handling, source_snapshot);
+    for (auto const& navigable : active_document->inclusive_descendant_navigables()) {
+        if (navigable->id() != navigable_id)
+            continue;
+        navigable->navigation_hosting_decided(navigation_id, decision);
+        return;
+    }
 }
 
 void PageClient::page_did_create_child_frame(Web::HTML::CrossProcessId parent_frame_id, Web::HTML::CrossProcessId frame_id, Web::HTML::ReplicatedNavigableState const& replicated_state)

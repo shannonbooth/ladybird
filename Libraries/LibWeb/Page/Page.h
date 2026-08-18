@@ -466,7 +466,7 @@ enum class NavigationProcessDecision : u8 {
     Remote,
 };
 
-class PageClient : public JS::Cell {
+class WEB_API PageClient : public JS::Cell {
     GC_CELL(PageClient, JS::Cell);
 
 public:
@@ -477,17 +477,9 @@ public:
     virtual bool has_focus() const { return true; }
     virtual void set_has_focus([[maybe_unused]] bool has_focus) { }
     virtual bool has_active_devtools_client() const { return false; }
-    // In Ladybird, Remote currently implies replacing the WebContent process.
-    virtual NavigationProcessDecision decide_navigation_process(
-        [[maybe_unused]] URL::URL const& current_url,
-        [[maybe_unused]] URL::URL const& target_url,
-        [[maybe_unused]] NavigationTarget target = NavigationTarget::TopLevel,
-        [[maybe_unused]] Optional<HTML::CrossProcessId> frame_id = {}) const
-    {
-        return NavigationProcessDecision::Local;
-    }
-    virtual void request_new_process_for_navigation(URL::URL const&, HTML::DocumentResource, Bindings::NavigationHistoryBehavior, Optional<HTML::NavigationSourceSnapshot> const&) { }
-    virtual void request_new_process_for_child_frame_navigation(HTML::CrossProcessId, URL::URL const&, HTML::DocumentResource, Bindings::NavigationHistoryBehavior, Optional<HTML::NavigationSourceSnapshot> const&) { }
+    // In Ladybird, a Remote decision hands the navigation to another WebContent process. The
+    // default answers Local immediately, which keeps the navigation in this process.
+    virtual void request_navigation_hosting(HTML::LocalNavigable&, URL::URL const& current_url, URL::URL const& target_url, NavigationTarget, HTML::DocumentResource, Bindings::NavigationHistoryBehavior, Optional<HTML::NavigationSourceSnapshot>, Utf16String const& navigation_id);
     virtual void page_did_create_child_frame(HTML::CrossProcessId, HTML::CrossProcessId, HTML::ReplicatedNavigableState const&) { }
     virtual void page_did_update_child_frame_viewport(HTML::CrossProcessId, CSSPixelRect) { }
     virtual void page_did_destroy_child_frame(HTML::CrossProcessId) { }

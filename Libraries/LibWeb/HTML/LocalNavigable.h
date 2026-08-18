@@ -163,6 +163,8 @@ public:
     Variant<Empty, Traversal, Utf16String> ongoing_navigation() const { return m_ongoing_navigation; }
     void set_ongoing_navigation(Variant<Empty, Traversal, Utf16String> ongoing_navigation, NavigationAPIAbortBehavior = NavigationAPIAbortBehavior::Abort);
 
+    void navigation_hosting_decided(Utf16String const& navigation_id, NavigationProcessDecision);
+
     // Test-only (Internals.clobberNextNavigationWithATraversal): make the next navigation's unload check be interrupted
     // by a synthetic session-history traversal that re-stamps the ongoing navigation.
     static void clobber_next_navigation_with_a_traversal_for_testing();
@@ -431,6 +433,14 @@ private:
     bool m_has_session_history_entry_and_ready_for_navigation { false };
 
     Vector<NavigateParams> m_pending_navigations;
+
+    // AD-HOC: A navigation parked at the process placement decision. The UI process answers with
+    //         the hosting decision and the parked steps continue here for a local placement.
+    struct PendingNavigationHosting {
+        Utf16String navigation_id;
+        GC::Ptr<GC::Function<void()>> continue_steps;
+    };
+    Optional<PendingNavigationHosting> m_pending_navigation_hosting;
 
     bool m_is_svg_page { false };
     bool m_needs_repaint { true };

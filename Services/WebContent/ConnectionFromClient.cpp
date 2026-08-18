@@ -157,6 +157,12 @@ void ConnectionFromClient::run_iframe_load_event_steps(u64 page_id, Web::HTML::C
         page->run_iframe_load_event_steps(frame_id);
 }
 
+void ConnectionFromClient::navigation_hosting_decided(u64 page_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id, Web::NavigationProcessDecision decision)
+{
+    if (auto page = this->page(page_id); page.has_value())
+        page->navigation_hosting_decided(navigable_id, navigation_id, decision);
+}
+
 Optional<PageClient&> ConnectionFromClient::page(u64 index, SourceLocation location)
 {
     if (auto page = m_page_host->page(index); page.has_value())

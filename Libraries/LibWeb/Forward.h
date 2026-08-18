@@ -36,6 +36,7 @@ class ResourceLoader;
 class XMLDocumentBuilder;
 
 enum class InvalidateDisplayList;
+enum class NavigationProcessDecision : u8;
 enum class TraversalDecision;
 
 struct AsyncScrollOperation;

@@ -266,13 +266,6 @@ CanonicalNavigable::OngoingNavigation& CanonicalNavigable::ensure_ongoing_naviga
     return *m_ongoing_navigation;
 }
 
-bool CanonicalNavigable::has_matching_ongoing_navigation(URL::URL const& url, HostLocality target_locality) const
-{
-    return m_ongoing_navigation.has_value()
-        && m_ongoing_navigation->target_locality == target_locality
-        && m_ongoing_navigation->url == url;
-}
-
 bool CanonicalNavigable::matches_ongoing_navigation(Optional<Utf16String> const& navigation_id) const
 {
     if (!m_ongoing_navigation.has_value())

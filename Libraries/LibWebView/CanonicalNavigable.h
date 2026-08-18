@@ -111,7 +111,6 @@ public:
     OngoingNavigation& ensure_ongoing_navigation();
     void clear_ongoing_navigation() { m_ongoing_navigation.clear(); }
     bool has_uncommitted_navigation() const { return m_ongoing_navigation.has_value() && m_ongoing_navigation->is_uncommitted; }
-    bool has_matching_ongoing_navigation(URL::URL const&, HostLocality) const;
     bool matches_ongoing_navigation(Optional<Utf16String> const& navigation_id) const;
 
 private:
