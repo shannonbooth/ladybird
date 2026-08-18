@@ -52,6 +52,9 @@ public:
 
     bool is_empty() const { return m_algorithm_set.is_empty(); }
 
+    Vector<Item> const& queued_items_for_diagnostics() const { return m_algorithm_set; }
+    bool has_running_steps_for_diagnostics() const { return m_running_steps; }
+
 private:
     void process_queue();
     void schedule_processing();

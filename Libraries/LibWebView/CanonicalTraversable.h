@@ -8,6 +8,7 @@
 
 #include <AK/Function.h>
 #include <AK/HashFunctions.h>
+#include <AK/JsonObject.h>
 #include <AK/HashMap.h>
 #include <AK/Optional.h>
 #include <AK/RefCounted.h>
@@ -93,6 +94,7 @@ public:
     void set_system_visibility_state(Web::HTML::VisibilityState visibility_state) { m_system_visibility_state = visibility_state; }
 
     Optional<BrowserHistoryTraversalDiagnostic> browser_history_traversal_for_testing() const;
+    JsonObject navigation_diagnostics() const;
     Web::HTML::SessionHistoryEntryDescriptor const* ongoing_browser_history_traversal_target_entry() const;
 
     void prepare_for_reload();
