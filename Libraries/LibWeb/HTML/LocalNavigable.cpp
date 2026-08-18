@@ -713,8 +713,10 @@ void LocalNavigable::visit_edges(Cell::Visitor& visitor)
         navigation_params.visit_edges(visitor);
     }
 
-    if (m_pending_navigation_hosting.has_value())
+    if (m_pending_navigation_hosting.has_value()) {
+        m_pending_navigation_hosting->params.visit_edges(visitor);
         visitor.visit(m_pending_navigation_hosting->continue_steps);
+    }
 
     for (auto& async_scroll_operation : m_pending_async_scroll_operations)
         visitor.visit(async_scroll_operation.promise);
@@ -1132,6 +1134,17 @@ void LocalNavigable::set_ongoing_navigation(Variant<Empty, Traversal, Utf16Strin
     // 2. Inform the navigation API about aborting navigation given navigable.
     if (navigation_api_abort_behavior == NavigationAPIAbortBehavior::Abort)
         inform_the_navigation_api_about_aborting_navigation();
+
+    // AD-HOC: A traversal is re-stamping a navigation that is parked awaiting its hosting
+    //         decision. Defer it like the guard in begin_navigation does, so the traversal
+    //         finishing re-runs it even when the hosting reply arrives after the traversal
+    //         has already ended.
+    if (ongoing_navigation.has<Traversal>()
+        && m_pending_navigation_hosting.has_value()
+        && m_ongoing_navigation == m_pending_navigation_hosting->navigation_id) {
+        auto pending = m_pending_navigation_hosting.release_value();
+        queue_pending_navigation(move(pending.params), PendingNavigationBehavior::Append);
+    }
 
     // 3. Set navigable's ongoing navigation to newValue.
     auto was_traversal = m_ongoing_navigation.has<Traversal>();
@@ -2573,24 +2586,6 @@ void LocalNavigable::begin_navigation(NavigateParams params)
         initiator_base_url_snapshot = source_document->base_url();
     }
 
-    // AD-HOC: If this navigation was handed off from another WebContent process, sourceDocument is merely this
-    //         process's initial about:blank document. Substitute the state that the navigate algorithm snapshotted
-    //         from the real source document in the process where the navigation started. The fetch client cannot
-    //         cross the process boundary, so the local document's environment continues to stand in for it as the
-    //         request client.
-    if (params.cross_process_source_snapshot.has_value()) {
-        auto const& snapshot = *params.cross_process_source_snapshot;
-        source_snapshot_params = heap().allocate<SourceSnapshotParams>(
-            snapshot.has_transient_activation,
-            snapshot.sandboxing_flags,
-            snapshot.allows_downloading,
-            source_snapshot_params->fetch_client,
-            create_a_policy_container_from_serialized_policy_container(snapshot.source_policy_container));
-        initiator_origin_snapshot = snapshot.initiator_origin_snapshot;
-        initiator_base_url_snapshot = snapshot.initiator_base_url_snapshot;
-        referrer_policy = snapshot.referrer_policy;
-    }
-
     // 5. If sourceDocument's node navigable is not allowed by sandboxing to navigate navigable given sourceSnapshotParams, then:
     // NOTE: This step is handled in LocalNavigable::navigate()
 
@@ -2624,8 +2619,7 @@ void LocalNavigable::begin_navigation(NavigateParams params)
     }
 
     // 12-13. Determine historyHandling for this navigation.
-    if (!params.history_handling_already_determined)
-        history_handling = determine_history_handling_for_navigation(history_handling, url, active_document, initiator_origin_snapshot);
+    history_handling = determine_history_handling_for_navigation(history_handling, url, active_document, initiator_origin_snapshot);
 
     // FIXME: Revisit the following once the dust settles on our Navigation rewrites — specifically, whether the "the UI
     //        process installs the new process's active session-history entry with the target URL *before* its document
@@ -2813,31 +2807,59 @@ void LocalNavigable::begin_navigation(NavigateParams params)
                     return;
                 }
 
-                // AD-HOC: The UI process decides which process hosts the resulting document, so the
-                //         navigation parks here until that decision arrives. A replacement process
-                //         cannot snapshot the source document, which only exists in this process, so
-                //         the request carries the state the navigate algorithm snapshotted from it.
-                //         Browser-UI navigations carry nothing. Per spec their sourceDocument is null
-                //         and their source snapshot params and initiator origin have fixed values,
-                //         which the new process provides on its own.
+                // 4. Let documentState be a new document state with
+                //    request referrer policy: referrerPolicy
+                //    initiator origin: initiatorOriginSnapshot
+                //    resource: documentResource
+                //    navigable target name: navigable's target name
+                auto document_state = DocumentState::create(page().client().allocate_cross_process_id());
+                document_state->set_request_referrer_policy(referrer_policy);
+                document_state->set_initiator_origin(initiator_origin_snapshot);
+                document_state->set_resource(document_resource);
+                document_state->set_navigable_target_name(target_name());
+
+                // 5. If url matches about:blank or is about:srcdoc, then:
+                // FIXME: Is calling url_matches_about_srcdoc() correct? https://github.com/whatwg/html/issues/10900
+                if (url_matches_about_blank(url) || url_matches_about_srcdoc(url)) {
+                    // AD-HOC: document_resource cannot have an Empty if the url is about:srcdoc since we rely on document_resource
+                    //         having a Utf16String to call create_navigation_params_from_a_srcdoc_resource
+                    if (url_matches_about_srcdoc(url) && document_resource.has<Empty>()) {
+                        document_state->set_resource({ Utf16String {} });
+                    }
+                    // 1. Set documentState's origin to initiatorOriginSnapshot.
+                    document_state->set_origin(document_state->initiator_origin());
+
+                    // 2. Set documentState's about base URL to initiatorBaseURLSnapshot.
+                    document_state->set_about_base_url(initiator_base_url_snapshot);
+                }
+
+                // 6. Let historyEntry be a new session history entry, with its URL set to url and its document state set to documentState.
+                auto history_entry = SessionHistoryEntry::create();
+                history_entry->set_url(url);
+                history_entry->set_document_state(document_state);
+
+                // AD-HOC: The UI process decides which process hosts the document this entry will
+                //         be populated with, so the navigation parks here until that decision
+                //         arrives. The request carries the pending entry and the snapshotted
+                //         navigate inputs a hosting process cannot recompute. Browser-UI
+                //         navigations carry no source snapshot. Per spec their sourceDocument is
+                //         null and a hosting process derives the fixed values on its own.
                 Optional<NavigationSourceSnapshot> source_snapshot;
+                auto pending_entry = create_pending_session_history_entry_descriptor(*history_entry);
                 if (user_involvement != UserNavigationInvolvement::BrowserUI) {
                     source_snapshot = NavigationSourceSnapshot {
                         .has_transient_activation = source_snapshot_params->has_transient_activation,
                         .sandboxing_flags = source_snapshot_params->sandboxing_flags,
                         .allows_downloading = source_snapshot_params->allows_downloading,
                         .source_policy_container = source_snapshot_params->source_policy_container->serialize(),
-                        .initiator_origin_snapshot = initiator_origin_snapshot,
-                        .initiator_base_url_snapshot = initiator_base_url_snapshot,
-                        .referrer = params.cross_process_source_snapshot.has_value()
-                            ? params.cross_process_source_snapshot->referrer
-                            : params.source_document->url(),
-                        .referrer_policy = referrer_policy,
                     };
+                    // The descriptor's referrer must not stay "client". Fetch would resolve that
+                    // against the hosting process's own environment instead of the source document.
+                    pending_entry.document_state.request_referrer = params.source_document->url();
                 }
 
                 auto target = is_top_level_traversable() ? NavigationTarget::TopLevel : NavigationTarget::IFrame;
-                auto continue_steps = GC::create_function(heap(), [this, source_snapshot_params, target_snapshot_params, csp_navigation_type, document_resource, url, navigation_id, referrer_policy, initiator_origin_snapshot, response, history_handling, initiator_base_url_snapshot, user_involvement, params = move(params)]() mutable {
+                auto continue_steps = GC::create_function(heap(), [this, source_snapshot_params, target_snapshot_params, csp_navigation_type, navigation_id, response, history_handling, user_involvement, history_entry](NavigateParams params) mutable {
                     // AD-HOC: The hosting decision takes further event loop turns, so re-run the
                     //         guards from above before continuing.
                     if (has_been_destroyed() || !active_window()) {
@@ -2860,49 +2882,14 @@ void LocalNavigable::begin_navigation(NavigateParams params)
                     }
 
                     // 3. Queue a global task on the navigation and traversal task source given navigable's active window to abort a document and its descendants given navigable's active document.
+                    // NB: The abort must not run before the hosting decision arrives. A navigation superseded while
+                    //     parked would otherwise have aborted the current document's load without replacing it.
                     queue_global_task(Task::Source::NavigationAndTraversal, HTML::relevant_global_object(*active_window()), GC::create_function(heap(), [this] {
                         this->active_document()->abort_a_document_and_its_descendants();
                     }));
 
-                    // 4. Let documentState be a new document state with
-                    //    request referrer policy: referrerPolicy
-                    //    initiator origin: initiatorOriginSnapshot
-                    //    resource: documentResource
-                    //    navigable target name: navigable's target name
-                    auto document_state = DocumentState::create(page().client().allocate_cross_process_id());
-                    document_state->set_request_referrer_policy(referrer_policy);
-                    document_state->set_initiator_origin(initiator_origin_snapshot);
-                    document_state->set_resource(document_resource);
-                    document_state->set_navigable_target_name(target_name());
-
-                    // AD-HOC: The request referrer normally stays "client" and is resolved from the fetch client, but for
-                    //         a navigation handed off from another process, that client belongs to the source document in
-                    //         the process where the navigation started. Use the referrer snapshotted there instead.
-                    if (params.cross_process_source_snapshot.has_value())
-                        document_state->set_request_referrer(params.cross_process_source_snapshot->referrer);
-
-                    // 5. If url matches about:blank or is about:srcdoc, then:
-                    // FIXME: Is calling url_matches_about_srcdoc() correct? https://github.com/whatwg/html/issues/10900
-                    if (url_matches_about_blank(url) || url_matches_about_srcdoc(url)) {
-                        // AD-HOC: document_resource cannot have an Empty if the url is about:srcdoc since we rely on document_resource
-                        //         having a Utf16String to call create_navigation_params_from_a_srcdoc_resource
-                        if (url_matches_about_srcdoc(url) && document_resource.has<Empty>()) {
-                            document_state->set_resource({ Utf16String {} });
-                        }
-                        // 1. Set documentState's origin to initiatorOriginSnapshot.
-                        document_state->set_origin(document_state->initiator_origin());
-
-                        // 2. Set documentState's about base URL to initiatorBaseURLSnapshot.
-                        document_state->set_about_base_url(initiator_base_url_snapshot);
-                    }
-
-                    // 6. Let historyEntry be a new session history entry, with its URL set to url and its document state set to documentState.
-                    auto history_entry = SessionHistoryEntry::create();
-                    history_entry->set_url(url);
-                    history_entry->set_document_state(document_state);
-
                     if (is_top_level_traversable())
-                        active_browsing_context()->page().client().page_did_start_loading(navigation_id, url, false);
+                        active_browsing_context()->page().client().page_did_start_loading(navigation_id, history_entry->url(), false);
 
                     // 7. Let navigationParams be null.
                     NavigationParamsVariant navigation_params = LocalNavigable::NullOrError {};
@@ -2936,7 +2923,7 @@ void LocalNavigable::begin_navigation(NavigateParams params)
 
                         // 4. Let responseOrigin be the result of determining the origin given response's URL,
                         //    finalSandboxFlags, and documentState's initiator origin.
-                        auto response_origin = determine_the_origin(response_url, final_sandbox_flags, document_state->initiator_origin());
+                        auto response_origin = determine_the_origin(response_url, final_sandbox_flags, history_entry->document_state()->initiator_origin());
 
                         // 5. Let coop be a new opener policy.
                         OpenerPolicy response_coop = {};
@@ -2982,7 +2969,7 @@ void LocalNavigable::begin_navigation(NavigateParams params)
                             final_sandbox_flags,
                             target_snapshot_params.iframe_element_referrer_policy,
                             response_coop,
-                            document_state->about_base_url(),
+                            history_entry->document_state()->about_base_url(),
                             user_involvement);
                     }
 
@@ -2995,7 +2982,7 @@ void LocalNavigable::begin_navigation(NavigateParams params)
                         history_entry->document_state()->request_referrer(),
                         history_entry->document_state()->request_referrer_policy(),
                         history_entry->document_state()->initiator_origin(),
-                        params.cross_process_source_snapshot.has_value() ? Optional<URL::Origin> { params.cross_process_source_snapshot->initiator_origin_snapshot } : Optional<URL::Origin> {},
+                        Optional<URL::Origin> {},
                         history_entry->document_state()->origin(),
                         history_entry->document_state()->history_policy_container(),
                         history_entry->document_state()->about_base_url(),
@@ -3018,8 +3005,8 @@ void LocalNavigable::begin_navigation(NavigateParams params)
                             finalize_a_cross_document_navigation(*this, to_history_handling_behavior(history_handling), user_involvement, history_entry, pending_document, navigation_id, GC::create_function(heap(), [](HistoryStepResult) { }), move(entry_to_restore));
                         }));
                 });
-                m_pending_navigation_hosting = PendingNavigationHosting { navigation_id, continue_steps };
-                active_browsing_context()->page().client().request_navigation_hosting(*this, this->active_document()->url(), url, target, document_resource, history_handling, move(source_snapshot), navigation_id);
+                m_pending_navigation_hosting = PendingNavigationHosting { navigation_id, move(params), continue_steps };
+                active_browsing_context()->page().client().request_navigation_hosting(*this, this->active_document()->url(), target, move(pending_entry), move(source_snapshot), target_snapshot_params, csp_navigation_type, history_handling, user_involvement, navigation_id);
             }));
     }));
 }
@@ -3039,7 +3026,7 @@ void LocalNavigable::navigation_hosting_decided(Utf16String const& navigation_id
         return;
     }
 
-    pending.continue_steps->function()();
+    pending.continue_steps->function()(move(pending.params));
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate-fragid

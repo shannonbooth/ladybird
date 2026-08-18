@@ -136,6 +136,7 @@ public:
     void send_current_needs_beforeunload_check();
     void run_iframe_load_event_steps(Web::HTML::CrossProcessId);
     void navigation_hosting_decided(Web::HTML::CrossProcessId navigable_id, Utf16String const& navigation_id, Web::NavigationProcessDecision);
+    void populate_navigation(Web::HTML::PendingSessionHistoryEntryDescriptor, Optional<Web::HTML::NavigationSourceSnapshot>, Web::HTML::SandboxingFlagSet target_sandboxing_flags, Web::ReferrerPolicy::ReferrerPolicy iframe_element_referrer_policy, Web::ContentSecurityPolicy::Directives::Directive::NavigationType, Web::Bindings::NavigationHistoryBehavior, Web::HTML::UserNavigationInvolvement, Utf16String navigation_id);
     void set_remote_child_frame_compositor_context(Web::HTML::CrossProcessId, Optional<Web::Compositor::CompositorContextId>);
     void cancel_download(u64 download_id);
     void clear_pending_dom_mutations();
@@ -153,7 +154,7 @@ private:
 
     // ^PageClient
     virtual bool is_connection_open() const override;
-    virtual void request_navigation_hosting(Web::HTML::LocalNavigable&, URL::URL const& current_url, URL::URL const& target_url, Web::NavigationTarget, Web::HTML::DocumentResource, Web::Bindings::NavigationHistoryBehavior, Optional<Web::HTML::NavigationSourceSnapshot>, Utf16String const& navigation_id) override;
+    virtual void request_navigation_hosting(Web::HTML::LocalNavigable&, URL::URL const& current_url, Web::NavigationTarget, Web::HTML::PendingSessionHistoryEntryDescriptor, Optional<Web::HTML::NavigationSourceSnapshot>, Web::HTML::TargetSnapshotParams const&, Web::ContentSecurityPolicy::Directives::Directive::NavigationType, Web::Bindings::NavigationHistoryBehavior, Web::HTML::UserNavigationInvolvement, Utf16String const& navigation_id) override;
     virtual void page_did_create_child_frame(Web::HTML::CrossProcessId parent_frame_id, Web::HTML::CrossProcessId frame_id, Web::HTML::ReplicatedNavigableState const&) override;
     virtual void page_did_update_child_frame_viewport(Web::HTML::CrossProcessId frame_id, Web::CSSPixelRect) override;
     virtual void page_did_destroy_child_frame(Web::HTML::CrossProcessId frame_id) override;

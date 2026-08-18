@@ -294,16 +294,18 @@ void ConnectionFromClient::load_url(u64 page_id, URL::URL url, Web::Bindings::Na
     page->page().load(url, history_handling);
 }
 
-void ConnectionFromClient::load_url_with_document_resource(u64 page_id, URL::URL url,
-    Web::HTML::DocumentResource document_resource,
-    Web::Bindings::NavigationHistoryBehavior history_handling,
-    Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot)
+void ConnectionFromClient::populate_navigation(u64 page_id, Web::HTML::PendingSessionHistoryEntryDescriptor pending_entry,
+    Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot, Web::HTML::SandboxingFlagSet target_sandboxing_flags,
+    Web::ReferrerPolicy::ReferrerPolicy iframe_element_referrer_policy,
+    Web::ContentSecurityPolicy::Directives::Directive::NavigationType csp_navigation_type,
+    Web::Bindings::NavigationHistoryBehavior history_handling, Web::HTML::UserNavigationInvolvement user_involvement,
+    Utf16String navigation_id)
 {
     auto page = this->page(page_id);
     if (!page.has_value())
         return;
 
-    page->page().load(url, move(document_resource), history_handling, move(source_snapshot));
+    page->populate_navigation(move(pending_entry), move(source_snapshot), target_sandboxing_flags, iframe_element_referrer_policy, csp_navigation_type, history_handling, user_involvement, move(navigation_id));
 }
 
 void ConnectionFromClient::load_html(u64 page_id, ByteString html)

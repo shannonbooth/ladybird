@@ -955,6 +955,7 @@ struct SerializedFormData;
 struct SerializedPolicyContainer;
 struct SerializedTransferRecord;
 struct SourceSnapshotParams;
+struct TargetSnapshotParams;
 struct ToggleTaskTracker;
 
 }

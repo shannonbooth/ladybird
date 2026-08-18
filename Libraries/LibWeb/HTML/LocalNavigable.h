@@ -205,13 +205,6 @@ public:
         UserNavigationInvolvement user_involvement = UserNavigationInvolvement::None;
         GC::Ptr<DOM::Element> source_element = nullptr;
         InitialInsertion initial_insertion = InitialInsertion::No;
-        // AD-HOC: Set when this navigation was started in another WebContent process and handed off to this one. The
-        //         source document only exists in the process where the navigation started, so this carries the state
-        //         the navigate algorithm would otherwise snapshot from it.
-        Optional<NavigationSourceSnapshot> cross_process_source_snapshot = {};
-        // AD-HOC: A cross-process continuation resumes after historyHandling has already been resolved in the
-        //         process where the navigation started.
-        bool history_handling_already_determined { false };
         Optional<SessionHistoryEntryDescriptor> session_history_entry_to_restore = {};
 
         void visit_edges(Cell::Visitor& visitor);
@@ -435,10 +428,12 @@ private:
     Vector<NavigateParams> m_pending_navigations;
 
     // AD-HOC: A navigation parked at the process placement decision. The UI process answers with
-    //         the hosting decision and the parked steps continue here for a local placement.
+    //         the hosting decision and the parked steps continue here for a local placement. The
+    //         params are retained so a traversal re-stamp can defer the parked navigation.
     struct PendingNavigationHosting {
         Utf16String navigation_id;
-        GC::Ptr<GC::Function<void()>> continue_steps;
+        NavigateParams params;
+        GC::Ptr<GC::Function<void(NavigateParams)>> continue_steps;
     };
     Optional<PendingNavigationHosting> m_pending_navigation_hosting;
 

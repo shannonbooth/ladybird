@@ -138,20 +138,6 @@ void Page::load(URL::URL const& url, Bindings::NavigationHistoryBehavior history
     (void)top_level_traversable()->navigate({ .url = url, .source_document = *top_level_traversable()->active_document(), .history_handling = history_handling, .user_involvement = HTML::UserNavigationInvolvement::BrowserUI });
 }
 
-void Page::load(URL::URL const& url, HTML::DocumentResource document_resource,
-    Bindings::NavigationHistoryBehavior history_handling, Optional<HTML::NavigationSourceSnapshot> source_snapshot)
-{
-    (void)top_level_traversable()->navigate({
-        .url = url,
-        .source_document = *top_level_traversable()->active_document(),
-        .document_resource = move(document_resource),
-        .history_handling = history_handling,
-        .user_involvement = HTML::UserNavigationInvolvement::BrowserUI,
-        .cross_process_source_snapshot = move(source_snapshot),
-        .history_handling_already_determined = true,
-    });
-}
-
 void Page::load_html(StringView html)
 {
     // FIXME: #23909 Figure out why GC threshold does not stay low when repeatedly loading html from the WebView
@@ -1406,7 +1392,7 @@ void Page::set_viewport_is_fullscreen(ViewportIsFullscreen is_fullscreen)
     process_pending_fullscreen_operations();
 }
 
-void PageClient::request_navigation_hosting(HTML::LocalNavigable& navigable, URL::URL const&, URL::URL const&, NavigationTarget, HTML::DocumentResource, Bindings::NavigationHistoryBehavior, Optional<HTML::NavigationSourceSnapshot>, Utf16String const& navigation_id)
+void PageClient::request_navigation_hosting(HTML::LocalNavigable& navigable, URL::URL const&, NavigationTarget, HTML::PendingSessionHistoryEntryDescriptor, Optional<HTML::NavigationSourceSnapshot>, HTML::TargetSnapshotParams const&, ContentSecurityPolicy::Directives::Directive::NavigationType, Bindings::NavigationHistoryBehavior, HTML::UserNavigationInvolvement, Utf16String const& navigation_id)
 {
     navigable.navigation_hosting_decided(navigation_id, NavigationProcessDecision::Local);
 }

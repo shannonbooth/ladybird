@@ -17,10 +17,6 @@ ErrorOr<void> encode(Encoder& encoder, Web::HTML::NavigationSourceSnapshot const
     TRY(encoder.encode(snapshot.sandboxing_flags));
     TRY(encoder.encode(snapshot.allows_downloading));
     TRY(encoder.encode(snapshot.source_policy_container));
-    TRY(encoder.encode(snapshot.initiator_origin_snapshot));
-    TRY(encoder.encode(snapshot.initiator_base_url_snapshot));
-    TRY(encoder.encode(snapshot.referrer));
-    TRY(encoder.encode(snapshot.referrer_policy));
     return {};
 }
 
@@ -32,10 +28,6 @@ ErrorOr<Web::HTML::NavigationSourceSnapshot> decode(Decoder& decoder)
         .sandboxing_flags = TRY(decoder.decode<Web::HTML::SandboxingFlagSet>()),
         .allows_downloading = TRY(decoder.decode<bool>()),
         .source_policy_container = TRY(decoder.decode<Web::HTML::SerializedPolicyContainer>()),
-        .initiator_origin_snapshot = TRY(decoder.decode<URL::Origin>()),
-        .initiator_base_url_snapshot = TRY(decoder.decode<URL::URL>()),
-        .referrer = TRY(decoder.decode<URL::URL>()),
-        .referrer_policy = TRY(decoder.decode<Web::ReferrerPolicy::ReferrerPolicy>()),
     };
 }
 

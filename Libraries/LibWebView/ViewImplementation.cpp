@@ -190,8 +190,10 @@ void ViewImplementation::set_favicon(Badge<WebContentClient>, Optional<Gfx::Bitm
         on_favicon_change(favicon);
 }
 
-void ViewImplementation::create_new_process_for_cross_site_navigation(URL::URL const& url, Web::HTML::DocumentResource document_resource, Web::Bindings::NavigationHistoryBehavior history_handling, Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot)
+void ViewImplementation::create_new_process_for_cross_site_navigation(Web::HTML::PendingSessionHistoryEntryDescriptor pending_entry, Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot, Web::HTML::SandboxingFlagSet target_sandboxing_flags, Web::ReferrerPolicy::ReferrerPolicy iframe_element_referrer_policy, Web::ContentSecurityPolicy::Directives::Directive::NavigationType csp_navigation_type, Web::Bindings::NavigationHistoryBehavior history_handling, Web::HTML::UserNavigationInvolvement user_involvement, Utf16String navigation_id)
 {
+    auto url = pending_entry.url;
+
     auto pending_webdriver_command_ids = move(m_pending_webdriver_command_ids);
     auto pending_webdriver_crash_command_ids = move(m_pending_webdriver_crash_command_ids);
 
@@ -225,6 +227,7 @@ void ViewImplementation::create_new_process_for_cross_site_navigation(URL::URL c
     set_loading_state(true);
     m_top_level_traversable.ongoing_navigation() = CanonicalNavigable::OngoingNavigation {
         .url = url,
+        .navigation_id = navigation_id,
         .uses_replacement_process = true,
         .is_uncommitted = true,
     };
@@ -232,8 +235,9 @@ void ViewImplementation::create_new_process_for_cross_site_navigation(URL::URL c
     m_last_stopped_load_url.clear();
     set_url(url);
     dump_session_history("process-swap-load"sv);
-    client().async_load_url_with_document_resource(page_id(), url, document_resource,
-        history_handling, move(source_snapshot));
+    client().async_populate_navigation(page_id(), move(pending_entry), move(source_snapshot),
+        target_sandboxing_flags, iframe_element_referrer_policy, csp_navigation_type,
+        history_handling, user_involvement, move(navigation_id));
     dump_session_history("after-process-swap-load"sv);
 
     fail_webdriver_content_commands_after_process_replacement(pending_webdriver_command_ids);
