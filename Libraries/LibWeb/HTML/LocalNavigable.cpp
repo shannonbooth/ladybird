@@ -2492,6 +2492,9 @@ WebIDL::ExceptionOr<void> LocalNavigable::navigate(NavigateParams params)
         return {};
     }
 
+    // AD-HOC: A child navigable's session history entry exists canonically only once the UI process has admitted
+    //         the creation operation, so navigations that arrive before that acknowledgment queue until it lands.
+    //         Top-level traversables are marked ready at creation and never queue here.
     if (!m_has_session_history_entry_and_ready_for_navigation) {
         queue_pending_navigation(move(params), PendingNavigationBehavior::Append);
         return {};
@@ -2621,14 +2624,13 @@ void LocalNavigable::begin_navigation(NavigateParams params)
     // 12-13. Determine historyHandling for this navigation.
     history_handling = determine_history_handling_for_navigation(history_handling, url, active_document, initiator_origin_snapshot);
 
-    // FIXME: Revisit the following once the dust settles on our Navigation rewrites — specifically, whether the "the UI
-    //        process installs the new process's active session-history entry with the target URL *before* its document
-    //        has loaded" behavior is actually a mistake that the following is just working around (papering over).
-    // AD-HOC: In addition to the spec requirements here, we also require the active document's URL (ignoring fragments)
-    //         to match. That's because: After a cross-site process swap, the UI process installs the new process's
-    //         active session-history entry with the target URL *before* its document has loaded. So, doing just the
-    //         session-history-entry check alone would misclassify a fresh cross-document navigation as a same-document
-    //         fragment navigation — and completely skip loading the document. See issue #10312.
+    // AD-HOC: In addition to the spec requirements here, we also require the active document's URL, ignoring
+    //         fragments, to match. Reconstructing a child navigable during traversal restores the canonical target
+    //         entry as the child's active entry before its document exists, then routes the child's initial
+    //         navigation to that entry's URL. When that URL carries a fragment, the session-history-entry check
+    //         alone would classify the routed navigation as a same-document fragment navigation against the child's
+    //         initial about:blank and never load the document. Pinned by
+    //         Tests/LibWeb/Text/input/navigation/iframe-fragment-entry-reconstructed-on-back.html.
     // 14. If all of the following are true:
     //     - documentResource is null;
     //     - response is null;
