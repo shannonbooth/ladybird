@@ -1676,6 +1676,8 @@ void LocalTraversableNavigable::finalize_same_document_navigation(GC::Ref<LocalN
     if (target_navigable->has_been_destroyed())
         return;
 
+    VERIFY(static_cast<bool>(entry_to_replace) == (history_handling == HistoryHandlingBehavior::Replace));
+
     // 2. If targetNavigable's active session history entry is not targetEntry, then return.
     if (target_navigable->active_session_history_entry() != target_entry)
         return;
@@ -1683,9 +1685,6 @@ void LocalTraversableNavigable::finalize_same_document_navigation(GC::Ref<LocalN
     auto parameters = FinalizeSameDocumentNavigationHistoryOperationParameters {
         .navigable_id = target_navigable->id(),
         .target_entry = create_same_document_navigation_entry(target_entry),
-        .entry_to_replace_navigation_api_key = entry_to_replace
-            ? Optional<Utf16String> { entry_to_replace->navigation_api_key() }
-            : OptionalNone {},
         .previous_entry_persisted_state = move(previous_entry_persisted_state),
         .history_handling = history_handling,
         .user_involvement = user_involvement,
