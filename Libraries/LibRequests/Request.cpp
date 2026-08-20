@@ -49,9 +49,10 @@ ErrorOr<NonnullOwnPtr<ReadStream>> ReadStream::create(int reader_fd)
 #endif
 }
 
-Request::Request(RequestClient& client, u64 request_id)
+Request::Request(RequestClient& client, u64 request_id, Optional<RequestTransferLeaseKey> transfer_lease)
     : m_client(client)
     , m_request_id(request_id)
+    , m_transfer_lease(move(transfer_lease))
 {
 }
 
@@ -106,10 +107,13 @@ void Request::resume_body_delivery_up_to(size_t byte_count)
     set_body_delivery_paused(false);
 }
 
-void Request::release_for_transfer()
+void Request::release_transfer_lease()
 {
+    if (!m_transfer_lease.has_value())
+        return;
+
     if (auto client = m_client.strong_ref())
-        client->release_request_for_transfer({}, *this);
+        client->release_request_transfer_lease({}, m_transfer_lease.release_value());
 }
 
 bool Request::has_file_backed_response_body() const
@@ -273,6 +277,7 @@ void Request::did_request_certificates(Badge<RequestClient>)
 
 void Request::did_transfer(Badge<RequestClient>)
 {
+    m_transfer_lease.clear();
     auto on_stop = move(m_on_stop);
 
     defer_teardown();
