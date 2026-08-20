@@ -1355,21 +1355,7 @@ void CanonicalTraversable::finalize_a_cross_document_navigation_at_queued_positi
     }
 
     auto current_step = m_session_history.current_step();
-    // AD-HOC: The initial about:blank entry is not reported when the browser creates its first WebContent process.
-    //         Its first committed navigation therefore initializes the canonical history at this queue position.
-    if (!current_step.has_value()) {
-        if (!navigable->is_top_level_traversable()) {
-            finish_history_operation(operation.operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
-            return;
-        }
-        m_session_history.initialize_with_initial_history_entry(
-            Web::HTML::create_session_history_entry_descriptor(move(pending_history_entry), 0));
-        auto navigation_type = parameters.history_handling == Web::HTML::HistoryHandlingBehavior::Push
-            ? Web::Bindings::NavigationType::Push
-            : Web::Bindings::NavigationType::Replace;
-        apply_history_step(operation, 0, false, {}, parameters.user_involvement, navigation_type);
-        return;
-    }
+    VERIFY(current_step.has_value());
 
     VERIFY(parameters.history_handling == Web::HTML::HistoryHandlingBehavior::Push
         || parameters.history_handling == Web::HTML::HistoryHandlingBehavior::Replace);

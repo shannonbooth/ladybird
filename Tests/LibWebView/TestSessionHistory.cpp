@@ -125,12 +125,8 @@ static Web::HTML::SessionHistoryEntryDescriptor entry_with_step(Web::HTML::Pendi
 static Optional<i32> finalize_cross_document_navigation_for_testing(WebView::TraversableSessionHistory& history, WebView::CanonicalNavigable const& navigable, Web::HTML::PendingSessionHistoryEntryDescriptor pending_history_entry, Web::HTML::HistoryHandlingBehavior history_handling)
 {
     auto current_step = history.current_step();
-    if (!current_step.has_value()) {
-        if (!navigable.is_top_level_traversable())
-            return {};
-        history.initialize_with_initial_history_entry(entry_with_step(move(pending_history_entry), 0));
-        return 0;
-    }
+    if (!current_step.has_value())
+        return {};
 
     auto entry_to_replace_identity = history_handling == Web::HTML::HistoryHandlingBehavior::Replace
         ? navigable.active_session_history_entry_identity()
@@ -904,21 +900,6 @@ TEST_CASE(same_document_replacement_uses_the_canonical_active_entry)
     EXPECT_EQ(history.size(), 2uz);
     expect_current_entry(history, 0, "https://example.com/replaced"sv);
     expect_entry(history, 1, 2, "https://example.com/forward"sv);
-}
-
-TEST_CASE(first_cross_document_finalization_initializes_history)
-{
-    WebView::CanonicalTraversable traversable;
-    traversable.set_id({ 9, 1 });
-    WebView::TraversableSessionHistory history;
-
-    auto target_step = finalize_cross_document_navigation_for_testing(
-        history, traversable, pending_entry(entry(0, "https://a.example/"sv)), Web::HTML::HistoryHandlingBehavior::Push);
-    EXPECT(target_step.has_value());
-    EXPECT_EQ(*target_step, 0);
-    EXPECT_EQ(history.size(), 1uz);
-    EXPECT_EQ(history.used_step_count(), 1uz);
-    expect_current_entry(history, 0, "https://a.example/"sv);
 }
 
 TEST_CASE(nested_finalization_replaces_initial_entry_after_its_key_changes)
