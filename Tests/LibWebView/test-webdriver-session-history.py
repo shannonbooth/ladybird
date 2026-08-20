@@ -2327,13 +2327,22 @@ def run_cross_process_no_content_navigation_restore_test(
     session_id = create_session(webdriver_port)
     log = [f"cross-process no-content navigation restore initial: {current_url(webdriver_port, session_id)}"]
     try:
+        with page_server.a_request_lock:
+            initial_a_request_count = page_server.a_request_count
+
         load_url_from_ui(webdriver_port, session_id, url_a)
         expect_url(webdriver_port, session_id, "after no-content navigation setup /a", url_a, log)
         initial_process_id = session_history(webdriver_port, session_id)["ui"]["webContentProcessID"]
+        with page_server.a_request_lock:
+            a_request_count_after_setup = page_server.a_request_count
+        if a_request_count_after_setup != initial_a_request_count + 1:
+            raise AssertionError(
+                f"Expected one /a request during no-content setup, got "
+                f"{a_request_count_after_setup - initial_a_request_count}\n" + "\n".join(log)
+            )
 
         page_server.blocked_no_content_navigation_requested.clear()
         page_server.release_blocked_no_content_navigation.clear()
-        page_server.a_document_ran.clear()
         execute_script(
             webdriver_port,
             session_id,
@@ -2342,37 +2351,38 @@ def run_cross_process_no_content_navigation_restore_test(
         wait_for_event(page_server.blocked_no_content_navigation_requested, "cross-process no-content request")
 
         pending_history = session_history(webdriver_port, session_id)
-        replacement_process_id = pending_history["ui"]["webContentProcessID"]
         if (
             pending_history["ui"]["currentURL"] != url_cross_site_no_content
             or history_entry_urls(pending_history["ui"]) != [url_a]
-            or replacement_process_id == initial_process_id
+            or pending_history["ui"]["webContentProcessID"] != initial_process_id
         ):
             raise AssertionError(
-                "Expected no-content navigation to leave canonical history at /a in a cross-site process, got "
+                "Expected pending no-content navigation to leave canonical history and its host at /a, got "
                 f"{summarize_history_snapshot(pending_history)}\n" + "\n".join(log)
             )
 
         page_server.release_blocked_no_content_navigation.set()
-        wait_for_event(page_server.a_document_ran, "restored /a document after no-content navigation")
-        expect_url(webdriver_port, session_id, "after cross-process no-content navigation restores /a", url_a, log)
-        restored_history = expect_ui_session_history(
+        restored_history = wait_for_session_history(
             webdriver_port,
             session_id,
             "after cross-process no-content navigation restores /a",
-            [url_a],
-            [0],
-            0,
-            False,
-            False,
+            lambda snapshot: (
+                snapshot["ui"]["currentURL"] == url_a
+                and history_entry_urls(snapshot["ui"]) == [url_a]
+                and snapshot["ui"]["currentUsedStepIndex"] == 0
+                and snapshot["ui"]["backButtonEnabled"] is False
+                and snapshot["ui"]["forwardButtonEnabled"] is False
+                and snapshot["ui"]["pendingSessionHistoryTraversal"] is None
+            ),
             log,
         )
-        if restored_history["ui"]["webContentProcessID"] == replacement_process_id:
+        if restored_history["ui"]["webContentProcessID"] != initial_process_id:
             raise AssertionError(
-                "Expected no-content restoration to replace the uncommitted cross-site process\n" + "\n".join(log)
+                "Expected no-content navigation to preserve the active WebContent process\n" + "\n".join(log)
             )
-        if restored_history["ui"]["pendingSessionHistoryTraversal"] is not None:
-            raise AssertionError("Expected no pending history state after no-content restoration\n" + "\n".join(log))
+        with page_server.a_request_lock:
+            if page_server.a_request_count != a_request_count_after_setup:
+                raise AssertionError("Expected no-content navigation to preserve the active /a document\n" + "\n".join(log))
     finally:
         page_server.release_blocked_no_content_navigation.set()
         request(webdriver_port, "DELETE", f"/session/{session_id}")

@@ -669,11 +669,23 @@ bool WebContentClient::continue_navigation_population_in_selected_process(u64 pa
         return false;
     }
 
+    auto const& result = ongoing_navigation->loader->result();
     auto const& current_url = *ongoing_navigation->current_url;
     auto const& target_url = *ongoing_navigation->url;
-    auto requires_process_swap = navigable->is_top_level_traversable()
-        ? SiteIsolationManager::the().navigation_requires_process_swap(current_url, target_url, ongoing_navigation->target.value_or(Web::NavigationTarget::TopLevel))
-        : SiteIsolationManager::the().child_frame_navigation_requires_process_swap(*navigable, current_url, target_url);
+    auto creates_a_document = true;
+    if (result.navigation_params.has<Web::HTML::NavigationParamsDescriptor>()) {
+        auto status = result.navigation_params.get<Web::HTML::NavigationParamsDescriptor>().response.status;
+        creates_a_document = status != 204 && status != 205;
+    }
+
+    auto requires_process_swap = false;
+    if (creates_a_document) {
+        if (navigable->is_top_level_traversable()) {
+            requires_process_swap = SiteIsolationManager::the().navigation_requires_process_swap(current_url, target_url, ongoing_navigation->target.value_or(Web::NavigationTarget::TopLevel));
+        } else {
+            requires_process_swap = SiteIsolationManager::the().child_frame_navigation_requires_process_swap(*navigable, current_url, target_url);
+        }
+    }
 
     ongoing_navigation->phase = CanonicalNavigable::OngoingNavigation::Phase::Populating;
 
