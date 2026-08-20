@@ -1362,11 +1362,11 @@ void CanonicalTraversable::finalize_a_cross_document_navigation_at_queued_positi
 
     // 5. Let entryToReplace be navigable's active session history entry if historyHandling is "replace", otherwise
     //    null.
-    auto entry_to_replace_identity = parameters.history_handling == Web::HTML::HistoryHandlingBehavior::Replace
+    auto entry_to_replace = parameters.history_handling == Web::HTML::HistoryHandlingBehavior::Replace
         ? navigable->active_session_history_entry_identity()
         : Optional<Web::HTML::SessionHistoryEntryIdentity> {};
     if (parameters.history_handling == Web::HTML::HistoryHandlingBehavior::Replace
-        && !entry_to_replace_identity.has_value()) {
+        && !entry_to_replace.has_value()) {
         finish_history_operation(operation.operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
         return;
     }
@@ -1385,7 +1385,7 @@ void CanonicalTraversable::finalize_a_cross_document_navigation_at_queued_positi
     }
 
     // 9. If entryToReplace is null:
-    if (!entry_to_replace_identity.has_value()) {
+    if (!entry_to_replace.has_value()) {
         // 1. Clear the forward session history of traversable.
         m_session_history.clear_the_forward_session_history();
 
@@ -1405,38 +1405,26 @@ void CanonicalTraversable::finalize_a_cross_document_navigation_at_queued_positi
     // Otherwise:
     else {
         // 1. Replace entryToReplace with historyEntry in targetEntries.
-        auto entry_to_replace = target_entries->find_if([&](auto const& entry) {
-            return entry.document_state.id == entry_to_replace_identity->document_state_id
-                && entry.navigation_api_id == entry_to_replace_identity->navigation_api_id;
+        auto canonical_entry_to_replace = target_entries->find_if([&](auto const& entry) {
+            return Web::HTML::session_history_entry_identity(entry) == *entry_to_replace;
         });
-
-        // AD-HOC: A child can initialize the Navigation API after its initial about:blank entry was mirrored. Treat
-        //         the sole unpopulated initial entry as the active entry when its live identity has changed since then.
-        if (entry_to_replace == target_entries->end()
-            && !navigable->is_top_level_traversable()
-            && target_entries->size() == 1
-            && target_entries->first().url == URL::about_blank()
-            && !target_entries->first().document_state.ever_populated) {
-            entry_to_replace = target_entries->begin();
-        }
-        if (entry_to_replace == target_entries->end()) {
+        if (canonical_entry_to_replace == target_entries->end()) {
             finish_history_operation(operation.operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
             return;
         }
-        auto entry_to_replace_navigation_api_key = entry_to_replace->navigation_api_key;
 
         // 2. Set historyEntry's step to entryToReplace's step.
-        auto history_entry = Web::HTML::create_session_history_entry_descriptor(move(pending_history_entry), entry_to_replace->step);
+        auto history_entry = Web::HTML::create_session_history_entry_descriptor(move(pending_history_entry), canonical_entry_to_replace->step);
 
         // 3. If historyEntry's document state's origin is same origin with entryToReplace's document state's origin,
         //    then set historyEntry's navigation API key to entryToReplace's navigation API key.
         if (history_entry.document_state.origin.has_value()
-            && entry_to_replace->document_state.origin.has_value()
-            && history_entry.document_state.origin->is_same_origin(*entry_to_replace->document_state.origin)) {
-            history_entry.navigation_api_key = entry_to_replace_navigation_api_key;
+            && canonical_entry_to_replace->document_state.origin.has_value()
+            && history_entry.document_state.origin->is_same_origin(*canonical_entry_to_replace->document_state.origin)) {
+            history_entry.navigation_api_key = canonical_entry_to_replace->navigation_api_key;
         }
 
-        if (!m_session_history.append_or_replace_session_history_entry(*navigable, history_entry, entry_to_replace_navigation_api_key)) {
+        if (!m_session_history.append_or_replace_session_history_entry(*navigable, history_entry, entry_to_replace)) {
             finish_history_operation(operation.operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
             return;
         }
@@ -1545,6 +1533,7 @@ void CanonicalTraversable::did_receive_history_operation_ready(WebContentClient&
         },
         [&](Web::FinalizeSameDocumentNavigationHistoryOperationParameters const& parameters) {
             VERIFY(parameters.history_handling == Web::HTML::HistoryHandlingBehavior::Push || parameters.history_handling == Web::HTML::HistoryHandlingBehavior::Replace);
+            VERIFY(parameters.entry_to_replace.has_value() == (parameters.history_handling == Web::HTML::HistoryHandlingBehavior::Replace));
             auto& finalization = result.get<Web::HTML::SameDocumentNavigationEntry>();
             if (finalization.document_state_id != parameters.target_entry.document_state_id
                 || finalization.navigation_api_key != parameters.target_entry.navigation_api_key
@@ -1561,7 +1550,7 @@ void CanonicalTraversable::did_receive_history_operation_ready(WebContentClient&
 
             auto target_step = m_session_history.finalize_same_document_navigation(
                 *navigable, move(finalization),
-                parameters.history_handling);
+                parameters.entry_to_replace);
             if (!target_step.has_value()) {
                 finish_history_operation(operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
                 return;

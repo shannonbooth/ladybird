@@ -155,9 +155,12 @@ struct TestTraversable {
         auto replacement_entry = entry(0, "https://b.example/"sv);
         auto current_entry = history.current_entry();
         VERIFY(current_entry);
-        auto entry_to_replace_navigation_api_key = current_entry->navigation_api_key;
+        auto entry_to_replace = Web::HTML::SessionHistoryEntryIdentity {
+            .document_state_id = current_entry->document_state.id,
+            .navigation_api_id = current_entry->navigation_api_id,
+        };
         replacement_entry.step = current_entry->step;
-        VERIFY(history.append_or_replace_session_history_entry(traversable, replacement_entry, entry_to_replace_navigation_api_key));
+        VERIFY(history.append_or_replace_session_history_entry(traversable, replacement_entry, entry_to_replace));
     }
 
     WebView::ApplyHistoryStep& apply_step(i32 step, Optional<Web::Bindings::NavigationType> navigation_type, bool check_for_cancelation = false, Optional<Web::HTML::CrossProcessId> initiator_to_check = {}, Optional<Web::InitiatorSourceSnapshot> initiator_source_snapshot = {})
