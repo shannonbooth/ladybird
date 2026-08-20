@@ -488,6 +488,7 @@ protected:
 
     void set_url(URL::URL);
     void did_start_navigation(Optional<Utf16String> navigation_id, URL::URL const&, bool is_redirect);
+    void did_cancel_loading(Optional<Utf16String> const& navigation_id);
     bool did_cancel_navigation(Optional<Utf16String> const& navigation_id);
     void did_finish_navigation(URL::URL const&);
     bool matches_ongoing_navigation(Optional<Utf16String> const& navigation_id) const;

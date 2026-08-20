@@ -64,7 +64,8 @@ public:
     Optional<i32> append_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId child_navigable_id, Web::HTML::PendingSessionHistoryEntryDescriptor);
     bool remove_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId child_navigable_id);
     Optional<i32> finalize_same_document_navigation(CanonicalNavigable const&, Web::HTML::SameDocumentNavigationEntry target_entry, Web::HTML::HistoryHandlingBehavior);
-    Optional<i32> finalize_cross_document_navigation(CanonicalNavigable const&, Web::HTML::PendingSessionHistoryEntryDescriptor history_entry, Web::HTML::HistoryHandlingBehavior);
+    void clear_the_forward_session_history();
+    bool append_or_replace_session_history_entry(CanonicalNavigable const&, Entry const&, Optional<Utf16String> const& entry_to_replace_navigation_api_key);
     Vector<Entry> entries() const;
     Vector<i32> used_steps() const;
 
