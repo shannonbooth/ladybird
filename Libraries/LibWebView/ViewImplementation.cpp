@@ -2018,6 +2018,21 @@ bool ViewImplementation::did_cancel_navigation(Optional<Utf16String> const& navi
     return true;
 }
 
+void ViewImplementation::did_cancel_loading(Optional<Utf16String> const& navigation_id)
+{
+    if (!did_cancel_navigation(navigation_id))
+        return;
+
+    auto const& client_url = url();
+    if (on_load_finish)
+        on_load_finish(client_url);
+
+    for (auto const& [id, listener] : m_navigation_listeners) {
+        if (listener.on_load_finish)
+            listener.on_load_finish(client_url);
+    }
+}
+
 bool ViewImplementation::matches_ongoing_navigation(Optional<Utf16String> const& navigation_id) const
 {
     return m_top_level_traversable.matches_ongoing_navigation(navigation_id);
