@@ -341,6 +341,8 @@ void ViewImplementation::load(URL::URL const& url, Web::Bindings::NavigationHist
     m_should_suppress_history_for_next_load = false;
     m_top_level_traversable.set_ongoing_navigation(CanonicalNavigable::OngoingNavigation {
         .url = url,
+        .sequence_number = m_top_level_traversable.allocate_navigation_or_traversal_sequence_number(),
+        .is_ui_navigation_placeholder = true,
         .is_uncommitted = true,
     });
     m_last_stopped_load_url.clear();
@@ -469,7 +471,11 @@ void ViewImplementation::reload()
     auto ongoing_url = m_top_level_traversable.ongoing_navigation().has_value()
         ? move(m_top_level_traversable.ongoing_navigation()->url)
         : Optional<URL::URL> {};
-    m_top_level_traversable.set_ongoing_navigation(CanonicalNavigable::OngoingNavigation { .url = move(ongoing_url) });
+    m_top_level_traversable.set_ongoing_navigation(CanonicalNavigable::OngoingNavigation {
+        .url = move(ongoing_url),
+        .sequence_number = m_top_level_traversable.allocate_navigation_or_traversal_sequence_number(),
+        .is_ui_navigation_placeholder = true,
+    });
     if (m_is_showing_crash_page) {
         m_is_showing_crash_page = false;
         m_should_suppress_history_for_current_load = false;
@@ -1963,8 +1969,11 @@ void ViewImplementation::cancel_all_native_geolocation_requests()
 void ViewImplementation::did_start_navigation(Optional<Utf16String> navigation_id, URL::URL const& url, bool is_redirect)
 {
     auto& ongoing = m_top_level_traversable.ensure_ongoing_navigation();
+    if (ongoing.sequence_number == 0)
+        ongoing.sequence_number = m_top_level_traversable.allocate_navigation_or_traversal_sequence_number();
     ongoing.navigation_id = move(navigation_id);
     ongoing.url = url;
+    ongoing.is_ui_navigation_placeholder = false;
     ongoing.has_started = true;
 
     set_loading_state(true);
@@ -2181,7 +2190,11 @@ void ViewImplementation::did_start_webdriver_navigation()
     auto ongoing_url = m_top_level_traversable.ongoing_navigation().has_value()
         ? m_top_level_traversable.ongoing_navigation()->url
         : Optional<URL::URL> {};
-    m_top_level_traversable.set_ongoing_navigation(CanonicalNavigable::OngoingNavigation { .url = move(ongoing_url) });
+    m_top_level_traversable.set_ongoing_navigation(CanonicalNavigable::OngoingNavigation {
+        .url = move(ongoing_url),
+        .sequence_number = m_top_level_traversable.allocate_navigation_or_traversal_sequence_number(),
+        .is_ui_navigation_placeholder = true,
+    });
     begin_webdriver_navigation(WebDriverNavigationCompletionSource::Load);
 }
 
@@ -2464,6 +2477,21 @@ NonnullRefPtr<Core::Promise<Empty>> ViewImplementation::reset_session_history_fo
 
 void ViewImplementation::request_history_operation(Badge<WebContentClient>, WebContentClient& requesting_client, u64 requesting_page_id, u64 initiation_id, Web::HistoryOperationParameters parameters)
 {
+    auto traversal_sequence_number = parameters.visit(
+        [this](Web::TraverseByDeltaHistoryOperationParameters const&) -> Optional<u64> {
+            return m_top_level_traversable.allocate_navigation_or_traversal_sequence_number();
+        },
+        [this](Web::TraverseToStepHistoryOperationParameters const&) -> Optional<u64> {
+            return m_top_level_traversable.allocate_navigation_or_traversal_sequence_number();
+        },
+        [this](Web::NavigationAPITraverseHistoryOperationParameters const&) -> Optional<u64> {
+            return m_top_level_traversable.allocate_navigation_or_traversal_sequence_number();
+        },
+        [this](Web::ResumeTraverseHistoryOperationParameters const&) -> Optional<u64> {
+            return m_top_level_traversable.allocate_navigation_or_traversal_sequence_number();
+        },
+        [](auto const&) -> Optional<u64> { return {}; });
+
     auto reloads_top_level = parameters.visit(
         [this](Web::ReloadHistoryOperationParameters const& parameters) {
             return parameters.navigable_id == m_top_level_traversable.id();
@@ -2492,24 +2520,24 @@ void ViewImplementation::request_history_operation(Badge<WebContentClient>, WebC
             // traversal are part of the session history it resolves against.
             RefPtr<WebContentClient> request_client = requesting_client;
             m_top_level_traversable.append_history_queue_steps(
-                [this, request_client = move(request_client), requesting_page_id, initiation_id, parameters = move(parameters)](NonnullRefPtr<Core::Promise<Empty>> promise) mutable {
-                    start_requested_history_traversal(*request_client, requesting_page_id, initiation_id, move(parameters), move(promise));
+                [this, request_client = move(request_client), requesting_page_id, initiation_id, traversal_sequence_number = *traversal_sequence_number, parameters = move(parameters)](NonnullRefPtr<Core::Promise<Empty>> promise) mutable {
+                    start_requested_history_traversal(*request_client, requesting_page_id, initiation_id, traversal_sequence_number, move(parameters), move(promise));
                 });
         },
         [&](Web::NavigationAPITraverseHistoryOperationParameters& parameters) {
             // As with delta traversal, resolve the key only after earlier queued operations have completed.
             RefPtr<WebContentClient> request_client = requesting_client;
             m_top_level_traversable.append_history_queue_steps(
-                [this, request_client = move(request_client), requesting_page_id, initiation_id, parameters = move(parameters)](NonnullRefPtr<Core::Promise<Empty>> promise) mutable {
-                    start_requested_history_traversal(*request_client, requesting_page_id, initiation_id, move(parameters), move(promise));
+                [this, request_client = move(request_client), requesting_page_id, initiation_id, traversal_sequence_number = *traversal_sequence_number, parameters = move(parameters)](NonnullRefPtr<Core::Promise<Empty>> promise) mutable {
+                    start_requested_history_traversal(*request_client, requesting_page_id, initiation_id, traversal_sequence_number, move(parameters), move(promise));
                 });
         },
         [&](auto&) {
-            m_top_level_traversable.enqueue_history_operation(initiation_id, move(parameters), requesting_client, requesting_page_id, move(requested_operation_completion));
+            m_top_level_traversable.enqueue_history_operation(initiation_id, move(parameters), requesting_client, requesting_page_id, traversal_sequence_number, move(requested_operation_completion));
         });
 }
 
-void ViewImplementation::start_requested_history_traversal(WebContentClient& requesting_client, u64 requesting_page_id, u64 initiation_id, Web::TraverseByDeltaHistoryOperationParameters parameters, NonnullRefPtr<Core::Promise<Empty>> promise)
+void ViewImplementation::start_requested_history_traversal(WebContentClient& requesting_client, u64 requesting_page_id, u64 initiation_id, u64 traversal_sequence_number, Web::TraverseByDeltaHistoryOperationParameters parameters, NonnullRefPtr<Core::Promise<Empty>> promise)
 {
     auto target = m_top_level_traversable.session_history().traversal_target_for_delta(parameters.delta);
     if (!target.has_value()) {
@@ -2519,10 +2547,10 @@ void ViewImplementation::start_requested_history_traversal(WebContentClient& req
         promise->resolve({});
         return;
     }
-    start_requested_history_traversal(requesting_client, requesting_page_id, initiation_id, move(parameters), target.release_value(), move(promise));
+    start_requested_history_traversal(requesting_client, requesting_page_id, initiation_id, traversal_sequence_number, move(parameters), target.release_value(), move(promise));
 }
 
-void ViewImplementation::start_requested_history_traversal(WebContentClient& requesting_client, u64 requesting_page_id, u64 initiation_id, Web::NavigationAPITraverseHistoryOperationParameters parameters, NonnullRefPtr<Core::Promise<Empty>> promise)
+void ViewImplementation::start_requested_history_traversal(WebContentClient& requesting_client, u64 requesting_page_id, u64 initiation_id, u64 traversal_sequence_number, Web::NavigationAPITraverseHistoryOperationParameters parameters, NonnullRefPtr<Core::Promise<Empty>> promise)
 {
     auto navigable = m_top_level_traversable.find(parameters.navigable_id);
     Optional<i32> target_step;
@@ -2536,10 +2564,10 @@ void ViewImplementation::start_requested_history_traversal(WebContentClient& req
         promise->resolve({});
         return;
     }
-    start_requested_history_traversal(requesting_client, requesting_page_id, initiation_id, move(parameters), target.release_value(), move(promise));
+    start_requested_history_traversal(requesting_client, requesting_page_id, initiation_id, traversal_sequence_number, move(parameters), target.release_value(), move(promise));
 }
 
-void ViewImplementation::start_requested_history_traversal(WebContentClient& requesting_client, u64 requesting_page_id, u64 initiation_id, Web::HistoryOperationParameters parameters, TraversableSessionHistory::TraversalTarget target, NonnullRefPtr<Core::Promise<Empty>> promise)
+void ViewImplementation::start_requested_history_traversal(WebContentClient& requesting_client, u64 requesting_page_id, u64 initiation_id, u64 traversal_sequence_number, Web::HistoryOperationParameters parameters, TraversableSessionHistory::TraversalTarget target, NonnullRefPtr<Core::Promise<Empty>> promise)
 {
     m_top_level_traversable.run_history_operation_at_queue_position(
         initiation_id,
@@ -2547,6 +2575,7 @@ void ViewImplementation::start_requested_history_traversal(WebContentClient& req
         requesting_client,
         requesting_page_id,
         target.target_step,
+        traversal_sequence_number,
         [this](Web::HTML::HistoryStepResult, Optional<i32> committed_step) {
             if (committed_step.has_value())
                 update_navigation_action_state();

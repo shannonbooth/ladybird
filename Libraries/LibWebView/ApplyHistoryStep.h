@@ -55,8 +55,12 @@ struct WEBVIEW_API ApplyHistoryStepJobs {
         Web::HTML::UserNavigationInvolvement user_involvement { Web::HTML::UserNavigationInvolvement::None };
         Optional<Web::Bindings::NavigationType> navigation_type;
         Web::HTML::LocalNavigable::NavigationAPIAbortBehavior navigation_api_abort_behavior { Web::HTML::LocalNavigable::NavigationAPIAbortBehavior::Abort };
+        // Set by the canonical UI coordinator only when it has observed a navigation
+        // admitted after this traversal. WebContent must not infer this ordering from
+        // the presence of an arbitrary local navigation ID.
+        bool superseded_by_newer_navigation { false };
     };
-    Function<bool(ChangingNavigableHistoryStepJob const&)> select_changing_navigable_history_step_job_endpoint;
+    Function<bool(ChangingNavigableHistoryStepJob&)> select_changing_navigable_history_step_job_endpoint;
     Function<void(ChangingNavigableHistoryStepJob, Function<void(Web::HTML::ChangingNavigableHistoryStepJobDisposition)> on_complete)> run_changing_navigable_history_step_job;
 
     // The "second part" of a changing navigable's job ("12. In both cases, let afterPotentialUnloads be ..."),

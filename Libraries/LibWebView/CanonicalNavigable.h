@@ -56,6 +56,12 @@ public:
         Optional<URL::URL> current_url {};
         Optional<Web::NavigationTarget> target {};
         Optional<Utf16String> navigation_id {};
+        // Assigned by the UI process from the traversable's shared navigation/traversal
+        // sequence. Unlike navigation_id, this value establishes precedence against a
+        // history traversal admitted by the canonical coordinator.
+        u64 sequence_number { 0 };
+        // True only until WebContent adopts a UI-issued load into its navigation transaction.
+        bool is_ui_navigation_placeholder { false };
         bool has_started { false };
         bool uses_replacement_process { false };
         bool is_uncommitted { false };
