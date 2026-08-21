@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <LibWeb/Forward.h>
 #include <LibWeb/HTML/SandboxingFlagSet.h>
 #include <LibWeb/ReferrerPolicy/ReferrerPolicy.h>
 
@@ -19,5 +20,7 @@ struct TargetSnapshotParams {
     // iframe element referrer policy: a referrer policy
     ReferrerPolicy::ReferrerPolicy iframe_element_referrer_policy { ReferrerPolicy::ReferrerPolicy::EmptyString };
 };
+
+TargetSnapshotParams snapshot_target_snapshot_params(LocalNavigable& target_navigable);
 
 }
