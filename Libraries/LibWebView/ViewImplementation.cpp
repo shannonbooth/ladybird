@@ -110,6 +110,7 @@ ViewImplementation::ViewImplementation(IsPrivate is_private)
 
 ViewImplementation::~ViewImplementation()
 {
+    m_top_level_traversable.clear_ongoing_navigation();
     cancel_all_native_geolocation_requests();
 
     if (!m_client_state.client_handle.is_empty())
@@ -189,8 +190,14 @@ void ViewImplementation::set_favicon(Badge<WebContentClient>, Optional<Gfx::Bitm
         on_favicon_change(favicon);
 }
 
-void ViewImplementation::create_new_process_for_cross_site_navigation(URL::URL const& url, Web::HTML::DocumentResource document_resource, Web::Bindings::NavigationHistoryBehavior history_handling, Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot)
+void ViewImplementation::create_new_process_for_cross_site_navigation()
 {
+    VERIFY(m_top_level_traversable.ongoing_navigation().has_value());
+    VERIFY(m_top_level_traversable.ongoing_navigation()->loader);
+    auto request = m_top_level_traversable.ongoing_navigation()->loader->request();
+    auto result = m_top_level_traversable.ongoing_navigation()->loader->take_result();
+    auto url = request.history_entry.url;
+
     auto pending_webdriver_command_ids = move(m_pending_webdriver_command_ids);
     auto pending_webdriver_crash_command_ids = move(m_pending_webdriver_crash_command_ids);
 
@@ -222,17 +229,17 @@ void ViewImplementation::create_new_process_for_cross_site_navigation(URL::URL c
     m_should_suppress_history_for_current_load = false;
     m_should_suppress_history_for_next_load = false;
     set_loading_state(true);
-    m_top_level_traversable.ongoing_navigation() = CanonicalNavigable::OngoingNavigation {
-        .url = url,
-        .uses_replacement_process = true,
-        .is_uncommitted = true,
-    };
+    auto& ongoing_navigation = *m_top_level_traversable.ongoing_navigation();
+    VERIFY(ongoing_navigation.navigation_id == request.navigation_id);
+    ongoing_navigation.url = url;
+    ongoing_navigation.uses_replacement_process = true;
+    ongoing_navigation.is_uncommitted = true;
+    m_top_level_traversable.set_navigation_host(client(), page_id());
     begin_webdriver_navigation(WebDriverNavigationCompletionSource::Load);
     m_last_stopped_load_url.clear();
     set_url(url);
     dump_session_history("process-swap-load"sv);
-    client().async_load_url_with_document_resource(page_id(), url, document_resource,
-        history_handling, move(source_snapshot));
+    client().async_populate_navigation(page_id(), move(request), move(result));
     dump_session_history("after-process-swap-load"sv);
 
     fail_webdriver_content_commands_after_process_replacement(pending_webdriver_command_ids);
@@ -327,10 +334,10 @@ void ViewImplementation::load(URL::URL const& url, Web::Bindings::NavigationHist
     m_is_showing_crash_page = false;
     m_should_suppress_history_for_current_load = false;
     m_should_suppress_history_for_next_load = false;
-    m_top_level_traversable.ongoing_navigation() = CanonicalNavigable::OngoingNavigation {
+    m_top_level_traversable.set_ongoing_navigation(CanonicalNavigable::OngoingNavigation {
         .url = url,
         .is_uncommitted = true,
-    };
+    });
     m_last_stopped_load_url.clear();
     if (url.scheme() != "javascript"sv)
         set_url(url);
@@ -457,7 +464,7 @@ void ViewImplementation::reload()
     auto ongoing_url = m_top_level_traversable.ongoing_navigation().has_value()
         ? move(m_top_level_traversable.ongoing_navigation()->url)
         : Optional<URL::URL> {};
-    m_top_level_traversable.ongoing_navigation() = CanonicalNavigable::OngoingNavigation { .url = move(ongoing_url) };
+    m_top_level_traversable.set_ongoing_navigation(CanonicalNavigable::OngoingNavigation { .url = move(ongoing_url) });
     if (m_is_showing_crash_page) {
         m_is_showing_crash_page = false;
         m_should_suppress_history_for_current_load = false;
@@ -1764,14 +1771,15 @@ void ViewImplementation::initialize_client(CreateNewClient create_new_client, Op
 
         cancel_all_native_geolocation_requests();
 
+        // Replacing the renderer does not create a new top-level traversable.
+        auto root_navigable_id = m_client_state.client
+            ? Optional<Web::HTML::CrossProcessId> { m_top_level_traversable.id() }
+            : Optional<Web::HTML::CrossProcessId> {};
         auto client_handle = m_client_state.client_handle;
         m_client_state = {};
         m_client_state.client_handle = move(client_handle);
 
         // FIXME: Fail to open the tab, rather than crashing the whole application if this fails.
-        auto root_navigable_id = m_history_operation_handling_for_next_client == HistoryOperationHandling::Preserve
-            ? Optional<Web::HTML::CrossProcessId> { m_top_level_traversable.id() }
-            : Optional<Web::HTML::CrossProcessId> {};
         m_client_state.client = Application::the().launch_web_content_process(*this, root_navigable_id, initial_document_state_id).release_value_but_fixme_should_propagate_errors();
     } else {
         m_client_state.client->register_view(m_client_state.page_index, *this);
@@ -2164,9 +2172,10 @@ void ViewImplementation::load_for_webdriver_navigation(URL::URL const& url)
 void ViewImplementation::did_start_webdriver_navigation()
 {
     set_loading_state(true);
-    auto& ongoing = m_top_level_traversable.ensure_ongoing_navigation();
-    ongoing.navigation_id.clear();
-    ongoing.has_started = false;
+    auto ongoing_url = m_top_level_traversable.ongoing_navigation().has_value()
+        ? m_top_level_traversable.ongoing_navigation()->url
+        : Optional<URL::URL> {};
+    m_top_level_traversable.set_ongoing_navigation(CanonicalNavigable::OngoingNavigation { .url = move(ongoing_url) });
     begin_webdriver_navigation(WebDriverNavigationCompletionSource::Load);
 }
 
@@ -2463,10 +2472,6 @@ void ViewImplementation::request_history_operation(Badge<WebContentClient>, WebC
         if (reloads_top_level && result != Web::HTML::HistoryStepResult::Applied)
             did_cancel_navigation({});
         if (finalizes_top_level_cross_document_navigation && result == Web::HTML::HistoryStepResult::Applied) {
-            if (auto& ongoing = m_top_level_traversable.ongoing_navigation(); ongoing.has_value()) {
-                ongoing->is_uncommitted = false;
-                ongoing->uses_replacement_process = false;
-            }
             if (auto const* current_entry = m_top_level_traversable.session_history().current_entry())
                 set_url(current_entry->url);
         }
