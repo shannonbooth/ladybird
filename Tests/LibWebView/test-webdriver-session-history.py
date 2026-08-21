@@ -2264,19 +2264,19 @@ def run_cross_process_pending_navigation_browser_ui_back_test(
         wait_for_event(page_server.blocked_navigation_requested, "cross-process pending navigation request")
 
         pending_history = session_history(webdriver_port, session_id)
+        # The endpoint has not sent response headers yet. Keep the current host until the response URL is known and
+        # process placement can be selected from it.
         if (
             pending_history["ui"]["currentURL"] != url_cross_site_navigation_blocked
             or history_entry_urls(pending_history["ui"]) != [url_a]
-            or pending_history["ui"]["webContentProcessID"] == initial_process_id
+            or pending_history["ui"]["webContentProcessID"] != initial_process_id
         ):
             raise AssertionError(
-                "Expected cross-process navigation to leave canonical history at /a, got "
+                "Expected pending cross-site navigation to leave canonical history and its host at /a, got "
                 f"{summarize_history_snapshot(pending_history)}\n" + "\n".join(log)
             )
 
-        page_server.a_document_ran.clear()
         traverse_history_from_ui(webdriver_port, session_id, -1, wait_for_navigation_completion=False)
-        wait_for_event(page_server.a_document_ran, "restored /a document after cross-process pending navigation")
         expect_url(webdriver_port, session_id, "after back during cross-process pending navigation", url_a, log)
         wait_for_session_history(
             webdriver_port,
@@ -2289,13 +2289,14 @@ def run_cross_process_pending_navigation_browser_ui_back_test(
                 and snapshot["ui"]["backButtonEnabled"] is False
                 and snapshot["ui"]["forwardButtonEnabled"] is False
                 and snapshot["ui"]["pendingSessionHistoryTraversal"] is None
+                and snapshot["ui"]["webContentProcessID"] == initial_process_id
             ),
             log,
         )
         with page_server.a_request_lock:
-            if page_server.a_request_count != a_request_count_after_setup + 1:
+            if page_server.a_request_count != a_request_count_after_setup:
                 raise AssertionError(
-                    "Expected cross-process cancellation to restore /a from the UI process\n" + "\n".join(log)
+                    "Expected cross-process cancellation to preserve the active /a document\n" + "\n".join(log)
                 )
 
         page_server.release_blocked_navigation.set()
