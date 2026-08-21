@@ -97,7 +97,6 @@ public:
     void resume_body_delivery();
     void resume_body_delivery_up_to(size_t);
     void release_transfer_lease();
-    void release_for_transfer() { release_transfer_lease(); }
     [[nodiscard]] bool has_file_backed_response_body() const;
 
     using BufferedRequestFinished = Function<void(u64 total_size, RequestTimingInfo const& timing_info, Optional<NetworkError> const& network_error, NonnullRefPtr<HTTP::HeaderList> response_headers, Optional<u32> response_code, Optional<String> reason_phrase, Optional<Core::ImmutableBytes> javascript_bytecode, Optional<u64> javascript_bytecode_cache_vary_key, CameFromCache came_from_cache, Core::ImmutableBytes payload)>;

@@ -40,10 +40,6 @@ public:
         Yes,
     };
 
-    // Compatibility name for callers that do not yet need to preserve a
-    // lease across more than one transfer.
-    using KeepAliveForTransfer = TransferLease;
-
     explicit RequestClient(NonnullOwnPtr<IPC::Transport>);
     virtual ~RequestClient() override;
 
