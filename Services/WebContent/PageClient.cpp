@@ -238,9 +238,9 @@ Web::HTML::CrossProcessId PageClient::allocate_navigable_id()
     return allocate_cross_process_id();
 }
 
-void PageClient::request_navigation_start(Web::HTML::LocalNavigable& navigable, URL::URL const& current_url, Web::NavigationTarget target, URL::URL const& url, Utf16String navigation_id)
+void PageClient::request_navigation_start(Web::HTML::LocalNavigable& navigable, URL::URL const& current_url, Web::NavigationTarget target, URL::URL const& url, Utf16String navigation_id, RequiresUnloadCheck requires_unload_check)
 {
-    client().async_did_request_navigation_start(m_id, navigable.id(), current_url, target, url, move(navigation_id));
+    client().async_did_request_navigation_start(m_id, navigable.id(), current_url, target, url, move(navigation_id), requires_unload_check == RequiresUnloadCheck::Yes);
 }
 
 void PageClient::request_navigation_population(Web::HTML::LocalNavigable& navigable, URL::URL const& current_url, Web::NavigationTarget target, Web::HTML::NavigationPopulationRequest request)
@@ -629,11 +629,6 @@ void PageClient::page_did_middle_click_link(URL::URL const& url, ByteString cons
 void PageClient::page_did_request_external_url(URL::URL const& url, URL::Origin const& initiator_origin, bool has_transient_activation)
 {
     client().async_did_request_external_url(m_id, url, initiator_origin, has_transient_activation);
-}
-
-void PageClient::page_did_start_loading(Optional<Utf16String> const& navigation_id, URL::URL const& url, bool is_redirect)
-{
-    client().async_did_start_loading(m_id, navigation_id, url, is_redirect);
 }
 
 void PageClient::page_did_cancel_loading(Optional<Utf16String> const& navigation_id, URL::URL const&)

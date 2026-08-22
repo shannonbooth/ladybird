@@ -468,7 +468,11 @@ public:
     virtual bool has_focus() const { return true; }
     virtual void set_has_focus([[maybe_unused]] bool has_focus) { }
     virtual bool has_active_devtools_client() const { return false; }
-    virtual void request_navigation_start(HTML::LocalNavigable&, URL::URL const& current_url, NavigationTarget, URL::URL const& url, Utf16String navigation_id);
+    enum class RequiresUnloadCheck : u8 {
+        No,
+        Yes,
+    };
+    virtual void request_navigation_start(HTML::LocalNavigable&, URL::URL const& current_url, NavigationTarget, URL::URL const& url, Utf16String navigation_id, RequiresUnloadCheck);
     virtual void request_navigation_population(HTML::LocalNavigable&, URL::URL const& current_url, NavigationTarget, HTML::NavigationPopulationRequest);
     virtual void navigation_params_creation_finished(HTML::LocalNavigable&, HTML::NavigationPopulationRequest, HTML::NavigationPopulationResult);
     virtual void navigation_population_failed(HTML::CrossProcessId, Utf16String const&) { }
@@ -512,10 +516,6 @@ public:
     virtual void page_did_request_minimize_window() { }
     virtual void page_did_request_fullscreen_window() { }
     virtual void page_did_request_exit_fullscreen() { }
-    virtual void page_did_start_loading(Optional<Utf16String> const&, URL::URL const&, bool is_redirect)
-    {
-        (void)is_redirect;
-    }
     virtual void page_did_cancel_loading(Optional<Utf16String> const&, URL::URL const&) { }
     virtual void page_did_create_new_document(Web::DOM::Document&) { }
     virtual void page_did_change_active_document_in_top_level_browsing_context(Web::DOM::Document&) { }

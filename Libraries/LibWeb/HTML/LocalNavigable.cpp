@@ -2548,9 +2548,6 @@ void LocalNavigable::create_navigation_params_for_navigation(NavigationPopulatio
         active_document()->abort_a_document_and_its_descendants();
     }));
 
-    if (is_top_level_traversable())
-        active_browsing_context()->page().client().page_did_start_loading(navigation_id, request.history_entry.url, false);
-
     auto received_navigation_params = GC::create_function(heap(), [this, request, navigation_id](GC::Ref<InternalNavigationResult> result) mutable {
         if (!active_window() || ongoing_navigation() != navigation_id) {
             stop_or_resume_response_body_delivery(result->navigation_params);
@@ -2940,7 +2937,7 @@ void LocalNavigable::begin_navigation(PreparedNavigation navigation)
     // 20. If url's scheme is "javascript", then:
     if (url.scheme() == "javascript"sv) {
         if (is_top_level_traversable())
-            active_browsing_context()->page().client().page_did_start_loading(navigation_id, url, false);
+            active_browsing_context()->page().client().request_navigation_start(*this, active_document.url(), NavigationTarget::TopLevel, url, navigation_id, PageClient::RequiresUnloadCheck::No);
 
         // 1. Queue a global task on the navigation and traversal task source given navigable's active window to navigate to a javascript: URL given navigable, url, historyHandling, sourceSnapshotParams, initiatorOriginSnapshot, userInvolvement, cspNavigationType, initialInsertion, and navigationId.
         VERIFY(active_window());
@@ -3043,7 +3040,7 @@ void LocalNavigable::begin_navigation(PreparedNavigation navigation)
     park_navigation_for_population(navigation_id, move(navigation), move(start_request), continue_steps);
 
     auto target = is_top_level_traversable() ? NavigationTarget::TopLevel : NavigationTarget::IFrame;
-    active_browsing_context()->page().client().request_navigation_start(*this, active_document.url(), target, url, navigation_id);
+    active_browsing_context()->page().client().request_navigation_start(*this, active_document.url(), target, url, navigation_id, PageClient::RequiresUnloadCheck::Yes);
     return;
 }
 
