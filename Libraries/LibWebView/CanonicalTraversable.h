@@ -120,6 +120,7 @@ private:
     void session_history_changed();
     HistoryOperation* find_history_operation(Web::HTML::CrossProcessId operation_id);
     bool navigation_transaction_matches(HistoryOperation const&, WebContentClient const&, u64 page_id, Optional<Web::HTML::CrossProcessId> reply_navigable_id = {}) const;
+    void retry_session_history_entry_update_at_queue_position(CanonicalNavigable const&, Utf16String const& navigation_api_key, Function<void(TraversableSessionHistory::Entry&)>);
     void add_history_operation_completion_endpoint(HistoryOperation&, HistoryJobEndpoint);
     bool select_changing_navigable_history_step_job_endpoint(HistoryOperation&, ApplyHistoryStepJobs::ChangingNavigableHistoryStepJob&);
     void dispatch_changing_navigable_history_step_job(HistoryOperation&, Web::HTML::CrossProcessId navigable_id);

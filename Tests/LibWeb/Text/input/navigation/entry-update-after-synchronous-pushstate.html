@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    // A session-history-entry update reported immediately after pushState() must reach the canonical entry even
+    // though the pushed entry is still waiting for its queued finalization when the update arrives.
+    asyncTest(done => {
+        window.addEventListener("load", () => {
+            window.addEventListener("popstate", () => {
+                if (location.hash === "#pushed") {
+                    println(`scroll restoration after traversal round trip: ${history.scrollRestoration}`);
+                    done();
+                } else {
+                    history.forward();
+                }
+            });
+
+            history.pushState({}, "", "#pushed");
+            history.scrollRestoration = "manual";
+            println(`scroll restoration after update: ${history.scrollRestoration}`);
+            history.back();
+        });
+    });
+</script>
