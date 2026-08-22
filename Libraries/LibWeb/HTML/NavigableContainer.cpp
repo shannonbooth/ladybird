@@ -116,7 +116,7 @@ void NavigableContainer::create_new_child_navigable()
 
     // 12. Append the following session history traversal steps to traversable:
     traversable->request_history_operation(
-        NavigableCreationHistoryOperationParameters {
+        CreateNewChildNavigableRequest {
             .parent_navigable_id = parent_navigable->id(),
             .navigable_id = navigable->id(),
             .initial_history_entry = create_pending_session_history_entry_descriptor(*history_entry),
@@ -355,7 +355,7 @@ void NavigableContainer::destroy_the_child_navigable()
 
         // 9. Append the following session history traversal steps to traversable:
         // 1. Update for navigable creation/destruction given traversable.
-        traversable->request_history_operation(NavigableDestructionHistoryOperationParameters {
+        traversable->request_history_operation(DestroyChildNavigableRequest {
             .parent_navigable_id = parent_navigable->id(),
             .parent_document_state_id = parent_doc_state->cross_process_id(),
             .navigable_id = navigable->id(),

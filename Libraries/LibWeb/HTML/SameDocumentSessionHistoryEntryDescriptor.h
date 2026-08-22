@@ -10,7 +10,7 @@
 
 namespace Web::HTML {
 
-struct SameDocumentNavigationEntry {
+struct SameDocumentSessionHistoryEntryDescriptor {
     URL::URL url;
     CrossProcessId document_state_id;
     StorageSerializationRecord classic_history_api_state;
@@ -21,16 +21,16 @@ struct SameDocumentNavigationEntry {
     SessionHistoryEntryScrollPositionData scroll_position_data;
 };
 
-WEB_API SameDocumentNavigationEntry create_same_document_navigation_entry(SessionHistoryEntry const&);
+WEB_API SameDocumentSessionHistoryEntryDescriptor create_same_document_session_history_entry_descriptor(SessionHistoryEntry const&);
 
 }
 
 namespace IPC {
 
 template<>
-WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::SameDocumentNavigationEntry const&);
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::SameDocumentSessionHistoryEntryDescriptor const&);
 
 template<>
-WEB_API ErrorOr<Web::HTML::SameDocumentNavigationEntry> decode(Decoder&);
+WEB_API ErrorOr<Web::HTML::SameDocumentSessionHistoryEntryDescriptor> decode(Decoder&);
 
 }

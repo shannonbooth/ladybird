@@ -92,7 +92,7 @@ bool CanonicalNavigable::is_ancestor_of(CanonicalNavigable const& potential_desc
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#allowed-to-navigate
-bool CanonicalNavigable::allowed_by_sandboxing_to_navigate(CanonicalNavigable const& target, Web::InitiatorSourceSnapshot const& source_snapshot_params) const
+bool CanonicalNavigable::allowed_by_sandboxing_to_navigate(CanonicalNavigable const& target, Web::SerializedSourceSnapshotParams const& source_snapshot_params) const
 {
     auto const& source = *this;
 

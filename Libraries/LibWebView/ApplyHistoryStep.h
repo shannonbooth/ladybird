@@ -109,7 +109,7 @@ public:
         i32 step,
         bool check_for_cancelation,
         Optional<Web::HTML::CrossProcessId> initiator_to_check,
-        Optional<Web::InitiatorSourceSnapshot> initiator_source_snapshot,
+        Optional<Web::SerializedSourceSnapshotParams> source_snapshot_params,
         Web::HTML::UserNavigationInvolvement user_involvement,
         Optional<Web::Bindings::NavigationType> navigation_type,
         Function<void(Web::HTML::HistoryStepResult)> on_complete);
@@ -147,7 +147,7 @@ private:
     // NB: The HTML Standard spells this algorithm argument "checkForCancelation".
     bool const m_check_for_cancelation;
     Optional<Web::HTML::CrossProcessId> const m_initiator_to_check;
-    Optional<Web::InitiatorSourceSnapshot> const m_initiator_source_snapshot;
+    Optional<Web::SerializedSourceSnapshotParams> const m_source_snapshot_params;
     Web::HTML::UserNavigationInvolvement const m_user_involvement;
     Optional<Web::Bindings::NavigationType> const m_navigation_type;
     Function<void(Web::HTML::HistoryStepResult)> m_on_complete;

@@ -9,7 +9,7 @@
 #include <LibJS/Runtime/VM.h>
 #include <LibWeb/Crypto/Crypto.h>
 #include <LibWeb/HTML/DocumentState.h>
-#include <LibWeb/HTML/SameDocumentNavigationEntry.h>
+#include <LibWeb/HTML/SameDocumentSessionHistoryEntryDescriptor.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/StructuredSerialize.h>
 
@@ -157,7 +157,7 @@ SessionHistoryEntryDescriptor create_session_history_entry_descriptor(PendingSes
     };
 }
 
-SameDocumentNavigationEntry create_same_document_navigation_entry(SessionHistoryEntry const& entry)
+SameDocumentSessionHistoryEntryDescriptor create_same_document_session_history_entry_descriptor(SessionHistoryEntry const& entry)
 {
     auto document_state = entry.document_state();
     VERIFY(document_state);
@@ -263,7 +263,7 @@ ErrorOr<Web::HTML::PendingSessionHistoryEntryDescriptor> IPC::decode(Decoder& de
 }
 
 template<>
-ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::SameDocumentNavigationEntry const& entry)
+ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::SameDocumentSessionHistoryEntryDescriptor const& entry)
 {
     TRY(encoder.encode(entry.url));
     TRY(encoder.encode(entry.document_state_id));
@@ -277,9 +277,9 @@ ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::SameDocumentNavigationEnt
 }
 
 template<>
-ErrorOr<Web::HTML::SameDocumentNavigationEntry> IPC::decode(Decoder& decoder)
+ErrorOr<Web::HTML::SameDocumentSessionHistoryEntryDescriptor> IPC::decode(Decoder& decoder)
 {
-    return Web::HTML::SameDocumentNavigationEntry {
+    return Web::HTML::SameDocumentSessionHistoryEntryDescriptor {
         .url = TRY(decoder.decode<URL::URL>()),
         .document_state_id = TRY(decoder.decode<Web::HTML::CrossProcessId>()),
         .classic_history_api_state = TRY(decoder.decode<Web::HTML::StorageSerializationRecord>()),

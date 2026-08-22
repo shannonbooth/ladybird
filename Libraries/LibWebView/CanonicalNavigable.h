@@ -93,7 +93,7 @@ public:
     CanonicalNavigable& append_child(NonnullOwnPtr<CanonicalNavigable>);
     NonnullOwnPtr<CanonicalNavigable> remove_child(CanonicalNavigable&);
     bool is_ancestor_of(CanonicalNavigable const&) const;
-    bool allowed_by_sandboxing_to_navigate(CanonicalNavigable const& target, Web::InitiatorSourceSnapshot const& source_snapshot_params) const;
+    bool allowed_by_sandboxing_to_navigate(CanonicalNavigable const& target, Web::SerializedSourceSnapshotParams const& source_snapshot_params) const;
     IterationDecision for_each_in_inclusive_subtree(Function<IterationDecision(CanonicalNavigable&)> const&);
     IterationDecision for_each_in_subtree(Function<IterationDecision(CanonicalNavigable&)> const&);
     IterationDecision for_each_in_inclusive_subtree(Function<IterationDecision(CanonicalNavigable const&)> const&) const;

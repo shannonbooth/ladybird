@@ -18,7 +18,7 @@ ApplyHistoryStep::ApplyHistoryStep(
     i32 step,
     bool check_for_cancelation,
     Optional<Web::HTML::CrossProcessId> initiator_to_check,
-    Optional<Web::InitiatorSourceSnapshot> initiator_source_snapshot,
+    Optional<Web::SerializedSourceSnapshotParams> source_snapshot_params,
     Web::HTML::UserNavigationInvolvement user_involvement,
     Optional<Web::Bindings::NavigationType> navigation_type,
     Function<void(Web::HTML::HistoryStepResult)> on_complete)
@@ -30,7 +30,7 @@ ApplyHistoryStep::ApplyHistoryStep(
     , m_step(step)
     , m_check_for_cancelation(check_for_cancelation)
     , m_initiator_to_check(initiator_to_check)
-    , m_initiator_source_snapshot(initiator_source_snapshot)
+    , m_source_snapshot_params(source_snapshot_params)
     , m_user_involvement(user_involvement)
     , m_navigation_type(navigation_type)
     , m_on_complete(move(on_complete))
@@ -62,7 +62,7 @@ void ApplyHistoryStep::apply_the_history_step()
     if (m_initiator_to_check.has_value()) {
         // 1. Assert: sourceSnapshotParams is not null.
         // NB: A traversal with an initiator must also include its sandboxing state. Reject an incomplete request.
-        if (!m_initiator_source_snapshot.has_value()) {
+        if (!m_source_snapshot_params.has_value()) {
             return_result(Web::HTML::HistoryStepResult::InitiatorDisallowed);
             return;
         }
@@ -79,8 +79,8 @@ void ApplyHistoryStep::apply_the_history_step()
             // NB: A removed initiator is no longer related to any navigable in the canonical tree. Apply the sandboxed
             //     navigation flag instead of treating the missing relationship as permission.
             auto allowed = initiator
-                ? initiator->allowed_by_sandboxing_to_navigate(*navigable, *m_initiator_source_snapshot)
-                : !has_flag(m_initiator_source_snapshot->sandboxing_flags, Web::HTML::SandboxingFlagSet::SandboxedNavigation);
+                ? initiator->allowed_by_sandboxing_to_navigate(*navigable, *m_source_snapshot_params)
+                : !has_flag(m_source_snapshot_params->sandboxing_flags, Web::HTML::SandboxingFlagSet::SandboxedNavigation);
             if (!allowed) {
                 return_result(Web::HTML::HistoryStepResult::InitiatorDisallowed);
                 return;

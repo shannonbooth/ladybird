@@ -535,10 +535,12 @@ static bool handle_navigation_response_as_download(GC::Ref<NavigationParams> nav
         if (initial_data.has_value() && !initial_data->is_empty() && !response_body_will_be_transferred_in_full)
             initial_data_buffer = MUST(ByteBuffer::copy(*initial_data));
 
-        auto download_id = navigation_params->navigable->page().client().page_did_start_download(download_url, suggested_filename, response_content_length(*response->header_list()), request_server_request->client_id, request_server_request->request_id, move(initial_data_buffer));
+        auto download_id = navigation_params->navigable->page().client().page_did_start_download(navigation_params->navigable->id(), navigation_params->id, download_url, suggested_filename, response_content_length(*response->header_list()), request_server_request->client_id, request_server_request->request_id, move(initial_data_buffer));
         if (!download_id.has_value()) {
             if (navigation_params->fetch_controller)
                 navigation_params->fetch_controller->stop_fetch();
+            else
+                response->release_request_transfer_lease();
             return true;
         }
 
@@ -3185,7 +3187,7 @@ void LocalNavigable::navigate_to_a_fragment(URL::URL const& url, HistoryHandling
     // 17. Append the following session history synchronous navigation steps involving navigable to traversable:
     // 1. Finalize a same-document navigation given traversable, navigable, historyEntry, entryToReplace,
     //    historyHandling, and userInvolvement.
-    traversable->finalize_same_document_navigation(*this, history_entry, entry_to_replace, history_handling, user_involvement, move(previous_entry_persisted_state));
+    traversable->append_finalize_a_same_document_navigation_steps(*this, history_entry, entry_to_replace, history_handling, user_involvement, move(previous_entry_persisted_state));
 
     // FIXME: Invoke WebDriver BiDi fragment navigated with navigable and a new WebDriver BiDi navigation status whose
     //        id is navigationId, url is url, and status is "complete".
@@ -3437,6 +3439,8 @@ void LocalNavigable::reload(Optional<StorageSerializationRecord> navigation_api_
 
     // 1. If navigationAPIState is not null, then set navigable's active session history entry's navigation API state
     //    to navigationAPIState.
+    // AD-HOC (spec divergence): The current HTML algorithm no longer includes this step, but Chromium and Firefox
+    // preserve navigation.reload({ state }) synchronously in the active entry.
     if (navigation_api_state.has_value())
         active_session_history_entry()->set_navigation_api_state(navigation_api_state.release_value());
 
@@ -3451,7 +3455,7 @@ void LocalNavigable::reload(Optional<StorageSerializationRecord> navigation_api_
 
     // 4. Append the following session history traversal steps to traversable:
     // 1. Apply the reload history step to traversable given userInvolvement.
-    traversable->request_history_operation(ReloadHistoryOperationParameters {
+    traversable->request_history_operation(ReloadRequest {
         .navigable_id = id(),
         .user_involvement = user_involvement,
     });
@@ -3574,7 +3578,7 @@ void finalize_a_cross_document_navigation(GC::Ref<LocalNavigable> navigable, His
 {
     auto traversable = navigable->traversable_navigable();
     traversable->request_history_operation(
-        FinalizeCrossDocumentNavigationHistoryOperationParameters {
+        FinalizeCrossDocumentNavigationRequest {
             .navigable_id = navigable->id(),
             .history_entry = create_pending_session_history_entry_descriptor(*history_entry),
             .navigation_id = expected_ongoing_navigation_id,
@@ -3672,7 +3676,7 @@ void perform_url_and_history_update_steps(DOM::Document& document, URL::URL new_
     // 13. Append the following session history synchronous navigation steps involving navigable to traversable:
     // 1. Finalize a same-document navigation given traversable, navigable, newEntry, entryToReplace,
     //    historyHandling, and "none".
-    traversable->finalize_same_document_navigation(*navigable, new_entry, entry_to_replace, history_handling, UserNavigationInvolvement::None, move(previous_entry_persisted_state));
+    traversable->append_finalize_a_same_document_navigation_steps(*navigable, new_entry, entry_to_replace, history_handling, UserNavigationInvolvement::None, move(previous_entry_persisted_state));
 
     // FIXME: Invoke WebDriver BiDi history updated with navigable.
 }

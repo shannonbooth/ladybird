@@ -163,19 +163,19 @@ struct TestTraversable {
         VERIFY(history.append_or_replace_session_history_entry(traversable, replacement_entry, entry_to_replace));
     }
 
-    WebView::ApplyHistoryStep& apply_step(i32 step, Optional<Web::Bindings::NavigationType> navigation_type, bool check_for_cancelation = false, Optional<Web::HTML::CrossProcessId> initiator_to_check = {}, Optional<Web::InitiatorSourceSnapshot> initiator_source_snapshot = {})
+    WebView::ApplyHistoryStep& apply_step(i32 step, Optional<Web::Bindings::NavigationType> navigation_type, bool check_for_cancelation = false, Optional<Web::HTML::CrossProcessId> initiator_to_check = {}, Optional<Web::SerializedSourceSnapshotParams> source_snapshot_params = {})
     {
         operation = make<WebView::ApplyHistoryStep>(history, traversable, queue, state, runner.jobs(), step,
-            check_for_cancelation, initiator_to_check, initiator_source_snapshot, Web::HTML::UserNavigationInvolvement::BrowserUI,
+            check_for_cancelation, initiator_to_check, source_snapshot_params, Web::HTML::UserNavigationInvolvement::BrowserUI,
             navigation_type,
             [this](Web::HTML::HistoryStepResult history_step_result) { result = history_step_result; });
         operation->apply_the_history_step();
         return *operation;
     }
 
-    WebView::ApplyHistoryStep& traverse_to_step(i32 step, bool check_for_cancelation = false, Optional<Web::HTML::CrossProcessId> initiator_to_check = {}, Optional<Web::InitiatorSourceSnapshot> initiator_source_snapshot = {})
+    WebView::ApplyHistoryStep& traverse_to_step(i32 step, bool check_for_cancelation = false, Optional<Web::HTML::CrossProcessId> initiator_to_check = {}, Optional<Web::SerializedSourceSnapshotParams> source_snapshot_params = {})
     {
-        return apply_step(step, Web::Bindings::NavigationType::Traverse, check_for_cancelation, initiator_to_check, initiator_source_snapshot);
+        return apply_step(step, Web::Bindings::NavigationType::Traverse, check_for_cancelation, initiator_to_check, source_snapshot_params);
     }
 
     Optional<i32> current_step() const
@@ -295,7 +295,7 @@ TEST_CASE(disallowed_initiator_returns_before_the_cancelation_check)
     test.add_child(child_id());
 
     test.traverse_to_step(0, true, child_id(),
-        Web::InitiatorSourceSnapshot { .sandboxing_flags = Web::HTML::SandboxingFlagSet::SandboxedTopLevelNavigationWithoutUserActivation, .has_transient_activation = false });
+        Web::SerializedSourceSnapshotParams { .sandboxing_flags = Web::HTML::SandboxingFlagSet::SandboxedTopLevelNavigationWithoutUserActivation, .has_transient_activation = false });
 
     EXPECT(test.runner.unload_cancelation_jobs.is_empty());
     EXPECT(test.runner.changing_jobs.is_empty());
@@ -309,7 +309,7 @@ TEST_CASE(allowed_initiator_proceeds_to_the_cancelation_check)
     test.with_two_top_level_entries();
     test.add_child(child_id());
 
-    test.traverse_to_step(0, true, child_id(), Web::InitiatorSourceSnapshot {});
+    test.traverse_to_step(0, true, child_id(), Web::SerializedSourceSnapshotParams {});
 
     EXPECT_EQ(test.runner.unload_cancelation_jobs.size(), 1uz);
     EXPECT(!test.result.has_value());
@@ -333,7 +333,7 @@ TEST_CASE(sandboxed_removed_initiator_is_disallowed)
     TestTraversable test;
     test.with_two_top_level_entries();
 
-    test.traverse_to_step(0, true, child_id(), Web::InitiatorSourceSnapshot { .sandboxing_flags = Web::HTML::SandboxingFlagSet::SandboxedNavigation });
+    test.traverse_to_step(0, true, child_id(), Web::SerializedSourceSnapshotParams { .sandboxing_flags = Web::HTML::SandboxingFlagSet::SandboxedNavigation });
 
     EXPECT(test.runner.unload_cancelation_jobs.is_empty());
     EXPECT(test.runner.changing_jobs.is_empty());
@@ -345,7 +345,7 @@ TEST_CASE(unsandboxed_removed_initiator_proceeds_to_the_cancelation_check)
     TestTraversable test;
     test.with_two_top_level_entries();
 
-    test.traverse_to_step(0, true, child_id(), Web::InitiatorSourceSnapshot {});
+    test.traverse_to_step(0, true, child_id(), Web::SerializedSourceSnapshotParams {});
 
     EXPECT_EQ(test.runner.unload_cancelation_jobs.size(), 1uz);
     EXPECT(!test.result.has_value());

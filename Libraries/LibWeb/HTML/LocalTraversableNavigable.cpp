@@ -27,7 +27,7 @@
 #include <LibWeb/HTML/NavigationParams.h>
 #include <LibWeb/HTML/NavigationPopulationRequest.h>
 #include <LibWeb/HTML/Parser/HTMLParser.h>
-#include <LibWeb/HTML/SameDocumentNavigationEntry.h>
+#include <LibWeb/HTML/SameDocumentSessionHistoryEntryDescriptor.h>
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/SourceSnapshotParams.h>
@@ -1404,12 +1404,12 @@ void LocalTraversableNavigable::traverse_the_history_by_delta(int delta, GC::Ptr
 
     // 4. Append the following session history traversal steps to traversable:
     request_history_operation(
-        TraverseByDeltaHistoryOperationParameters {
+        TraverseHistoryByADeltaRequest {
             .traversable_id = id(),
             .delta = delta,
             .initiator_to_check = initiator_to_check ? Optional<CrossProcessId> { initiator_to_check->id() } : OptionalNone {},
-            .initiator_source_snapshot = source_snapshot_params
-                ? Optional<Web::InitiatorSourceSnapshot> { { .sandboxing_flags = source_snapshot_params->sandboxing_flags, .has_transient_activation = source_snapshot_params->has_transient_activation } }
+            .source_snapshot_params = source_snapshot_params
+                ? Optional<Web::SerializedSourceSnapshotParams> { { .sandboxing_flags = source_snapshot_params->sandboxing_flags, .has_transient_activation = source_snapshot_params->has_transient_activation } }
                 : OptionalNone {},
             .user_involvement = user_involvement,
         },
@@ -1418,14 +1418,14 @@ void LocalTraversableNavigable::traverse_the_history_by_delta(int delta, GC::Ptr
         });
 }
 
-void LocalTraversableNavigable::request_history_operation(HistoryOperationParameters parameters)
+void LocalTraversableNavigable::request_history_operation(HistoryOperationRequest parameters)
 {
     request_history_operation(move(parameters), {});
 }
 
-void LocalTraversableNavigable::request_history_operation(HistoryOperationParameters parameters, HistoryOperationState state)
+void LocalTraversableNavigable::request_history_operation(HistoryOperationRequest parameters, HistoryOperationState state)
 {
-    if (parameters.has<ReloadHistoryOperationParameters>()) {
+    if (parameters.has<ReloadRequest>()) {
         VERIFY(!state.on_apply_complete);
         state.on_apply_complete = GC::create_function(heap(), [this](HistoryStepResult result) {
             if (result == HistoryStepResult::Applied)
@@ -1685,7 +1685,7 @@ void LocalTraversableNavigable::complete_ui_history_operation(CrossProcessId ope
         operation->on_complete->function()(result);
 }
 
-void LocalTraversableNavigable::finalize_same_document_navigation(GC::Ref<LocalNavigable> target_navigable, NonnullRefPtr<SessionHistoryEntry> target_entry, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior history_handling, UserNavigationInvolvement user_involvement, Optional<SessionHistoryEntryPersistedState> previous_entry_persisted_state)
+void LocalTraversableNavigable::append_finalize_a_same_document_navigation_steps(GC::Ref<LocalNavigable> target_navigable, NonnullRefPtr<SessionHistoryEntry> target_entry, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior history_handling, UserNavigationInvolvement user_involvement, Optional<SessionHistoryEntryPersistedState> previous_entry_persisted_state)
 {
     if (target_navigable->has_been_destroyed())
         return;
@@ -1698,9 +1698,9 @@ void LocalTraversableNavigable::finalize_same_document_navigation(GC::Ref<LocalN
     if (entry_to_replace)
         entry_to_replace_identity = session_history_entry_identity(*entry_to_replace);
 
-    auto parameters = FinalizeSameDocumentNavigationHistoryOperationParameters {
+    auto parameters = FinalizeSameDocumentNavigationRequest {
         .navigable_id = target_navigable->id(),
-        .target_entry = create_same_document_navigation_entry(target_entry),
+        .target_entry = create_same_document_session_history_entry_descriptor(target_entry),
         .entry_to_replace = move(entry_to_replace_identity),
         .previous_entry_persisted_state = move(previous_entry_persisted_state),
         .history_handling = history_handling,
@@ -1737,7 +1737,7 @@ void LocalTraversableNavigable::definitely_close_top_level_traversable(PromptToU
     auto append_close_steps = [this] {
         // 3. Append the following session history traversal steps to traversable:
         request_history_operation(
-            CloseTopLevelTraversableHistoryOperationParameters { .traversable_id = id() },
+            DefinitelyCloseTopLevelTraversableRequest { .traversable_id = id() },
             {
                 .on_complete = GC::create_function(heap(), [this](HistoryStepResult result) {
                     // NB: An abandoned close never reached its queue position; do not destroy the traversable for it.

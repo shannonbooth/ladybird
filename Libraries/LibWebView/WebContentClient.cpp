@@ -932,26 +932,30 @@ Messages::WebContentClient::DidStartDownloadWithoutRequestResponse WebContentCli
     return { download_id };
 }
 
-Messages::WebContentClient::DidStartDownloadResponse WebContentClient::did_start_download(u64 page_id, URL::URL url, ByteString suggested_filename, Optional<u64> total_size, int request_server_client_id, u64 request_server_request_id, ByteBuffer initial_data)
+Messages::WebContentClient::DidStartDownloadResponse WebContentClient::did_start_download(u64 page_id, Web::HTML::CrossProcessId navigable_id, Optional<Utf16String> navigation_id, URL::URL url, ByteString suggested_filename, Optional<u64> total_size, int request_server_client_id, u64 request_server_request_id, ByteBuffer initial_data)
 {
     // A download taking over an in-flight population's response body ends that navigation without a document;
     // the reporting process ends its side when its population output says the download was handled. The body
-    // identifiers are chosen by the reporting process, so only the process the body was handed to may claim
-    // them, and only while its population is in flight.
-    if (auto* navigable = navigable_for_page(page_id); navigable) {
+    // identifiers preserve the original RequestServer transfer lease, so only the process and navigation that
+    // received that response may claim it, and only while its population is in flight.
+    bool matches_in_flight_navigation = false;
+    if (auto navigable = hosted_navigable_for_page(page_id, navigable_id); navigable.has_value()) {
         auto const& ongoing_navigation = navigable->ongoing_navigation();
         if (ongoing_navigation.has_value()
+            && ongoing_navigation->navigation_id == navigation_id
             && ongoing_navigation->phase == CanonicalNavigable::OngoingNavigation::Phase::Populating
-            && navigable->navigation_host_matches(*this, page_id)
             && ongoing_navigation->loader
             && ongoing_navigation->loader->response_body_matches(request_server_client_id, request_server_request_id)) {
             if (navigable->is_top_level_traversable()) {
                 if (auto view = view_for_page_id(page_id); view.has_value())
                     view->did_cancel_loading(ongoing_navigation->navigation_id);
             }
+            matches_in_flight_navigation = true;
             navigable->clear_ongoing_navigation();
         }
     }
+    if (!matches_in_flight_navigation)
+        return { Optional<u64> {} };
 
     auto destination = choose_download_destination_or_report_error(url, suggested_filename);
     if (!destination.has_value())
@@ -2065,7 +2069,7 @@ void WebContentClient::did_reset_session_history_for_testing(u64 page_id, Web::H
         view->did_reset_session_history_for_testing({}, move(active_entry));
 }
 
-void WebContentClient::request_history_operation(u64 page_id, Web::HTML::CrossProcessId operation_id, Web::HistoryOperationParameters parameters)
+void WebContentClient::request_history_operation(u64 page_id, Web::HTML::CrossProcessId operation_id, Web::HistoryOperationRequest parameters)
 {
     if (auto view = owning_view_for_page_id(page_id); view.has_value())
         view->request_history_operation({}, *this, page_id, operation_id, move(parameters));

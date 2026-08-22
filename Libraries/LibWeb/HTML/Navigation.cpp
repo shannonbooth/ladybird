@@ -703,11 +703,9 @@ WebIDL::ExceptionOr<NavigationResult> Navigation::perform_a_navigation_api_trave
     // 11. Let sourceSnapshotParams be the result of snapshotting source snapshot params given document.
     auto source_snapshot_params = snapshot_source_snapshot_params(&document);
 
-    // 12. Append the following session history traversal steps to traversable:
-    // NB: The UI process owns the session history traversal queue, resolves the key against the canonical session
-    //     history (steps 1-2 of the queued steps), and applies the step. The parts that need this process's state
-    //     stay with this process: the pre-steps run step 3 against the live navigable when the operation starts, and
-    //     the completion maps the result onto the API method tracker's promises.
+    // 12. Append the following session history traversal steps to traversable.
+    // NB: The UI process owns the session history traversal queue and runs steps 12.1-12.4 against canonical
+    //     history. The completion below runs steps 12.5-12.6 in navigation's relevant realm.
 
     auto on_complete = GC::create_function(heap(), [this, api_method_tracker](HistoryStepResult result) {
         // NOTE: When result is "canceled-by-beforeunload" or "initiator-disallowed", the navigate event was never fired,
@@ -757,11 +755,10 @@ WebIDL::ExceptionOr<NavigationResult> Navigation::perform_a_navigation_api_trave
     // 4. Let result be the result of applying the traverse history step given by targetSHE's step to traversable,
     //    given sourceSnapshotParams, navigable, and "none".
     traversable->request_history_operation(
-        NavigationAPITraverseHistoryOperationParameters {
+        PerformNavigationAPITraversalRequest {
             .navigable_id = navigable->id(),
             .key = key,
-            .initiator_source_snapshot = Web::InitiatorSourceSnapshot { .sandboxing_flags = source_snapshot_params->sandboxing_flags, .has_transient_activation = source_snapshot_params->has_transient_activation },
-            .user_involvement = UserNavigationInvolvement::None,
+            .source_snapshot_params = Web::SerializedSourceSnapshotParams { .sandboxing_flags = source_snapshot_params->sandboxing_flags, .has_transient_activation = source_snapshot_params->has_transient_activation },
         },
         {
             .source_snapshot_params = source_snapshot_params,
@@ -1329,7 +1326,7 @@ bool Navigation::inner_navigate_event_firing_algorithm(
             auto target_step = destination_entry->session_history_entry().step().get<int>();
             auto traversable = navigable->traversable_navigable();
             traversable->request_history_operation(
-                ResumeTraverseHistoryOperationParameters {
+                ResumeTraverseHistoryStepRequest {
                     .navigable_id = navigable->id(),
                     .target_step = target_step,
                     .user_involvement = user_involvement_for_resume,

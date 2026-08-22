@@ -39,7 +39,7 @@ enum class NavigationTarget : u8;
 enum class TraversalDecision;
 
 struct AsyncScrollOperation;
-struct InitiatorSourceSnapshot;
+struct SerializedSourceSnapshotParams;
 
 AK_TYPEDEF_DISTINCT_NUMERIC_GENERAL(i64, UniqueNodeID, Comparison, Increment, CastToUnderlying);
 
