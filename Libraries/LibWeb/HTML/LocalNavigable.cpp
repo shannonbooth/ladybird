@@ -3062,23 +3062,18 @@ void LocalNavigable::run_navigation_unload_check(Utf16String const& navigation_i
         return;
     }
 
-    auto target_url = active_document()->url();
-    auto const& pending = m_pending_navigations[*pending_index];
-    if (pending.navigation.has_value())
-        target_url = pending.navigation->params.url;
-
     // 1. Let unloadPromptCanceled be the result of checking if unloading is user-canceled for navigable's active document's inclusive descendant navigables.
     traversable_navigable()->check_if_unloading_is_canceled(active_document()->inclusive_descendant_navigables(),
-        GC::create_function(heap(), [this, navigation_id, target_url = move(target_url), completion_steps](LocalTraversableNavigable::CheckIfUnloadingIsCanceledResult unload_prompt_canceled) {
+        GC::create_function(heap(), [this, navigation_id, completion_steps](LocalTraversableNavigable::CheckIfUnloadingIsCanceledResult unload_prompt_canceled) {
             if (has_been_destroyed() || !active_window()) {
                 completion_steps->function()(false);
                 return;
             }
 
             // 2. If unloadPromptCanceled is not "continue", or navigable's ongoing navigation is no longer navigationId:
+            // NB: The UI process learns of the canceled check from the population-failure report and ends the
+            //     recorded load itself.
             if (unload_prompt_canceled != LocalTraversableNavigable::CheckIfUnloadingIsCanceledResult::Continue) {
-                if (is_top_level_traversable())
-                    active_browsing_context()->page().client().page_did_cancel_loading(navigation_id, target_url);
                 set_delaying_load_events(false);
                 completion_steps->function()(false);
                 return;

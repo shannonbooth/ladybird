@@ -675,6 +675,7 @@ void WebContentClient::did_fail_navigation_population(u64 page_id, Web::HTML::Cr
     auto& ongoing_navigation = *navigable->ongoing_navigation();
     if (ongoing_navigation.loader)
         ongoing_navigation.loader->reclaim_response_body_after_failed_handoff();
+    m_history_recorded_urls_for_current_load.remove(page_id);
     if (navigable->is_top_level_traversable()) {
         if (auto view = ViewImplementation::find_view_for_traversable(navigable->top_level_traversable()); view.has_value()) {
             view->did_cancel_loading(navigation_id);
