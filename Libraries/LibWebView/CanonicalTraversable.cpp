@@ -176,9 +176,22 @@ bool CanonicalTraversable::update_session_history_entry_document_state_navigable
     auto updated = m_session_history.update_document_state(nested_history_id_for(navigable), navigation_api_key, [&](auto& document_state) {
         document_state.navigable_target_name = navigable_target_name;
     });
-    if (updated)
+    if (updated) {
         session_history_changed();
-    return updated;
+        return true;
+    }
+    m_history_traversal_queue.append_session_history_synchronous_navigation_steps(navigable.id(),
+        [this, navigable_id = navigable.id(), navigation_api_key, navigable_target_name = move(navigable_target_name)](NonnullRefPtr<Core::Promise<Empty>> promise) mutable {
+            if (auto navigable = find(navigable_id); navigable.has_value()) {
+                if (m_session_history.update_document_state(nested_history_id_for(*navigable), navigation_api_key, [&](auto& document_state) {
+                        document_state.navigable_target_name = navigable_target_name;
+                    })) {
+                    session_history_changed();
+                }
+            }
+            promise->resolve({});
+        });
+    return false;
 }
 
 bool CanonicalTraversable::set_session_history_entry_document_state_reload_pending(CanonicalNavigable const& navigable, Utf16String const& navigation_api_key, bool reload_pending)
@@ -1226,17 +1239,8 @@ void CanonicalTraversable::enqueue_history_operation(Web::HTML::CrossProcessId o
     }
 
     Optional<Web::HTML::CrossProcessId> synchronous_navigation_target;
-    if (request.has<Web::FinalizeSameDocumentNavigationHistoryOperationParameters>()) {
-        auto const& parameters = request.get<Web::FinalizeSameDocumentNavigationHistoryOperationParameters>();
-        synchronous_navigation_target = parameters.navigable_id;
-        if (auto target_navigable = find(parameters.navigable_id); target_navigable.has_value()) {
-            if (parameters.previous_entry_persisted_state.has_value()) {
-                m_session_history.update_entry_persisted_state(
-                    nested_history_id_for(*target_navigable),
-                    *parameters.previous_entry_persisted_state);
-            }
-        }
-    }
+    if (request.has<Web::FinalizeSameDocumentNavigationHistoryOperationParameters>())
+        synchronous_navigation_target = request.get<Web::FinalizeSameDocumentNavigationHistoryOperationParameters>().navigable_id;
 
     NonnullRefPtr<WebContentClient> requesting_client_ref { requesting_client };
     auto steps = [this, operation_id, request = move(request), requesting_client = move(requesting_client_ref), requesting_page_id, traversal_sequence_number, on_complete = move(on_complete)](NonnullRefPtr<Core::Promise<Empty>> promise) mutable {
@@ -1357,6 +1361,14 @@ void CanonicalTraversable::run_direct_history_operation(HistoryOperation& operat
             if (!navigable.has_value()) {
                 finish_history_operation(operation.operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
                 return;
+            }
+
+            // The outgoing entry's persisted state applies at this queue position: after back-to-back
+            // synchronous pushes, the previous entry only became canonical when the earlier finalization ran.
+            if (parameters.previous_entry_persisted_state.has_value()) {
+                m_session_history.update_entry_persisted_state(
+                    nested_history_id_for(*navigable),
+                    *parameters.previous_entry_persisted_state);
             }
 
             auto target_step = m_session_history.finalize_same_document_navigation(
