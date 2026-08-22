@@ -1272,6 +1272,7 @@ static bool history_operation_is_direct(Web::HistoryOperationParameters const& p
     return parameters.has<Web::ReloadHistoryOperationParameters>()
         || parameters.has<Web::TraverseByDeltaHistoryOperationParameters>()
         || parameters.has<Web::TraverseToStepHistoryOperationParameters>()
+        || parameters.has<Web::NavigationAPITraverseHistoryOperationParameters>()
         || parameters.has<Web::NavigableDestructionHistoryOperationParameters>();
 }
 
@@ -1298,6 +1299,21 @@ void CanonicalTraversable::run_direct_history_operation(HistoryOperation& operat
         },
         [&](Web::TraverseToStepHistoryOperationParameters const& parameters) {
             apply_history_step(operation, parameters.target_step, true, {}, parameters.user_involvement, Web::Bindings::NavigationType::Traverse);
+        },
+        [&](Web::NavigationAPITraverseHistoryOperationParameters const& parameters) {
+            VERIFY(operation.resolved_step.has_value());
+            // 3. If targetSHE is navigable's active session history entry, abort these steps.
+            // NOTE: A previously queued traversal can already have taken the navigable to this entry.
+            auto navigable = find(parameters.navigable_id);
+            auto const* target_entry = navigable.has_value()
+                ? m_session_history.get_the_target_history_entry(*navigable, *operation.resolved_step)
+                : nullptr;
+            if (!target_entry
+                || navigable->active_session_history_entry_identity() == Web::HTML::session_history_entry_identity(*target_entry)) {
+                finish_history_operation(operation.operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
+                return;
+            }
+            apply_history_step(operation, *operation.resolved_step, true, parameters.navigable_id, parameters.user_involvement, Web::Bindings::NavigationType::Traverse, parameters.initiator_source_snapshot);
         },
         [&](Web::NavigableDestructionHistoryOperationParameters const&) {
             update_for_navigable_creation_or_destruction(operation);
@@ -1581,9 +1597,8 @@ void CanonicalTraversable::did_receive_history_operation_ready(WebContentClient&
         [&](Web::TraverseToStepHistoryOperationParameters const&) {
             VERIFY_NOT_REACHED();
         },
-        [&](Web::NavigationAPITraverseHistoryOperationParameters const& parameters) {
-            VERIFY(operation->resolved_step.has_value());
-            apply_history_step(*operation, *operation->resolved_step, true, parameters.navigable_id, parameters.user_involvement, Web::Bindings::NavigationType::Traverse, parameters.initiator_source_snapshot);
+        [&](Web::NavigationAPITraverseHistoryOperationParameters const&) {
+            VERIFY_NOT_REACHED();
         },
         [&](Web::ResumeTraverseHistoryOperationParameters const& parameters) {
             apply_history_step(*operation, parameters.target_step, false, {}, parameters.user_involvement, Web::Bindings::NavigationType::Traverse);
