@@ -70,6 +70,16 @@ if (BUILD_TESTING AND NOT WIN32)
     )
     set_tests_properties(TestWebDriverSessionHistory PROPERTIES TIMEOUT 120)
 
+    # Crash recovery is exercised against a headed browser, because headless crash handling
+    # recovers automatically instead of leaving the tab dormant behind the crash overlay.
+    if (APPLE)
+        add_test(
+            NAME TestWebDriverCrashRecovery
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test-webdriver-crash-recovery.py $<TARGET_FILE:WebDriver>
+        )
+        set_tests_properties(TestWebDriverCrashRecovery PROPERTIES TIMEOUT 180)
+    endif()
+
     add_test(NAME TestAutocomplete COMMAND $<TARGET_FILE:TestAutocomplete>)
     set_tests_properties(TestAutocomplete PROPERTIES TIMEOUT 60 ENVIRONMENT LADYBIRD_SOURCE_DIR=${LADYBIRD_SOURCE_DIR})
 

@@ -293,6 +293,11 @@ void CanonicalTraversable::traverse_the_history(TraversableSessionHistory::Trave
 void CanonicalTraversable::abandon_after_web_content_process_crash()
 {
     abandon_history_operations();
+
+    // The crashed process's active document is gone, and the replacement process's initial about:blank document has
+    // no canonical standing. Without this, a navigation issued from the dormant replacement process would replace the
+    // canonical current entry instead of committing after it.
+    clear_active_session_history_entry_identity();
 }
 
 void CanonicalTraversable::reset_session_history_for_testing(
@@ -1394,11 +1399,6 @@ void CanonicalTraversable::finalize_a_cross_document_navigation_at_queued_positi
     auto entry_to_replace = parameters.history_handling == Web::HTML::HistoryHandlingBehavior::Replace
         ? navigable->active_session_history_entry_identity()
         : Optional<Web::HTML::SessionHistoryEntryIdentity> {};
-    if (parameters.history_handling == Web::HTML::HistoryHandlingBehavior::Replace
-        && !entry_to_replace.has_value()) {
-        finish_history_operation(operation.operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
-        return;
-    }
 
     // 6. Let traversable be navigable's traversable navigable.
     // NB: This CanonicalTraversable is navigable's traversable navigable.
@@ -1409,6 +1409,25 @@ void CanonicalTraversable::finalize_a_cross_document_navigation_at_queued_positi
     // 8. Let targetEntries be the result of getting session history entries for navigable.
     auto target_entries = m_session_history.get_session_history_entries(*navigable);
     if (!target_entries.has_value()) {
+        finish_history_operation(operation.operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
+        return;
+    }
+
+    // AD-HOC: A top-level replace can arrive from a replacement WebContent process spawned after a crash. Such a
+    //         process navigates away from a fresh, renderer-local initial about:blank document whose entry never had
+    //         canonical standing, so there is nothing to replace. Commit the navigation as an append instead: the
+    //         canonical current entry stays reachable in the back history, matching how other engines treat
+    //         navigations away from a crashed tab.
+    if (navigable->is_top_level_traversable() && entry_to_replace.has_value()) {
+        auto canonical_entry_to_replace = target_entries->find_if([&](auto const& entry) {
+            return Web::HTML::session_history_entry_identity(entry) == *entry_to_replace;
+        });
+        if (canonical_entry_to_replace == target_entries->end())
+            entry_to_replace.clear();
+    }
+    if (parameters.history_handling == Web::HTML::HistoryHandlingBehavior::Replace
+        && !entry_to_replace.has_value()
+        && !navigable->is_top_level_traversable()) {
         finish_history_operation(operation.operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
         return;
     }

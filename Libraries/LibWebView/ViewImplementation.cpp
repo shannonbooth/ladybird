@@ -181,8 +181,7 @@ void ViewImplementation::set_favicon(Badge<WebContentClient>, Optional<Gfx::Bitm
         if (m_favicon_hash.has_value()) {
             if (m_is_private == IsPrivate::No)
                 Application::bookmark_store().update_favicon(m_url, *m_favicon_hash);
-            if (!m_should_suppress_history_for_current_load)
-                Application::history_store(m_is_private).update_favicon(m_url, *m_favicon_hash);
+            Application::history_store(m_is_private).update_favicon(m_url, *m_favicon_hash);
         }
     }
 
@@ -226,8 +225,6 @@ void ViewImplementation::create_new_process_for_cross_site_navigation()
 
     handle_resize();
 
-    m_should_suppress_history_for_current_load = false;
-    m_should_suppress_history_for_next_load = false;
     set_loading_state(true);
     auto& ongoing_navigation = *m_top_level_traversable.ongoing_navigation();
     VERIFY(ongoing_navigation.navigation_id == request.navigation_id);
@@ -330,10 +327,8 @@ void ViewImplementation::set_system_visibility_state(Web::HTML::VisibilityState 
 
 void ViewImplementation::load(URL::URL const& url, Web::Bindings::NavigationHistoryBehavior history_handling)
 {
+    respawn_crashed_web_content_process_if_needed();
     set_loading_state(true);
-    m_is_showing_crash_page = false;
-    m_should_suppress_history_for_current_load = false;
-    m_should_suppress_history_for_next_load = false;
     m_top_level_traversable.set_ongoing_navigation(CanonicalNavigable::OngoingNavigation {
         .url = url,
         .sequence_number = m_top_level_traversable.allocate_navigation_or_traversal_sequence_number(),
@@ -418,25 +413,11 @@ void ViewImplementation::open_url_in_new_window(URL::URL const& url, IsPrivate i
 
 void ViewImplementation::load_html(StringView html)
 {
+    respawn_crashed_web_content_process_if_needed();
     set_loading_state(true);
     m_top_level_traversable.clear_ongoing_navigation();
     m_last_stopped_load_url.clear();
-    m_is_showing_crash_page = false;
-    m_should_suppress_history_for_current_load = false;
-    m_should_suppress_history_for_next_load = false;
     client().async_load_html(page_id(), html);
-}
-
-void ViewImplementation::load_crash_page_html(StringView html, URL::URL const& crashed_url)
-{
-    set_loading_state(true);
-    m_top_level_traversable.clear_ongoing_navigation();
-    m_last_stopped_load_url.clear();
-    m_is_showing_crash_page = true;
-    m_should_suppress_history_for_current_load = true;
-    m_should_suppress_history_for_next_load = true;
-    set_url(crashed_url);
-    client().async_load_html_with_url(page_id(), html, crashed_url);
 }
 
 void ViewImplementation::load_navigation_error_page(StringView text)
@@ -471,17 +452,13 @@ void ViewImplementation::reload()
         .sequence_number = m_top_level_traversable.allocate_navigation_or_traversal_sequence_number(),
         .is_ui_navigation_placeholder = true,
     });
-    if (m_is_showing_crash_page) {
-        m_is_showing_crash_page = false;
-        m_should_suppress_history_for_current_load = false;
-        m_should_suppress_history_for_next_load = false;
+    if (m_crash_overlay_active) {
+        // The overlay stays up until the recovery traversal begins applying; see will_apply_history_traversal_step().
+        respawn_crashed_web_content_process_if_needed();
         recover_current_session_history_entry_with_history_operation();
         return;
     }
 
-    m_is_showing_crash_page = false;
-    m_should_suppress_history_for_current_load = false;
-    m_should_suppress_history_for_next_load = false;
     m_top_level_traversable.prepare_for_reload();
     update_navigation_action_state();
     dump_session_history("reload-mark-current-entry-reload-pending"sv);
@@ -529,8 +506,7 @@ void ViewImplementation::traverse_the_history_to_step(
 
 void ViewImplementation::will_apply_history_traversal_step(u64 operation_id)
 {
-    m_should_suppress_history_for_current_load = false;
-    m_should_suppress_history_for_next_load = false;
+    set_crash_overlay_active(false);
     m_history_visit_transition_for_next_load = HistoryVisitTransition::Restore;
     if (m_webdriver_navigation_observation.has_value()
         && m_webdriver_navigation_observation->completion_source == WebDriverNavigationCompletionSource::CrashRecovery) {
@@ -1971,26 +1947,14 @@ void ViewImplementation::did_start_navigation(Optional<Utf16String> navigation_i
     ongoing.has_started = true;
 
     set_loading_state(true);
-    if (m_should_suppress_history_for_next_load || m_should_suppress_history_for_current_load)
-        return;
+    set_crash_overlay_active(false);
 
     if (ongoing.navigation_id.has_value() && !ongoing.is_uncommitted) {
         ongoing.is_uncommitted = true;
         ongoing.uses_replacement_process = false;
     }
 
-    auto was_showing_crash_page = exchange(m_is_showing_crash_page, false);
-    auto started_from_crash_page = false;
-    if (was_showing_crash_page) {
-        auto const* current_entry = m_top_level_traversable.session_history().current_entry();
-        started_from_crash_page = current_entry && current_entry->url == url;
-    }
-
-    auto dump_reason = started_from_crash_page ? "did-start-navigation-from-crash-page"sv
-        : is_redirect                          ? "did-start-navigation-redirect"sv
-                                               : "did-start-navigation"sv;
-
-    dump_session_history(dump_reason);
+    dump_session_history(is_redirect ? "did-start-navigation-redirect"sv : "did-start-navigation"sv);
 }
 
 bool ViewImplementation::did_cancel_navigation(Optional<Utf16String> const& navigation_id)
@@ -2657,7 +2621,7 @@ void ViewImplementation::dump_session_history(StringView reason, SessionHistoryD
         history_log_entries(m_top_level_traversable.session_history()));
 }
 
-void ViewImplementation::handle_web_content_process_crash(LoadErrorPage load_error_page)
+void ViewImplementation::handle_web_content_process_crash()
 {
     set_loading_state(false);
     m_top_level_traversable.clear_ongoing_navigation();
@@ -2684,10 +2648,15 @@ void ViewImplementation::handle_web_content_process_crash(LoadErrorPage load_err
     constexpr size_t max_reasonable_crash_count = 5U;
     if (m_crash_count >= max_reasonable_crash_count) {
         if (!headless_mode) {
+            // Don't feed a crash loop with replacement processes. Keep the crash overlay up, and spawn a replacement
+            // on demand if the user asks for a load or reload anyway.
             dbgln("WebContent has crashed {} times in quick succession! Not restarting...", m_crash_count);
             m_repeated_crash_timer->stop();
             for (auto command_id : pending_crash_command_ids)
                 Application::the().complete_webdriver_content_command(command_id, Web::WebDriver::Error::from_code(Web::WebDriver::ErrorCode::UnknownError, "WebContent crashed repeatedly and was not restarted"sv));
+            m_top_level_traversable.abandon_after_web_content_process_crash();
+            m_needs_web_content_process_respawn = true;
+            set_crash_overlay_active(true);
             return;
         }
         // In headless mode, always respawn - tests need a working WebContent for each test.
@@ -2696,15 +2665,30 @@ void ViewImplementation::handle_web_content_process_crash(LoadErrorPage load_err
     }
     m_repeated_crash_timer->restart();
 
-    // In headless mode, respawn WebContent but skip the error page.
-    if (headless_mode)
-        load_error_page = LoadErrorPage::No;
-
     auto crashed_endpoint = CanonicalTraversable::HistoryJobEndpoint {
         m_client_state.client,
         page_id(),
     };
 
+    respawn_web_content_process_after_crash();
+
+    if (headless_mode) {
+        // Repopulate the canonical current entry in the replacement process right away; tests need a working
+        // WebContent without user interaction.
+        recover_current_session_history_entry_with_history_operation(move(crashed_endpoint));
+    } else {
+        // Leave the replacement process dormant and display the crash overlay over the canonical current entry.
+        // A reload recovers that entry; any other load or traversal supersedes it.
+        m_top_level_traversable.abandon_after_web_content_process_crash();
+        set_crash_overlay_active(true);
+    }
+
+    for (auto command_id : pending_crash_command_ids)
+        Application::the().complete_webdriver_content_command(command_id, JsonValue {});
+}
+
+void ViewImplementation::respawn_web_content_process_after_crash()
+{
     m_history_operation_handling_for_next_client = HistoryOperationHandling::Preserve;
     Optional<Web::HTML::CrossProcessId> initial_document_state_id;
     Optional<URL::URL> process_site_url;
@@ -2727,24 +2711,26 @@ void ViewImplementation::handle_web_content_process_crash(LoadErrorPage load_err
     m_backup_shared_image_buffer = nullptr;
 
     handle_resize();
+}
 
-    if (load_error_page == LoadErrorPage::Yes) {
-        m_top_level_traversable.abandon_after_web_content_process_crash();
-        auto escaped_url = escape_html_entities(m_url.serialize());
+void ViewImplementation::respawn_crashed_web_content_process_if_needed()
+{
+    if (!m_needs_web_content_process_respawn)
+        return;
 
-        StringBuilder builder;
-        builder.appendff(ERROR_HTML_HEADER, NO_FALLBACK_FAVICON_LINK, CRASH_ERROR_SVG, "Ladybird flew off-course!"sv);
-        builder.appendff("<p>The web page <a href=\"{}\">{}</a> has crashed.<br><br>You can reload the page to try again.</p>", escaped_url, escaped_url);
-        builder.append(ERROR_HTML_FOOTER);
-        load_crash_page_html(builder.string_view(), m_url);
-    } else {
-        m_should_suppress_history_for_current_load = false;
-        m_should_suppress_history_for_next_load = false;
-        recover_current_session_history_entry_with_history_operation(move(crashed_endpoint));
-    }
+    m_needs_web_content_process_respawn = false;
+    m_crash_count = 0;
+    respawn_web_content_process_after_crash();
+}
 
-    for (auto command_id : pending_crash_command_ids)
-        Application::the().complete_webdriver_content_command(command_id, JsonValue {});
+void ViewImplementation::set_crash_overlay_active(bool active)
+{
+    if (m_crash_overlay_active == active)
+        return;
+
+    m_crash_overlay_active = active;
+    if (on_crash_overlay_state_change)
+        on_crash_overlay_state_change(active);
 }
 
 void ViewImplementation::default_zoom_level_factor_changed()

@@ -141,6 +141,8 @@ static Web::DevicePixelPoint node_picker_position_for(Ladybird::WebViewBridge co
 @property (nonatomic, strong) NSMenu* media_context_menu;
 @property (nonatomic, strong) NSMenu* select_dropdown;
 @property (nonatomic, strong) NSTextField* status_label;
+@property (nonatomic, strong) NSVisualEffectView* crash_overlay;
+@property (nonatomic, strong) NSTextField* crash_overlay_message;
 @property (nonatomic, strong) NSAlert* dialog;
 @property (nonatomic, strong) NSAlert* external_url_confirmation_dialog;
 @property (nonatomic, strong) NSMagnificationGestureRecognizer* pinch_recognizer;
@@ -162,6 +164,7 @@ static Web::DevicePixelPoint node_picker_position_for(Ladybird::WebViewBridge co
 @implementation LadybirdWebView
 
 @synthesize status_label = _status_label;
+@synthesize crash_overlay = _crash_overlay;
 
 - (instancetype)init:(id<LadybirdWebViewObserver>)observer
            isPrivate:(WebView::IsPrivate)is_private
@@ -427,6 +430,20 @@ static Web::DevicePixelPoint node_picker_position_for(Ladybird::WebViewBridge co
         }
         if (_status_label != nil) {
             [self.status_label setHidden:YES];
+        }
+    };
+
+    m_web_view_bridge->on_crash_overlay_state_change = [weak_self](bool active) {
+        LadybirdWebView* self = weak_self;
+        if (self == nil) {
+            return;
+        }
+        if (active) {
+            auto* url_string = Ladybird::string_to_ns_string(self->m_web_view_bridge->url().serialize());
+            [self.crash_overlay setHidden:NO];
+            [self.crash_overlay_message setStringValue:[NSString stringWithFormat:@"The web page %@ has crashed.\n\nYou can reload the page to try again.", url_string]];
+        } else if (self->_crash_overlay != nil) {
+            [self.crash_overlay setHidden:YES];
         }
     };
 
@@ -1119,6 +1136,113 @@ static Web::DevicePixelPoint node_picker_position_for(Ladybird::WebViewBridge co
     }
 
     return _status_label;
+}
+
+// The crashed-document glyph the old crash page's HTML rendered, drawn from the same 17.5x21.5 path data at 64px tall.
+static NSImage* crash_overlay_icon()
+{
+    static NSImage* icon;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        icon = [NSImage imageWithSize:NSMakeSize(52, 64)
+                              flipped:YES
+                       drawingHandler:^BOOL(NSRect destination) {
+                           auto* transform = [NSAffineTransform transform];
+                           [transform scaleXBy:destination.size.width / 17.5 yBy:destination.size.height / 21.5];
+
+                           auto* page_outline = [NSBezierPath bezierPath];
+                           [page_outline moveToPoint:NSMakePoint(11.75, 0.75)];
+                           [page_outline lineToPoint:NSMakePoint(2.75, 0.75)];
+                           [page_outline curveToPoint:NSMakePoint(0.75, 2.75) controlPoint1:NSMakePoint(1.65, 0.75) controlPoint2:NSMakePoint(0.75, 1.65)];
+                           [page_outline lineToPoint:NSMakePoint(0.75, 18.75)];
+                           [page_outline curveToPoint:NSMakePoint(2.75, 20.75) controlPoint1:NSMakePoint(0.75, 19.85) controlPoint2:NSMakePoint(1.65, 20.75)];
+                           [page_outline lineToPoint:NSMakePoint(14.75, 20.75)];
+                           [page_outline curveToPoint:NSMakePoint(16.75, 18.75) controlPoint1:NSMakePoint(15.85, 20.75) controlPoint2:NSMakePoint(16.75, 19.85)];
+                           [page_outline lineToPoint:NSMakePoint(16.75, 5.75)];
+                           [page_outline closePath];
+
+                           auto* page_details = [NSBezierPath bezierPath];
+                           [page_details moveToPoint:NSMakePoint(10.75, 0.75)];
+                           [page_details lineToPoint:NSMakePoint(10.75, 4.75)];
+                           [page_details curveToPoint:NSMakePoint(12.75, 6.75) controlPoint1:NSMakePoint(10.75, 5.85) controlPoint2:NSMakePoint(11.65, 6.75)];
+                           [page_details lineToPoint:NSMakePoint(16.75, 6.75)];
+                           [page_details moveToPoint:NSMakePoint(4.75, 9.75)];
+                           [page_details lineToPoint:NSMakePoint(6.75, 11.75)];
+                           [page_details moveToPoint:NSMakePoint(6.75, 9.75)];
+                           [page_details lineToPoint:NSMakePoint(4.75, 11.75)];
+                           [page_details moveToPoint:NSMakePoint(10.75, 9.75)];
+                           [page_details lineToPoint:NSMakePoint(12.75, 11.75)];
+                           [page_details moveToPoint:NSMakePoint(12.75, 9.75)];
+                           [page_details lineToPoint:NSMakePoint(10.75, 11.75)];
+                           [page_details moveToPoint:NSMakePoint(5.75, 16.75)];
+                           [page_details curveToPoint:NSMakePoint(11.75, 16.75) controlPoint1:NSMakePoint(6.75, 14.08) controlPoint2:NSMakePoint(10.75, 14.08)];
+
+                           for (NSBezierPath* path in @[ page_outline, page_details ]) {
+                               [path transformUsingAffineTransform:transform];
+                               [path setLineWidth:1.5 * destination.size.height / 21.5];
+                               [path setLineCapStyle:NSLineCapStyleRound];
+                               [path setLineJoinStyle:NSLineJoinStyleRound];
+                               [[NSColor blackColor] setStroke];
+                               [path stroke];
+                           }
+                           return YES;
+                       }];
+        [icon setTemplate:YES];
+    });
+    return icon;
+}
+
+- (NSVisualEffectView*)crash_overlay
+{
+    if (!_crash_overlay) {
+        auto* icon_view = [NSImageView imageViewWithImage:crash_overlay_icon()];
+        [icon_view setContentTintColor:[NSColor labelColor]];
+
+        auto* title = [NSTextField labelWithString:@"Ladybird flew off-course!"];
+        [title setFont:[NSFont boldSystemFontOfSize:24]];
+        [title setAlignment:NSTextAlignmentCenter];
+        [title setSelectable:YES];
+
+        self.crash_overlay_message = [NSTextField wrappingLabelWithString:@""];
+        [self.crash_overlay_message setAlignment:NSTextAlignmentCenter];
+        [self.crash_overlay_message setTextColor:[NSColor secondaryLabelColor]];
+        [self.crash_overlay_message setSelectable:YES];
+
+        auto* reload_button = [NSButton buttonWithTitle:@"Reload Page"
+                                                 target:self
+                                                 action:@selector(reloadFromCrashOverlay:)];
+
+        auto* stack = [NSStackView stackViewWithViews:@[ icon_view, title, self.crash_overlay_message, reload_button ]];
+        [stack setOrientation:NSUserInterfaceLayoutOrientationVertical];
+        [stack setAlignment:NSLayoutAttributeCenterX];
+        [stack setSpacing:12];
+        [stack setCustomSpacing:32 afterView:icon_view];
+        [stack setCustomSpacing:16 afterView:title];
+        [stack setCustomSpacing:24 afterView:self.crash_overlay_message];
+        [stack setTranslatesAutoresizingMaskIntoConstraints:NO];
+
+        _crash_overlay = [[NSVisualEffectView alloc] init];
+        [_crash_overlay setMaterial:NSVisualEffectMaterialWindowBackground];
+        [_crash_overlay setBlendingMode:NSVisualEffectBlendingModeWithinWindow];
+        [_crash_overlay setState:NSVisualEffectStateActive];
+        [_crash_overlay setHidden:YES];
+
+        [_crash_overlay addSubview:stack];
+        [[stack centerXAnchor] constraintEqualToAnchor:[_crash_overlay centerXAnchor]].active = YES;
+        [[stack centerYAnchor] constraintEqualToAnchor:[_crash_overlay centerYAnchor]].active = YES;
+        [[stack widthAnchor] constraintLessThanOrEqualToAnchor:[_crash_overlay widthAnchor] constant:-40].active = YES;
+
+        [_crash_overlay setFrame:[self bounds]];
+        [_crash_overlay setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+        [self addSubview:_crash_overlay positioned:NSWindowAbove relativeTo:nil];
+    }
+
+    return _crash_overlay;
+}
+
+- (void)reloadFromCrashOverlay:(id)sender
+{
+    m_web_view_bridge->reload();
 }
 
 #pragma mark - NSView

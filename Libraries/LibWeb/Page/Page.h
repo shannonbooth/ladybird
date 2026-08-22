@@ -123,7 +123,6 @@ public:
 
     void load(URL::URL const&, Bindings::NavigationHistoryBehavior = Bindings::NavigationHistoryBehavior::Auto);
     void load_html(StringView);
-    void load_html(StringView, URL::URL const&);
 
     void reload();
 

@@ -42,18 +42,22 @@
 #include <QIcon>
 #include <QInputDevice>
 #include <QKeySequence>
+#include <QLabel>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QNativeGestureEvent>
 #include <QPaintEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPalette>
 #include <QPixmap>
+#include <QPushButton>
 #include <QScrollBar>
 #include <QStyleHints>
 #include <QTextEdit>
 #include <QTimer>
 #include <QToolTip>
+#include <QVBoxLayout>
 #include <QWheelEvent>
 
 namespace Ladybird {
@@ -151,6 +155,10 @@ WebContentView::WebContentView(QWidget* window, RefPtr<WebView::WebContentClient
 
     on_cursor_change = [this](auto cursor) {
         update_cursor(cursor);
+    };
+
+    on_crash_overlay_state_change = [this](bool active) {
+        set_crash_overlay_visible(active);
     };
 
 #ifdef AK_OS_MACOS
@@ -905,9 +913,120 @@ Optional<QPixmap> WebContentView::tab_preview_pixmap(QSize const& maximum_size) 
     return preview;
 }
 
+namespace {
+
+// The crashed-document glyph the old crash page's HTML rendered, drawn from the same 17.5x21.5 path data.
+class CrashOverlayIcon final : public QWidget {
+public:
+    explicit CrashOverlayIcon(QWidget* parent)
+        : QWidget(parent)
+    {
+        setFixedSize(52, 64);
+    }
+
+protected:
+    virtual void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.scale(width() / 17.5, height() / 21.5);
+
+        QPen pen(palette().color(QPalette::WindowText), 1.5);
+        pen.setCapStyle(Qt::RoundCap);
+        pen.setJoinStyle(Qt::RoundJoin);
+        painter.setPen(pen);
+        painter.setBrush(Qt::NoBrush);
+
+        QPainterPath page_outline(QPointF(11.75, 0.75));
+        page_outline.lineTo(2.75, 0.75);
+        page_outline.cubicTo(1.65, 0.75, 0.75, 1.65, 0.75, 2.75);
+        page_outline.lineTo(0.75, 18.75);
+        page_outline.cubicTo(0.75, 19.85, 1.65, 20.75, 2.75, 20.75);
+        page_outline.lineTo(14.75, 20.75);
+        page_outline.cubicTo(15.85, 20.75, 16.75, 19.85, 16.75, 18.75);
+        page_outline.lineTo(16.75, 5.75);
+        page_outline.closeSubpath();
+        painter.drawPath(page_outline);
+
+        QPainterPath page_details(QPointF(10.75, 0.75));
+        page_details.lineTo(10.75, 4.75);
+        page_details.cubicTo(10.75, 5.85, 11.65, 6.75, 12.75, 6.75);
+        page_details.lineTo(16.75, 6.75);
+        page_details.moveTo(4.75, 9.75);
+        page_details.lineTo(6.75, 11.75);
+        page_details.moveTo(6.75, 9.75);
+        page_details.lineTo(4.75, 11.75);
+        page_details.moveTo(10.75, 9.75);
+        page_details.lineTo(12.75, 11.75);
+        page_details.moveTo(12.75, 9.75);
+        page_details.lineTo(10.75, 11.75);
+        page_details.moveTo(5.75, 16.75);
+        page_details.cubicTo(6.75, 14.08, 10.75, 14.08, 11.75, 16.75);
+        painter.drawPath(page_details);
+    }
+};
+
+}
+
+void WebContentView::set_crash_overlay_visible(bool visible)
+{
+    if (!visible) {
+        if (m_crash_overlay)
+            m_crash_overlay->hide();
+        return;
+    }
+
+    if (!m_crash_overlay) {
+        m_crash_overlay = new QWidget(this);
+        m_crash_overlay->setAutoFillBackground(true);
+        m_crash_overlay->setBackgroundRole(QPalette::Window);
+
+        auto* icon = new CrashOverlayIcon(m_crash_overlay);
+
+        auto* title = new QLabel("Ladybird flew off-course!", m_crash_overlay);
+        auto title_font = title->font();
+        title_font.setPointSizeF(title_font.pointSizeF() * 1.5);
+        title_font.setBold(true);
+        title->setFont(title_font);
+        title->setAlignment(Qt::AlignCenter);
+        title->setTextInteractionFlags(Qt::TextSelectableByMouse);
+
+        m_crash_overlay_message = new QLabel(m_crash_overlay);
+        m_crash_overlay_message->setAlignment(Qt::AlignCenter);
+        m_crash_overlay_message->setWordWrap(true);
+        m_crash_overlay_message->setForegroundRole(QPalette::PlaceholderText);
+        m_crash_overlay_message->setTextInteractionFlags(Qt::TextSelectableByMouse);
+
+        auto* reload_button = new QPushButton("Reload Page", m_crash_overlay);
+        QObject::connect(reload_button, &QPushButton::clicked, this, [this] {
+            reload();
+        });
+
+        auto* layout = new QVBoxLayout(m_crash_overlay);
+        layout->setContentsMargins(20, 20, 20, 20);
+        layout->setSpacing(12);
+        layout->addStretch();
+        layout->addWidget(icon, 0, Qt::AlignHCenter);
+        layout->addSpacing(20);
+        layout->addWidget(title);
+        layout->addSpacing(4);
+        layout->addWidget(m_crash_overlay_message);
+        layout->addSpacing(12);
+        layout->addWidget(reload_button, 0, Qt::AlignHCenter);
+        layout->addStretch();
+    }
+
+    m_crash_overlay_message->setText(qformatted("The web page {} has crashed.\n\nYou can reload the page to try again.", url()));
+    m_crash_overlay->setGeometry(rect());
+    m_crash_overlay->show();
+    m_crash_overlay->raise();
+}
+
 void WebContentView::resizeEvent(QResizeEvent* event)
 {
     WebContentViewBase::resizeEvent(event);
+    if (m_crash_overlay)
+        m_crash_overlay->setGeometry(rect());
 #ifdef LADYBIRD_QT_USE_RHI_WIDGET
     m_force_full_repaint = true;
 #endif

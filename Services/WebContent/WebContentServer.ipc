@@ -70,7 +70,6 @@ endpoint WebContentServer
     load_url(u64 page_id, URL::URL url, Web::Bindings::NavigationHistoryBehavior history_handling) =|
     populate_navigation(u64 page_id, Web::HTML::NavigationPopulationRequest request, Web::HTML::NavigationPopulationResult result) =|
     load_html(u64 page_id, ByteString html) =|
-    load_html_with_url(u64 page_id, ByteString html, URL::URL url) =|
     reload(u64 page_id) =|
     stop_loading(u64 page_id) =|
     cancel_download(u64 page_id, u64 download_id) =|

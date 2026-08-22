@@ -128,6 +128,10 @@ public:
     bool is_loading() const { return m_is_loading; }
     bool cancel_uncommitted_top_level_navigation_for_browser_traversal();
 
+    // Active while the WebContent process has crashed and no replacement content has begun loading. Chromes display
+    // crash UI over the (stale or blank) view; the state clears once a load or history traversal starts.
+    bool crash_overlay_active() const { return m_crash_overlay_active; }
+
     struct SessionHistoryTraversalMenuItem {
         i32 step { 0 };
         String title;
@@ -433,6 +437,7 @@ public:
     Function<void(Web::HTML::AudioPlayState)> on_audio_play_state_changed;
     Function<void(Web::ScreenWakeLockState)> on_screen_wake_lock_state_changed;
     Function<void()> on_web_content_crashed;
+    Function<void(bool active)> on_crash_overlay_state_change;
     Function<void()> on_web_content_process_change_for_cross_site_navigation;
 
     Menu& page_context_menu() { return *m_page_context_menu; }
@@ -525,7 +530,6 @@ protected:
     void set_page_background_color_to_system_canvas(bool dark);
     void set_page_background_color(Gfx::Color);
     Gfx::Color preferred_canvas_background_color() const;
-    void load_crash_page_html(StringView, URL::URL const& crashed_url);
 
     enum class CreateNewClient {
         No,
@@ -535,11 +539,10 @@ protected:
     void cancel_all_native_geolocation_requests();
     void reset_page_media_state();
 
-    enum class LoadErrorPage {
-        No,
-        Yes,
-    };
-    void handle_web_content_process_crash(LoadErrorPage = LoadErrorPage::Yes);
+    void handle_web_content_process_crash();
+    void respawn_web_content_process_after_crash();
+    void respawn_crashed_web_content_process_if_needed();
+    void set_crash_overlay_active(bool);
 
     virtual void default_zoom_level_factor_changed() override;
     virtual void zoom_per_host_changed(StringView host) override;
@@ -591,7 +594,10 @@ protected:
     URL::URL m_url;
     Utf16String m_title;
     Optional<String> m_favicon_hash;
-    bool m_is_showing_crash_page { false };
+    bool m_crash_overlay_active { false };
+    // Set when repeated crashes stopped us from spawning a replacement WebContent process; the next load or reload
+    // spawns one on demand instead.
+    bool m_needs_web_content_process_respawn { false };
 
     double m_zoom_level { 1.0 };
     double m_device_pixel_ratio { 1.0 };
@@ -669,8 +675,6 @@ protected:
     Gfx::Color m_system_canvas_background_color { 255, 255, 255 };
     Web::CSS::PreferredColorScheme m_preferred_color_scheme { Web::CSS::PreferredColorScheme::Auto };
 
-    bool m_should_suppress_history_for_current_load { false };
-    bool m_should_suppress_history_for_next_load { false };
     HistoryVisitTransition m_history_visit_transition_for_current_load { HistoryVisitTransition::Link };
     HistoryVisitTransition m_history_visit_transition_for_next_load { HistoryVisitTransition::Link };
 
