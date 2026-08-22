@@ -90,6 +90,59 @@ void apply_navigation_population_result(NavigationPopulationRequest& request, Na
 namespace IPC {
 
 template<>
+ErrorOr<void> encode(Encoder& encoder, Web::HTML::NavigationStartRequest const& request)
+{
+    TRY(encoder.encode(request.navigable_id));
+    TRY(encoder.encode(request.url));
+    TRY(encoder.encode(request.document_resource));
+    TRY(encoder.encode(request.request_referrer));
+    TRY(encoder.encode(request.request_referrer_policy));
+    TRY(encoder.encode(request.initiator_origin));
+    TRY(encoder.encode(request.initiator_base_url));
+    TRY(encoder.encode(request.navigable_target_name));
+    TRY(encoder.encode(request.source_snapshot_params));
+    TRY(encoder.encode(request.target_snapshot_params.sandboxing_flags));
+    TRY(encoder.encode(request.target_snapshot_params.iframe_element_referrer_policy));
+    TRY(encoder.encode(request.csp_navigation_type));
+    TRY(encoder.encode(request.history_handling));
+    TRY(encoder.encode(request.user_involvement));
+    TRY(encoder.encode(request.navigation_id));
+    TRY(encoder.encode(request.classic_history_api_state));
+    TRY(encoder.encode(request.navigation_api_state));
+    TRY(encoder.encode(request.navigation_api_key));
+    TRY(encoder.encode(request.navigation_api_id));
+    return {};
+}
+
+template<>
+ErrorOr<Web::HTML::NavigationStartRequest> decode(Decoder& decoder)
+{
+    return Web::HTML::NavigationStartRequest {
+        .navigable_id = TRY(decoder.decode<Web::HTML::CrossProcessId>()),
+        .url = TRY(decoder.decode<URL::URL>()),
+        .document_resource = TRY(decoder.decode<Web::HTML::DocumentResource>()),
+        .request_referrer = TRY(decoder.decode<Web::Fetch::Infrastructure::Request::ReferrerType>()),
+        .request_referrer_policy = TRY(decoder.decode<Web::ReferrerPolicy::ReferrerPolicy>()),
+        .initiator_origin = TRY(decoder.decode<URL::Origin>()),
+        .initiator_base_url = TRY(decoder.decode<Optional<URL::URL>>()),
+        .navigable_target_name = TRY(decoder.decode<Utf16String>()),
+        .source_snapshot_params = TRY(decoder.decode<Web::HTML::NavigationSourceSnapshot>()),
+        .target_snapshot_params = {
+            .sandboxing_flags = TRY(decoder.decode<Web::HTML::SandboxingFlagSet>()),
+            .iframe_element_referrer_policy = TRY(decoder.decode<Web::ReferrerPolicy::ReferrerPolicy>()),
+        },
+        .csp_navigation_type = TRY(decoder.decode<Web::ContentSecurityPolicy::Directives::Directive::NavigationType>()),
+        .history_handling = TRY(decoder.decode<Web::Bindings::NavigationHistoryBehavior>()),
+        .user_involvement = TRY(decoder.decode<Web::HTML::UserNavigationInvolvement>()),
+        .navigation_id = TRY(decoder.decode<Utf16String>()),
+        .classic_history_api_state = TRY(decoder.decode<Web::HTML::StorageSerializationRecord>()),
+        .navigation_api_state = TRY(decoder.decode<Web::HTML::StorageSerializationRecord>()),
+        .navigation_api_key = TRY(decoder.decode<Utf16String>()),
+        .navigation_api_id = TRY(decoder.decode<Utf16String>()),
+    };
+}
+
+template<>
 ErrorOr<void> encode(Encoder& encoder, Web::HTML::NavigationPopulationRequest const& request)
 {
     TRY(encoder.encode(request.navigable_id));

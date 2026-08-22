@@ -74,6 +74,12 @@ WEB_API void apply_navigation_population_result(NavigationPopulationRequest&, Na
 namespace IPC {
 
 template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::NavigationStartRequest const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::NavigationStartRequest> decode(Decoder&);
+
+template<>
 WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::NavigationPopulationRequest const&);
 
 template<>

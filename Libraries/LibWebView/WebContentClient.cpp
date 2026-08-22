@@ -506,7 +506,7 @@ void WebContentClient::cancel_navigation_transactions()
     });
 }
 
-void WebContentClient::did_request_navigation_start(u64 page_id, Web::HTML::CrossProcessId navigable_id, URL::URL current_url, Web::NavigationTarget target, URL::URL url, Utf16String navigation_id, bool requires_unload_check)
+void WebContentClient::did_request_navigation_start(u64 page_id, Web::HTML::CrossProcessId navigable_id, URL::URL current_url, Web::NavigationTarget target, URL::URL url, Utf16String navigation_id, Optional<Web::HTML::NavigationStartRequest> start_request)
 {
     auto* target_navigable = navigable_for_page(page_id);
     if (target == Web::NavigationTarget::IFrame) {
@@ -514,14 +514,16 @@ void WebContentClient::did_request_navigation_start(u64 page_id, Web::HTML::Cros
         target_navigable = child_frame.has_value() ? &*child_frame : nullptr;
     }
 
-    if (!target_navigable || target_navigable->id() != navigable_id) {
+    if (!target_navigable
+        || target_navigable->id() != navigable_id
+        || (start_request.has_value() && start_request->navigable_id != navigable_id)) {
         async_cancel_navigation_params_creation(page_id, navigable_id, navigation_id);
         return;
     }
 
     // A javascript: navigation runs synchronously in the requesting process and never populates an entry; its
-    // admission just begins the recorded load.
-    if (!requires_unload_check) {
+    // admission carries no request to retain and just begins the recorded load.
+    if (!start_request.has_value()) {
         if (target_navigable->is_top_level_traversable()) {
             if (auto view = view_for_page_id(page_id); view.has_value())
                 begin_top_level_load(*view, page_id, move(navigation_id), url);
@@ -545,12 +547,44 @@ void WebContentClient::did_request_navigation_start(u64 page_id, Web::HTML::Cros
         .current_url = move(current_url),
         .target = target,
         .navigation_id = navigation_id,
+        .start_request = move(start_request),
         .sequence_number = sequence_number,
         .is_uncommitted = target_navigable->is_top_level_traversable(),
         .phase = CanonicalNavigable::OngoingNavigation::Phase::AwaitingUnloadCheck,
     });
     target_navigable->set_navigation_population_worker(*this, page_id);
     async_run_navigation_unload_check(page_id, navigable_id, move(navigation_id));
+}
+
+void WebContentClient::did_complete_navigation_unload_check(u64 page_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id)
+{
+    auto navigable = hosted_navigable_for_page(page_id, navigable_id);
+    if (!navigable.has_value())
+        return;
+
+    auto& ongoing_navigation = navigable->ongoing_navigation();
+    if (!ongoing_navigation.has_value()
+        || ongoing_navigation->navigation_id != navigation_id
+        || ongoing_navigation->phase != CanonicalNavigable::OngoingNavigation::Phase::AwaitingUnloadCheck
+        || ongoing_navigation->population_worker_client.ptr() != this
+        || ongoing_navigation->population_worker_page_id != page_id
+        || !ongoing_navigation->start_request.has_value()) {
+        return;
+    }
+
+    auto population_request = Web::HTML::create_navigation_population_request(
+        ongoing_navigation->start_request.release_value(),
+        Application::the().allocate_ui_process_cross_process_id());
+    ongoing_navigation->loader = NavigationLoader::create(m_is_private, move(population_request));
+    ongoing_navigation->phase = CanonicalNavigable::OngoingNavigation::Phase::Populating;
+    async_create_navigation_params(page_id, ongoing_navigation->loader->request());
+
+    // Requesting navigation params starts the fetch, so a view's top-level population begins its recorded
+    // load here.
+    if (navigable->is_top_level_traversable()) {
+        if (auto view = view_for_page_id(page_id); view.has_value())
+            begin_top_level_load(*view, page_id, move(navigation_id), ongoing_navigation->loader->request().history_entry.url);
+    }
 }
 
 void WebContentClient::did_request_navigation_population(u64 page_id, Web::HTML::CrossProcessId navigable_id, URL::URL current_url, Web::NavigationTarget target, Web::HTML::NavigationPopulationRequest request)
@@ -578,17 +612,14 @@ void WebContentClient::did_request_navigation_population(u64 page_id, Web::HTML:
         return;
     }
 
-    // A navigation admitted by did_request_navigation_start delivers its population request as the unload
-    // check's answer, and only its admitted worker process may deliver it; a reconstructed child navigation
-    // was admitted directly in the populating phase.
-    auto continues_admitted_navigation = target_navigable->ongoing_navigation().has_value()
+    // A reconstructed child navigation was admitted in the populating phase without a request of its own;
+    // only the process hosting the child's document may deliver its population request.
+    auto continues_reconstructed_child_navigation = target_navigable->ongoing_navigation().has_value()
         && target_navigable->ongoing_navigation()->navigation_id == request.navigation_id
-        && (target_navigable->ongoing_navigation()->phase == CanonicalNavigable::OngoingNavigation::Phase::Populating
-            || (target_navigable->ongoing_navigation()->phase == CanonicalNavigable::OngoingNavigation::Phase::AwaitingUnloadCheck
-                && target_navigable->ongoing_navigation()->population_worker_client.ptr() == this
-                && target_navigable->ongoing_navigation()->population_worker_page_id == page_id))
-        && !target_navigable->ongoing_navigation()->loader;
-    if (continues_admitted_navigation) {
+        && target_navigable->ongoing_navigation()->phase == CanonicalNavigable::OngoingNavigation::Phase::Populating
+        && !target_navigable->ongoing_navigation()->loader
+        && target_navigable->navigation_host_matches(*this, page_id);
+    if (continues_reconstructed_child_navigation) {
         auto& ongoing_navigation = *target_navigable->ongoing_navigation();
         ongoing_navigation.url = target_url;
         ongoing_navigation.current_url = move(current_url);

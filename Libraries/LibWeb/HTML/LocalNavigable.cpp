@@ -1163,7 +1163,6 @@ void LocalNavigable::queue_pending_navigation(PreparedNavigation navigation, Pen
     m_pending_navigations.append({
         .navigation = move(navigation),
         .population_navigation_id = {},
-        .start_request = {},
         .continue_steps = nullptr,
     });
 }
@@ -1178,27 +1177,14 @@ void LocalNavigable::clear_pending_navigations()
         set_delaying_load_events(false);
 }
 
-void LocalNavigable::park_navigation_for_population(Utf16String navigation_id, Optional<PreparedNavigation> navigation, Optional<NavigationStartRequest> start_request, GC::Ref<GC::Function<void(Optional<PreparedNavigation>, Optional<NavigationPopulationRequest>)>> continue_steps)
+void LocalNavigable::park_navigation_for_population(Utf16String navigation_id, Optional<PreparedNavigation> navigation, GC::Ref<GC::Function<void(Optional<PreparedNavigation>, Optional<NavigationPopulationRequest>)>> continue_steps)
 {
     m_pending_navigations.remove_all_matching([](auto const& pending) { return pending.population_navigation_id.has_value(); });
     m_pending_navigations.append({
         .navigation = move(navigation),
         .population_navigation_id = move(navigation_id),
-        .start_request = move(start_request),
         .continue_steps = continue_steps,
     });
-}
-
-Optional<NavigationStartRequest> LocalNavigable::take_parked_navigation_start_request(Utf16String const& navigation_id)
-{
-    auto index = m_pending_navigations.find_first_index_if([&](auto const& pending) {
-        return pending.population_navigation_id == navigation_id;
-    });
-    if (!index.has_value())
-        return {};
-    auto start_request = move(m_pending_navigations[*index].start_request);
-    m_pending_navigations[*index].start_request = {};
-    return start_request;
 }
 
 Optional<LocalNavigable::PendingNavigation> LocalNavigable::take_navigation_parked_for_population(Utf16String const& navigation_id)
@@ -2937,7 +2923,7 @@ void LocalNavigable::begin_navigation(PreparedNavigation navigation)
     // 20. If url's scheme is "javascript", then:
     if (url.scheme() == "javascript"sv) {
         if (is_top_level_traversable())
-            active_browsing_context()->page().client().request_navigation_start(*this, active_document.url(), NavigationTarget::TopLevel, url, navigation_id, PageClient::RequiresUnloadCheck::No);
+            active_browsing_context()->page().client().request_navigation_start(*this, active_document.url(), NavigationTarget::TopLevel, url, navigation_id, {});
 
         // 1. Queue a global task on the navigation and traversal task source given navigable's active window to navigate to a javascript: URL given navigable, url, historyHandling, sourceSnapshotParams, initiatorOriginSnapshot, userInvolvement, cspNavigationType, initialInsertion, and navigationId.
         VERIFY(active_window());
@@ -3037,10 +3023,10 @@ void LocalNavigable::begin_navigation(PreparedNavigation navigation)
         VERIFY(population_request.has_value());
         continue_navigation_after_population_dispatch(pending_navigation.release_value(), population_request.release_value());
     });
-    park_navigation_for_population(navigation_id, move(navigation), move(start_request), continue_steps);
+    park_navigation_for_population(navigation_id, move(navigation), continue_steps);
 
     auto target = is_top_level_traversable() ? NavigationTarget::TopLevel : NavigationTarget::IFrame;
-    active_browsing_context()->page().client().request_navigation_start(*this, active_document.url(), target, url, navigation_id, PageClient::RequiresUnloadCheck::Yes);
+    active_browsing_context()->page().client().request_navigation_start(*this, active_document.url(), target, url, navigation_id, move(start_request));
     return;
 }
 
@@ -3113,7 +3099,7 @@ void LocalNavigable::request_population_for_reconstructed_history_entry(Navigati
         create_navigation_params_for_navigation(population_request.release_value(), source_snapshot_params, NullOrError {});
     });
 
-    park_navigation_for_population(navigation_id, {}, {}, continue_steps);
+    park_navigation_for_population(navigation_id, {}, continue_steps);
     page().client().request_navigation_population(*this, active_document()->url(), NavigationTarget::IFrame, move(request));
 }
 

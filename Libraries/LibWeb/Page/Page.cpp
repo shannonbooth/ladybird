@@ -1365,20 +1365,19 @@ void Page::set_viewport_is_fullscreen(ViewportIsFullscreen is_fullscreen)
     process_pending_fullscreen_operations();
 }
 
-void PageClient::request_navigation_start(HTML::LocalNavigable& navigable, URL::URL const& current_url, NavigationTarget target, URL::URL const&, Utf16String navigation_id, RequiresUnloadCheck requires_unload_check)
+void PageClient::request_navigation_start(HTML::LocalNavigable& navigable, URL::URL const& current_url, NavigationTarget target, URL::URL const&, Utf16String navigation_id, Optional<HTML::NavigationStartRequest> start_request)
 {
     // A javascript: navigation runs synchronously in this process and never populates an entry; there is nothing
-    // for the embedder to prepare.
-    if (requires_unload_check == RequiresUnloadCheck::No)
+    // for the embedder to retain.
+    if (!start_request.has_value())
         return;
 
-    navigable.run_navigation_unload_check(navigation_id, GC::create_function(navigable.heap(), [client = GC::Ref { *this }, navigable = GC::Ref { navigable }, current_url, target, navigation_id](bool should_continue) mutable {
-        auto start_request = navigable->take_parked_navigation_start_request(navigation_id);
-        if (!should_continue || !start_request.has_value()) {
+    navigable.run_navigation_unload_check(navigation_id, GC::create_function(navigable.heap(), [client = GC::Ref { *this }, navigable = GC::Ref { navigable }, current_url, target, navigation_id, start_request = start_request.release_value()](bool should_continue) mutable {
+        if (!should_continue) {
             navigable->resume_navigation_params_creation(navigation_id, {});
             return;
         }
-        auto population_request = HTML::create_navigation_population_request(start_request.release_value(), client->allocate_cross_process_id());
+        auto population_request = HTML::create_navigation_population_request(move(start_request), client->allocate_cross_process_id());
         client->request_navigation_population(navigable, current_url, target, move(population_request));
     }));
 }

@@ -135,7 +135,8 @@ private:
 
     virtual Messages::WebContentClient::AllocateCompositorContextIdResponse allocate_compositor_context_id(u64 page_id, Web::Compositor::PagePresentationRegistration) override;
     virtual void did_destroy_compositor_context(Web::Compositor::CompositorContextId) override;
-    virtual void did_request_navigation_start(u64 page_id, Web::HTML::CrossProcessId navigable_id, URL::URL current_url, Web::NavigationTarget target, URL::URL url, Utf16String navigation_id, bool requires_unload_check) override;
+    virtual void did_request_navigation_start(u64 page_id, Web::HTML::CrossProcessId navigable_id, URL::URL current_url, Web::NavigationTarget target, URL::URL url, Utf16String navigation_id, Optional<Web::HTML::NavigationStartRequest> start_request) override;
+    virtual void did_complete_navigation_unload_check(u64 page_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id) override;
     virtual void did_request_navigation_population(u64 page_id, Web::HTML::CrossProcessId navigable_id, URL::URL current_url, Web::NavigationTarget target, Web::HTML::NavigationPopulationRequest) override;
     virtual void did_finish_navigation_params_creation(u64 page_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id, Optional<Web::HTML::NavigationPopulationResult>) override;
     virtual void did_fail_navigation_population(u64 page_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id) override;
