@@ -128,6 +128,7 @@ private:
     void complete_history_jobs_after_crash(HistoryOperation&, Vector<Web::HTML::CrossProcessId> changing_jobs, Vector<Web::HTML::CrossProcessId> nonchanging_updates);
     void finish_deferred_history_operation_after_crash_recovery(Web::HTML::CrossProcessId operation_id);
     ApplyHistoryStepJobs create_apply_history_step_jobs(Web::HTML::CrossProcessId operation_id);
+    void run_direct_history_operation(HistoryOperation&);
     void enqueue_browser_history_traversal(Web::TraverseToStepHistoryOperationParameters, bool check_for_cancelation, OnHistoryOperationComplete = nullptr);
     void run_browser_history_traversal_at_queue_position(Web::TraverseToStepHistoryOperationParameters, bool check_for_cancelation, u64 traversal_sequence_number, Function<void()> on_ready, OnHistoryOperationComplete, NonnullRefPtr<Core::Promise<Empty>>);
     void start_history_operation(HistoryOperation&, NonnullRefPtr<Core::Promise<Empty>>);
