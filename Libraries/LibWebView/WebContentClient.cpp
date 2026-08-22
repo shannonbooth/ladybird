@@ -697,16 +697,20 @@ void WebContentClient::did_fail_navigation_population(u64 page_id, Web::HTML::Cr
     auto navigable = hosted_navigable_for_page(page_id, navigable_id);
     if (!navigable.has_value())
         return;
+    auto population_failure = navigable->navigation_transaction_matches(navigation_id, *this, page_id);
     auto awaiting_unload_check = navigable->ongoing_navigation().has_value()
         && navigable->ongoing_navigation()->navigation_id == navigation_id
         && navigable->ongoing_navigation()->phase == CanonicalNavigable::OngoingNavigation::Phase::AwaitingUnloadCheck
         && navigable->ongoing_navigation()->population_worker_client.ptr() == this
         && navigable->ongoing_navigation()->population_worker_page_id == page_id;
-    if (!awaiting_unload_check && !navigable->navigation_transaction_matches(navigation_id, *this, page_id))
+    // A javascript: navigation is admitted without population state and can take over a still-live transaction
+    // record, so its failure matches by the started navigation id alone. Only a failed population handoff owns
+    // the loader's response body; the record it took over may still be feeding the active document.
+    if (!population_failure && !awaiting_unload_check && !navigable->matches_ongoing_navigation(navigation_id))
         return;
 
     auto& ongoing_navigation = *navigable->ongoing_navigation();
-    if (ongoing_navigation.loader)
+    if (population_failure && ongoing_navigation.loader)
         ongoing_navigation.loader->reclaim_response_body_after_failed_handoff();
     m_history_recorded_urls_for_current_load.remove(page_id);
     if (navigable->is_top_level_traversable()) {
@@ -871,14 +875,6 @@ void WebContentClient::begin_top_level_load(ViewImplementation& view, u64 page_i
     }
 }
 
-void WebContentClient::did_cancel_loading(u64 page_id, Optional<Utf16String> navigation_id)
-{
-    m_history_recorded_urls_for_current_load.remove(page_id);
-
-    if (auto view = view_for_page_id(page_id); view.has_value())
-        view->did_cancel_loading(navigation_id);
-}
-
 Messages::WebContentClient::DidStartDownloadWithoutRequestResponse WebContentClient::did_start_download_without_request(u64 page_id, URL::URL url, ByteString suggested_filename, Optional<u64> total_size)
 {
     auto destination = choose_download_destination_or_report_error(url, suggested_filename);
@@ -905,8 +901,23 @@ Messages::WebContentClient::DidStartDownloadWithoutRequestResponse WebContentCli
     return { download_id };
 }
 
-Messages::WebContentClient::DidStartDownloadResponse WebContentClient::did_start_download(u64, URL::URL url, ByteString suggested_filename, Optional<u64> total_size, int request_server_client_id, u64 request_server_request_id, ByteBuffer initial_data)
+Messages::WebContentClient::DidStartDownloadResponse WebContentClient::did_start_download(u64 page_id, URL::URL url, ByteString suggested_filename, Optional<u64> total_size, int request_server_client_id, u64 request_server_request_id, ByteBuffer initial_data)
 {
+    // A download taking over an in-flight population's response body ends that navigation without a document;
+    // the reporting process ends its side when its population output says the download was handled.
+    if (auto* navigable = navigable_for_page(page_id); navigable) {
+        auto const& ongoing_navigation = navigable->ongoing_navigation();
+        if (ongoing_navigation.has_value()
+            && ongoing_navigation->loader
+            && ongoing_navigation->loader->response_body_matches(request_server_client_id, request_server_request_id)) {
+            if (navigable->is_top_level_traversable()) {
+                if (auto view = view_for_page_id(page_id); view.has_value())
+                    view->did_cancel_loading(ongoing_navigation->navigation_id);
+            }
+            navigable->clear_ongoing_navigation();
+        }
+    }
+
     auto destination = choose_download_destination_or_report_error(url, suggested_filename);
     if (!destination.has_value())
         return { Optional<u64> {} };

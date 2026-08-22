@@ -631,11 +631,6 @@ void PageClient::page_did_request_external_url(URL::URL const& url, URL::Origin 
     client().async_did_request_external_url(m_id, url, initiator_origin, has_transient_activation);
 }
 
-void PageClient::page_did_cancel_loading(Optional<Utf16String> const& navigation_id, URL::URL const&)
-{
-    client().async_did_cancel_loading(m_id, navigation_id);
-}
-
 void PageClient::page_did_create_new_document(Web::DOM::Document& document)
 {
     initialize_js_console(document);

@@ -3323,11 +3323,11 @@ void LocalNavigable::navigate_to_a_javascript_url(URL::URL const& url, HistoryHa
     auto& vm = this->vm();
 
     // AD-HOC: These return paths do not run finalize_a_cross_document_navigation(). Clear a child navigable's
-    //         load-event delay and tell the UI that a recorded top-level load has ended.
+    //         load-event delay and tell the UI that the admitted navigation produced no document.
     auto finish_loading_without_navigation = [&] {
         set_delaying_load_events(false);
         if (is_top_level_traversable())
-            active_browsing_context()->page().client().page_did_cancel_loading(navigation_id, url);
+            active_browsing_context()->page().client().navigation_population_failed(id(), navigation_id);
     };
 
     // 1. Assert: historyHandling is "replace".
