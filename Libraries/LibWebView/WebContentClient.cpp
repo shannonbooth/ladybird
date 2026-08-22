@@ -935,10 +935,14 @@ Messages::WebContentClient::DidStartDownloadWithoutRequestResponse WebContentCli
 Messages::WebContentClient::DidStartDownloadResponse WebContentClient::did_start_download(u64 page_id, URL::URL url, ByteString suggested_filename, Optional<u64> total_size, int request_server_client_id, u64 request_server_request_id, ByteBuffer initial_data)
 {
     // A download taking over an in-flight population's response body ends that navigation without a document;
-    // the reporting process ends its side when its population output says the download was handled.
+    // the reporting process ends its side when its population output says the download was handled. The body
+    // identifiers are chosen by the reporting process, so only the process the body was handed to may claim
+    // them, and only while its population is in flight.
     if (auto* navigable = navigable_for_page(page_id); navigable) {
         auto const& ongoing_navigation = navigable->ongoing_navigation();
         if (ongoing_navigation.has_value()
+            && ongoing_navigation->phase == CanonicalNavigable::OngoingNavigation::Phase::Populating
+            && navigable->navigation_host_matches(*this, page_id)
             && ongoing_navigation->loader
             && ongoing_navigation->loader->response_body_matches(request_server_client_id, request_server_request_id)) {
             if (navigable->is_top_level_traversable()) {
