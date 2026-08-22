@@ -60,7 +60,6 @@ public:
         bool uses_replacement_process { false };
         bool is_uncommitted { false };
         Phase phase { Phase::Started };
-        Optional<Web::HTML::NavigationStartRequest> start_request {};
         OwnPtr<NavigationLoader> loader {};
         WeakPtr<WebContentClient> population_worker_client {};
         u64 population_worker_page_id { 0 };

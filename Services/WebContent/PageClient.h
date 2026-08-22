@@ -156,7 +156,7 @@ private:
 
     // ^PageClient
     virtual bool is_connection_open() const override;
-    virtual void request_navigation_start(Web::HTML::LocalNavigable&, URL::URL const& current_url, Web::NavigationTarget, Web::HTML::NavigationStartRequest) override;
+    virtual void request_navigation_start(Web::HTML::LocalNavigable&, URL::URL const& current_url, Web::NavigationTarget, URL::URL const& url, Utf16String navigation_id) override;
     virtual void request_navigation_population(Web::HTML::LocalNavigable&, URL::URL const& current_url, Web::NavigationTarget, Web::HTML::NavigationPopulationRequest) override;
     virtual void navigation_params_creation_finished(Web::HTML::LocalNavigable&, Web::HTML::NavigationPopulationRequest, Web::HTML::NavigationPopulationResult) override;
     virtual void navigation_population_failed(Web::HTML::CrossProcessId, Utf16String const&) override;

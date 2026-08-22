@@ -506,7 +506,7 @@ void WebContentClient::cancel_navigation_transactions()
     });
 }
 
-void WebContentClient::did_request_navigation_start(u64 page_id, Web::HTML::CrossProcessId navigable_id, URL::URL current_url, Web::NavigationTarget target, Web::HTML::NavigationStartRequest request)
+void WebContentClient::did_request_navigation_start(u64 page_id, Web::HTML::CrossProcessId navigable_id, URL::URL current_url, Web::NavigationTarget target, URL::URL url, Utf16String navigation_id)
 {
     auto* target_navigable = navigable_for_page(page_id);
     if (target == Web::NavigationTarget::IFrame) {
@@ -514,18 +514,16 @@ void WebContentClient::did_request_navigation_start(u64 page_id, Web::HTML::Cros
         target_navigable = child_frame.has_value() ? &*child_frame : nullptr;
     }
 
-    if (!target_navigable
-        || target_navigable->id() != navigable_id
-        || request.navigable_id != navigable_id) {
-        async_cancel_navigation_params_creation(page_id, navigable_id, request.navigation_id);
+    if (!target_navigable || target_navigable->id() != navigable_id) {
+        async_cancel_navigation_params_creation(page_id, navigable_id, navigation_id);
         return;
     }
 
     auto sequence_number = target_navigable->top_level_traversable().allocate_navigation_or_traversal_sequence_number();
     if (auto const& ongoing_navigation = target_navigable->ongoing_navigation(); ongoing_navigation.has_value()
         && ongoing_navigation->sequence_number != 0
-        && (ongoing_navigation->navigation_id == request.navigation_id
-            || (ongoing_navigation->is_ui_navigation_placeholder && ongoing_navigation->url == request.url))) {
+        && (ongoing_navigation->navigation_id == navigation_id
+            || (ongoing_navigation->is_ui_navigation_placeholder && ongoing_navigation->url == url))) {
         // A UI-initiated top-level load installs a placeholder transaction before
         // WebContent enters navigate(). Keep its original admission order when the
         // navigation ID becomes known.
@@ -533,47 +531,16 @@ void WebContentClient::did_request_navigation_start(u64 page_id, Web::HTML::Cros
     }
 
     target_navigable->set_ongoing_navigation(CanonicalNavigable::OngoingNavigation {
-        .url = request.url,
+        .url = move(url),
         .current_url = move(current_url),
         .target = target,
-        .navigation_id = request.navigation_id,
+        .navigation_id = navigation_id,
         .sequence_number = sequence_number,
         .is_uncommitted = target_navigable->is_top_level_traversable(),
         .phase = CanonicalNavigable::OngoingNavigation::Phase::AwaitingUnloadCheck,
-        .start_request = move(request),
     });
     target_navigable->set_navigation_population_worker(*this, page_id);
-    async_run_navigation_unload_check(page_id, navigable_id, target_navigable->ongoing_navigation()->navigation_id.value());
-}
-
-void WebContentClient::did_complete_navigation_unload_check(u64 page_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id, bool should_continue)
-{
-    auto navigable = hosted_navigable_for_page(page_id, navigable_id);
-    if (!navigable.has_value())
-        return;
-
-    auto& ongoing_navigation = navigable->ongoing_navigation();
-    if (!ongoing_navigation.has_value()
-        || ongoing_navigation->navigation_id != navigation_id
-        || ongoing_navigation->phase != CanonicalNavigable::OngoingNavigation::Phase::AwaitingUnloadCheck
-        || ongoing_navigation->population_worker_client.ptr() != this
-        || ongoing_navigation->population_worker_page_id != page_id
-        || !ongoing_navigation->start_request.has_value()) {
-        return;
-    }
-
-    if (!should_continue) {
-        navigable->clear_ongoing_navigation();
-        async_cancel_navigation_params_creation(page_id, navigable_id, navigation_id);
-        return;
-    }
-
-    auto population_request = Web::HTML::create_navigation_population_request(
-        ongoing_navigation->start_request.release_value(),
-        Application::the().allocate_ui_process_cross_process_id());
-    ongoing_navigation->loader = NavigationLoader::create(m_is_private, move(population_request));
-    ongoing_navigation->phase = CanonicalNavigable::OngoingNavigation::Phase::Populating;
-    async_create_navigation_params(page_id, ongoing_navigation->loader->request());
+    async_run_navigation_unload_check(page_id, navigable_id, move(navigation_id));
 }
 
 void WebContentClient::did_request_navigation_population(u64 page_id, Web::HTML::CrossProcessId navigable_id, URL::URL current_url, Web::NavigationTarget target, Web::HTML::NavigationPopulationRequest request)
@@ -601,11 +568,17 @@ void WebContentClient::did_request_navigation_population(u64 page_id, Web::HTML:
         return;
     }
 
-    auto continues_reconstructed_child_navigation = target_navigable->ongoing_navigation().has_value()
+    // A navigation admitted by did_request_navigation_start delivers its population request as the unload
+    // check's answer, and only its admitted worker process may deliver it; a reconstructed child navigation
+    // was admitted directly in the populating phase.
+    auto continues_admitted_navigation = target_navigable->ongoing_navigation().has_value()
         && target_navigable->ongoing_navigation()->navigation_id == request.navigation_id
-        && target_navigable->ongoing_navigation()->phase == CanonicalNavigable::OngoingNavigation::Phase::Populating
+        && (target_navigable->ongoing_navigation()->phase == CanonicalNavigable::OngoingNavigation::Phase::Populating
+            || (target_navigable->ongoing_navigation()->phase == CanonicalNavigable::OngoingNavigation::Phase::AwaitingUnloadCheck
+                && target_navigable->ongoing_navigation()->population_worker_client.ptr() == this
+                && target_navigable->ongoing_navigation()->population_worker_page_id == page_id))
         && !target_navigable->ongoing_navigation()->loader;
-    if (continues_reconstructed_child_navigation) {
+    if (continues_admitted_navigation) {
         auto& ongoing_navigation = *target_navigable->ongoing_navigation();
         ongoing_navigation.url = target_url;
         ongoing_navigation.current_url = move(current_url);
@@ -628,7 +601,8 @@ void WebContentClient::did_request_navigation_population(u64 page_id, Web::HTML:
     // The UI process owns the in-parallel population work. Dispatch the document-dependent
     // steps through step 4 to the process with the live source document. The response URL then
     // determines which process receives the task queued by step 5.
-    target_navigable->set_navigation_population_worker(*this, page_id);
+    if (!target_navigable->ongoing_navigation()->population_worker_client)
+        target_navigable->set_navigation_population_worker(*this, page_id);
     async_create_navigation_params(page_id, target_navigable->ongoing_navigation()->loader->request());
 }
 
@@ -688,7 +662,14 @@ void WebContentClient::did_finish_navigation_params_creation(u64 page_id, Web::H
 void WebContentClient::did_fail_navigation_population(u64 page_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id)
 {
     auto navigable = hosted_navigable_for_page(page_id, navigable_id);
-    if (!navigable.has_value() || !navigable->navigation_transaction_matches(navigation_id, *this, page_id))
+    if (!navigable.has_value())
+        return;
+    auto awaiting_unload_check = navigable->ongoing_navigation().has_value()
+        && navigable->ongoing_navigation()->navigation_id == navigation_id
+        && navigable->ongoing_navigation()->phase == CanonicalNavigable::OngoingNavigation::Phase::AwaitingUnloadCheck
+        && navigable->ongoing_navigation()->population_worker_client.ptr() == this
+        && navigable->ongoing_navigation()->population_worker_page_id == page_id;
+    if (!awaiting_unload_check && !navigable->navigation_transaction_matches(navigation_id, *this, page_id))
         return;
 
     auto& ongoing_navigation = *navigable->ongoing_navigation();

@@ -27,6 +27,7 @@
 #include <LibWeb/HTML/HistoryHandlingBehavior.h>
 #include <LibWeb/HTML/InitialInsertion.h>
 #include <LibWeb/HTML/Navigable.h>
+#include <LibWeb/HTML/NavigationPopulationRequest.h>
 #include <LibWeb/HTML/NavigationObserver.h>
 #include <LibWeb/HTML/NavigationParams.h>
 #include <LibWeb/HTML/NavigationSourceSnapshot.h>
@@ -268,6 +269,7 @@ public:
     void inform_the_navigation_api_about_child_navigable_destruction();
 
     bool has_pending_navigations() const { return !m_pending_navigations.is_empty(); }
+    Optional<NavigationStartRequest> take_parked_navigation_start_request(Utf16String const& navigation_id);
     void clear_pending_navigations();
     void prepare_to_populate_reconstructed_history_entry(Utf16String navigation_api_key);
 
@@ -360,13 +362,14 @@ private:
     struct PendingNavigation {
         Optional<PreparedNavigation> navigation;
         Optional<Utf16String> population_navigation_id;
+        Optional<NavigationStartRequest> start_request;
         GC::Ptr<GC::Function<void(Optional<PreparedNavigation>, Optional<NavigationPopulationRequest>)>> continue_steps;
     };
 
     void begin_navigation(PreparedNavigation);
     void continue_navigation_after_population_dispatch(PreparedNavigation, NavigationPopulationRequest);
     void queue_pending_navigation(PreparedNavigation, PendingNavigationBehavior);
-    void park_navigation_for_population(Utf16String navigation_id, Optional<PreparedNavigation>, GC::Ref<GC::Function<void(Optional<PreparedNavigation>, Optional<NavigationPopulationRequest>)>> continue_steps);
+    void park_navigation_for_population(Utf16String navigation_id, Optional<PreparedNavigation>, Optional<NavigationStartRequest>, GC::Ref<GC::Function<void(Optional<PreparedNavigation>, Optional<NavigationPopulationRequest>)>> continue_steps);
     Optional<PendingNavigation> take_navigation_parked_for_population(Utf16String const& navigation_id);
     void process_pending_navigations();
     void navigate_to_a_fragment(URL::URL const&, HistoryHandlingBehavior, UserNavigationInvolvement, GC::Ptr<DOM::Element> source_element, Optional<StorageSerializationRecord> navigation_api_state, Utf16String navigation_id);

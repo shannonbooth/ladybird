@@ -238,9 +238,9 @@ Web::HTML::CrossProcessId PageClient::allocate_navigable_id()
     return allocate_cross_process_id();
 }
 
-void PageClient::request_navigation_start(Web::HTML::LocalNavigable& navigable, URL::URL const& current_url, Web::NavigationTarget target, Web::HTML::NavigationStartRequest request)
+void PageClient::request_navigation_start(Web::HTML::LocalNavigable& navigable, URL::URL const& current_url, Web::NavigationTarget target, URL::URL const& url, Utf16String navigation_id)
 {
-    client().async_did_request_navigation_start(m_id, navigable.id(), current_url, target, move(request));
+    client().async_did_request_navigation_start(m_id, navigable.id(), current_url, target, url, move(navigation_id));
 }
 
 void PageClient::request_navigation_population(Web::HTML::LocalNavigable& navigable, URL::URL const& current_url, Web::NavigationTarget target, Web::HTML::NavigationPopulationRequest request)
@@ -302,20 +302,30 @@ void PageClient::run_navigation_unload_check(Web::HTML::CrossProcessId navigable
 {
     auto active_document = page().top_level_traversable()->active_document();
     if (!active_document) {
-        client().async_did_complete_navigation_unload_check(m_id, navigable_id, navigation_id, false);
+        client().async_did_fail_navigation_population(m_id, navigable_id, navigation_id);
         return;
     }
 
     for (auto const& navigable : active_document->inclusive_descendant_navigables()) {
         if (navigable->id() != navigable_id)
             continue;
-        navigable->run_navigation_unload_check(navigation_id, GC::create_function(navigable->heap(), [this, navigable_id, navigation_id](bool should_continue) {
-            client().async_did_complete_navigation_unload_check(m_id, navigable_id, navigation_id, should_continue);
+        navigable->run_navigation_unload_check(navigation_id, GC::create_function(navigable->heap(), [this, navigable = GC::Ref { *navigable }, navigable_id, navigation_id](bool should_continue) {
+            // An unload check that passed continues straight into population: the request built from the parked
+            // navigation is both the check's answer and the pending entry.
+            auto start_request = navigable->take_parked_navigation_start_request(navigation_id);
+            if (!should_continue || !start_request.has_value()) {
+                navigable->resume_navigation_params_creation(navigation_id, {});
+                client().async_did_fail_navigation_population(m_id, navigable_id, navigation_id);
+                return;
+            }
+            auto population_request = Web::HTML::create_navigation_population_request(start_request.release_value(), allocate_cross_process_id());
+            auto target = navigable->is_top_level_traversable() ? Web::NavigationTarget::TopLevel : Web::NavigationTarget::IFrame;
+            client().async_did_request_navigation_population(m_id, navigable_id, navigable->active_document()->url(), target, move(population_request));
         }));
         return;
     }
 
-    client().async_did_complete_navigation_unload_check(m_id, navigable_id, navigation_id, false);
+    client().async_did_fail_navigation_population(m_id, navigable_id, navigation_id);
 }
 
 void PageClient::page_did_create_child_frame(Web::HTML::CrossProcessId parent_frame_id, Web::HTML::CrossProcessId frame_id, Web::HTML::ReplicatedNavigableState const& replicated_state)
