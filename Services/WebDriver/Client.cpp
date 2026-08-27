@@ -312,7 +312,12 @@ ResponsePromise Client::load_url_from_ui(Web::WebDriver::Parameters parameters, 
     if (!url.has_value())
         return promise_from_response(Web::WebDriver::Error::from_code(Web::WebDriver::ErrorCode::InvalidArgument, "Payload has an invalid `url`"sv));
 
-    return continue_with_promise(session->load_url(url.release_value()), [session] {
+    auto wait_for_navigation_completion = payload.as_object().get_bool("waitForNavigationCompletion"sv).value_or(true);
+    auto load_promise = session->load_url(url.release_value());
+    if (!wait_for_navigation_completion)
+        return load_promise;
+
+    return continue_with_promise(move(load_promise), [session] {
         return session->wait_for_navigation_completion();
     });
 }
