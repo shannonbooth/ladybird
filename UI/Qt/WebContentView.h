@@ -43,6 +43,7 @@
 #endif
 
 class QKeyEvent;
+class QLabel;
 class QSinglePointEvent;
 class QCursor;
 
@@ -173,6 +174,8 @@ private:
 
     void update_screen_rects();
 
+    void set_crash_overlay_visible(bool);
+
     bool m_tooltip_override { false };
     Optional<ByteString> m_tooltip_text;
     QTimer m_tooltip_hover_timer;
@@ -184,6 +187,9 @@ private:
     int m_click_count { 0 };
 
     QMenu* m_select_dropdown { nullptr };
+
+    QWidget* m_crash_overlay { nullptr };
+    QLabel* m_crash_overlay_message { nullptr };
 
 #ifdef AK_OS_MACOS
     bool prepare_metal_renderer(unsigned long render_target_pixel_format);

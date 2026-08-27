@@ -39,21 +39,25 @@
 #include <QCursor>
 #include <QEvent>
 #include <QGuiApplication>
-#include <QIcon>
 #include <QInputDevice>
 #include <QKeySequence>
+#include <QLabel>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QNativeGestureEvent>
 #include <QPaintEvent>
 #include <QPainter>
+#include <QPainterPath>
+#include <QPainterPathStroker>
 #include <QPalette>
 #include <QPixmap>
+#include <QPushButton>
 #include <QScrollBar>
 #include <QStyleHints>
 #include <QTextEdit>
 #include <QTimer>
 #include <QToolTip>
+#include <QVBoxLayout>
 #include <QWheelEvent>
 
 namespace Ladybird {
@@ -151,6 +155,10 @@ WebContentView::WebContentView(QWidget* window, RefPtr<WebView::WebContentClient
 
     on_cursor_change = [this](auto cursor) {
         update_cursor(cursor);
+    };
+
+    on_crash_overlay_state_change = [this](bool active) {
+        set_crash_overlay_visible(active);
     };
 
 #ifdef AK_OS_MACOS
@@ -934,9 +942,127 @@ Optional<QPixmap> WebContentView::tab_preview_pixmap(QSize const& maximum_size) 
     return preview;
 }
 
+namespace {
+
+static void draw_crash_overlay_icon(QPainter& painter, QColor const& color)
+{
+    auto draw_path = [&](QPainterPath const& path) {
+        QPainterPathStroker stroker;
+        stroker.setWidth(1.5);
+        stroker.setCapStyle(Qt::RoundCap);
+        stroker.setJoinStyle(Qt::RoundJoin);
+        painter.fillPath(stroker.createStroke(path), color);
+    };
+
+    QPainterPath page_outline(QPointF(11.75, 0.75));
+    page_outline.lineTo(2.75, 0.75);
+    page_outline.cubicTo(1.65, 0.75, 0.75, 1.65, 0.75, 2.75);
+    page_outline.lineTo(0.75, 18.75);
+    page_outline.cubicTo(0.75, 19.85, 1.65, 20.75, 2.75, 20.75);
+    page_outline.lineTo(14.75, 20.75);
+    page_outline.cubicTo(15.85, 20.75, 16.75, 19.85, 16.75, 18.75);
+    page_outline.lineTo(16.75, 5.75);
+    page_outline.closeSubpath();
+    draw_path(page_outline);
+
+    QPainterPath page_details(QPointF(10.75, 0.75));
+    page_details.lineTo(10.75, 4.75);
+    page_details.cubicTo(10.75, 5.85, 11.65, 6.75, 12.75, 6.75);
+    page_details.lineTo(16.75, 6.75);
+    page_details.moveTo(4.75, 9.75);
+    page_details.lineTo(6.75, 11.75);
+    page_details.moveTo(6.75, 9.75);
+    page_details.lineTo(4.75, 11.75);
+    page_details.moveTo(10.75, 9.75);
+    page_details.lineTo(12.75, 11.75);
+    page_details.moveTo(12.75, 9.75);
+    page_details.lineTo(10.75, 11.75);
+    page_details.moveTo(5.75, 16.75);
+    page_details.cubicTo(6.75, 14.08, 10.75, 14.08, 11.75, 16.75);
+    draw_path(page_details);
+}
+
+class CrashOverlayIcon final : public QWidget {
+public:
+    explicit CrashOverlayIcon(QWidget* parent)
+        : QWidget(parent)
+    {
+        setFixedSize(52, 64);
+    }
+
+protected:
+    virtual void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.scale(width() / 17.5, height() / 21.5);
+        draw_crash_overlay_icon(painter, palette().color(QPalette::WindowText));
+    }
+};
+
+}
+
+void WebContentView::set_crash_overlay_visible(bool visible)
+{
+    if (!visible) {
+        if (m_crash_overlay)
+            m_crash_overlay->hide();
+        schedule_repaint();
+        return;
+    }
+
+    if (!m_crash_overlay) {
+        m_crash_overlay = new QWidget(this);
+        m_crash_overlay->setAutoFillBackground(true);
+        m_crash_overlay->setBackgroundRole(QPalette::Window);
+
+        auto* icon = new CrashOverlayIcon(m_crash_overlay);
+
+        auto* title = new QLabel(qstring_from_ak_string(crash_overlay_title()), m_crash_overlay);
+        auto title_font = title->font();
+        title_font.setPointSizeF(title_font.pointSizeF() * 1.5);
+        title_font.setBold(true);
+        title->setFont(title_font);
+        title->setAlignment(Qt::AlignCenter);
+        title->setTextInteractionFlags(Qt::TextSelectableByMouse);
+
+        m_crash_overlay_message = new QLabel(m_crash_overlay);
+        m_crash_overlay_message->setAlignment(Qt::AlignCenter);
+        m_crash_overlay_message->setWordWrap(true);
+        m_crash_overlay_message->setForegroundRole(QPalette::PlaceholderText);
+        m_crash_overlay_message->setTextInteractionFlags(Qt::TextSelectableByMouse);
+
+        auto* reload_button = new QPushButton(qstring_from_ak_string(crash_overlay_reload_button_text()), m_crash_overlay);
+        QObject::connect(reload_button, &QPushButton::clicked, this, [this] {
+            reload();
+        });
+
+        auto* layout = new QVBoxLayout(m_crash_overlay);
+        layout->setContentsMargins(20, 20, 20, 20);
+        layout->setSpacing(12);
+        layout->addStretch();
+        layout->addWidget(icon, 0, Qt::AlignHCenter);
+        layout->addSpacing(20);
+        layout->addWidget(title);
+        layout->addSpacing(4);
+        layout->addWidget(m_crash_overlay_message);
+        layout->addSpacing(12);
+        layout->addWidget(reload_button, 0, Qt::AlignHCenter);
+        layout->addStretch();
+    }
+
+    m_crash_overlay_message->setText(qstring_from_ak_string(crash_overlay_message()));
+    m_crash_overlay->setGeometry(rect());
+    m_crash_overlay->show();
+    m_crash_overlay->raise();
+    schedule_repaint();
+}
+
 void WebContentView::resizeEvent(QResizeEvent* event)
 {
     WebContentViewBase::resizeEvent(event);
+    if (m_crash_overlay)
+        m_crash_overlay->setGeometry(rect());
 #ifdef LADYBIRD_QT_USE_RHI_WIDGET
     m_force_full_repaint = true;
 #endif
