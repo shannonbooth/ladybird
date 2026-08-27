@@ -345,6 +345,7 @@ void CanonicalTraversable::traverse_the_history(TraversableSessionHistory::Trave
 void CanonicalTraversable::abandon_after_web_content_process_crash()
 {
     abandon_history_operations();
+    clear_active_session_history_entry_identity();
 }
 
 void CanonicalTraversable::reset_session_history_for_testing(
@@ -1767,8 +1768,14 @@ void CanonicalTraversable::finalize_a_cross_document_navigation(HistoryOperation
     auto entry_to_replace = parameters.history_handling == Web::HTML::HistoryHandlingBehavior::Replace
         ? navigable->active_session_history_entry_identity()
         : Optional<Web::HTML::SessionHistoryEntryIdentity> {};
+    auto view = ViewImplementation::find_view_for_traversable(*this);
+    auto may_append_from_replacement_initial_document = !entry_to_replace.has_value()
+        && navigable->is_top_level_traversable()
+        && view.has_value()
+        && !view->m_client_state.hosts_committed_entry;
     if (parameters.history_handling == Web::HTML::HistoryHandlingBehavior::Replace
-        && !entry_to_replace.has_value()) {
+        && !entry_to_replace.has_value()
+        && !may_append_from_replacement_initial_document) {
         finish_history_operation(operation.operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
         return;
     }
