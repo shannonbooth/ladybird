@@ -345,7 +345,7 @@ void NavigableContainer::destroy_the_child_navigable()
 
     auto after_document_destruction = GC::create_function(GC::Heap::the(), [this, navigable] {
         // 3. Set container's content navigable to null.
-        as<LocalNavigable>(*navigable).set_container({}, nullptr);
+        navigable->set_container({}, nullptr);
 
         // AD-HOC: In the spec this step runs synchronously, before the container could possibly acquire another content
         //         navigable. Since we defer it, the container may have been re-inserted in the meantime and hold a new

@@ -139,10 +139,6 @@ public:
 
     virtual Utf16String const& target_name() const override;
 
-    GC::Ptr<NavigableContainer> container() const;
-    void set_container(Badge<NavigableContainer>, GC::Ptr<NavigableContainer> container) { m_container = container; }
-    GC::Ptr<DOM::Document> container_document() const;
-
     [[nodiscard]] bool is_focused() const;
     [[nodiscard]] GC::Ptr<DOM::Node> currently_focused_area();
 
@@ -520,9 +516,6 @@ private:
 
     // AD-HOC: Guards the parent document's load event delay count during cross-document navigation.
     Optional<DOM::DocumentLoadEventDelayer> m_navigation_load_event_guard;
-
-    // Implied link between navigable and its container.
-    GC::Ptr<NavigableContainer> m_container;
 
     GC::Ref<Page> m_page;
 

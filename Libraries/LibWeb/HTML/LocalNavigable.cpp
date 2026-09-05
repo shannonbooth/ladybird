@@ -754,7 +754,6 @@ void LocalNavigable::visit_edges(Cell::Visitor& visitor)
     visitor.visit(m_page);
     visitor.visit(m_active_document);
     visitor.visit(m_input_method_composition_node);
-    visitor.visit(m_container);
     visitor.visit(m_pending_child_navigable_unload);
     m_event_handler.visit_edges(visitor);
 
@@ -1454,26 +1453,6 @@ Utf16String const& LocalNavigable::target_name() const
 {
     // A navigable's target name is its active session history entry's document state's navigable target name.
     return active_session_history_entry()->document_state()->navigable_target_name();
-}
-
-// https://html.spec.whatwg.org/multipage/document-sequences.html#nav-container
-GC::Ptr<NavigableContainer> LocalNavigable::container() const
-{
-    // The container of a navigable navigable is the navigable container whose nested navigable is navigable, or null if there is no such element.
-    return m_container;
-}
-
-// https://html.spec.whatwg.org/multipage/document-sequences.html#nav-container-document
-GC::Ptr<DOM::Document> LocalNavigable::container_document() const
-{
-    auto container = this->container();
-
-    // 1. If navigable's container is null, then return null.
-    if (!container)
-        return nullptr;
-
-    // 2. Return navigable's container's node document.
-    return container->document();
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#set-the-ongoing-navigation
@@ -3213,7 +3192,7 @@ void LocalNavigable::begin_navigation(PreparedNavigation navigation)
     }
 
     // 10. Let container be navigable's container.
-    auto& container = m_container;
+    auto container = this->container();
 
     // 11. If container is an iframe element and will lazy load element steps given container returns true,
     //     then stop intersection-observing a lazy loading element container and set container's lazy load resumption steps to null.

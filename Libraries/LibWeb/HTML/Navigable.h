@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <AK/Badge.h>
 #include <AK/Utf16String.h>
 #include <LibGC/Ptr.h>
 #include <LibJS/Heap/Cell.h>
@@ -30,6 +31,10 @@ public:
     CrossProcessId id() const { return m_id; }
 
     GC::Ptr<Navigable> parent() const { return m_parent; }
+
+    GC::Ptr<NavigableContainer> container() const;
+    void set_container(Badge<NavigableContainer>, GC::Ptr<NavigableContainer> container) { m_container = container; }
+    GC::Ptr<DOM::Document> container_document() const;
 
     bool is_ancestor_of(Navigable const&) const;
 
@@ -71,6 +76,9 @@ private:
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-parent
     GC::Ptr<Navigable> m_parent;
+
+    // Implied link between navigable and its container.
+    GC::Ptr<NavigableContainer> m_container;
 };
 
 }
