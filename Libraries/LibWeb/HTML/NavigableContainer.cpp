@@ -148,7 +148,8 @@ void NavigableContainer::create_new_child_navigable()
             .on_complete = GC::create_function(heap(), [this, navigable](HistoryStepResult) {
                 if (navigable->has_been_destroyed() || content_navigable() != navigable)
                     return;
-                set_content_navigable_has_session_history_entry_and_ready_for_navigation();
+                navigable->set_has_session_history_entry_and_ready_for_navigation();
+                this->document().schedule_html_parser_end_check();
             }),
         });
 }
@@ -161,7 +162,12 @@ DOM::Document const* NavigableContainer::content_document() const
         return nullptr;
 
     // 2. Let document be container's content navigable's active document.
-    auto document = as<LocalNavigable>(*m_content_navigable).active_document();
+    // NB: A content navigable hosted in another process has no document here, and that document could not be same
+    //     origin-domain with this element's node document.
+    auto* local_content_navigable = as_if<LocalNavigable>(m_content_navigable.ptr());
+    if (!local_content_navigable)
+        return nullptr;
+    auto document = local_content_navigable->active_document();
 
     // AD-HOC: The active document can be null during navigation, after the old document
     //         has been destroyed but before the new document has been set.
@@ -178,10 +184,11 @@ DOM::Document const* NavigableContainer::content_document() const
 
 DOM::Document const* NavigableContainer::content_document_without_origin_check() const
 {
-    if (!m_content_navigable)
+    auto* local_content_navigable = as_if<LocalNavigable>(m_content_navigable.ptr());
+    if (!local_content_navigable)
         return nullptr;
 
-    return as<LocalNavigable>(*m_content_navigable).active_document().ptr();
+    return local_content_navigable->active_document().ptr();
 }
 
 // https://html.spec.whatwg.org/multipage/embedded-content-other.html#dom-media-getsvgdocument
@@ -241,17 +248,14 @@ Optional<URL::URL> NavigableContainer::shared_attribute_processing_steps_for_ifr
     //         navigable's ongoing_navigation, causing the real navigation to be dropped when its populate completion
     //         callback checks ongoing_navigation != navigation_id. Non-blank src navigations must still be processed
     //         here, and will be queued by LocalNavigable::navigate() until the child navigable is ready for navigation.
-    auto& local_navigable = as<LocalNavigable>(*m_content_navigable);
-
-    if (url_matches_about_blank(url) && initial_insertion == InitialInsertion::Yes
-        && (local_navigable.has_pending_navigations() || !local_navigable.ongoing_navigation().has<Empty>())) {
-        return {};
-    }
-
-    // 4. If url matches about:blank and initialInsertion is true, then perform the URL and history update steps given element's content navigable's active document and url.
     if (url_matches_about_blank(url) && initial_insertion == InitialInsertion::Yes) {
-        auto& document = *local_navigable.active_document();
-        perform_url_and_history_update_steps(document, url);
+        // NB: A newly inserted element's content navigable was created in this process.
+        auto& local_navigable = as<LocalNavigable>(*m_content_navigable);
+        if (local_navigable.has_pending_navigations() || !local_navigable.ongoing_navigation().has<Empty>())
+            return {};
+
+        // 4. If url matches about:blank and initialInsertion is true, then perform the URL and history update steps given element's content navigable's active document and url.
+        perform_url_and_history_update_steps(*local_navigable.active_document(), url);
     }
 
     // 5. Return url.
@@ -269,6 +273,7 @@ void NavigableContainer::navigate_an_iframe_or_frame(URL::URL url, ReferrerPolic
     //         the previous document may have parsed and run scripts but not yet fired its load event;
     //         forcing "replace" in that case would incorrectly discard the history entry.
     if (initial_insertion == InitialInsertion::Yes) {
+        // NB: A newly inserted element's content navigable was created in this process.
         auto active_document = as<LocalNavigable>(*m_content_navigable).active_document();
         if (active_document && !active_document->is_completely_loaded())
             history_handling = NavigationHistoryBehavior::Replace;
@@ -407,28 +412,14 @@ bool NavigableContainer::currently_delays_the_load_event() const
     if (!m_content_navigable)
         return false;
 
-    // - element's content navigable's active document is not ready for post-load tasks;
-    auto& local_navigable = as<LocalNavigable>(*m_content_navigable);
-
-    if (!local_navigable.active_document()->ready_for_post_load_tasks())
-        return true;
-
-    // - element's content navigable's is delaying load events is true; or
-    if (local_navigable.is_delaying_load_events())
-        return true;
-
-    // - anything is delaying the load event of element's content navigable's active document.
-    if (local_navigable.active_document()->anything_is_delaying_the_load_event())
-        return true;
-
-    return false;
+    return m_content_navigable->delays_the_load_event_of_its_container();
 }
 
 bool NavigableContainer::content_navigable_has_session_history_entry_and_ready_for_navigation() const
 {
     if (!content_navigable())
         return false;
-    return as<LocalNavigable>(*m_content_navigable).has_session_history_entry_and_ready_for_navigation();
+    return m_content_navigable->has_session_history_entry_and_ready_for_navigation();
 }
 
 void NavigableContainer::set_potentially_delays_the_load_event(bool value)
@@ -436,15 +427,6 @@ void NavigableContainer::set_potentially_delays_the_load_event(bool value)
     m_potentially_delays_the_load_event = value;
     if (!value)
         document().schedule_html_parser_end_check();
-}
-
-void NavigableContainer::set_content_navigable_has_session_history_entry_and_ready_for_navigation()
-{
-    auto content_navigable = this->content_navigable();
-    if (!content_navigable)
-        return;
-    as<LocalNavigable>(*content_navigable).set_has_session_history_entry_and_ready_for_navigation();
-    document().schedule_html_parser_end_check();
 }
 
 }
