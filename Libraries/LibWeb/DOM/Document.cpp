@@ -5191,7 +5191,11 @@ bool Document::has_focus() const
         auto focused_area = candidate->focused_area();
         if (auto* navigable_container = as_if<HTML::NavigableContainer>(focused_area.ptr())) {
             if (auto content_navigable = navigable_container->content_navigable()) {
-                candidate = as<HTML::LocalNavigable>(*content_navigable).active_document();
+                // NB: A content navigable hosted in another process cannot contain target.
+                auto* local_content_navigable = as_if<HTML::LocalNavigable>(content_navigable.ptr());
+                if (!local_content_navigable)
+                    return false;
+                candidate = local_content_navigable->active_document();
                 continue;
             }
         }
@@ -5667,7 +5671,9 @@ Vector<GC::Root<HTML::LocalNavigable>> Document::descendant_navigables()
                 return TraversalDecision::Continue;
 
             // 2. Extend navigables with navigableContainer's content navigable's active document's inclusive descendant navigables.
-            auto document = as<HTML::LocalNavigable>(*navigable_container.content_navigable()).active_document();
+            // NB: Only the documents hosted by this process are reachable here.
+            auto* content_navigable = as_if<HTML::LocalNavigable>(navigable_container.content_navigable().ptr());
+            auto document = content_navigable ? content_navigable->active_document() : nullptr;
             // AD-HOC: If the descendant navigable doesn't have an active document, just skip over it.
             if (!document)
                 return TraversalDecision::Continue;
@@ -5761,25 +5767,27 @@ GC::RootVector<GC::Ref<HTML::Navigable>> Document::inclusive_ancestor_navigables
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#document-tree-child-navigables
-Vector<GC::Root<HTML::LocalNavigable>> Document::document_tree_child_navigables()
+Vector<GC::Ref<HTML::Navigable>> Document::document_tree_child_navigables()
 {
     // 1. If document's node navigable is null, then return the empty list.
     if (!navigable())
         return {};
 
     // 2. Let navigables be new list.
-    Vector<GC::Root<HTML::LocalNavigable>> navigables;
+    Vector<GC::Ref<HTML::Navigable>> navigables;
 
     // 3. Let navigableContainers be a list of all descendants of document that are navigable containers, in tree order.
     // 4. For each navigableContainer of navigableContainers:
     //     1. If navigableContainer's content navigable is null, then continue.
     //     2. Append navigableContainer's content navigable to navigables.
-    // OPTIMIZATION: Iterate all registered navigables to avoid a full tree traversal.
-    for (auto const& navigable : HTML::all_local_navigables()) {
-        auto container = navigable->container();
-        if (!container || !is_ancestor_of(*container))
+    // OPTIMIZATION: Iterate all registered navigable containers to avoid a full tree traversal.
+    for (auto* container : HTML::NavigableContainer::all_instances()) {
+        if (&container->document() != this || !is_ancestor_of(*container))
             continue;
-        navigables.insert_before_matching(*navigable, [&](auto const& existing_navigable) {
+        auto content_navigable = container->content_navigable();
+        if (!content_navigable)
+            continue;
+        navigables.insert_before_matching(*content_navigable, [&](auto const& existing_navigable) {
             return container->is_before(*existing_navigable->container());
         });
     }
@@ -5885,11 +5893,13 @@ void Document::destroy()
 
     // Not in the spec:
     for (auto& navigable_container : HTML::NavigableContainer::all_instances()) {
-        if (&navigable_container->document() == this && navigable_container->content_navigable()) {
-            auto& child_navigable = as<HTML::LocalNavigable>(*navigable_container->content_navigable());
-            child_navigable.report_child_frame_destroyed();
-            child_navigable.set_has_been_destroyed();
-            child_navigable.remove_from_all_local_navigables();
+        if (&navigable_container->document() != this)
+            continue;
+        // NB: The UI process tears down children hosted in other processes along with this document's subtree.
+        if (auto* child_navigable = as_if<HTML::LocalNavigable>(navigable_container->content_navigable().ptr())) {
+            child_navigable->report_child_frame_destroyed();
+            child_navigable->set_has_been_destroyed();
+            child_navigable->remove_from_all_local_navigables();
         }
     }
 
