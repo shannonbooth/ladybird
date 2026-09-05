@@ -2045,8 +2045,9 @@ static void perform_navigation_params_fetch(JS::Realm& realm, GC::Ref<Navigation
         // 3. If navigable is not a top-level traversable, then:
         if (!state_holder->navigable->is_top_level_traversable()) {
             // 1. Let parentEnvironment be navigable's parent's active document's relevant settings object.
-            auto parent = state_holder->navigable->parent();
-            auto* local_parent = parent ? &as<LocalNavigable>(*parent) : nullptr;
+            // FIXME: A parent hosted in another process has to supply its environment's top-level origin and
+            //        creation URL with the other inherited document-creation inputs.
+            auto* local_parent = as_if<LocalNavigable>(state_holder->navigable->parent().ptr());
             auto parent_document = local_parent ? local_parent->active_document() : nullptr;
             if (!local_parent || local_parent->has_been_destroyed() || !parent_document || parent_document->has_been_destroyed()) {
                 // AD-HOC: A queued child navigation can resume after its parent document has been destroyed. The

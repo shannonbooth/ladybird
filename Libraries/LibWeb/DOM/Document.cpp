@@ -4135,15 +4135,12 @@ void Document::flush_autofocus_candidates()
         candidates.take_first();
 
         // 7. Let inclusiveAncestorDocuments be a list consisting of the active document of doc's inclusive ancestor navigables.
+        // FIXME: Ancestor documents hosted in other processes are not consulted.
         GC::RootVector<GC::Ref<Document>> inclusive_ancestor_documents;
         inclusive_ancestor_documents.append(doc);
-        auto parent_navigable = doc_navigable->parent();
-        auto* ancestor_navigable = parent_navigable ? &as<HTML::LocalNavigable>(*parent_navigable) : nullptr;
-        while (ancestor_navigable) {
+        for (auto* ancestor_navigable = as_if<HTML::LocalNavigable>(doc_navigable->parent().ptr()); ancestor_navigable; ancestor_navigable = as_if<HTML::LocalNavigable>(ancestor_navigable->parent().ptr())) {
             if (auto active = ancestor_navigable->active_document())
                 inclusive_ancestor_documents.append(*active);
-            parent_navigable = ancestor_navigable->parent();
-            ancestor_navigable = parent_navigable ? &as<HTML::LocalNavigable>(*parent_navigable) : nullptr;
         }
 
         // 8. If any Document in inclusiveAncestorDocuments has non-null target element, then continue.

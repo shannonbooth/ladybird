@@ -345,11 +345,14 @@ GC::Ptr<BrowsingContext> BrowsingContext::top_level_browsing_context() const
     }
 
     // 2. Let navigable be start's active document's node navigable.
-    auto navigable = start->active_document()->navigable();
+    GC::Ptr<LocalNavigable> navigable = start->active_document()->navigable();
 
     // 3. While navigable's parent is not null, set navigable to navigable's parent.
+    // FIXME: A top-level browsing context hosted in another process has no local object yet.
     while (navigable->parent()) {
-        navigable = as<LocalNavigable>(*navigable->parent());
+        navigable = as_if<LocalNavigable>(navigable->parent().ptr());
+        if (!navigable)
+            return nullptr;
     }
 
     // 4. Return navigable's active browsing context.
@@ -485,10 +488,13 @@ bool BrowsingContext::is_ancestor_of(BrowsingContext const& potential_descendant
 
     // 3. Let ancestorBCs be the list obtained by taking the browsing context of the active document of each member of potentialDescendantDocument's ancestor navigables.
     for (auto const& ancestor : potential_descendant_document->ancestor_navigables()) {
-        auto ancestor_browsing_context = as<HTML::LocalNavigable>(*ancestor).active_browsing_context();
+        // NB: This browsing context is hosted here, so only an ancestor hosted here can be it.
+        auto* local_ancestor = as_if<HTML::LocalNavigable>(ancestor.ptr());
+        if (!local_ancestor)
+            continue;
 
         // 4. If ancestorBCs contains potentialAncestor, then return true.
-        if (ancestor_browsing_context.ptr() == this)
+        if (local_ancestor->active_browsing_context().ptr() == this)
             return true;
     }
 
