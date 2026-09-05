@@ -1451,20 +1451,6 @@ GC::Ptr<DOM::Document> LocalNavigable::container_document() const
     return container->document();
 }
 
-// https://html.spec.whatwg.org/multipage/document-sequences.html#nav-traversable
-GC::Ptr<LocalTraversableNavigable> LocalNavigable::traversable_navigable() const
-{
-    // 1. Let navigable be inputNavigable.
-    GC::Ptr<Navigable> navigable = const_cast<LocalNavigable*>(this);
-
-    // 2. While navigable is not a traversable navigable, set navigable to navigable's parent.
-    while (navigable && !is<LocalTraversableNavigable>(*navigable))
-        navigable = navigable->parent();
-
-    // 3. Return navigable.
-    return navigable ? &as<LocalTraversableNavigable>(*navigable) : nullptr;
-}
-
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#set-the-ongoing-navigation
 void LocalNavigable::set_ongoing_navigation(Variant<Empty, Traversal, Utf16String> ongoing_navigation)
 {
@@ -1636,13 +1622,13 @@ LocalNavigable::ChosenNavigable LocalNavigable::choose_a_navigable(Utf16View nam
     if (!chosen) {
         auto request_new_web_view = [&] {
             TokenizedFeature::Map empty_window_features;
-            auto hints = WebViewHints::from_tokenised_features(window_features.has_value() ? *window_features : empty_window_features, traversable_navigable()->page());
-            return traversable_navigable()->page().client().page_did_request_new_web_view(activate_tab, hints);
+            auto hints = WebViewHints::from_tokenised_features(window_features.has_value() ? *window_features : empty_window_features, page());
+            return page().client().page_did_request_new_web_view(activate_tab, hints);
         };
 
         // --> If currentNavigable's active window does not have transient activation and the user agent has been configured to
         //     not show popups (i.e., the user agent has a "popup blocker" enabled)
-        if (active_window() && !active_window()->has_transient_activation() && traversable_navigable()->page().should_block_pop_ups()) {
+        if (active_window() && !active_window()->has_transient_activation() && page().should_block_pop_ups()) {
             // FIXME: The user agent may inform the user that a popup has been blocked.
             dbgln("Pop-up blocked!");
         }
