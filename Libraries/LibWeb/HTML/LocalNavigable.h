@@ -70,7 +70,7 @@ public:
     using NullOrError = NavigationParamsNullOrError;
     using NavigationParamsVariant = HTML::NavigationParamsVariant;
 
-    void initialize_navigable(NonnullRefPtr<DocumentState> document_state, GC::Ptr<LocalNavigable> parent, GC::Ref<DOM::Document> document, VisibilityState system_visibility_state);
+    void initialize_navigable(NonnullRefPtr<DocumentState> document_state, GC::Ptr<Navigable> parent, GC::Ref<DOM::Document> document, VisibilityState system_visibility_state);
     void set_id_for_session_history_reconstruction(CrossProcessId id) { set_id(id); }
 
     void register_navigation_observer(Badge<NavigationObserver>, NavigationObserver&);
