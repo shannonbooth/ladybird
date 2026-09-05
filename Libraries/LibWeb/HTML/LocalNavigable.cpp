@@ -3655,6 +3655,11 @@ void LocalNavigable::scroll_offset_did_change()
     doc->append_pending_scroll_event({ *doc, EventNames::scroll });
 }
 
+bool LocalNavigable::is_local_root() const
+{
+    return page().local_root_navigable().ptr() == this;
+}
+
 CSSPixelRect LocalNavigable::to_top_level_rect(CSSPixelRect const& a_rect)
 {
     auto rect = a_rect;
