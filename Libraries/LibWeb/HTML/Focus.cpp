@@ -133,7 +133,7 @@ static void run_focus_update_steps(Vector<GC::Root<DOM::Node>> old_chain, Vector
         for (auto const* chain : { &old_chain, &new_chain }) {
             for (auto const& entry : *chain) {
                 if (auto browsing_context = entry->document().browsing_context())
-                    return browsing_context->top_level_traversable()->currently_focused_area();
+                    return browsing_context->page().local_root_navigable()->currently_focused_area();
             }
         }
         return nullptr;
@@ -314,8 +314,9 @@ static Vector<GC::Root<DOM::Node>> focus_chain(GC::Ptr<DOM::Node> subject)
             current_object = &current_object->document();
         } else if (is<DOM::Document>(*current_object)
             && current_object->navigable()
-            && current_object->navigable()->parent()) {
+            && current_object->navigable()->container()) {
             // Otherwise, if currentObject is a Document whose node navigable's parent is non-null, then set currentObject to currentObject's node navigable's parent.
+            // NB: A parent hosted in another process has no container here, so the chain ends at this process's local root.
             current_object = current_object->navigable()->container();
         } else {
             // Otherwise, break.
@@ -428,7 +429,7 @@ static GC::Ptr<DOM::Node> get_focusable_area(DOM::Node& focus_target, FocusTrigg
 
         // 1. Let focusedElement be the currently focused area of a top-level traversable's DOM anchor.
         if (auto browsing_context = element->document().browsing_context()) {
-            if (auto focused_element = browsing_context->top_level_traversable()->currently_focused_area()) {
+            if (auto focused_element = browsing_context->page().local_root_navigable()->currently_focused_area()) {
                 // 2. If focus target is a shadow-including inclusive ancestor of focusedElement, then
                 //    return focusedElement.
                 if (element->is_shadow_including_inclusive_ancestor_of(*focused_element))
@@ -484,13 +485,13 @@ void run_focusing_steps(GC::Ptr<DOM::Node> new_focus_target, GC::Ptr<DOM::Node> 
     // 5. If new focus target is the currently focused area of a top-level browsing context, then return.
     if (!new_focus_target->document().browsing_context())
         return;
-    auto top_level_traversable = new_focus_target->document().browsing_context()->top_level_traversable();
-    if (new_focus_target.ptr() == top_level_traversable->currently_focused_area().ptr())
+    auto local_root = new_focus_target->document().page().local_root_navigable();
+    if (new_focus_target.ptr() == local_root->currently_focused_area().ptr())
         return;
 
     // 6. Let old chain be the current focus chain of the top-level browsing context in which
     //    new focus target finds itself.
-    auto old_chain = focus_chain(top_level_traversable->currently_focused_area());
+    auto old_chain = focus_chain(local_root->currently_focused_area());
 
     // 7. Let new chain be the focus chain of new focus target.
     auto new_chain = focus_chain(new_focus_target);
@@ -503,7 +504,7 @@ void run_focusing_steps(GC::Ptr<DOM::Node> new_focus_target, GC::Ptr<DOM::Node> 
 
     // INTEROP: Keyboard input follows the deepest focused navigable. Focus event handlers can move focus reentrantly,
     //          so derive the input target from the final focused area instead of the target which began this update.
-    auto focused_area = top_level_traversable->currently_focused_area();
+    auto focused_area = local_root->currently_focused_area();
     if (focused_area) {
         if (auto navigable = focused_area->document().navigable())
             navigable->page().set_focused_navigable(*navigable);
@@ -562,8 +563,7 @@ void run_unfocusing_steps(GC::Ptr<DOM::Node> old_focus_target)
             auto browsing_context = old_focus_target->document().browsing_context();
             if (!browsing_context)
                 return;
-            auto top_level_traversable = browsing_context->top_level_traversable();
-            if (auto currently_focused_area = top_level_traversable->currently_focused_area()) {
+            if (auto currently_focused_area = browsing_context->page().local_root_navigable()->currently_focused_area()) {
                 if (shadow_root->is_shadow_including_ancestor_of(*currently_focused_area)) {
                     old_focus_target = currently_focused_area;
                 }
@@ -586,8 +586,7 @@ void run_unfocusing_steps(GC::Ptr<DOM::Node> old_focus_target)
     auto browsing_context = old_focus_target->document().browsing_context();
     if (!browsing_context)
         return;
-    auto top_level_traversable = browsing_context->top_level_traversable();
-    auto currently_focused_area = top_level_traversable->currently_focused_area();
+    auto currently_focused_area = browsing_context->page().local_root_navigable()->currently_focused_area();
     auto old_chain = focus_chain(currently_focused_area);
 
     // 5. If old focus target is not one of the entries in old chain, then return.

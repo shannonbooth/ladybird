@@ -144,6 +144,7 @@ public:
     GC::Ptr<DOM::Document> container_document() const;
 
     [[nodiscard]] bool is_focused() const;
+    [[nodiscard]] GC::Ptr<DOM::Node> currently_focused_area();
 
     struct ChosenNavigable {
         GC::Ptr<Navigable> navigable;

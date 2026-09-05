@@ -90,7 +90,7 @@ URL::Origin determine_the_origin(Optional<URL::URL const&> url, SandboxingFlagSe
 BrowsingContext::BrowsingContextAndDocument BrowsingContext::create_a_new_auxiliary_browsing_context_and_document(GC::Ref<Page> page, GC::Ref<HTML::BrowsingContext> opener)
 {
     // 1. Let openerTopLevelBrowsingContext be opener's top-level traversable's active browsing context.
-    auto opener_top_level_browsing_context = opener->top_level_traversable()->active_browsing_context();
+    auto opener_top_level_browsing_context = as<LocalNavigable>(*opener->top_level_traversable()).active_browsing_context();
 
     // 2. Let group be openerTopLevelBrowsingContext's group.
     auto group = opener_top_level_browsing_context->group();
@@ -322,12 +322,10 @@ void BrowsingContext::visit_edges(Cell::Visitor& visitor)
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#bc-traversable
-GC::Ref<LocalTraversableNavigable> BrowsingContext::top_level_traversable() const
+GC::Ref<Navigable> BrowsingContext::top_level_traversable() const
 {
     // A browsing context's top-level traversable is its active document's node navigable's top-level traversable.
-    auto& traversable = as<LocalTraversableNavigable>(*active_document()->navigable()->top_level_traversable());
-    VERIFY(traversable.is_top_level_traversable());
-    return traversable;
+    return active_document()->navigable()->top_level_traversable();
 }
 
 // https://html.spec.whatwg.org/multipage/browsers.html#top-level-browsing-context

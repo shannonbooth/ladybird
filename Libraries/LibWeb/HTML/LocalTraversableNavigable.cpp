@@ -129,9 +129,10 @@ GC::Ref<LocalTraversableNavigable> LocalTraversableNavigable::create_a_new_top_l
     page->client().page_did_create_top_level_traversable(traversable->id(), create_session_history_entry_descriptor(*initial_history_entry), opener_navigable_id);
 
     // 10. If opener is non-null, then legacy-clone a traversable storage shed given opener's top-level traversable and traversable. [STORAGE]
+    // FIXME: An opener whose top-level traversable is hosted in another process keeps its shed there.
     if (opener) {
-        auto opener_traversable = opener->top_level_traversable();
-        traversable->storage_shed().legacy_clone(opener_traversable->storage_shed(), page);
+        auto& opener_traversable = as<LocalTraversableNavigable>(*opener->top_level_traversable());
+        traversable->storage_shed().legacy_clone(opener_traversable.storage_shed(), page);
     }
 
     // 11. Append traversable to the user agent's top-level traversable set.
@@ -378,35 +379,6 @@ void LocalTraversableNavigable::destroy_local_traversable()
     //        However, without this, we can keep stale destroyed traversables around.
     set_has_been_destroyed();
     remove_from_all_local_navigables();
-}
-
-// https://html.spec.whatwg.org/multipage/interaction.html#currently-focused-area-of-a-top-level-traversable
-GC::Ptr<DOM::Node> LocalTraversableNavigable::currently_focused_area()
-{
-    // 1. If traversable does not have system focus, then return null.
-    if (!is_focused())
-        return nullptr;
-
-    // 2. Let candidate be traversable's active document.
-    auto candidate = active_document();
-
-    // 3. While candidate's focused area is a navigable container with a non-null content navigable:
-    //    set candidate to the active document of that navigable container's content navigable.
-    while (candidate->focused_area()
-        && is<NavigableContainer>(candidate->focused_area().ptr())
-        && as<NavigableContainer>(*candidate->focused_area()).content_navigable()) {
-        candidate = as<LocalNavigable>(*as<NavigableContainer>(*candidate->focused_area()).content_navigable()).active_document();
-    }
-
-    // 4. If candidate's focused area is non-null, set candidate to candidate's focused area.
-    if (candidate->focused_area()) {
-        // NOTE: We return right away here instead of assigning to candidate,
-        //       since that would require compromising type safety.
-        return candidate->focused_area();
-    }
-
-    // 5. Return candidate.
-    return candidate;
 }
 
 // https://w3c.github.io/geolocation/#dfn-emulated-position-data

@@ -88,8 +88,7 @@ void HTMLOrSVGOrMathMLElement<ElementBase>::focus(Bindings::FocusOptions const& 
     // OPTIMIZATION: Checking whether an element is focusable may update its style. WebKit and Blink
     // also return before that check when focus() is called on the already-focused element.
     if (auto navigable = element.document().navigable()) {
-        auto& traversable = as<LocalTraversableNavigable>(*navigable->top_level_traversable());
-        if (traversable.currently_focused_area() == GC::Ptr<DOM::Node> { element })
+        if (navigable->page().local_root_navigable()->currently_focused_area() == GC::Ptr<DOM::Node> { element })
             return;
     }
 
@@ -196,7 +195,9 @@ void HTMLOrSVGOrMathMLElement<ElementBase>::inserted()
             return;
 
         // 6. Let topDocument be target's node navigable's top-level traversable's active document.
-        auto top_document = as<LocalTraversableNavigable>(*target.navigable()->top_level_traversable()).active_document();
+        // FIXME: When the top-level traversable is hosted in another process, autofocus candidates need to be
+        //        tracked there. Use the document at this page's local root until then.
+        auto top_document = target.navigable()->page().local_root_navigable()->active_document();
 
         // 7. If topDocument's autofocus processed flag is false, then remove the element from topDocument's autofocus
         //    candidates, and append the element to topDocument's autofocus candidates.

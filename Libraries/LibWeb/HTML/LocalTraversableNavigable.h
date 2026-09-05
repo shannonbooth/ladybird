@@ -59,8 +59,6 @@ public:
     Utf16String const& window_handle() const { return m_window_handle; }
     void set_window_handle(Utf16String window_handle) { m_window_handle = move(window_handle); }
 
-    [[nodiscard]] GC::Ptr<DOM::Node> currently_focused_area();
-
     StorageAPI::StorageShed& storage_shed() { return m_storage_shed; }
     StorageAPI::StorageShed const& storage_shed() const { return m_storage_shed; }
 

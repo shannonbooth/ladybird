@@ -10099,7 +10099,9 @@ void Document::exit_fullscreen(GC::Ptr<WebIDL::Promise> promise)
     auto docs = collect_documents_to_unfullscreen();
 
     // 5. Let topLevelDoc be doc’s node navigable’s top-level traversable’s active document.
-    auto top_level_doc = as<HTML::LocalTraversableNavigable>(*navigable()->top_level_traversable()).active_document();
+    // FIXME: Fullscreen across a top-level traversable hosted in another process needs the UI process; use this page's
+    //        local root document until then.
+    auto top_level_doc = navigable()->page().local_root_navigable()->active_document();
 
     // 6. If topLevelDoc is in docs, and it is a simple fullscreen document, then set doc to topLevelDoc and resize to true.
     GC::Ref<Document> doc { *this };
