@@ -45,6 +45,7 @@
 #include <LibWeb/Export.h>
 #include <LibWeb/Forward.h>
 #include <LibWeb/Fullscreen/FullscreenRequestType.h>
+#include <LibWeb/Geolocation/EmulatedPositionData.h>
 #include <LibWeb/Geolocation/GeolocationCoordinates.h>
 #include <LibWeb/Geolocation/GeolocationPositionError.h>
 #include <LibWeb/HTML/ActivateTab.h>
@@ -253,6 +254,13 @@ public:
     void cancel_geolocation_position_request(u64 request_id);
     void receive_geolocation_position(u64 request_id, GeolocationPositionResult);
 
+    // https://w3c.github.io/geolocation/#dfn-emulated-position-data
+    Geolocation::EmulatedPositionData const& emulated_position_data() const { return m_emulated_position_data; }
+    void set_emulated_position_data(Geolocation::EmulatedPositionData);
+    void set_emulated_position_data(Geolocation::CoordinatesData);
+    u64 register_emulated_position_data_observer(GC::Ref<GC::Function<void()>>);
+    void unregister_emulated_position_data_observer(u64 observer_id);
+
     enum class PendingNonBlockingDialog {
         None,
         ColorPicker,
@@ -430,6 +438,11 @@ private:
     HashMap<u64, PendingGeolocationRequest> m_pending_geolocation_requests;
     u64 m_next_geolocation_request_id { 0 };
     Optional<u64> m_active_geolocation_request_id;
+
+    // https://w3c.github.io/geolocation/#dfn-emulated-position-data
+    Geolocation::EmulatedPositionData m_emulated_position_data;
+    HashMap<u64, GC::Ref<GC::Function<void()>>> m_emulated_position_data_observers;
+    u64 m_next_emulated_position_data_observer_id { 0 };
 
     Vector<UniqueNodeID> m_media_elements;
     Vector<UniqueNodeID> m_canvas_elements;

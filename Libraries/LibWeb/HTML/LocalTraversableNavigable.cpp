@@ -11,7 +11,6 @@
 #include <LibGC/RootVector.h>
 #include <LibWeb/Bindings/MainThreadVM.h>
 #include <LibWeb/DOM/Document.h>
-#include <LibWeb/Geolocation/GeolocationCoordinates.h>
 #include <LibWeb/HTML/BrowsingContext.h>
 #include <LibWeb/HTML/BrowsingContextGroup.h>
 #include <LibWeb/HTML/DocumentState.h>
@@ -48,8 +47,6 @@ LocalTraversableNavigable::~LocalTraversableNavigable() = default;
 void LocalTraversableNavigable::visit_edges(Cell::Visitor& visitor)
 {
     Base::visit_edges(visitor);
-    visitor.visit(m_emulated_position_data);
-    visitor.visit(m_emulated_position_data_observers);
     visitor.visit(m_storage_shed);
 }
 
@@ -151,7 +148,7 @@ GC::Ref<LocalTraversableNavigable> LocalTraversableNavigable::create_a_fresh_top
 
     // AD-HOC: Deny geolocation until the UI process sends the browser-wide setting via IPC. This prevents a request
     //         from observing the test position during the short window before the initial settings IPC arrives.
-    traversable->set_emulated_position_data(Geolocation::GeolocationPositionError::ErrorCode::PermissionDenied);
+    page->set_emulated_position_data(Geolocation::GeolocationPositionError::ErrorCode::PermissionDenied);
 
     // AD-HOC: Mark the about:blank document as finished parsing if we're only going to about:blank
     //         Skip the initial navigation as well. This matches the behavior of the window open steps.
@@ -379,47 +376,6 @@ void LocalTraversableNavigable::destroy_local_traversable()
     //        However, without this, we can keep stale destroyed traversables around.
     set_has_been_destroyed();
     remove_from_all_local_navigables();
-}
-
-// https://w3c.github.io/geolocation/#dfn-emulated-position-data
-Geolocation::EmulatedPositionData const& LocalTraversableNavigable::emulated_position_data() const
-{
-    VERIFY(is_top_level_traversable());
-    return m_emulated_position_data;
-}
-
-// https://w3c.github.io/geolocation/#dfn-emulated-position-data
-void LocalTraversableNavigable::set_emulated_position_data(Geolocation::EmulatedPositionData data)
-{
-    VERIFY(is_top_level_traversable());
-    m_emulated_position_data = data;
-
-    GC::RootVector<GC::Ref<GC::Function<void()>>> observers;
-    for (auto& observer : m_emulated_position_data_observers)
-        observers.append(observer.value);
-    for (auto& observer : observers)
-        observer->function()();
-}
-
-void LocalTraversableNavigable::set_emulated_position_data(Geolocation::CoordinatesData coordinates_data)
-{
-    VERIFY(is_top_level_traversable());
-    auto coords = GC::Heap::the().allocate<Geolocation::GeolocationCoordinates>(move(coordinates_data));
-    set_emulated_position_data(coords);
-}
-
-u64 LocalTraversableNavigable::register_emulated_position_data_observer(GC::Ref<GC::Function<void()>> observer)
-{
-    VERIFY(is_top_level_traversable());
-    auto observer_id = m_next_emulated_position_data_observer_id++;
-    m_emulated_position_data_observers.set(observer_id, observer);
-    return observer_id;
-}
-
-void LocalTraversableNavigable::unregister_emulated_position_data_observer(u64 observer_id)
-{
-    VERIFY(is_top_level_traversable());
-    m_emulated_position_data_observers.remove(observer_id);
 }
 
 }

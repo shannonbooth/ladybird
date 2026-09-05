@@ -14,7 +14,6 @@
 #include <AK/Vector.h>
 #include <LibWeb/Bindings/NavigationType.h>
 #include <LibWeb/Export.h>
-#include <LibWeb/Geolocation/Geolocation.h>
 #include <LibWeb/HTML/ApplyHistoryStep.h>
 #include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/VisibilityState.h>
@@ -62,13 +61,6 @@ public:
     StorageAPI::StorageShed& storage_shed() { return m_storage_shed; }
     StorageAPI::StorageShed const& storage_shed() const { return m_storage_shed; }
 
-    // https://w3c.github.io/geolocation/#dfn-emulated-position-data
-    Geolocation::EmulatedPositionData const& emulated_position_data() const;
-    void set_emulated_position_data(Geolocation::EmulatedPositionData data);
-    void set_emulated_position_data(Geolocation::CoordinatesData);
-    u64 register_emulated_position_data_observer(GC::Ref<GC::Function<void()>>);
-    void unregister_emulated_position_data_observer(u64 observer_id);
-
 private:
     LocalTraversableNavigable(GC::Ref<Page>);
 
@@ -90,11 +82,6 @@ private:
     GC::Ref<StorageAPI::StorageShed> m_storage_shed;
 
     Utf16String m_window_handle;
-
-    // https://w3c.github.io/geolocation/#dfn-emulated-position-data
-    Geolocation::EmulatedPositionData m_emulated_position_data;
-    HashMap<u64, GC::Ref<GC::Function<void()>>> m_emulated_position_data_observers;
-    u64 m_next_emulated_position_data_observer_id { 0 };
 };
 
 struct BrowsingContextAndDocument {

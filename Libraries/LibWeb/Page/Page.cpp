@@ -9,6 +9,7 @@
 #include <AK/SourceLocation.h>
 #include <LibGC/Heap.h>
 #include <LibGC/HeapVector.h>
+#include <LibGC/RootVector.h>
 #include <LibGfx/Bitmap.h>
 #include <LibGfx/PaintingSurface.h>
 #include <LibIPC/Decoder.h>
@@ -111,6 +112,8 @@ void Page::visit_edges(JS::Cell::Visitor& visitor)
     visitor.visit(m_pending_clipboard_requests);
     for (auto const& request : m_pending_geolocation_requests)
         visitor.visit(request.value.callback);
+    visitor.visit(m_emulated_position_data);
+    visitor.visit(m_emulated_position_data_observers);
     m_pending_fullscreen_operations.for_each([&](auto const& operation) {
         operation.visit([&](PendingFullscreenEnter const& enter_operation) {
                 visitor.visit(enter_operation.element);
@@ -121,6 +124,36 @@ void Page::visit_edges(JS::Cell::Visitor& visitor)
                 visitor.visit(exit_operation.promise);
             });
     });
+}
+
+// https://w3c.github.io/geolocation/#dfn-emulated-position-data
+void Page::set_emulated_position_data(Geolocation::EmulatedPositionData data)
+{
+    m_emulated_position_data = data;
+
+    GC::RootVector<GC::Ref<GC::Function<void()>>> observers;
+    for (auto& observer : m_emulated_position_data_observers)
+        observers.append(observer.value);
+    for (auto& observer : observers)
+        observer->function()();
+}
+
+void Page::set_emulated_position_data(Geolocation::CoordinatesData coordinates_data)
+{
+    auto coords = GC::Heap::the().allocate<Geolocation::GeolocationCoordinates>(move(coordinates_data));
+    set_emulated_position_data(coords);
+}
+
+u64 Page::register_emulated_position_data_observer(GC::Ref<GC::Function<void()>> observer)
+{
+    auto observer_id = m_next_emulated_position_data_observer_id++;
+    m_emulated_position_data_observers.set(observer_id, observer);
+    return observer_id;
+}
+
+void Page::unregister_emulated_position_data_observer(u64 observer_id)
+{
+    m_emulated_position_data_observers.remove(observer_id);
 }
 
 HTML::LocalNavigable& Page::focused_navigable()
