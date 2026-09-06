@@ -739,6 +739,36 @@ void LocalNavigable::remove_from_all_local_navigables()
     all_local_navigables().remove(*this);
 }
 
+// AD-HOC: Stop hosting this navigable's document in this process: steps 1 to 4 of destroying a top-level traversable,
+//         for any navigable that roots a page.
+void LocalNavigable::destroy_local_root()
+{
+    VERIFY(is_local_root());
+
+    // 1. Let browsingContext be traversable's active browsing context.
+    auto browsing_context = active_browsing_context();
+
+    // 2. For each historyEntry in traversable's session history entries, destroy a document and its descendants given its document.
+    // NOTE: Without bfcache, only the active document is alive, so we only need to destroy it.
+    if (active_document())
+        active_document()->destroy_a_document_and_its_descendants();
+
+    // 3. Remove browsingContext.
+    if (!browsing_context) {
+        dbgln("LocalNavigable::destroy_local_root: No browsing context?");
+    } else {
+        browsing_context->remove();
+    }
+
+    // 4. Remove traversable from the user interface (e.g., close or hide its tab in a tabbed browser).
+    page().client().page_did_destroy_local_root();
+
+    // FIXME: Figure out why we need to do this... we shouldn't be leaking Navigables for all time.
+    //        However, without this, we can keep stale destroyed navigables around.
+    set_has_been_destroyed();
+    remove_from_all_local_navigables();
+}
+
 void LocalNavigable::finalize()
 {
     cancel_hover_update_after_async_scroll();

@@ -1389,7 +1389,7 @@ void PageClient::page_did_request_activate_tab()
     client().async_did_request_activate_tab(m_id);
 }
 
-void PageClient::page_did_close_top_level_traversable()
+void PageClient::page_did_destroy_local_root()
 {
     page().local_root_navigable()->compositor_context().stop_presenting_to_client();
 

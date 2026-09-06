@@ -343,41 +343,16 @@ void LocalTraversableNavigable::destroy_top_level_traversable()
 {
     VERIFY(is_top_level_traversable());
 
-    destroy_local_traversable();
-}
-
-// Perform the local teardown shared by top-level traversables and remote iframe page roots.
-// A remote iframe page root is not a top-level traversable in the specification, so its discard path calls this
-// helper directly instead of the spec-linked wrapper above.
-void LocalTraversableNavigable::destroy_local_traversable()
-{
     // 1. Let browsingContext be traversable's active browsing context.
-    auto browsing_context = active_browsing_context();
-
-    // 2. For each historyEntry in traversable's session history entries:
-    // NOTE: Without bfcache, only the active document is alive, so we only need to destroy it.
-    if (active_document())
-        active_document()->destroy_a_document_and_its_descendants();
-
+    // 2. For each historyEntry in traversable's session history entries, destroy a document and its descendants given its document.
     // 3. Remove browsingContext.
-    if (!browsing_context) {
-        dbgln("TraversableNavigable::destroy_top_level_traversable: No browsing context?");
-    } else {
-        browsing_context->remove();
-    }
-
     // 4. Remove traversable from the user interface (e.g., close or hide its tab in a tabbed browser).
-    page().client().page_did_close_top_level_traversable();
+    destroy_local_root();
 
     // 5. Remove traversable from the user agent's top-level traversable set.
     user_agent_top_level_traversable_set().remove(this);
 
     // FIXME: 6. Invoke WebDriver BiDi navigable destroyed with traversable.
-
-    // FIXME: Figure out why we need to do this... we shouldn't be leaking Navigables for all time.
-    //        However, without this, we can keep stale destroyed traversables around.
-    set_has_been_destroyed();
-    remove_from_all_local_navigables();
 }
 
 // https://html.spec.whatwg.org/multipage/interaction.html#currently-focused-area-of-a-top-level-traversable

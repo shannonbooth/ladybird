@@ -80,6 +80,7 @@ public:
     Vector<GC::Root<LocalNavigable>> child_navigables() const;
 
     bool is_local_root() const;
+    void destroy_local_root();
 
     bool is_closing() const { return m_closing; }
     void set_closing(bool value) { m_closing = value; }
