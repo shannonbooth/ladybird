@@ -82,6 +82,16 @@ GC::Ptr<WindowProxy> RemoteNavigable::active_window_proxy()
     return m_window_proxy;
 }
 
+Vector<GC::Root<Navigable>> RemoteNavigable::active_document_inclusive_descendant_navigables()
+{
+    // The navigable's subtree as the UI process replicates it: itself, then each child's inclusive descendants.
+    Vector<GC::Root<Navigable>> navigables;
+    navigables.append(*this);
+    for (auto& child : m_children)
+        navigables.extend(child->active_document_inclusive_descendant_navigables());
+    return navigables;
+}
+
 Vector<GC::Root<Navigable>> RemoteNavigable::document_tree_child_navigables()
 {
     // NB: The children are in the order the UI process learned of their creation, not in tree order.

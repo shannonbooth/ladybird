@@ -10,8 +10,10 @@
 #include <AK/Function.h>
 #include <AK/IterationDecision.h>
 #include <AK/Utf16String.h>
+#include <AK/Vector.h>
 #include <LibGC/Function.h>
 #include <LibGC/Ptr.h>
+#include <LibGC/Root.h>
 #include <LibJS/Heap/Cell.h>
 #include <LibURL/URL.h>
 #include <LibWeb/ContentSecurityPolicy/Directives/Directive.h>
@@ -68,6 +70,8 @@ public:
     virtual Optional<URL::Origin> active_document_origin() const = 0;
     virtual bool active_document_is_fully_active() const = 0;
     virtual bool active_document_is(DOM::Document const&) const = 0;
+    // https://html.spec.whatwg.org/multipage/document-sequences.html#inclusive-descendant-navigables
+    virtual Vector<GC::Root<Navigable>> active_document_inclusive_descendant_navigables() = 0;
 
     virtual Optional<URL::URL> active_document_top_level_creation_url() const = 0;
     virtual Optional<URL::Origin> active_document_top_level_origin() const = 0;

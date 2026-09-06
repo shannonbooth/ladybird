@@ -57,6 +57,7 @@ public:
     virtual bool active_document_is_fully_active() const override { return m_replicated_state.active_document_is_fully_active; }
     // The active document lives in the process hosting it, so no document of this process is it.
     virtual bool active_document_is(DOM::Document const&) const override { return false; }
+    virtual Vector<GC::Root<Navigable>> active_document_inclusive_descendant_navigables() override;
     virtual Optional<URL::URL> active_document_top_level_creation_url() const override { return m_replicated_state.top_level_creation_url; }
     virtual Optional<URL::Origin> active_document_top_level_origin() const override { return m_replicated_state.top_level_origin; }
     virtual bool active_document_has_cross_site_ancestor() const override { return m_replicated_state.has_cross_site_ancestor; }

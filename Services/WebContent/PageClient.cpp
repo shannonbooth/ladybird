@@ -259,7 +259,8 @@ void PageClient::request_post_message_to_remote_navigable(Web::HTML::RemoteNavig
     client().async_did_post_message_to_navigable(m_id, navigable.id(), move(message));
 }
 
-// The navigable with this ID whose document the page hosts, if any.
+// The navigable with this ID whose document the page hosts, if any. A navigable the page represents without hosting
+// its document is addressed by the page hosting it.
 static GC::Ptr<Web::HTML::LocalNavigable> hosted_navigable(Web::Page& page, Web::HTML::CrossProcessId navigable_id)
 {
     auto active_document = page.local_root_navigable()->active_document();
@@ -268,7 +269,7 @@ static GC::Ptr<Web::HTML::LocalNavigable> hosted_navigable(Web::Page& page, Web:
 
     for (auto const& navigable : active_document->inclusive_descendant_navigables()) {
         if (navigable->id() == navigable_id)
-            return *navigable;
+            return as_if<Web::HTML::LocalNavigable>(*navigable);
     }
     return {};
 }
@@ -314,61 +315,34 @@ void PageClient::create_navigation_params(Web::HTML::NavigationPopulationRequest
 {
     auto navigable_id = request.navigable_id;
     auto navigation_id = request.navigation_id;
-    auto active_document = page().local_root_navigable()->active_document();
-    if (!active_document) {
+    auto navigable = hosted_navigable(page(), navigable_id);
+    if (!navigable || !navigable->resume_navigation_params_creation(navigation_id, move(request)))
         client().async_did_finish_navigation_params_creation(m_id, navigable_id, navigation_id, {});
-        return;
-    }
-
-    for (auto const& navigable : active_document->inclusive_descendant_navigables()) {
-        if (navigable->id() != navigable_id)
-            continue;
-        if (!navigable->resume_navigation_params_creation(navigation_id, move(request)))
-            client().async_did_finish_navigation_params_creation(m_id, navigable_id, navigation_id, {});
-        return;
-    }
-
-    client().async_did_finish_navigation_params_creation(m_id, navigable_id, navigation_id, {});
 }
 
 void PageClient::cancel_navigation_params_creation(Web::HTML::CrossProcessId navigable_id, Utf16String const& navigation_id)
 {
-    auto active_document = page().local_root_navigable()->active_document();
-    if (!active_document)
-        return;
-
-    for (auto const& navigable : active_document->inclusive_descendant_navigables()) {
-        if (navigable->id() != navigable_id)
-            continue;
+    if (auto navigable = hosted_navigable(page(), navigable_id))
         navigable->resume_navigation_params_creation(navigation_id, {});
-        return;
-    }
 }
 
 void PageClient::run_navigation_unload_check(Web::HTML::CrossProcessId navigable_id, Utf16String const& navigation_id)
 {
-    auto active_document = page().local_root_navigable()->active_document();
-    if (!active_document) {
+    auto navigable = hosted_navigable(page(), navigable_id);
+    if (!navigable) {
         client().async_did_fail_navigation_population(m_id, navigable_id, navigation_id);
         return;
     }
 
-    for (auto const& navigable : active_document->inclusive_descendant_navigables()) {
-        if (navigable->id() != navigable_id)
-            continue;
-        navigable->run_navigation_unload_check(navigation_id, GC::create_function(navigable->heap(), [this, navigable = GC::Ref { *navigable }, navigable_id, navigation_id](bool should_continue) {
-            // The UI process retained the pending entry at admission; a passed check only needs the signal.
-            if (!should_continue) {
-                navigable->resume_navigation_params_creation(navigation_id, {});
-                client().async_did_fail_navigation_population(m_id, navigable_id, navigation_id);
-                return;
-            }
-            client().async_did_complete_navigation_unload_check(m_id, navigable_id, navigation_id);
-        }));
-        return;
-    }
-
-    client().async_did_fail_navigation_population(m_id, navigable_id, navigation_id);
+    navigable->run_navigation_unload_check(navigation_id, GC::create_function(navigable->heap(), [this, navigable = GC::Ref { *navigable }, navigable_id, navigation_id](bool should_continue) {
+        // The UI process retained the pending entry at admission; a passed check only needs the signal.
+        if (!should_continue) {
+            navigable->resume_navigation_params_creation(navigation_id, {});
+            client().async_did_fail_navigation_population(m_id, navigable_id, navigation_id);
+            return;
+        }
+        client().async_did_complete_navigation_unload_check(m_id, navigable_id, navigation_id);
+    }));
 }
 
 void PageClient::page_did_change_replicated_navigable_state(Web::HTML::CrossProcessId navigable_id, Web::HTML::ReplicatedNavigableState const& state)
@@ -1931,7 +1905,8 @@ static void append_devtools_sources_for_document(Vector<Web::HTML::ScriptRegistr
         results.append(move(description));
     }
 
-    for (auto const& navigable : document.descendant_navigables()) {
+    // FIXME: Include the documents of descendants hosted by other processes.
+    for (auto const& navigable : Web::HTML::local_navigables_among(document.descendant_navigables())) {
         auto content_document = navigable->active_document();
         if (!content_document)
             continue;
@@ -1955,7 +1930,8 @@ static Optional<Web::HTML::ScriptRegistry::Description> find_devtools_source_des
     if (auto script = document.script_registry().script_for_source_code(source_code); script.has_value())
         return exported_devtools_source_description(document, script->description);
 
-    for (auto const& navigable : document.descendant_navigables()) {
+    // FIXME: Include the documents of descendants hosted by other processes.
+    for (auto const& navigable : Web::HTML::local_navigables_among(document.descendant_navigables())) {
         auto content_document = navigable->active_document();
         if (!content_document)
             continue;

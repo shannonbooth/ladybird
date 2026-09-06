@@ -649,6 +649,16 @@ GC::Ptr<LocalNavigable> local_navigable_with_id(CrossProcessId id)
     return nullptr;
 }
 
+Vector<GC::Root<LocalNavigable>> local_navigables_among(Vector<GC::Root<Navigable>> const& navigables)
+{
+    Vector<GC::Root<LocalNavigable>> local_navigables;
+    for (auto const& navigable : navigables) {
+        if (auto* local_navigable = as_if<LocalNavigable>(*navigable))
+            local_navigables.append(*local_navigable);
+    }
+    return local_navigables;
+}
+
 // https://html.spec.whatwg.org/multipage/document-sequences.html#child-navigable
 Vector<GC::Root<LocalNavigable>> LocalNavigable::child_navigables() const
 {
@@ -1880,7 +1890,9 @@ GC::Ptr<Navigable> LocalNavigable::find_a_navigable_by_target_name(Utf16View nam
         // 3. For each navigable of the inclusive descendant navigables of documentToSearch:
         for (auto const& navigable : document_to_search->inclusive_descendant_navigables()) {
             // 1. If currentNavigable's active browsing context is not familiar with navigable's active browsing context, then continue.
-            if (!active_browsing_context()->is_familiar_with(*navigable->active_browsing_context()))
+            // FIXME: A navigable hosted by another process has no browsing context here to check familiarity with.
+            auto* local_navigable = as_if<LocalNavigable>(*navigable);
+            if (!local_navigable || !active_browsing_context()->is_familiar_with(*local_navigable->active_browsing_context()))
                 continue;
 
             // 2. If currentNavigable is not allowed by sandboxing to navigate navigable given sourceSnapshotParams, then optionally continue.
@@ -3513,7 +3525,8 @@ void LocalNavigable::run_navigation_unload_check(Utf16String const& navigation_i
     }
 
     // 1. Let unloadPromptCanceled be the result of checking if unloading is user-canceled for navigable's active document's inclusive descendant navigables.
-    check_if_unloading_is_canceled(active_document()->inclusive_descendant_navigables(),
+    // FIXME: Check the navigables hosted by other processes there.
+    check_if_unloading_is_canceled(local_navigables_among(active_document()->inclusive_descendant_navigables()),
         GC::create_function(heap(), [this, navigation_id, completion_steps](CheckIfUnloadingIsCanceledResult unload_prompt_canceled) {
             if (has_been_destroyed() || !active_window()) {
                 completion_steps->function()(false);
@@ -4366,6 +4379,15 @@ bool LocalNavigable::is_local_root() const
 {
     HTML::LocalNavigable& local_root = page().local_root_navigable();
     return &local_root == this;
+}
+
+Vector<GC::Root<Navigable>> LocalNavigable::active_document_inclusive_descendant_navigables()
+{
+    // AD-HOC: A navigable without an active document has nothing to enumerate, and is skipped itself.
+    auto document = active_document();
+    if (!document)
+        return {};
+    return document->inclusive_descendant_navigables();
 }
 
 void LocalNavigable::for_each_child_navigable(Function<IterationDecision(Navigable&)> const& callback)

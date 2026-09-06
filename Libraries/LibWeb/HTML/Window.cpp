@@ -840,7 +840,8 @@ void Window::consume_history_action_user_activation()
     auto top = navigable->top_level_traversable();
 
     // 3. Let navigables be the inclusive descendant navigables of top's active document.
-    auto navigables = as<LocalTraversableNavigable>(*top).active_document()->inclusive_descendant_navigables();
+    // FIXME: The windows of navigables hosted by other processes keep their timestamps.
+    auto navigables = local_navigables_among(as<LocalTraversableNavigable>(*top).active_document()->inclusive_descendant_navigables());
 
     // 4. Let windows be the list of Window objects constructed by taking the active window of each item in navigables.
     GC::RootVector<GC::Ptr<Window>> windows;
@@ -865,7 +866,8 @@ void Window::consume_user_activation()
     auto top = navigable->top_level_traversable();
 
     // 3. Let navigables be the inclusive descendant navigables of top's active document.
-    auto navigables = as<LocalTraversableNavigable>(*top).active_document()->inclusive_descendant_navigables();
+    // FIXME: The windows of navigables hosted by other processes keep their timestamps.
+    auto navigables = local_navigables_among(as<LocalTraversableNavigable>(*top).active_document()->inclusive_descendant_navigables());
 
     // 4. Let windows be the list of Window objects constructed by taking the active window of each item in navigables.
     GC::RootVector<GC::Ptr<Window>> windows;

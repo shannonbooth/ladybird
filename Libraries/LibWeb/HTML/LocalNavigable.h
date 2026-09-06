@@ -138,6 +138,7 @@ public:
     virtual Optional<URL::Origin> active_document_origin() const override;
     virtual bool active_document_is_fully_active() const override;
     virtual bool active_document_is(DOM::Document const&) const override;
+    virtual Vector<GC::Root<Navigable>> active_document_inclusive_descendant_navigables() override;
     virtual Optional<URL::URL> active_document_top_level_creation_url() const override;
     virtual Optional<URL::Origin> active_document_top_level_origin() const override;
     virtual bool active_document_has_cross_site_ancestor() const override;
@@ -628,6 +629,8 @@ private:
 };
 
 WEB_API HashTable<GC::RawRef<LocalNavigable>>& all_local_navigables();
+// The navigables among these whose documents this process hosts.
+WEB_API Vector<GC::Root<LocalNavigable>> local_navigables_among(Vector<GC::Root<Navigable>> const&);
 WEB_API GC::Ptr<LocalNavigable> local_navigable_with_id(CrossProcessId);
 
 bool navigation_must_be_a_replace(URL::URL const& url, DOM::Document const& document);
