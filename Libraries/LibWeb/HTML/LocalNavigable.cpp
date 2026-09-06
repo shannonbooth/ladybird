@@ -887,7 +887,7 @@ bool LocalNavigable::adopt_canonical_id_for_child_created_during_history_reconst
     // The UI-selected entry supplies child identities before a reconstructed document creates its child navigables. Consume the
     // identity at the child's position instead of retaining the nested history entries.
     auto child_navigables = parent_document->document_tree_child_navigables();
-    auto child_index = child_navigables.find_first_index(child);
+    auto child_index = child_navigables.find_first_index_if([&](auto const& navigable) { return navigable.ptr() == &child; });
     if (!child_index.has_value())
         return false;
 
@@ -1011,9 +1011,10 @@ void LocalNavigable::prepare_child_navigable_history_reconstruction(SessionHisto
             //        must win; retarget the already-created child to match it. The
             //        longer-term model should avoid creating a distinct temporary id
             //        for a child the UI process already knows about.
+            // NB: A document this process created has its child navigables created here as well.
             for (size_t i = 0; i < child_navigables.size(); ++i) {
                 auto canonical_id = *child_navigable_ids[i];
-                child_navigables[i]->set_id_for_session_history_reconstruction(canonical_id);
+                as<LocalNavigable>(*child_navigables[i]).set_id_for_session_history_reconstruction(canonical_id);
                 child_navigable_ids[i].clear();
             }
         }
