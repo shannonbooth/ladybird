@@ -33,6 +33,19 @@ bool Navigable::is_ancestor_of(Navigable const& other) const
     return false;
 }
 
+GC::Ptr<Navigable> Navigable::find(CrossProcessId id)
+{
+    if (this->id() == id)
+        return this;
+
+    GC::Ptr<Navigable> found;
+    for_each_child_navigable([&](Navigable& child) {
+        found = child.find(id);
+        return found ? IterationDecision::Break : IterationDecision::Continue;
+    });
+    return found;
+}
+
 // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-traversable
 GC::Ref<Navigable> Navigable::traversable_navigable()
 {

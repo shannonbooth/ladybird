@@ -737,21 +737,17 @@ void WebContentClient::did_complete_navigation_unload_check(u64 page_id, Web::HT
 
 void WebContentClient::did_request_navigation_of_navigable(u64 page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::PreparedNavigationDescriptor navigation)
 {
-    // A process represents the navigables between the ones it hosts and their traversable, so those are the ones it
+    // A page represents every navigable of its tab outside the subtree of the one it hosts, so those are the ones it
     // can ask to navigate. The request continues navigate at step 8 in the process hosting the target's document.
     auto* page_host = navigable_for_page(page_id);
     if (!page_host)
         return;
 
-    CanonicalNavigable* target = nullptr;
-    for (auto* ancestor = page_host->parent(); ancestor; ancestor = ancestor->parent()) {
-        if (ancestor->id() == navigable_id)
-            target = ancestor;
-    }
-    if (!target)
+    auto& traversable = page_host->top_level_traversable();
+    auto target = traversable.find(navigable_id);
+    if (!target.has_value() || &*target == page_host || page_host->is_ancestor_of(*target))
         return;
 
-    auto& traversable = page_host->top_level_traversable();
     auto endpoint = traversable.history_job_endpoint_for(*target);
     if (!traversable.history_job_endpoint_is_available(endpoint))
         return;

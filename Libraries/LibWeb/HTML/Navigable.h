@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <AK/Function.h>
+#include <AK/IterationDecision.h>
 #include <AK/Utf16String.h>
 #include <LibGC/Ptr.h>
 #include <LibJS/Heap/Cell.h>
@@ -33,6 +35,9 @@ public:
     GC::Ptr<Navigable> parent() const { return m_parent; }
 
     bool is_ancestor_of(Navigable const&) const;
+
+    // The navigable with the given id among this navigable's inclusive descendants, or null.
+    GC::Ptr<Navigable> find(CrossProcessId);
 
     virtual bool has_been_destroyed() const = 0;
 
@@ -65,6 +70,8 @@ protected:
     void set_parent(GC::Ptr<Navigable> parent) { m_parent = parent; }
 
     virtual WebIDL::ExceptionOr<void> continue_navigation_in_active_document_agent(PreparedNavigation) = 0;
+
+    virtual void for_each_child_navigable(Function<IterationDecision(Navigable&)> const&) = 0;
 
     virtual void visit_edges(Cell::Visitor&) override;
 

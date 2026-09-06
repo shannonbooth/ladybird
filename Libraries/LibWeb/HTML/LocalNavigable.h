@@ -81,8 +81,11 @@ public:
     Vector<GC::Root<LocalNavigable>> child_navigables() const;
 
     bool is_local_root() const;
-    static GC::Ref<LocalNavigable> create_local_root(GC::Ref<Page>, Vector<RemoteNavigableDescriptor> remote_ancestors, CrossProcessId initial_document_state_id, VisibilityState system_visibility_state);
+    static GC::Ref<LocalNavigable> create_local_root(GC::Ref<Page>, Vector<RemoteNavigableDescriptor> remote_navigables, CrossProcessId root_navigable_id, CrossProcessId initial_document_state_id, VisibilityState system_visibility_state);
     void destroy_local_root();
+    void insert_remote_navigable(RemoteNavigableDescriptor);
+    void remove_remote_navigable(CrossProcessId);
+    void update_remote_navigable(CrossProcessId, ReplicatedNavigableState);
 
     bool is_closing() const { return m_closing; }
     void set_closing(bool value) { m_closing = value; }
@@ -398,6 +401,7 @@ private:
 
     void begin_navigation(PreparedNavigation);
     virtual WebIDL::ExceptionOr<void> continue_navigation_in_active_document_agent(PreparedNavigation) override;
+    virtual void for_each_child_navigable(Function<IterationDecision(Navigable&)> const&) override;
     void continue_navigation_after_population_dispatch(PreparedNavigation, NavigationPopulationRequest);
     void queue_pending_navigation(PreparedNavigation, PendingNavigationBehavior);
     void park_navigation_for_population(Utf16String navigation_id, Optional<PreparedNavigation>, GC::Ref<GC::Function<void(Optional<PreparedNavigation>, Optional<NavigationPopulationRequest>)>> continue_steps);

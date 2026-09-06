@@ -31,9 +31,10 @@ struct ReplicatedNavigableState {
     OpenerPolicy opener_policy;
 };
 
-// What a process needs to represent a navigable hosted elsewhere.
+// A node of a tab's navigable graph as a process represents it: the navigable, its parent, and its replicated state.
 struct RemoteNavigableDescriptor {
     CrossProcessId id;
+    Optional<CrossProcessId> parent_id;
     ReplicatedNavigableState replicated_state;
 };
 

@@ -32,6 +32,27 @@ void RemoteNavigable::visit_edges(Cell::Visitor& visitor)
 {
     Base::visit_edges(visitor);
     visitor.visit(m_page);
+    visitor.visit(m_children);
+}
+
+void RemoteNavigable::append_child(GC::Ref<Navigable> child)
+{
+    VERIFY(child->parent().ptr() == this);
+    m_children.append(child);
+}
+
+void RemoteNavigable::remove_child(Navigable& child)
+{
+    auto removed = m_children.remove_first_matching([&](auto const& existing_child) { return existing_child.ptr() == &child; });
+    VERIFY(removed);
+}
+
+void RemoteNavigable::for_each_child_navigable(Function<IterationDecision(Navigable&)> const& callback)
+{
+    for (auto& child : m_children) {
+        if (callback(*child) == IterationDecision::Break)
+            return;
+    }
 }
 
 GC::Ptr<WindowProxy> RemoteNavigable::active_window_proxy()

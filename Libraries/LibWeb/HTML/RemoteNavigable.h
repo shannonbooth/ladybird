@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <AK/Function.h>
+#include <AK/Vector.h>
 #include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/ReplicatedNavigableState.h>
 
@@ -25,6 +27,10 @@ public:
     Page& page() { return m_page; }
 
     ReplicatedNavigableState const& replicated_state() const { return m_replicated_state; }
+    void set_replicated_state(ReplicatedNavigableState state) { m_replicated_state = move(state); }
+
+    void append_child(GC::Ref<Navigable>);
+    void remove_child(Navigable&);
 
     // A remote navigable is never destroyed from this process: the UI process discards the page hosting its children instead.
     virtual bool has_been_destroyed() const override { return false; }
@@ -55,10 +61,14 @@ private:
     virtual void visit_edges(Cell::Visitor&) override;
 
     virtual WebIDL::ExceptionOr<void> continue_navigation_in_active_document_agent(PreparedNavigation) override;
+    virtual void for_each_child_navigable(Function<IterationDecision(Navigable&)> const&) override;
 
     // The page whose navigable graph this node belongs to, and whose client carries requests to the UI process.
     GC::Ref<Page> m_page;
     ReplicatedNavigableState m_replicated_state;
+
+    // The navigable's child navigables, in the order the UI process learned of their creation.
+    Vector<GC::Ref<Navigable>> m_children;
 };
 
 }

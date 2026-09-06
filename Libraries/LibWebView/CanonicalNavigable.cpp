@@ -387,16 +387,6 @@ void CanonicalNavigable::set_viewport(Web::DevicePixelRect viewport_rect, double
     }
 }
 
-Vector<Web::HTML::RemoteNavigableDescriptor> CanonicalNavigable::remote_ancestor_descriptors() const
-{
-    Vector<Web::HTML::RemoteNavigableDescriptor> ancestors;
-    for (auto const* ancestor = parent(); ancestor; ancestor = ancestor->parent()) {
-        VERIFY(ancestor->replicated_state().has_value());
-        ancestors.prepend({ .id = ancestor->id(), .replicated_state = *ancestor->replicated_state() });
-    }
-    return ancestors;
-}
-
 void CanonicalNavigable::set_replicated_state(Web::HTML::ReplicatedNavigableState state)
 {
     m_active_session_history_entry_identity = state.active_session_history_entry_identity;
@@ -443,6 +433,10 @@ void CanonicalNavigable::did_commit_navigation(Web::HTML::ReplicatedNavigableSta
     set_replicated_state(move(replicated_state));
 
     auto& traversable = top_level_traversable();
+    traversable.for_each_page_representing(*this, CanonicalTraversable::PagesWithinSubtree::Include, [&](WebContentClient& client, u64 page_id) {
+        client.async_update_remote_navigable(page_id, id(), *m_replicated_state);
+    });
+
     auto endpoint = traversable.history_job_endpoint_for(*this);
     if (endpoint.client) {
         // FIXME: Pass the document's requestsOAC value once Origin-Agent-Cluster is implemented.

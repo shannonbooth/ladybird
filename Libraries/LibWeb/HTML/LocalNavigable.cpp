@@ -14,6 +14,7 @@
 #include <AK/Utf16StringBuilder.h>
 #include <AK/Variant.h>
 #include <LibCore/Timer.h>
+#include <LibGC/RootVector.h>
 #include <LibGfx/PaintingSurface.h>
 #include <LibWeb/CSS/ComputedValues.h>
 #include <LibWeb/CSS/PropertyID.h>
@@ -4377,19 +4378,28 @@ bool LocalNavigable::is_local_root() const
     return &local_root == this;
 }
 
+void LocalNavigable::for_each_child_navigable(Function<IterationDecision(Navigable&)> const& callback)
+{
+    auto document = active_document();
+    if (!document)
+        return;
+    for (auto* container : NavigableContainer::all_instances()) {
+        if (&container->document() != document.ptr() || !container->content_navigable())
+            continue;
+        if (callback(*container->content_navigable()) == IterationDecision::Break)
+            return;
+    }
+}
+
 // AD-HOC: Steps 3 and 6 to 8 of creating a new child navigable, run by the process chosen to host the child's next
 //         document rather than by the one holding its container: a document to stand in until that document is
-//         populated, a document state carrying the canonical entry's id, and a navigable initialized below the
-//         navigables between it and the tab's traversable, whose documents live in other processes. The UI process
-//         owns the container and the session history this navigable belongs to.
-GC::Ref<LocalNavigable> LocalNavigable::create_local_root(GC::Ref<Page> page, Vector<RemoteNavigableDescriptor> remote_ancestors, CrossProcessId initial_document_state_id, VisibilityState system_visibility_state)
+//         populated, a document state carrying the canonical entry's id, and a navigable initialized in the tab's
+//         navigable graph, whose other documents live in other processes. The UI process owns the container and the
+//         session history this navigable belongs to.
+GC::Ref<LocalNavigable> LocalNavigable::create_local_root(GC::Ref<Page> page, Vector<RemoteNavigableDescriptor> remote_navigables, CrossProcessId root_navigable_id, CrossProcessId initial_document_state_id, VisibilityState system_visibility_state)
 {
-    VERIFY(!remote_ancestors.is_empty());
+    VERIFY(!remote_navigables.is_empty());
     page->ensure_compositor_host();
-
-    GC::Ptr<Navigable> parent;
-    for (auto& ancestor : remote_ancestors)
-        parent = RemoteNavigable::create(page, ancestor.id, parent, move(ancestor.replicated_state));
 
     // 3. Let browsingContext and document be the result of creating a new browsing context and document given element's node document, element, and group.
     // FIXME: The creator document is in the parent's process, so the stand-in document is created with a top-level
@@ -4411,13 +4421,75 @@ GC::Ref<LocalNavigable> LocalNavigable::create_local_root(GC::Ref<Page> page, Ve
     // 7. Let navigable be a new navigable.
     auto navigable = GC::Heap::the().allocate<LocalNavigable>(page, page->client().is_svg_page_client(), Compositor::PagePresentationRegistration::Yes);
 
-    // 8. Initialize the navigable navigable given documentState and parentNavigable.
-    navigable->initialize_navigable(document_state, parent, *document, system_visibility_state);
+    // The graph is every navigable of the tab outside this one's subtree, parents before children and siblings in
+    // creation order, with this one among them. Its subtree is created here as its document is parsed.
+    GC::RootVector<GC::Ref<Navigable>> graph;
+    auto navigable_in_graph = [&](CrossProcessId id) -> GC::Ptr<Navigable> {
+        for (auto const& candidate : graph) {
+            if (candidate->id() == id)
+                return candidate;
+        }
+        return nullptr;
+    };
+    bool initialized = false;
+    for (auto& descriptor : remote_navigables) {
+        GC::Ptr<Navigable> parent;
+        if (descriptor.parent_id.has_value()) {
+            parent = navigable_in_graph(*descriptor.parent_id);
+            VERIFY(parent);
+        } else {
+            VERIFY(graph.is_empty());
+        }
+
+        if (descriptor.id == root_navigable_id) {
+            VERIFY(parent);
+
+            // 8. Initialize the navigable navigable given documentState and parentNavigable.
+            navigable->initialize_navigable(document_state, parent, *document, system_visibility_state);
+            VERIFY(navigable->id() == root_navigable_id);
+            as<RemoteNavigable>(*parent).append_child(*navigable);
+            graph.append(*navigable);
+            initialized = true;
+            continue;
+        }
+
+        auto remote_navigable = RemoteNavigable::create(page, descriptor.id, parent, move(descriptor.replicated_state));
+        if (parent)
+            as<RemoteNavigable>(*parent).append_child(remote_navigable);
+        graph.append(remote_navigable);
+    }
+    VERIFY(initialized);
     page->set_local_root_navigable(navigable);
 
     // The UI process appended the root's session history entry to the traversable before choosing this process.
     navigable->set_has_session_history_entry_and_ready_for_navigation();
     return navigable;
+}
+
+// The UI process keeps the graph of a page hosting an isolated iframe current from the canonical tree.
+void LocalNavigable::insert_remote_navigable(RemoteNavigableDescriptor descriptor)
+{
+    VERIFY(is_local_root());
+    VERIFY(descriptor.parent_id.has_value());
+    auto parent = top_level_traversable()->find(*descriptor.parent_id);
+    VERIFY(parent);
+    as<RemoteNavigable>(*parent).append_child(RemoteNavigable::create(page(), descriptor.id, parent, move(descriptor.replicated_state)));
+}
+
+void LocalNavigable::remove_remote_navigable(CrossProcessId id)
+{
+    VERIFY(is_local_root());
+    auto navigable = top_level_traversable()->find(id);
+    VERIFY(navigable);
+    as<RemoteNavigable>(*navigable->parent()).remove_child(*navigable);
+}
+
+void LocalNavigable::update_remote_navigable(CrossProcessId id, ReplicatedNavigableState state)
+{
+    VERIFY(is_local_root());
+    auto navigable = top_level_traversable()->find(id);
+    VERIFY(navigable);
+    as<RemoteNavigable>(*navigable).set_replicated_state(move(state));
 }
 
 CSSPixelRect LocalNavigable::to_page_rect(CSSPixelRect const& a_rect)

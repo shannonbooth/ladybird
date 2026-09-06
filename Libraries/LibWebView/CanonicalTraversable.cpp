@@ -97,7 +97,49 @@ CanonicalNavigable& CanonicalTraversable::insert(WebContentClient& reporting_cli
 
     auto& navigable_ref = parent->append_child(move(navigable));
     m_navigable_index.set(navigable_ref.id(), navigable_ref.make_weak_ptr());
+
+    for_each_page_representing(navigable_ref, PagesWithinSubtree::Include, [&](WebContentClient& client, u64 page_id) {
+        client.async_insert_remote_navigable(page_id, { .id = navigable_ref.id(), .parent_id = parent->id(), .replicated_state = *navigable_ref.replicated_state() });
+    });
     return navigable_ref;
+}
+
+Vector<Web::HTML::RemoteNavigableDescriptor> CanonicalTraversable::remote_navigable_graph_for(CanonicalNavigable const& page_root) const
+{
+    Vector<Web::HTML::RemoteNavigableDescriptor> graph;
+    Function<void(CanonicalNavigable const&)> append = [&](CanonicalNavigable const& navigable) {
+        VERIFY(navigable.replicated_state().has_value());
+        graph.append({
+            .id = navigable.id(),
+            .parent_id = navigable.parent() ? Optional<Web::HTML::CrossProcessId> { navigable.parent()->id() } : Optional<Web::HTML::CrossProcessId> {},
+            .replicated_state = *navigable.replicated_state(),
+        });
+        if (&navigable == &page_root)
+            return;
+        for (auto const& child : navigable.children())
+            append(*child);
+    };
+    append(*this);
+    return graph;
+}
+
+void CanonicalTraversable::for_each_page_representing(CanonicalNavigable const& navigable, PagesWithinSubtree pages_within_subtree, Function<void(WebContentClient&, u64 page_id)> const& callback) const
+{
+    // The view's page hosts the traversable, whose subtree is the whole tab, so it represents no navigable until a
+    // container can hold a remote one.
+    for_each_in_subtree([&](CanonicalNavigable const& page_root) {
+        if (!page_root.has_remote_host())
+            return IterationDecision::Continue;
+        if (&page_root == &navigable || page_root.is_ancestor_of(navigable))
+            return IterationDecision::Continue;
+        if (pages_within_subtree == PagesWithinSubtree::Exclude && navigable.is_ancestor_of(page_root))
+            return IterationDecision::Continue;
+
+        auto& client = page_root.remote_host_client();
+        if (client.is_page_open(page_root.remote_host_page_id()))
+            callback(client, page_root.remote_host_page_id());
+        return IterationDecision::Continue;
+    });
 }
 
 Optional<CanonicalNavigable&> CanonicalTraversable::find(Web::HTML::CrossProcessId navigable_id)
@@ -128,6 +170,9 @@ void CanonicalTraversable::remove(CanonicalNavigable& navigable)
 {
     VERIFY(&navigable != this);
     navigable.clear_ongoing_navigation();
+    for_each_page_representing(navigable, PagesWithinSubtree::Exclude, [&](WebContentClient& client, u64 page_id) {
+        client.async_remove_remote_navigable(page_id, navigable.id());
+    });
     remove_from_index(navigable);
 
     auto* parent = navigable.parent();
