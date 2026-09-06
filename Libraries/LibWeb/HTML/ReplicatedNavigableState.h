@@ -12,6 +12,7 @@
 #include <LibURL/URL.h>
 #include <LibWeb/Export.h>
 #include <LibWeb/HTML/CrossOrigin/OpenerPolicy.h>
+#include <LibWeb/HTML/CrossProcessId.h>
 #include <LibWeb/HTML/SessionHistoryEntryIdentity.h>
 
 namespace Web::HTML {
@@ -30,6 +31,12 @@ struct ReplicatedNavigableState {
     OpenerPolicy opener_policy;
 };
 
+// What a process needs to represent a navigable hosted elsewhere.
+struct RemoteNavigableDescriptor {
+    CrossProcessId id;
+    ReplicatedNavigableState replicated_state;
+};
+
 }
 
 namespace IPC {
@@ -38,5 +45,10 @@ template<>
 WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::ReplicatedNavigableState const&);
 template<>
 WEB_API ErrorOr<Web::HTML::ReplicatedNavigableState> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::RemoteNavigableDescriptor const&);
+template<>
+WEB_API ErrorOr<Web::HTML::RemoteNavigableDescriptor> decode(Decoder&);
 
 }

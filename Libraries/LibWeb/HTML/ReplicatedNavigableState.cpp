@@ -42,4 +42,21 @@ ErrorOr<Web::HTML::ReplicatedNavigableState> decode(Decoder& decoder)
     };
 }
 
+template<>
+ErrorOr<void> encode(Encoder& encoder, Web::HTML::RemoteNavigableDescriptor const& descriptor)
+{
+    TRY(encoder.encode(descriptor.id));
+    TRY(encoder.encode(descriptor.replicated_state));
+    return {};
+}
+
+template<>
+ErrorOr<Web::HTML::RemoteNavigableDescriptor> decode(Decoder& decoder)
+{
+    return Web::HTML::RemoteNavigableDescriptor {
+        .id = TRY(decoder.decode<Web::HTML::CrossProcessId>()),
+        .replicated_state = TRY(decoder.decode<Web::HTML::ReplicatedNavigableState>()),
+    };
+}
+
 }

@@ -80,6 +80,7 @@ public:
     Vector<GC::Root<LocalNavigable>> child_navigables() const;
 
     bool is_local_root() const;
+    static GC::Ref<LocalNavigable> create_local_root(GC::Ref<Page>, Vector<RemoteNavigableDescriptor> remote_ancestors, CrossProcessId initial_document_state_id, VisibilityState system_visibility_state);
     void destroy_local_root();
 
     bool is_closing() const { return m_closing; }

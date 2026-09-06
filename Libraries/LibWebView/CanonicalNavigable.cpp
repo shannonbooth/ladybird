@@ -387,6 +387,16 @@ void CanonicalNavigable::set_viewport(Web::DevicePixelRect viewport_rect, double
     }
 }
 
+Vector<Web::HTML::RemoteNavigableDescriptor> CanonicalNavigable::remote_ancestor_descriptors() const
+{
+    Vector<Web::HTML::RemoteNavigableDescriptor> ancestors;
+    for (auto const* ancestor = parent(); ancestor; ancestor = ancestor->parent()) {
+        VERIFY(ancestor->replicated_state().has_value());
+        ancestors.prepend({ .id = ancestor->id(), .replicated_state = *ancestor->replicated_state() });
+    }
+    return ancestors;
+}
+
 void CanonicalNavigable::set_replicated_state(Web::HTML::ReplicatedNavigableState state)
 {
     m_active_session_history_entry_identity = state.active_session_history_entry_identity;

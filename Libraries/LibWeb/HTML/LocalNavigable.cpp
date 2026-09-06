@@ -68,6 +68,7 @@
 #include <LibWeb/HTML/POSTResource.h>
 #include <LibWeb/HTML/Parser/HTMLParser.h>
 #include <LibWeb/HTML/PolicyContainers.h>
+#include <LibWeb/HTML/RemoteNavigable.h>
 #include <LibWeb/HTML/SandboxingFlagSet.h>
 #include <LibWeb/HTML/Scripting/ClassicScript.h>
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
@@ -740,7 +741,8 @@ void LocalNavigable::remove_from_all_local_navigables()
 }
 
 // AD-HOC: Stop hosting this navigable's document in this process: steps 1 to 4 of destroying a top-level traversable,
-//         for any navigable that roots a page.
+//         for any navigable that roots a page. A navigable rooting an isolated iframe's page is not destroyed at all:
+//         it lives on in the UI process, which has already unloaded the subtree and now discards this page.
 void LocalNavigable::destroy_local_root()
 {
     VERIFY(is_local_root());
@@ -4359,6 +4361,49 @@ bool LocalNavigable::is_local_root() const
 {
     HTML::LocalNavigable& local_root = page().local_root_navigable();
     return &local_root == this;
+}
+
+// AD-HOC: Steps 3 and 6 to 8 of creating a new child navigable, run by the process chosen to host the child's next
+//         document rather than by the one holding its container: a document to stand in until that document is
+//         populated, a document state carrying the canonical entry's id, and a navigable initialized below the
+//         navigables between it and the tab's traversable, whose documents live in other processes. The UI process
+//         owns the container and the session history this navigable belongs to.
+GC::Ref<LocalNavigable> LocalNavigable::create_local_root(GC::Ref<Page> page, Vector<RemoteNavigableDescriptor> remote_ancestors, CrossProcessId initial_document_state_id, VisibilityState system_visibility_state)
+{
+    VERIFY(!remote_ancestors.is_empty());
+    page->ensure_compositor_host();
+
+    GC::Ptr<Navigable> parent;
+    for (auto& ancestor : remote_ancestors)
+        parent = RemoteNavigable::create(ancestor.id, parent, move(ancestor.replicated_state));
+
+    // 3. Let browsingContext and document be the result of creating a new browsing context and document given element's node document, element, and group.
+    // FIXME: The creator document is in the parent's process, so the stand-in document is created with a top-level
+    //        browsing context of its own rather than one created from the container's document. The UI process
+    //        holds the canonical browsing context.
+    auto document = create_a_new_top_level_browsing_context_and_document(page).document;
+
+    // 6. Let documentState be a new document state, with
+    // NB: Its id is the canonical entry's, so this process addresses the entry the way the UI process does.
+    auto document_state = DocumentState::create(initial_document_state_id);
+    // initiator origin: document's origin
+    document_state->set_initiator_origin(document->origin());
+    // origin: document's origin
+    document_state->set_origin(document->origin());
+    // FIXME: navigable target name: the canonical entry's, which is not sent to this process yet.
+    // about base URL: document's about base URL
+    document_state->set_about_base_url(document->about_base_url());
+
+    // 7. Let navigable be a new navigable.
+    auto navigable = GC::Heap::the().allocate<LocalNavigable>(page, page->client().is_svg_page_client(), Compositor::PagePresentationRegistration::Yes);
+
+    // 8. Initialize the navigable navigable given documentState and parentNavigable.
+    navigable->initialize_navigable(document_state, parent, *document, system_visibility_state);
+    page->set_local_root_navigable(navigable);
+
+    // The UI process appended the root's session history entry to the traversable before choosing this process.
+    navigable->set_has_session_history_entry_and_ready_for_navigation();
+    return navigable;
 }
 
 CSSPixelRect LocalNavigable::to_page_rect(CSSPixelRect const& a_rect)
