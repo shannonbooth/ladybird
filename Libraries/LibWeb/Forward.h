@@ -859,6 +859,7 @@ struct PreloadKey;
 class PromiseRejectionEvent;
 class RadioButtonGroupRegistry;
 class RadioNodeList;
+class RemoteNavigable;
 class ScriptRegistry;
 class SelectedFile;
 class SessionHistoryEntry;
