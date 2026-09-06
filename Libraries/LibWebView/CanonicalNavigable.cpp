@@ -394,6 +394,14 @@ void CanonicalNavigable::set_replicated_state(Web::HTML::ReplicatedNavigableStat
     m_replicated_state = move(state);
 }
 
+void CanonicalNavigable::update_replicated_state(Web::HTML::ReplicatedNavigableState state)
+{
+    set_replicated_state(move(state));
+    top_level_traversable().for_each_page_representing(*this, CanonicalTraversable::PagesWithinSubtree::Include, [&](WebContentClient& client, u64 page_id) {
+        client.async_update_remote_navigable(page_id, id(), *m_replicated_state);
+    });
+}
+
 void CanonicalNavigable::set_current_session_history_entry(Web::HTML::SessionHistoryEntryDescriptor const& entry)
 {
     m_current_session_history_entry_identity = Web::HTML::session_history_entry_identity(entry);
@@ -430,13 +438,9 @@ void CanonicalNavigable::did_commit_navigation(Web::HTML::ReplicatedNavigableSta
         destination_browsing_context = m_ongoing_navigation->destination_browsing_context;
     if (destination_browsing_context)
         set_active_browsing_context(destination_browsing_context.release_nonnull());
-    set_replicated_state(move(replicated_state));
+    update_replicated_state(move(replicated_state));
 
     auto& traversable = top_level_traversable();
-    traversable.for_each_page_representing(*this, CanonicalTraversable::PagesWithinSubtree::Include, [&](WebContentClient& client, u64 page_id) {
-        client.async_update_remote_navigable(page_id, id(), *m_replicated_state);
-    });
-
     auto endpoint = traversable.history_job_endpoint_for(*this);
     if (endpoint.client) {
         // FIXME: Pass the document's requestsOAC value once Origin-Agent-Cluster is implemented.

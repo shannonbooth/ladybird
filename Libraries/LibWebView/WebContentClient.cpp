@@ -1004,6 +1004,15 @@ bool WebContentClient::continue_navigation_population_in_selected_process(u64 pa
     return populate_in(*host.client, host.page_id);
 }
 
+void WebContentClient::did_change_replicated_navigable_state(u64 page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::ReplicatedNavigableState state)
+{
+    // Only the process hosting a navigable's active document speaks for its state.
+    auto navigable = hosted_navigable_for_page(page_id, navigable_id);
+    if (!navigable.has_value())
+        return;
+    navigable->update_replicated_state(move(state));
+}
+
 void WebContentClient::did_create_child_frame(u64 page_id, Web::HTML::CrossProcessId parent_frame_id, Web::HTML::CrossProcessId frame_id, Web::HTML::ReplicatedNavigableState replicated_state)
 {
     auto* host = navigable_for_page(page_id);

@@ -114,6 +114,9 @@ TEST_CASE(response_browsing_context_is_activated_only_at_commit)
                                           .top_level_origin = destination_url.origin(),
                                           .has_cross_site_ancestor = false,
                                           .opener_policy = {},
+                                          .active_document_is_completely_loaded = false,
+                                          .is_closing = false,
+                                          .container_is_in_document_tree = false,
                                       },
         navigation_id);
     EXPECT_EQ(&traversable.active_browsing_context(), destination_context.ptr());

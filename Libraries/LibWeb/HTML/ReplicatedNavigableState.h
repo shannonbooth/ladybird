@@ -29,6 +29,14 @@ struct ReplicatedNavigableState {
 
     // The active document's opener policy, which a child's initial document inherits from the top-level document.
     OpenerPolicy opener_policy;
+
+    // Whether the active document is completely loaded, and whether the navigable is closing.
+    bool active_document_is_completely_loaded { false };
+    bool is_closing { false };
+
+    // Whether the navigable's container is in its node document's tree rather than a shadow tree, which makes the
+    // navigable a document-tree child navigable of that document.
+    bool container_is_in_document_tree { false };
 };
 
 // A node of a tab's navigable graph as a process represents it: the navigable, its parent, and its replicated state.

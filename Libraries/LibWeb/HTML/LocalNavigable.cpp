@@ -1483,7 +1483,18 @@ ReplicatedNavigableState LocalNavigable::replicated_state() const
         .top_level_origin = settings.top_level_origin.value(),
         .has_cross_site_ancestor = settings.has_cross_site_ancestor(),
         .opener_policy = m_active_document->opener_policy(),
+        .active_document_is_completely_loaded = m_active_document->is_completely_loaded(),
+        .is_closing = m_closing,
+        .container_is_in_document_tree = m_container && m_container->document().is_ancestor_of(*m_container),
     };
+}
+
+void LocalNavigable::set_closing(bool value)
+{
+    m_closing = value;
+
+    // The navigable's replicated state carries its closing flag.
+    page().client().page_did_change_replicated_navigable_state(id(), replicated_state());
 }
 
 Optional<UniqueNodeID> LocalNavigable::active_document_id() const

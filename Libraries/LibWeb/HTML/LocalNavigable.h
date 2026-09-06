@@ -88,7 +88,7 @@ public:
     void update_remote_navigable(CrossProcessId, ReplicatedNavigableState);
 
     bool is_closing() const { return m_closing; }
-    void set_closing(bool value) { m_closing = value; }
+    void set_closing(bool value);
     bool is_script_closable();
 
     void stop_loading();

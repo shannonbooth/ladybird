@@ -144,6 +144,8 @@ public:
 
     Optional<Web::HTML::ReplicatedNavigableState> const& replicated_state() const { return m_replicated_state; }
     void set_replicated_state(Web::HTML::ReplicatedNavigableState);
+    // Sets the replicated state and updates every page that represents this navigable.
+    void update_replicated_state(Web::HTML::ReplicatedNavigableState);
 
     Optional<Web::HTML::SessionHistoryEntryIdentity> const& current_session_history_entry_identity() const { return m_current_session_history_entry_identity; }
     Optional<Web::HTML::SessionHistoryEntryIdentity> const& active_session_history_entry_identity() const { return m_active_session_history_entry_identity; }
