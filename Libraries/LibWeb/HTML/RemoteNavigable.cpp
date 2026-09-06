@@ -6,6 +6,7 @@
 
 #include <LibGC/Heap.h>
 #include <LibWeb/HTML/LocalNavigable.h>
+#include <LibWeb/HTML/Location.h>
 #include <LibWeb/HTML/PreparedNavigationDescriptor.h>
 #include <LibWeb/HTML/RemoteNavigable.h>
 #include <LibWeb/HTML/Scripting/Environments.h>
@@ -38,6 +39,15 @@ void RemoteNavigable::visit_edges(Cell::Visitor& visitor)
     visitor.visit(m_page);
     visitor.visit(m_children);
     visitor.visit(m_window_proxy);
+    visitor.visit(m_location);
+}
+
+GC::Ref<Location> RemoteNavigable::location()
+{
+    // The Window object's location getter steps are to return this's Location object.
+    if (!m_location)
+        m_location = GC::Heap::the().allocate<Location>(*this);
+    return *m_location;
 }
 
 void RemoteNavigable::append_child(GC::Ref<Navigable> child)

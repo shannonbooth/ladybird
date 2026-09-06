@@ -257,9 +257,12 @@ static GC::Ref<JS::NativeFunction> create_cross_origin_remote_navigable_getter(J
     }
 
     if (property == u"location"sv) {
-        // FIXME: The Location of a navigable hosted by another process navigates it through the UI process.
-        JS::NativeFunctionPointer location = [](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> { VERIFY_NOT_REACHED(); };
-        return JS::NativeFunction::create(realm, location, 0, property, &realm, "get"sv);
+        return JS::NativeFunction::create(
+            realm, [navigable](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
+                // The Location object lives with the WindowProxy standing for the navigable.
+                return Bindings::location_wrapper(navigable->active_window_proxy()->realm(), navigable->location());
+            },
+            0, property, &realm, "get"sv);
     }
 
     if (property == u"closed"sv) {
@@ -318,12 +321,18 @@ static GC::Ref<JS::NativeFunction> create_cross_origin_remote_navigable_getter(J
 }
 
 // The cross-origin attribute setters of a Window hosted by another process, on its remote navigable.
-static GC::Ref<JS::NativeFunction> create_cross_origin_remote_navigable_setter(JS::Realm& realm, GC::Ref<RemoteNavigable>, Utf16FlyString const& property)
+static GC::Ref<JS::NativeFunction> create_cross_origin_remote_navigable_setter(JS::Realm& realm, GC::Ref<RemoteNavigable> navigable, Utf16FlyString const& property)
 {
     if (property == u"location"sv) {
-        // FIXME: The Location of a navigable hosted by another process navigates it through the UI process.
-        JS::NativeFunctionPointer location = [](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> { VERIFY_NOT_REACHED(); };
-        return JS::NativeFunction::create(realm, location, 1, property, &realm, "set"sv);
+        return JS::NativeFunction::create(
+            realm, [&realm, navigable](JS::VM& vm) -> JS::ThrowCompletionOr<JS::Value> {
+                auto value = vm.argument(0);
+                auto href = TRY(WebIDL::to_utf16_usv_string(vm, value));
+                auto location = navigable->location();
+                TRY(WebIDL::throw_dom_exception_if_needed(vm, realm, [&] { return location->set_href(href); }));
+                return JS::js_undefined();
+            },
+            1, property, &realm, "set"sv);
     }
 
     VERIFY_NOT_REACHED();
@@ -416,6 +425,14 @@ bool is_platform_object_same_origin(JS::Object const& object)
 
 bool is_platform_object_same_origin(Location const& location)
 {
+    // NB: The relevant settings object of a Location standing for a navigable hosted by another process lives there,
+    //     and a document same origin-domain with its document is hosted in this process in a page whose graph does not
+    //     share nodes with this one yet.
+    if (auto navigable = location.remote_navigable()) {
+        VERIFY(!HTML::current_settings_object().origin().is_same_origin_domain(navigable->replicated_state().active_document_origin));
+        return false;
+    }
+
     // 1. Return true if the current settings object's origin is same origin-domain with O's relevant settings object's origin, and false otherwise.
     return HTML::current_settings_object().origin().is_same_origin_domain(HTML::relevant_settings_object(location.window()).origin());
 }

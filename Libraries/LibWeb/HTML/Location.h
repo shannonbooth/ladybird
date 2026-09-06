@@ -12,6 +12,7 @@
 #include <LibURL/URL.h>
 #include <LibWeb/Bindings/Wrappable.h>
 #include <LibWeb/Forward.h>
+#include <AK/Variant.h>
 #include <LibWeb/HTML/HistoryHandlingBehavior.h>
 
 namespace Web::HTML {
@@ -23,8 +24,10 @@ class Location final : public Bindings::GCAllocatedWrappable {
 public:
     virtual ~Location() override;
 
-    [[nodiscard]] Window& window() { return m_window; }
-    [[nodiscard]] Window const& window() const { return m_window; }
+    [[nodiscard]] Window& window() { return m_subject.get<GC::Ref<Window>>(); }
+    [[nodiscard]] Window const& window() const { return m_subject.get<GC::Ref<Window>>(); }
+    // The navigable this Location navigates when its relevant global object is hosted by another process.
+    [[nodiscard]] GC::Ptr<RemoteNavigable> remote_navigable() const;
 
     WebIDL::ExceptionOr<Utf16String> href() const;
     WebIDL::ExceptionOr<void> set_href(Utf16String const&);
@@ -58,15 +61,18 @@ public:
 
 private:
     explicit Location(Window&);
+    explicit Location(RemoteNavigable&);
 
     virtual void visit_edges(GC::Cell::Visitor&) override;
     virtual GC::Ptr<Bindings::Wrappable> relevant_global_impl() const override;
 
     GC::Ptr<DOM::Document> relevant_document() const;
+    bool has_relevant_document() const;
     URL::URL url() const;
     WebIDL::ExceptionOr<void> navigate(URL::URL, NavigationHistoryBehavior = NavigationHistoryBehavior::Auto);
 
-    GC::Ref<Window> m_window;
+    // The relevant global object, or the navigable standing for one hosted by another process.
+    Variant<GC::Ref<Window>, GC::Ref<RemoteNavigable>> m_subject;
 };
 
 }

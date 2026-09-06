@@ -45,6 +45,8 @@ public:
     OrderedHashMap<Utf16FlyString, GC::Ref<Navigable>> document_tree_child_navigable_target_name_property_set();
     // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-window-closed
     bool is_closed() const;
+    // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-location
+    GC::Ref<Location> location();
 
     virtual GC::Ptr<WindowProxy> active_window_proxy() override;
     virtual Utf16String const& target_name() const override { return m_replicated_state.target_name; }
@@ -84,6 +86,7 @@ private:
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-wp
     GC::Ptr<WindowProxy> m_window_proxy;
+    GC::Ptr<Location> m_location;
 
     bool m_removed { false };
 };
