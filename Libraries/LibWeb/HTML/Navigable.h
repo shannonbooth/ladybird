@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <AK/Badge.h>
 #include <AK/Function.h>
 #include <AK/IterationDecision.h>
 #include <AK/Utf16String.h>
@@ -33,6 +34,15 @@ public:
     CrossProcessId id() const { return m_id; }
 
     GC::Ptr<Navigable> parent() const { return m_parent; }
+
+    // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-container
+    GC::Ptr<NavigableContainer> container() const;
+    void set_container(Badge<NavigableContainer>, GC::Ptr<NavigableContainer> container) { m_container = container; }
+    // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-container-document
+    GC::Ptr<DOM::Document> container_document() const;
+
+    Page& page() { return m_page; }
+    Page const& page() const { return m_page; }
 
     bool is_ancestor_of(Navigable const&) const;
 
@@ -69,7 +79,7 @@ public:
     bool allowed_by_sandboxing_to_navigate(Navigable const& target, SourceSnapshotParams const&) const;
 
 protected:
-    Navigable() = default;
+    explicit Navigable(GC::Ref<Page>);
     void set_id(CrossProcessId id) { m_id = id; }
     void set_parent(GC::Ptr<Navigable> parent) { m_parent = parent; }
 
@@ -84,6 +94,12 @@ private:
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-parent
     GC::Ptr<Navigable> m_parent;
+
+    // Implied link between navigable and its container.
+    GC::Ptr<NavigableContainer> m_container;
+
+    // The page whose navigable tree this navigable belongs to.
+    GC::Ref<Page> m_page;
 };
 
 }

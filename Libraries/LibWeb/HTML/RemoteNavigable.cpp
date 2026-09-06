@@ -25,7 +25,7 @@ GC::Ref<RemoteNavigable> RemoteNavigable::create(GC::Ref<Page> page, CrossProces
 }
 
 RemoteNavigable::RemoteNavigable(GC::Ref<Page> page, CrossProcessId id, GC::Ptr<Navigable> parent, ReplicatedNavigableState replicated_state)
-    : m_page(page)
+    : Navigable(page)
     , m_replicated_state(move(replicated_state))
 {
     set_id(id);
@@ -37,7 +37,6 @@ RemoteNavigable::~RemoteNavigable() = default;
 void RemoteNavigable::visit_edges(Cell::Visitor& visitor)
 {
     Base::visit_edges(visitor);
-    visitor.visit(m_page);
     visitor.visit(m_children);
     visitor.visit(m_window_proxy);
     visitor.visit(m_location);
@@ -76,7 +75,7 @@ GC::Ptr<WindowProxy> RemoteNavigable::active_window_proxy()
     // The WindowProxy of a navigable hosted by another process lives in the realm of this page's root document and
     // answers every access on the cross-origin path.
     if (!m_window_proxy) {
-        auto window = m_page->local_root_navigable()->active_window();
+        auto window = page().local_root_navigable()->active_window();
         VERIFY(window);
         m_window_proxy = WindowProxy::create_for_remote_navigable(relevant_realm(*window), *this);
     }
@@ -163,7 +162,7 @@ WebIDL::ExceptionOr<void> RemoteNavigable::continue_navigation_in_active_documen
     //    window to continue these steps.
     // NB: The active window lives in the process hosting the active document, so the task is a request to the UI
     //     process, which forwards it to that process.
-    m_page->client().request_navigation_of_remote_navigable(*this, create_prepared_navigation_descriptor(navigation));
+    page().client().request_navigation_of_remote_navigable(*this, create_prepared_navigation_descriptor(navigation));
     return {};
 }
 
@@ -181,12 +180,12 @@ WebIDL::ExceptionOr<void> RemoteNavigable::post_message(JS::Realm& realm, JS::Va
     //     process, which forwards it there. That process represents the source's navigable, which names the source.
     auto source_navigable = prepared.source->window()->navigable();
     VERIFY(source_navigable);
-    m_page->client().request_post_message_to_remote_navigable(*this, {
-                                                                         .serialize_with_transfer_result = move(prepared.serialize_with_transfer_result),
-                                                                         .target_origin = move(prepared.target_origin),
-                                                                         .source_origin = move(prepared.source_origin),
-                                                                         .source_navigable_id = source_navigable->id(),
-                                                                     });
+    page().client().request_post_message_to_remote_navigable(*this, {
+                                                                        .serialize_with_transfer_result = move(prepared.serialize_with_transfer_result),
+                                                                        .target_origin = move(prepared.target_origin),
+                                                                        .source_origin = move(prepared.source_origin),
+                                                                        .source_navigable_id = source_navigable->id(),
+                                                                    });
     return {};
 }
 
