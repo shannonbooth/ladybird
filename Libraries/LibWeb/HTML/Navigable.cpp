@@ -6,6 +6,7 @@
 
 #include <LibWeb/Crypto/Crypto.h>
 #include <LibWeb/DOM/Document.h>
+#include <LibWeb/HTML/EventLoop/EventLoop.h>
 #include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/NavigableContainer.h>
@@ -30,6 +31,43 @@ void Navigable::visit_edges(Cell::Visitor& visitor)
     visitor.visit(m_parent);
     visitor.visit(m_container);
     visitor.visit(m_page);
+    visitor.visit(m_pending_child_navigable_unload);
+}
+
+void Navigable::set_has_been_destroyed()
+{
+    m_has_been_destroyed = true;
+}
+
+void Navigable::report_child_frame_destroyed()
+{
+    if (m_child_frame_destruction_reported || !parent())
+        return;
+    m_child_frame_destruction_reported = true;
+    page().client().page_did_destroy_child_frame(id());
+}
+
+// AD-HOC: Child removal unloads documents before running the remaining destroy-a-child-navigable steps.
+void Navigable::unload_child_navigable_before_destruction(GC::Ref<GC::Function<void()>> after_all_unloads)
+{
+    m_pending_child_navigable_unload = after_all_unloads;
+    page().client().page_did_request_child_navigable_unload(id());
+}
+
+void Navigable::continue_child_navigable_destruction(UnloadDisplayedDocument unload_displayed_document)
+{
+    auto after_all_unloads = m_pending_child_navigable_unload;
+    if (!after_all_unloads)
+        return;
+    m_pending_child_navigable_unload = nullptr;
+
+    queue_a_task(Task::Source::NavigationAndTraversal, nullptr, nullptr,
+        GC::create_function(heap(), [navigable = GC::Ref { *this }, unload_displayed_document, after_all_unloads = GC::Ref { *after_all_unloads }] {
+            navigable->unload_for_child_navigable_destruction(unload_displayed_document);
+
+            // 3. If afterAllUnloads was given, then run it.
+            after_all_unloads->function()();
+        }));
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-container

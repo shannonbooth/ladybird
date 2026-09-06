@@ -226,11 +226,7 @@ public:
     void reload(Optional<StorageSerializationRecord> navigation_api_state = {}, UserNavigationInvolvement = UserNavigationInvolvement::None);
 
     // https://github.com/whatwg/html/issues/9690
-    [[nodiscard]] virtual bool has_been_destroyed() const override { return m_has_been_destroyed; }
-    void set_has_been_destroyed();
-    void report_child_frame_destroyed();
-    void unload_child_navigable_before_destruction(GC::Ref<GC::Function<void()>> after_all_unloads);
-    void continue_child_navigable_destruction(UnloadDisplayedDocument);
+    virtual void set_has_been_destroyed() override;
     void remove_from_all_local_navigables();
 
     CSSPixelPoint to_page_position(CSSPixelPoint);
@@ -398,6 +394,7 @@ private:
     void begin_navigation(PreparedNavigation);
     virtual WebIDL::ExceptionOr<void> continue_navigation_in_active_document_agent(PreparedNavigation) override;
     virtual void for_each_child_navigable(Function<IterationDecision(Navigable&)> const&) override;
+    virtual void unload_for_child_navigable_destruction(UnloadDisplayedDocument) override;
     void continue_navigation_after_population_dispatch(PreparedNavigation, NavigationPopulationRequest);
     void queue_pending_navigation(PreparedNavigation, PendingNavigationBehavior);
     void park_navigation_for_population(Utf16String navigation_id, Optional<PreparedNavigation>, GC::Ref<GC::Function<void(Optional<PreparedNavigation>, Optional<NavigationPopulationRequest>)>> continue_steps);
@@ -513,14 +510,8 @@ private:
 
     NavigationObserver::NavigationObserversList m_navigation_observers;
 
-    bool m_has_been_destroyed { false };
-
     // Where a local root's container is, as the process holding its parent's document reported at creation.
     bool m_root_container_is_in_document_tree { false };
-    bool m_child_frame_destruction_reported { false };
-
-    // The destroy-a-child-navigable continuation parked while the UI process unloads this navigable's document tree.
-    GC::Ptr<GC::Function<void()>> m_pending_child_navigable_unload;
 
     CSSPixelSize m_viewport_size;
     CSSPixelPoint m_viewport_scroll_offset;

@@ -311,11 +311,12 @@ void NavigableContainer::destroy_the_child_navigable()
     // Therefore, it is moved to run in the after-all-unloads callback of "unload a document and its descendants"
     // when all queued tasks are done.
     // "Has been destroyed" flag is used instead to check whether navigable is already destroyed.
-    auto& local_navigable = as<LocalNavigable>(*navigable);
-
-    if (local_navigable.has_been_destroyed())
+    if (navigable->has_been_destroyed())
         return;
-    local_navigable.set_has_been_destroyed();
+    navigable->set_has_been_destroyed();
+
+    // NB: No remote navigable has a container in this process yet.
+    auto& local_navigable = as<LocalNavigable>(*navigable);
 
     // AD-HOC: Clear the navigable's "is delaying load events" flag.
     //         This removes the DocumentLoadEventDelayer on the parent document that was
@@ -335,7 +336,7 @@ void NavigableContainer::destroy_the_child_navigable()
 
     auto after_document_destruction = GC::create_function(GC::Heap::the(), [this, navigable] {
         // 3. Set container's content navigable to null.
-        as<LocalNavigable>(*navigable).set_container({}, nullptr);
+        navigable->set_container({}, nullptr);
 
         // AD-HOC: In the spec this step runs synchronously, before the container could possibly acquire another content
         //         navigable. Since we defer it, the container may have been re-inserted in the meantime and hold a new
@@ -349,7 +350,7 @@ void NavigableContainer::destroy_the_child_navigable()
         }
 
         // Not in the spec:
-        as<LocalNavigable>(*navigable).report_child_frame_destroyed();
+        navigable->report_child_frame_destroyed();
         as<LocalNavigable>(*navigable).remove_from_all_local_navigables();
 
         // 6. Let parentDocState be container's node navigable's active session history entry's document state.

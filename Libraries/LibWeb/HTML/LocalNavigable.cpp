@@ -685,48 +685,22 @@ void LocalNavigable::set_has_been_destroyed()
 {
     cancel_hover_update_after_async_scroll();
     destroy_compositor_context();
-    m_has_been_destroyed = true;
+    Base::set_has_been_destroyed();
     resolve_all_pending_async_scroll_operations();
     cancel_user_scroll_settlement();
 }
 
-void LocalNavigable::report_child_frame_destroyed()
+void LocalNavigable::unload_for_child_navigable_destruction(UnloadDisplayedDocument unload_displayed_document)
 {
-    if (m_child_frame_destruction_reported || !parent())
-        return;
-    m_child_frame_destruction_reported = true;
-    page().client().page_did_destroy_child_frame(id());
-}
-
-// AD-HOC: Child removal unloads documents before running the remaining destroy-a-child-navigable steps.
-void LocalNavigable::unload_child_navigable_before_destruction(GC::Ref<GC::Function<void()>> after_all_unloads)
-{
-    m_pending_child_navigable_unload = after_all_unloads;
-    page().client().page_did_request_child_navigable_unload(id());
-}
-
-void LocalNavigable::continue_child_navigable_destruction(UnloadDisplayedDocument unload_displayed_document)
-{
-    auto after_all_unloads = m_pending_child_navigable_unload;
-    if (!after_all_unloads)
-        return;
-    m_pending_child_navigable_unload = nullptr;
-
-    queue_a_task(Task::Source::NavigationAndTraversal, nullptr, nullptr,
-        GC::create_function(heap(), [navigable = GC::Ref { *this }, unload_displayed_document, after_all_unloads = GC::Ref { *after_all_unloads }] {
-            if (unload_displayed_document == UnloadDisplayedDocument::Yes) {
-                // 2. Unload document, passing along newDocument if it is not null.
-                if (auto active_document = navigable->active_document())
-                    active_document->unload();
-            } else if (auto active_document = navigable->active_document()) {
-                // AD-HOC: The displayed document was unloaded in its remote host. Destroy the process-local
-                //         placeholder without firing its lifecycle events.
-                active_document->destroy();
-            }
-
-            // 3. If afterAllUnloads was given, then run it.
-            after_all_unloads->function()();
-        }));
+    if (unload_displayed_document == UnloadDisplayedDocument::Yes) {
+        // 2. Unload document, passing along newDocument if it is not null.
+        if (auto active_document = this->active_document())
+            active_document->unload();
+    } else if (auto active_document = this->active_document()) {
+        // AD-HOC: The displayed document was unloaded in its remote host. Destroy the process-local
+        //         placeholder without firing its lifecycle events.
+        active_document->destroy();
+    }
 }
 
 void LocalNavigable::remove_from_all_local_navigables()
@@ -786,7 +760,6 @@ void LocalNavigable::visit_edges(Cell::Visitor& visitor)
     Base::visit_edges(visitor);
     visitor.visit(m_active_document);
     visitor.visit(m_input_method_composition_node);
-    visitor.visit(m_pending_child_navigable_unload);
     m_event_handler.visit_edges(visitor);
 
     for (auto& pending_navigation : m_pending_navigations) {
@@ -4499,7 +4472,7 @@ void LocalNavigable::remove_remote_navigable(CrossProcessId id)
     auto navigable = top_level_traversable()->find(id);
     VERIFY(navigable);
     as<RemoteNavigable>(*navigable->parent()).remove_child(*navigable);
-    as<RemoteNavigable>(*navigable).set_removed();
+    navigable->set_has_been_destroyed();
 }
 
 void LocalNavigable::update_remote_navigable(CrossProcessId id, ReplicatedNavigableState state)

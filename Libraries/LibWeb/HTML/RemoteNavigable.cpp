@@ -139,7 +139,7 @@ bool RemoteNavigable::is_closed() const
 {
     // The closed getter steps are to return true if this's browsing context is null or its is closing is true; otherwise false.
     // NB: A navigable the UI process removed from this graph has no browsing context here anymore.
-    return m_removed || m_replicated_state.is_closing;
+    return has_been_destroyed() || m_replicated_state.is_closing;
 }
 
 bool RemoteNavigable::has_session_history_entry_and_ready_for_navigation() const
@@ -151,6 +151,13 @@ bool RemoteNavigable::has_session_history_entry_and_ready_for_navigation() const
 
 bool RemoteNavigable::delays_the_load_event_of_its_container() const
 {
+    VERIFY_NOT_REACHED();
+}
+
+void RemoteNavigable::unload_for_child_navigable_destruction(UnloadDisplayedDocument)
+{
+    // Only a navigable container's content navigable is destroyed this way, and no remote navigable has a container in
+    // this process yet.
     VERIFY_NOT_REACHED();
 }
 

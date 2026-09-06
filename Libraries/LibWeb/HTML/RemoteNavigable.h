@@ -34,10 +34,6 @@ public:
     void append_child(GC::Ref<Navigable>);
     void remove_child(Navigable&);
 
-    // A remote navigable leaves this process's graph when the UI process removes it; nothing else destroys it here.
-    void set_removed() { m_removed = true; }
-    virtual bool has_been_destroyed() const override { return m_removed; }
-
     // https://html.spec.whatwg.org/multipage/document-sequences.html#document-tree-child-navigable
     Vector<GC::Root<Navigable>> document_tree_child_navigables();
     // https://html.spec.whatwg.org/multipage/nav-history-apis.html#document-tree-child-navigable-target-name-property-set
@@ -77,6 +73,7 @@ private:
 
     virtual WebIDL::ExceptionOr<void> continue_navigation_in_active_document_agent(PreparedNavigation) override;
     virtual void for_each_child_navigable(Function<IterationDecision(Navigable&)> const&) override;
+    virtual void unload_for_child_navigable_destruction(UnloadDisplayedDocument) override;
 
     ReplicatedNavigableState m_replicated_state;
 
@@ -86,8 +83,6 @@ private:
     // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-wp
     GC::Ptr<WindowProxy> m_window_proxy;
     GC::Ptr<Location> m_location;
-
-    bool m_removed { false };
 };
 
 }

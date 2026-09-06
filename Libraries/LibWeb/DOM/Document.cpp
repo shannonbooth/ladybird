@@ -5689,10 +5689,10 @@ void Document::destroy()
     // Not in the spec:
     for (auto& navigable_container : HTML::NavigableContainer::all_instances()) {
         if (&navigable_container->document() == this && navigable_container->content_navigable()) {
-            auto& child_navigable = as<HTML::LocalNavigable>(*navigable_container->content_navigable());
+            auto& child_navigable = *navigable_container->content_navigable();
             child_navigable.report_child_frame_destroyed();
             child_navigable.set_has_been_destroyed();
-            child_navigable.remove_from_all_local_navigables();
+            as<HTML::LocalNavigable>(child_navigable).remove_from_all_local_navigables();
         }
     }
 

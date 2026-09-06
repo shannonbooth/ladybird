@@ -10,12 +10,14 @@
 #include <AK/Function.h>
 #include <AK/IterationDecision.h>
 #include <AK/Utf16String.h>
+#include <LibGC/Function.h>
 #include <LibGC/Ptr.h>
 #include <LibJS/Heap/Cell.h>
 #include <LibURL/URL.h>
 #include <LibWeb/ContentSecurityPolicy/Directives/Directive.h>
 #include <LibWeb/Export.h>
 #include <LibWeb/Forward.h>
+#include <LibWeb/HTML/ApplyHistoryStep.h>
 #include <LibWeb/HTML/CrossOrigin/OpenerPolicy.h>
 #include <LibWeb/HTML/CrossProcessId.h>
 #include <LibWeb/HTML/NavigateParams.h>
@@ -49,7 +51,12 @@ public:
     // The navigable with the given id among this navigable's inclusive descendants, or null.
     GC::Ptr<Navigable> find(CrossProcessId);
 
-    virtual bool has_been_destroyed() const = 0;
+    bool has_been_destroyed() const { return m_has_been_destroyed; }
+    virtual void set_has_been_destroyed();
+    void report_child_frame_destroyed();
+    // AD-HOC: Child removal unloads documents before running the remaining destroy-a-child-navigable steps.
+    void unload_child_navigable_before_destruction(GC::Ref<GC::Function<void()>> after_all_unloads);
+    void continue_child_navigable_destruction(UnloadDisplayedDocument);
 
     virtual GC::Ptr<WindowProxy> active_window_proxy() = 0;
     virtual Utf16String const& target_name() const = 0;
@@ -87,6 +94,9 @@ protected:
 
     virtual void for_each_child_navigable(Function<IterationDecision(Navigable&)> const&) = 0;
 
+    // What becomes of the displayed document when the UI process continues a child's destruction in this process.
+    virtual void unload_for_child_navigable_destruction(UnloadDisplayedDocument) = 0;
+
     virtual void visit_edges(Cell::Visitor&) override;
 
 private:
@@ -100,6 +110,12 @@ private:
 
     // The page whose navigable tree this navigable belongs to.
     GC::Ref<Page> m_page;
+
+    bool m_has_been_destroyed { false };
+    bool m_child_frame_destruction_reported { false };
+
+    // The destroy-a-child-navigable continuation parked while the UI process unloads this navigable's document tree.
+    GC::Ptr<GC::Function<void()>> m_pending_child_navigable_unload;
 };
 
 }
