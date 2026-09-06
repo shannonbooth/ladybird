@@ -13,6 +13,7 @@
 #include <LibGC/Root.h>
 #include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/ReplicatedNavigableState.h>
+#include <LibWeb/HTML/Window.h>
 
 namespace Web::HTML {
 
@@ -47,6 +48,8 @@ public:
     bool is_closed() const;
     // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-location
     GC::Ref<Location> location();
+    // https://html.spec.whatwg.org/multipage/web-messaging.html#dom-window-postmessage-options
+    WebIDL::ExceptionOr<void> post_message(JS::Realm&, JS::Value message, Window::PostMessageOptions const&);
 
     virtual GC::Ptr<WindowProxy> active_window_proxy() override;
     virtual Utf16String const& target_name() const override { return m_replicated_state.target_name; }

@@ -70,6 +70,7 @@
 #include <LibWeb/HTML/Navigator.h>
 #include <LibWeb/HTML/PageTransitionEvent.h>
 #include <LibWeb/HTML/Parser/HTMLParser.h>
+#include <LibWeb/HTML/RemoteNavigable.h>
 #include <LibWeb/HTML/Scripting/Environments.h>
 #include <LibWeb/HTML/Scripting/ExceptionReporter.h>
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
@@ -178,6 +179,18 @@ JS::ThrowCompletionOr<void> post_message_with_options(JS::Realm& realm, HTML::Wi
         options_from_bindings = TRY(Bindings::convert_to_idl_value_for_window_post_message_options(vm, options));
     TRY(WebIDL::throw_dom_exception_if_needed(vm, realm, [&] {
         return window.post_message(realm, message, Bindings::window_post_message_options_from_bindings(options_from_bindings));
+    }));
+    return {};
+}
+
+JS::ThrowCompletionOr<void> post_message_with_options(JS::Realm& realm, HTML::RemoteNavigable& navigable, JS::Value message, JS::Value options)
+{
+    auto& vm = realm.vm();
+    Bindings::WindowPostMessageOptions options_from_bindings {};
+    if (!options.is_undefined())
+        options_from_bindings = TRY(Bindings::convert_to_idl_value_for_window_post_message_options(vm, options));
+    TRY(WebIDL::throw_dom_exception_if_needed(vm, realm, [&] {
+        return navigable.post_message(realm, message, Bindings::window_post_message_options_from_bindings(options_from_bindings));
     }));
     return {};
 }

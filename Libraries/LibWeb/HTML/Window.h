@@ -61,6 +61,7 @@ WEB_API WebIDL::UnsignedLong request_idle_callback(HTML::Window&, WebIDL::Callba
 WEB_API void define_internals_property(JS::Realm&, HTML::Window&, JS::Object& global_object);
 WEB_API JS::Value window_named_item_value(WrapperWorld&, JS::Realm&, HTML::Window const&, Utf16FlyString const&);
 WEB_API JS::ThrowCompletionOr<void> post_message_with_options(JS::Realm&, HTML::Window&, JS::Value, JS::Value options);
+WEB_API JS::ThrowCompletionOr<void> post_message_with_options(JS::Realm&, HTML::RemoteNavigable&, JS::Value, JS::Value options);
 
 }
 

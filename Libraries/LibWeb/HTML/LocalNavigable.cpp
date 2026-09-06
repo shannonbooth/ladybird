@@ -3291,6 +3291,24 @@ void LocalNavigable::continue_navigation_from_another_process(PreparedNavigation
     }));
 }
 
+// https://html.spec.whatwg.org/multipage/web-messaging.html#window-post-message-steps
+void LocalNavigable::deliver_posted_message_from_another_process(PostedMessageDescriptor message)
+{
+    auto window = active_window();
+    if (!window)
+        return;
+
+    // 8. Queue a global task on the posted message task source given targetWindow to run the following steps:
+    queue_global_task(Task::Source::PostedMessage, relevant_global_object(*window), GC::create_function(heap(), [this, window, message = move(message)]() mutable {
+        // 3. Let source be the WindowProxy object corresponding to incumbentSettings's global object (a Window object).
+        // NB: That global lives in the posting process. The WindowProxy of its navigable stands for it here, and a
+        //     source this page does not represent yet is a bug until placeholders give way to remote subtrees.
+        auto source = top_level_traversable()->find(message.source_navigable_id);
+        VERIFY(source);
+        window->deliver_posted_message(move(message.serialize_with_transfer_result), message.target_origin, message.source_origin, *source->active_window_proxy());
+    }));
+}
+
 // Continue the navigate algorithm at step 9 with the values prepared by steps 1-7 in navigate().
 void LocalNavigable::begin_navigation(PreparedNavigation navigation)
 {

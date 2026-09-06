@@ -735,23 +735,45 @@ void WebContentClient::did_complete_navigation_unload_check(u64 page_id, Web::HT
     }
 }
 
+// The process and page hosting the document of a navigable that a page represents. A page represents every navigable
+// of its tab outside the subtree of the one it hosts, so those are the ones it can ask to navigate or post to.
+static Optional<CanonicalTraversable::HistoryJobEndpoint> endpoint_hosting_navigable_represented_by(CanonicalNavigable& page_host, Web::HTML::CrossProcessId navigable_id)
+{
+    auto& traversable = page_host.top_level_traversable();
+    auto target = traversable.find(navigable_id);
+    if (!target.has_value() || &*target == &page_host || page_host.is_ancestor_of(*target))
+        return {};
+
+    auto endpoint = traversable.history_job_endpoint_for(*target);
+    if (!traversable.history_job_endpoint_is_available(endpoint))
+        return {};
+    return endpoint;
+}
+
 void WebContentClient::did_request_navigation_of_navigable(u64 page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::PreparedNavigationDescriptor navigation)
 {
-    // A page represents every navigable of its tab outside the subtree of the one it hosts, so those are the ones it
-    // can ask to navigate. The request continues navigate at step 8 in the process hosting the target's document.
+    // The request continues navigate at step 8 in the process hosting the target's document.
     auto* page_host = navigable_for_page(page_id);
     if (!page_host)
         return;
 
-    auto& traversable = page_host->top_level_traversable();
-    auto target = traversable.find(navigable_id);
-    if (!target.has_value() || &*target == page_host || page_host->is_ancestor_of(*target))
+    auto endpoint = endpoint_hosting_navigable_represented_by(*page_host, navigable_id);
+    if (!endpoint.has_value())
+        return;
+    endpoint->client->async_navigate_navigable(endpoint->page_id, navigable_id, move(navigation));
+}
+
+void WebContentClient::did_post_message_to_navigable(u64 page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::PostedMessageDescriptor message)
+{
+    // The window post message steps queue their task on the target window in the process hosting its document.
+    auto* page_host = navigable_for_page(page_id);
+    if (!page_host)
         return;
 
-    auto endpoint = traversable.history_job_endpoint_for(*target);
-    if (!traversable.history_job_endpoint_is_available(endpoint))
+    auto endpoint = endpoint_hosting_navigable_represented_by(*page_host, navigable_id);
+    if (!endpoint.has_value())
         return;
-    endpoint.client->async_navigate_navigable(endpoint.page_id, navigable_id, move(navigation));
+    endpoint->client->async_deliver_posted_message(endpoint->page_id, navigable_id, move(message));
 }
 
 void WebContentClient::did_request_navigation_population(u64 page_id, Web::HTML::CrossProcessId navigable_id, Web::NavigationTarget target, Web::HTML::NavigationPopulationRequest request)

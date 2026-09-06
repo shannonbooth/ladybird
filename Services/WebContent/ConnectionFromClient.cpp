@@ -285,6 +285,12 @@ void ConnectionFromClient::navigate_navigable(u64 page_id, Web::HTML::CrossProce
         page->navigate_navigable(navigable_id, move(navigation));
 }
 
+void ConnectionFromClient::deliver_posted_message(u64 page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::PostedMessageDescriptor message)
+{
+    if (auto page = this->page(page_id); page.has_value())
+        page->deliver_posted_message(navigable_id, move(message));
+}
+
 Optional<PageClient&> ConnectionFromClient::page(u64 index, SourceLocation location)
 {
     if (auto page = m_page_host->page(index); page.has_value())

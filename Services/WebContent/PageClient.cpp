@@ -254,18 +254,35 @@ void PageClient::request_navigation_of_remote_navigable(Web::HTML::RemoteNavigab
     client().async_did_request_navigation_of_navigable(m_id, navigable.id(), move(navigation));
 }
 
-void PageClient::navigate_navigable(Web::HTML::CrossProcessId navigable_id, Web::HTML::PreparedNavigationDescriptor navigation)
+void PageClient::request_post_message_to_remote_navigable(Web::HTML::RemoteNavigable& navigable, Web::HTML::PostedMessageDescriptor message)
 {
-    auto active_document = page().local_root_navigable()->active_document();
+    client().async_did_post_message_to_navigable(m_id, navigable.id(), move(message));
+}
+
+// The navigable with this ID whose document the page hosts, if any.
+static GC::Ptr<Web::HTML::LocalNavigable> hosted_navigable(Web::Page& page, Web::HTML::CrossProcessId navigable_id)
+{
+    auto active_document = page.local_root_navigable()->active_document();
     if (!active_document)
-        return;
+        return {};
 
     for (auto const& navigable : active_document->inclusive_descendant_navigables()) {
-        if (navigable->id() != navigable_id)
-            continue;
-        navigable->continue_navigation_from_another_process(move(navigation));
-        return;
+        if (navigable->id() == navigable_id)
+            return *navigable;
     }
+    return {};
+}
+
+void PageClient::navigate_navigable(Web::HTML::CrossProcessId navigable_id, Web::HTML::PreparedNavigationDescriptor navigation)
+{
+    if (auto navigable = hosted_navigable(page(), navigable_id))
+        navigable->continue_navigation_from_another_process(move(navigation));
+}
+
+void PageClient::deliver_posted_message(Web::HTML::CrossProcessId navigable_id, Web::HTML::PostedMessageDescriptor message)
+{
+    if (auto navigable = hosted_navigable(page(), navigable_id))
+        navigable->deliver_posted_message_from_another_process(move(message));
 }
 
 void PageClient::navigation_params_creation_finished(Web::HTML::LocalNavigable& navigable, Web::HTML::NavigationPopulationRequest request, Web::HTML::NavigationPopulationResult result)

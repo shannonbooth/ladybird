@@ -7,6 +7,7 @@
 #include <LibGC/Heap.h>
 #include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/Location.h>
+#include <LibWeb/HTML/PostedMessageDescriptor.h>
 #include <LibWeb/HTML/PreparedNavigationDescriptor.h>
 #include <LibWeb/HTML/RemoteNavigable.h>
 #include <LibWeb/HTML/Scripting/Environments.h>
@@ -163,6 +164,29 @@ WebIDL::ExceptionOr<void> RemoteNavigable::continue_navigation_in_active_documen
     // NB: The active window lives in the process hosting the active document, so the task is a request to the UI
     //     process, which forwards it to that process.
     m_page->client().request_navigation_of_remote_navigable(*this, create_prepared_navigation_descriptor(navigation));
+    return {};
+}
+
+// https://html.spec.whatwg.org/multipage/web-messaging.html#window-post-message-steps
+WebIDL::ExceptionOr<void> RemoteNavigable::post_message(JS::Realm& realm, JS::Value message, Window::PostMessageOptions const& options)
+{
+    // 1. Let targetRealm be targetWindow's realm.
+    // NB: Taken from targetWindow when the task delivers the message in its process.
+
+    // 2-7.
+    auto prepared = TRY(Window::prepare_post_message(realm, message, options));
+
+    // 8. Queue a global task on the posted message task source given targetWindow to run the following steps:
+    // NB: targetWindow lives in the process hosting this navigable's document, so the task is a request to the UI
+    //     process, which forwards it there. That process represents the source's navigable, which names the source.
+    auto source_navigable = prepared.source->window()->navigable();
+    VERIFY(source_navigable);
+    m_page->client().request_post_message_to_remote_navigable(*this, {
+                                                                         .serialize_with_transfer_result = move(prepared.serialize_with_transfer_result),
+                                                                         .target_origin = move(prepared.target_origin),
+                                                                         .source_origin = move(prepared.source_origin),
+                                                                         .source_navigable_id = source_navigable->id(),
+                                                                     });
     return {};
 }
 

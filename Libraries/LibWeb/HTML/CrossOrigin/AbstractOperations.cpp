@@ -236,9 +236,29 @@ static GC::Ref<JS::NativeFunction> create_cross_origin_remote_navigable_method(J
     }
 
     if (property == u"postMessage"sv) {
-        // FIXME: A message posted to a window hosted by another process is a request to the UI process.
-        JS::NativeFunctionPointer post_message = [](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> { VERIFY_NOT_REACHED(); };
-        return JS::NativeFunction::create(realm, post_message, 1, property);
+        return JS::NativeFunction::create(
+            realm, [&realm, navigable](JS::VM& vm) -> JS::ThrowCompletionOr<JS::Value> {
+                auto message = vm.argument(0);
+
+                if (vm.argument_count() >= 3) {
+                    auto target_origin = TRY(WebIDL::to_utf16_usv_string(vm, vm.argument(1)));
+                    auto transfer = TRY(convert_transfer_argument(vm, vm.argument(2)));
+                    TRY(WebIDL::throw_dom_exception_if_needed(vm, realm, [&] { return navigable->post_message(realm, message, { { .transfer = transfer }, target_origin }); }));
+                    return JS::js_undefined();
+                }
+
+                auto second_argument = vm.argument(1);
+                if (vm.argument_count() == 2 && !second_argument.is_undefined() && !second_argument.is_object()) {
+                    auto target_origin = TRY(WebIDL::to_utf16_usv_string(vm, second_argument));
+                    GC::RootVector<GC::Ref<JS::Object>> transfer;
+                    TRY(WebIDL::throw_dom_exception_if_needed(vm, realm, [&] { return navigable->post_message(realm, message, { { .transfer = transfer }, target_origin }); }));
+                    return JS::js_undefined();
+                }
+
+                TRY(Bindings::post_message_with_options(realm, navigable, message, second_argument));
+                return JS::js_undefined();
+            },
+            1, property);
     }
 
     VERIFY_NOT_REACHED();
