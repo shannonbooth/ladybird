@@ -7,15 +7,18 @@
 #pragma once
 
 #include <AK/Function.h>
+#include <AK/HashMap.h>
+#include <AK/Utf16FlyString.h>
 #include <AK/Vector.h>
+#include <LibGC/Root.h>
 #include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/ReplicatedNavigableState.h>
 
 namespace Web::HTML {
 
 // A navigable whose active document is hosted by another WebContent process. It answers what the local tree asks of
-// it from the state the UI process replicated when this page was created; nothing updates that state yet. Anything
-// that needs the document will be a request to the UI process, and VERIFYs until those requests exist.
+// it from the state the UI process replicates from the canonical tree. Anything that needs the document is a request
+// to the UI process, and VERIFYs until that request exists.
 class WEB_API RemoteNavigable final : public Navigable {
     GC_CELL(RemoteNavigable, Navigable);
     GC_DECLARE_ALLOCATOR(RemoteNavigable);
@@ -32,8 +35,16 @@ public:
     void append_child(GC::Ref<Navigable>);
     void remove_child(Navigable&);
 
-    // A remote navigable is never destroyed from this process: the UI process discards the page hosting its children instead.
-    virtual bool has_been_destroyed() const override { return false; }
+    // A remote navigable leaves this process's graph when the UI process removes it; nothing else destroys it here.
+    void set_removed() { m_removed = true; }
+    virtual bool has_been_destroyed() const override { return m_removed; }
+
+    // https://html.spec.whatwg.org/multipage/document-sequences.html#document-tree-child-navigable
+    Vector<GC::Root<Navigable>> document_tree_child_navigables();
+    // https://html.spec.whatwg.org/multipage/nav-history-apis.html#document-tree-child-navigable-target-name-property-set
+    OrderedHashMap<Utf16FlyString, GC::Ref<Navigable>> document_tree_child_navigable_target_name_property_set();
+    // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-window-closed
+    bool is_closed() const;
 
     virtual GC::Ptr<WindowProxy> active_window_proxy() override;
     virtual Utf16String const& target_name() const override { return m_replicated_state.target_name; }
@@ -51,6 +62,7 @@ public:
     virtual Optional<URL::Origin> active_document_top_level_origin() const override { return m_replicated_state.top_level_origin; }
     virtual bool active_document_has_cross_site_ancestor() const override { return m_replicated_state.has_cross_site_ancestor; }
     virtual OpenerPolicy const& active_document_opener_policy() const override { return m_replicated_state.opener_policy; }
+    virtual bool container_is_in_document_tree() const override { return m_replicated_state.container_is_in_document_tree; }
 
     virtual bool has_session_history_entry_and_ready_for_navigation() const override;
     virtual bool delays_the_load_event_of_its_container() const override;
@@ -69,6 +81,11 @@ private:
 
     // The navigable's child navigables, in the order the UI process learned of their creation.
     Vector<GC::Ref<Navigable>> m_children;
+
+    // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-wp
+    GC::Ptr<WindowProxy> m_window_proxy;
+
+    bool m_removed { false };
 };
 
 }

@@ -25,6 +25,8 @@ Optional<JS::PropertyDescriptor> cross_origin_get_own_property_helper(JS::Object
     JS::PropertyKey const&);
 Optional<JS::PropertyDescriptor> cross_origin_get_own_property_helper(JS::Object&, HTML::Window&, CrossOriginPropertyDescriptorMap&,
     JS::PropertyKey const&);
+Optional<JS::PropertyDescriptor> cross_origin_get_own_property_helper(JS::Object&, HTML::RemoteNavigable&, CrossOriginPropertyDescriptorMap&,
+    JS::PropertyKey const&);
 JS::ThrowCompletionOr<JS::Value> cross_origin_get(JS::VM&, JS::Object const&, JS::PropertyKey const&, JS::Value receiver);
 JS::ThrowCompletionOr<bool> cross_origin_set(JS::VM&, JS::Object&, JS::PropertyKey const&, JS::Value, JS::Value receiver);
 GC::RootVector<JS::Value> cross_origin_own_property_keys(HTML::Location const&);

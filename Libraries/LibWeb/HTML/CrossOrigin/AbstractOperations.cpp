@@ -22,6 +22,7 @@
 #include <LibWeb/HTML/BindingsGlue.h>
 #include <LibWeb/HTML/CrossOrigin/AbstractOperations.h>
 #include <LibWeb/HTML/Location.h>
+#include <LibWeb/HTML/RemoteNavigable.h>
 #include <LibWeb/HTML/Scripting/Environments.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HTML/WindowProxy.h>
@@ -204,6 +205,130 @@ static GC::Ref<JS::NativeFunction> create_cross_origin_window_getter(JS::Realm& 
     VERIFY_NOT_REACHED();
 }
 
+// The cross-origin methods of a Window hosted by another process, on its remote navigable.
+static GC::Ref<JS::NativeFunction> create_cross_origin_remote_navigable_method(JS::Realm& realm, GC::Ref<RemoteNavigable> navigable, Utf16FlyString const& property)
+{
+    if (property == u"close"sv) {
+        return JS::NativeFunction::create(
+            realm, [navigable](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
+                // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-window-close
+                // 2. If thisTraversable is not a top-level traversable, then return.
+                if (!navigable->is_top_level_traversable())
+                    return JS::js_undefined();
+
+                // FIXME: Closing a traversable hosted by another process is a request to the UI process, which knows
+                //        whether it is script-closable.
+                VERIFY_NOT_REACHED();
+            },
+            0, property);
+    }
+
+    if (property == u"focus"sv) {
+        // FIXME: Focusing a navigable hosted by another process is a request to the UI process.
+        JS::NativeFunctionPointer focus = [](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> { VERIFY_NOT_REACHED(); };
+        return JS::NativeFunction::create(realm, focus, 0, property);
+    }
+
+    if (property == u"blur"sv) {
+        // The Window blur() method steps are to do nothing.
+        JS::NativeFunctionPointer blur = [](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> { return JS::js_undefined(); };
+        return JS::NativeFunction::create(realm, blur, 0, property);
+    }
+
+    if (property == u"postMessage"sv) {
+        // FIXME: A message posted to a window hosted by another process is a request to the UI process.
+        JS::NativeFunctionPointer post_message = [](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> { VERIFY_NOT_REACHED(); };
+        return JS::NativeFunction::create(realm, post_message, 1, property);
+    }
+
+    VERIFY_NOT_REACHED();
+}
+
+// The cross-origin attribute getters of a Window hosted by another process, on its remote navigable.
+static GC::Ref<JS::NativeFunction> create_cross_origin_remote_navigable_getter(JS::Realm& realm, GC::Ref<RemoteNavigable> navigable, Utf16FlyString const& property)
+{
+    // The window, frames, and self getter steps are to return this's relevant realm.[[GlobalEnv]].[[GlobalThisValue]].
+    if (property == u"window"sv || property == u"self"sv || property == u"frames"sv) {
+        return JS::NativeFunction::create(
+            realm, [navigable](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
+                return navigable->active_window_proxy().ptr();
+            },
+            0, property, &realm, "get"sv);
+    }
+
+    if (property == u"location"sv) {
+        // FIXME: The Location of a navigable hosted by another process navigates it through the UI process.
+        JS::NativeFunctionPointer location = [](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> { VERIFY_NOT_REACHED(); };
+        return JS::NativeFunction::create(realm, location, 0, property, &realm, "get"sv);
+    }
+
+    if (property == u"closed"sv) {
+        return JS::NativeFunction::create(
+            realm, [navigable](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
+                return JS::Value(navigable->is_closed());
+            },
+            0, property, &realm, "get"sv);
+    }
+
+    if (property == u"length"sv) {
+        return JS::NativeFunction::create(
+            realm, [navigable](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
+                // The length getter steps are to return this's associated Document's document-tree child navigables's size.
+                return JS::Value(static_cast<u32>(navigable->document_tree_child_navigables().size()));
+            },
+            0, property, &realm, "get"sv);
+    }
+
+    if (property == u"top"sv) {
+        return JS::NativeFunction::create(
+            realm, [navigable](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
+                // 2. Return this's navigable's top-level traversable's active WindowProxy.
+                return navigable->top_level_traversable()->active_window_proxy().ptr();
+            },
+            0, property, &realm, "get"sv);
+    }
+
+    if (property == u"opener"sv) {
+        return JS::NativeFunction::create(
+            realm, [navigable](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
+                // 3. If current's opener browsing context is null, then return null.
+                // NB: Only a top-level browsing context has an opener.
+                if (!navigable->is_top_level_traversable())
+                    return JS::js_null();
+
+                // FIXME: The opener of a traversable hosted by another process is canonical in the UI process.
+                VERIFY_NOT_REACHED();
+            },
+            0, property, &realm, "get"sv);
+    }
+
+    if (property == u"parent"sv) {
+        return JS::NativeFunction::create(
+            realm, [navigable](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> {
+                // 3. If navigable's parent is not null, then set navigable to navigable's parent.
+                // 4. Return navigable's active WindowProxy.
+                if (auto parent = navigable->parent())
+                    return parent->active_window_proxy().ptr();
+                return navigable->active_window_proxy().ptr();
+            },
+            0, property, &realm, "get"sv);
+    }
+
+    VERIFY_NOT_REACHED();
+}
+
+// The cross-origin attribute setters of a Window hosted by another process, on its remote navigable.
+static GC::Ref<JS::NativeFunction> create_cross_origin_remote_navigable_setter(JS::Realm& realm, GC::Ref<RemoteNavigable>, Utf16FlyString const& property)
+{
+    if (property == u"location"sv) {
+        // FIXME: The Location of a navigable hosted by another process navigates it through the UI process.
+        JS::NativeFunctionPointer location = [](JS::VM&) -> JS::ThrowCompletionOr<JS::Value> { VERIFY_NOT_REACHED(); };
+        return JS::NativeFunction::create(realm, location, 1, property, &realm, "set"sv);
+    }
+
+    VERIFY_NOT_REACHED();
+}
+
 static GC::Ref<JS::NativeFunction> create_cross_origin_window_setter(JS::Realm& realm, Window& window, Utf16FlyString const& property)
 {
     if (property == u"location"sv) {
@@ -303,7 +428,7 @@ bool is_platform_object_same_origin(Window const& window)
 
 // 7.2.3.4 CrossOriginGetOwnPropertyHelper ( O, P ), https://html.spec.whatwg.org/multipage/nav-history-apis.html#crossorigingetownpropertyhelper-(-o,-p-)
 static Optional<JS::PropertyDescriptor> cross_origin_get_own_property_helper_impl(JS::Object& object,
-    Variant<HTML::Location const*, HTML::Window*> const& platform_object,
+    Variant<HTML::Location const*, HTML::Window*, HTML::RemoteNavigable*> const& platform_object,
     CrossOriginPropertyDescriptorMap& cross_origin_property_descriptor_map, JS::PropertyKey const& property_key)
 {
     auto& vm = Bindings::main_thread_vm();
@@ -323,12 +448,14 @@ static Optional<JS::PropertyDescriptor> cross_origin_get_own_property_helper_imp
     }
     auto const& property_key_string = property_key.as_string();
 
-    auto const platform_object_const_variant = platform_object.visit([](auto* object) {
-        return Variant<HTML::Location const*, HTML::Window const*> { object };
-    });
+    // NB: A Window hosted by another process has the cross-origin properties of any Window.
+    auto const properties = platform_object.visit(
+        [](HTML::Location const* location) { return cross_origin_properties(Variant<HTML::Location const*, HTML::Window const*> { location }); },
+        [](HTML::Window* window) { return cross_origin_properties(Variant<HTML::Location const*, HTML::Window const*> { window }); },
+        [](HTML::RemoteNavigable*) { return cross_origin_window_properties(); });
 
     // 2. For each e of CrossOriginProperties(O):
-    for (auto const& entry : cross_origin_properties(platform_object_const_variant)) {
+    for (auto const& entry : properties) {
         if (entry.property != property_key_string)
             continue;
 
@@ -343,7 +470,8 @@ static Optional<JS::PropertyDescriptor> cross_origin_get_own_property_helper_imp
             [&](HTML::Location const*) {
                 original_descriptor = MUST((object_ptr->JS::Object::internal_get_own_property)(property_key));
             },
-            [](HTML::Window*) {});
+            [](HTML::Window*) {},
+            [](HTML::RemoteNavigable*) {});
 
         // NOTE: The current same-origin property descriptor might have been replaced by page script, for example via
         // [Replaceable]. Cross-origin access still needs to expose wrappers for the original IDL member on O.
@@ -374,6 +502,9 @@ static Optional<JS::PropertyDescriptor> cross_origin_get_own_property_helper_imp
                 },
                 [&](HTML::Window* window) -> JS::Value {
                     return create_cross_origin_window_method(realm, *window, entry.property).ptr();
+                },
+                [&](HTML::RemoteNavigable* navigable) -> JS::Value {
+                    return create_cross_origin_remote_navigable_method(realm, *navigable, entry.property).ptr();
                 });
 
             // 3. Set crossOriginDesc to PropertyDescriptor { [[Value]]: value, [[Enumerable]]: false, [[Writable]]: false, [[Configurable]]: true }.
@@ -400,6 +531,9 @@ static Optional<JS::PropertyDescriptor> cross_origin_get_own_property_helper_imp
                     },
                     [&](HTML::Window* window) -> GC::Ptr<JS::FunctionObject> {
                         return create_cross_origin_window_getter(realm, *window, entry.property).ptr();
+                    },
+                    [&](HTML::RemoteNavigable* navigable) -> GC::Ptr<JS::FunctionObject> {
+                        return create_cross_origin_remote_navigable_getter(realm, *navigable, entry.property).ptr();
                     });
             }
 
@@ -422,6 +556,9 @@ static Optional<JS::PropertyDescriptor> cross_origin_get_own_property_helper_imp
                     },
                     [&](HTML::Window* window) -> GC::Ptr<JS::FunctionObject> {
                         return create_cross_origin_window_setter(realm, *window, entry.property).ptr();
+                    },
+                    [&](HTML::RemoteNavigable* navigable) -> GC::Ptr<JS::FunctionObject> {
+                        return create_cross_origin_remote_navigable_setter(realm, *navigable, entry.property).ptr();
                     });
             }
 
@@ -443,13 +580,19 @@ static Optional<JS::PropertyDescriptor> cross_origin_get_own_property_helper_imp
 Optional<JS::PropertyDescriptor> cross_origin_get_own_property_helper(JS::Object& object, HTML::Location const& location,
     CrossOriginPropertyDescriptorMap& cross_origin_property_descriptor_map, JS::PropertyKey const& property_key)
 {
-    return cross_origin_get_own_property_helper_impl(object, Variant<HTML::Location const*, HTML::Window*> { &location }, cross_origin_property_descriptor_map, property_key);
+    return cross_origin_get_own_property_helper_impl(object, Variant<HTML::Location const*, HTML::Window*, HTML::RemoteNavigable*> { &location }, cross_origin_property_descriptor_map, property_key);
+}
+
+Optional<JS::PropertyDescriptor> cross_origin_get_own_property_helper(JS::Object& object, HTML::RemoteNavigable& navigable,
+    CrossOriginPropertyDescriptorMap& cross_origin_property_descriptor_map, JS::PropertyKey const& property_key)
+{
+    return cross_origin_get_own_property_helper_impl(object, Variant<HTML::Location const*, HTML::Window*, HTML::RemoteNavigable*> { &navigable }, cross_origin_property_descriptor_map, property_key);
 }
 
 Optional<JS::PropertyDescriptor> cross_origin_get_own_property_helper(JS::Object& object, HTML::Window& window,
     CrossOriginPropertyDescriptorMap& cross_origin_property_descriptor_map, JS::PropertyKey const& property_key)
 {
-    return cross_origin_get_own_property_helper_impl(object, Variant<HTML::Location const*, HTML::Window*> { &window }, cross_origin_property_descriptor_map, property_key);
+    return cross_origin_get_own_property_helper_impl(object, Variant<HTML::Location const*, HTML::Window*, HTML::RemoteNavigable*> { &window }, cross_origin_property_descriptor_map, property_key);
 }
 
 // 7.2.3.5 CrossOriginGet ( O, P, Receiver ), https://html.spec.whatwg.org/multipage/browsers.html#crossoriginget-(-o,-p,-receiver-)

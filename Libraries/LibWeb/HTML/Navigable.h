@@ -57,6 +57,10 @@ public:
     virtual bool active_document_has_cross_site_ancestor() const = 0;
     virtual OpenerPolicy const& active_document_opener_policy() const = 0;
 
+    // Whether the navigable's container is in its node document's tree rather than a shadow tree, which makes the
+    // navigable a document-tree child navigable of that document.
+    virtual bool container_is_in_document_tree() const = 0;
+
     virtual bool has_session_history_entry_and_ready_for_navigation() const = 0;
     virtual bool delays_the_load_event_of_its_container() const = 0;
 

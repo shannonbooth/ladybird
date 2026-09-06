@@ -1485,8 +1485,16 @@ ReplicatedNavigableState LocalNavigable::replicated_state() const
         .opener_policy = m_active_document->opener_policy(),
         .active_document_is_completely_loaded = m_active_document->is_completely_loaded(),
         .is_closing = m_closing,
-        .container_is_in_document_tree = m_container && m_container->document().is_ancestor_of(*m_container),
+        .container_is_in_document_tree = container_is_in_document_tree(),
     };
+}
+
+bool LocalNavigable::container_is_in_document_tree() const
+{
+    // A local root's container lives with its parent's document in another process, which reported this at creation.
+    if (!m_container)
+        return m_root_container_is_in_document_tree;
+    return m_container->document().is_ancestor_of(*m_container);
 }
 
 void LocalNavigable::set_closing(bool value)
@@ -4454,6 +4462,7 @@ GC::Ref<LocalNavigable> LocalNavigable::create_local_root(GC::Ref<Page> page, Ve
 
         if (descriptor.id == root_navigable_id) {
             VERIFY(parent);
+            navigable->m_root_container_is_in_document_tree = descriptor.replicated_state.container_is_in_document_tree;
 
             // 8. Initialize the navigable navigable given documentState and parentNavigable.
             navigable->initialize_navigable(document_state, parent, *document, system_visibility_state);
@@ -4493,6 +4502,7 @@ void LocalNavigable::remove_remote_navigable(CrossProcessId id)
     auto navigable = top_level_traversable()->find(id);
     VERIFY(navigable);
     as<RemoteNavigable>(*navigable->parent()).remove_child(*navigable);
+    as<RemoteNavigable>(*navigable).set_removed();
 }
 
 void LocalNavigable::update_remote_navigable(CrossProcessId id, ReplicatedNavigableState state)

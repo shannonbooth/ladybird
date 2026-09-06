@@ -13,6 +13,7 @@
 #include <LibWeb/Bindings/PlatformObject.h>
 #include <LibWeb/Export.h>
 #include <LibWeb/Forward.h>
+#include <LibWeb/HTML/CrossOrigin/CrossOriginPropertyDescriptorMap.h>
 
 namespace Web::HTML {
 
@@ -22,6 +23,9 @@ class WEB_API WindowProxy final : public Bindings::PlatformObject {
 
 public:
     static GC::Ref<WindowProxy> create(JS::Realm&);
+    // A WindowProxy whose [[Window]] is hosted by another process. Every access takes the cross-origin path and is
+    // answered from the remote navigable.
+    static GC::Ref<WindowProxy> create_for_remote_navigable(JS::Realm&, GC::Ref<RemoteNavigable>);
     virtual ~WindowProxy() override = default;
 
     virtual JS::ThrowCompletionOr<JS::Object*> internal_get_prototype_of() const override;
@@ -38,12 +42,14 @@ public:
 
     GC::Ptr<Window> window() const { return m_window; }
     void set_window(GC::Ref<Window>);
+    GC::Ptr<RemoteNavigable> remote_navigable() const { return m_remote_navigable; }
 
     GC::Ptr<BrowsingContext> associated_browsing_context() const;
 
 private:
     explicit WindowProxy(JS::Realm&);
     Bindings::PlatformObject& cross_origin_window_wrapper() const;
+    JS::ThrowCompletionOr<Optional<JS::PropertyDescriptor>> remote_navigable_get_own_property(JS::PropertyKey const&) const;
 
     virtual bool is_html_window_proxy() const override { return true; }
     virtual void visit_edges(JS::Cell::Visitor&) override;
@@ -54,6 +60,11 @@ private:
     // Keeps the per-realm Window wrapper alive while cross-origin property descriptors cached on it can be reused
     // through this WindowProxy.
     mutable GC::Ptr<Bindings::PlatformObject> m_cross_origin_window_wrapper;
+
+    // The navigable this proxy stands for when its [[Window]] is hosted by another process, and the
+    // [[CrossOriginPropertyDescriptorMap]] its accesses are cached in.
+    GC::Ptr<RemoteNavigable> m_remote_navigable;
+    mutable CrossOriginPropertyDescriptorMap m_remote_navigable_cross_origin_property_descriptor_map;
 };
 
 }
