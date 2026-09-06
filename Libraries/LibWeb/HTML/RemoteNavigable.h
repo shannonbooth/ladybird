@@ -19,8 +19,10 @@ class WEB_API RemoteNavigable final : public Navigable {
     GC_DECLARE_ALLOCATOR(RemoteNavigable);
 
 public:
-    static GC::Ref<RemoteNavigable> create(CrossProcessId, GC::Ptr<Navigable> parent, ReplicatedNavigableState);
+    static GC::Ref<RemoteNavigable> create(GC::Ref<Page>, CrossProcessId, GC::Ptr<Navigable> parent, ReplicatedNavigableState);
     virtual ~RemoteNavigable() override;
+
+    Page& page() { return m_page; }
 
     ReplicatedNavigableState const& replicated_state() const { return m_replicated_state; }
 
@@ -48,10 +50,14 @@ public:
     virtual bool delays_the_load_event_of_its_container() const override;
 
 private:
-    RemoteNavigable(CrossProcessId, GC::Ptr<Navigable> parent, ReplicatedNavigableState);
+    RemoteNavigable(GC::Ref<Page>, CrossProcessId, GC::Ptr<Navigable> parent, ReplicatedNavigableState);
+
+    virtual void visit_edges(Cell::Visitor&) override;
 
     virtual WebIDL::ExceptionOr<void> continue_navigation_in_active_document_agent(PreparedNavigation) override;
 
+    // The page whose navigable graph this node belongs to, and whose client carries requests to the UI process.
+    GC::Ref<Page> m_page;
     ReplicatedNavigableState m_replicated_state;
 };
 

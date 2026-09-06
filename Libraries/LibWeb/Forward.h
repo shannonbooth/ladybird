@@ -929,6 +929,8 @@ struct NavigationPopulationResult;
 struct NavigationStartRequest;
 struct NavigationParams;
 struct OpenerPolicy;
+struct PreparedNavigation;
+struct PreparedNavigationDescriptor;
 struct OpenerPolicyEnforcementResult;
 struct PaintConfig;
 struct PolicyContainer;

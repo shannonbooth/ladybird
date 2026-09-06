@@ -43,6 +43,7 @@
 #include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/NavigationPopulationRequest.h>
+#include <LibWeb/HTML/RemoteNavigable.h>
 #include <LibWeb/HTML/Scripting/ClassicScript.h>
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
 #include <LibWeb/HTML/Window.h>
@@ -246,6 +247,25 @@ void PageClient::request_navigation_start(Web::HTML::LocalNavigable& navigable, 
 void PageClient::request_navigation_population(Web::HTML::LocalNavigable& navigable, Web::NavigationTarget target, Web::HTML::NavigationPopulationRequest request)
 {
     client().async_did_request_navigation_population(m_id, navigable.id(), target, move(request));
+}
+
+void PageClient::request_navigation_of_remote_navigable(Web::HTML::RemoteNavigable& navigable, Web::HTML::PreparedNavigationDescriptor navigation)
+{
+    client().async_did_request_navigation_of_navigable(m_id, navigable.id(), move(navigation));
+}
+
+void PageClient::navigate_navigable(Web::HTML::CrossProcessId navigable_id, Web::HTML::PreparedNavigationDescriptor navigation)
+{
+    auto active_document = page().local_root_navigable()->active_document();
+    if (!active_document)
+        return;
+
+    for (auto const& navigable : active_document->inclusive_descendant_navigables()) {
+        if (navigable->id() != navigable_id)
+            continue;
+        navigable->continue_navigation_from_another_process(move(navigation));
+        return;
+    }
 }
 
 void PageClient::navigation_params_creation_finished(Web::HTML::LocalNavigable& navigable, Web::HTML::NavigationPopulationRequest request, Web::HTML::NavigationPopulationResult result)
