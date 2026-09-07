@@ -1487,6 +1487,16 @@ void PageClient::crash_remote_frame_processes_for_testing()
     client().async_did_request_crash_of_remote_frame_processes_for_testing(m_id);
 }
 
+void PageClient::page_did_set_site_compatibility_data_for_testing(JsonValue const& data)
+{
+    client().async_did_set_site_compatibility_data_for_testing(m_id, data);
+}
+
+void PageClient::page_did_set_experimental_interfaces_exposed_for_testing(bool exposed)
+{
+    client().async_did_set_experimental_interfaces_exposed_for_testing(m_id, exposed);
+}
+
 bool PageClient::page_did_request_capture_session_history_snapshot_for_testing()
 {
     return client().did_request_capture_session_history_snapshot_for_testing(m_id);

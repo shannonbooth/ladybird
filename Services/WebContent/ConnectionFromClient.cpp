@@ -70,6 +70,7 @@
 #include <LibWeb/HTML/SelectedFile.h>
 #include <LibWeb/HTML/Storage.h>
 #include <LibWeb/HTML/Window.h>
+#include <LibWeb/HTML/WindowOrWorkerGlobalScope.h>
 #include <LibWeb/HTML/WorkerAgentParent.h>
 #include <LibWeb/Infra/Strings.h>
 #include <LibWeb/Layout/Node.h>
@@ -429,6 +430,11 @@ void ConnectionFromClient::set_site_compatibility_data(JsonValue data)
         return;
     }
     Web::ResourceLoader::the().set_site_compatibility_data(parsed_data.release_value());
+}
+
+void ConnectionFromClient::set_experimental_interfaces_exposed(bool exposed)
+{
+    Web::HTML::WindowOrWorkerGlobalScopeMixin::set_experimental_interfaces_exposed(exposed);
 }
 
 void ConnectionFromClient::update_screen_rects(u64 page_id, Vector<Web::DevicePixelRect> rects, u32 main_screen)

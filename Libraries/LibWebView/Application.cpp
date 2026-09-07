@@ -1077,7 +1077,12 @@ ErrorOr<NonnullRefPtr<WebContentClient>> Application::create_web_content_client(
 
 ErrorOr<void> Application::reload_site_compatibility_data()
 {
-    auto data = TRY(load_site_compatibility_data());
+    set_site_compatibility_data(TRY(load_site_compatibility_data()));
+    return {};
+}
+
+void Application::set_site_compatibility_data(JsonValue data)
+{
     m_site_compatibility_data = move(data);
 
     WebContentClient::for_each_client([&](auto& client) {
@@ -1085,7 +1090,16 @@ ErrorOr<void> Application::reload_site_compatibility_data()
         return IterationDecision::Continue;
     });
     WorkerProcessManager::the().update_site_compatibility_data(m_site_compatibility_data);
-    return {};
+}
+
+void Application::set_experimental_interfaces_exposed(bool exposed)
+{
+    m_web_content_options.expose_experimental_interfaces = exposed ? ExposeExperimentalInterfaces::Yes : ExposeExperimentalInterfaces::No;
+
+    WebContentClient::for_each_client([&](auto& client) {
+        client.async_set_experimental_interfaces_exposed(exposed);
+        return IterationDecision::Continue;
+    });
 }
 
 u64 Application::allocate_page_id()

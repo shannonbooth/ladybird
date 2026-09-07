@@ -517,6 +517,8 @@ public:
     virtual void page_did_destroy_child_frame(HTML::CrossProcessId) { }
     virtual String dump_site_isolation_process_tree_for_testing() { return {}; }
     virtual void crash_remote_frame_processes_for_testing() { }
+    virtual void page_did_set_site_compatibility_data_for_testing(JsonValue const&) { }
+    virtual void page_did_set_experimental_interfaces_exposed_for_testing(bool) { }
     virtual Gfx::Palette palette() const = 0;
     virtual DevicePixelRect screen_rect() const = 0;
     virtual double zoom_level() const = 0;

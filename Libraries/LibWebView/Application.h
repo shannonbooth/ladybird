@@ -95,6 +95,8 @@ public:
     static FontService& font_service() { return *the().m_font_service; }
     JsonValue const& site_compatibility_data() const { return m_site_compatibility_data; }
     ErrorOr<void> reload_site_compatibility_data();
+    void set_site_compatibility_data(JsonValue);
+    void set_experimental_interfaces_exposed(bool);
 
     bool claim_cpu_profiler(ProcessType);
     void set_cpu_profiler_process(Core::Process, OwnPtr<Core::File> control_socket);

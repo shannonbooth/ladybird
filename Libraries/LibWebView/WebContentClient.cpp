@@ -2453,6 +2453,16 @@ void WebContentClient::did_reset_session_history_for_testing(u64 page_id, Web::H
         view->did_reset_session_history_for_testing({}, move(active_entry));
 }
 
+void WebContentClient::did_set_site_compatibility_data_for_testing(u64, JsonValue data)
+{
+    Application::the().set_site_compatibility_data(move(data));
+}
+
+void WebContentClient::did_set_experimental_interfaces_exposed_for_testing(u64, bool exposed)
+{
+    Application::the().set_experimental_interfaces_exposed(exposed);
+}
+
 void WebContentClient::request_history_operation(u64 page_id, Web::HTML::CrossProcessId operation_id, Web::HistoryOperationParameters parameters)
 {
     if (auto view = owning_view_for_page_id(page_id); view.has_value())

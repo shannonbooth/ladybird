@@ -862,6 +862,7 @@ WebIDL::ExceptionOr<void> Internals::set_site_compatibility_data(Utf16String con
         return window().principal_realm().vm().throw_completion<JS::InternalError>(Utf16String::formatted("Could not set site compatibility data: {}", data.error()));
 
     ResourceLoader::the().set_site_compatibility_data(data.release_value());
+    page().client().page_did_set_site_compatibility_data_for_testing(json.value());
     return {};
 }
 
@@ -869,6 +870,7 @@ WebIDL::ExceptionOr<void> Internals::set_site_compatibility_data(Utf16String con
 void Internals::set_experimental_interfaces_exposed(bool exposed)
 {
     HTML::WindowOrWorkerGlobalScopeMixin::set_experimental_interfaces_exposed(exposed);
+    page().client().page_did_set_experimental_interfaces_exposed_for_testing(exposed);
 }
 
 void Internals::set_content_blocking_enabled(bool enabled)
