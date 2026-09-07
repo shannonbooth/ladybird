@@ -5,8 +5,10 @@
  */
 
 #include <LibGC/Heap.h>
+#include <LibWeb/DOM/Document.h>
 #include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/Location.h>
+#include <LibWeb/HTML/NavigableContainer.h>
 #include <LibWeb/HTML/PostedMessageDescriptor.h>
 #include <LibWeb/HTML/PreparedNavigationDescriptor.h>
 #include <LibWeb/HTML/RemoteNavigable.h>
@@ -152,23 +154,44 @@ bool RemoteNavigable::is_closed() const
     return has_been_destroyed() || m_replicated_state.is_closing;
 }
 
+void RemoteNavigable::set_replicated_state(ReplicatedNavigableState state)
+{
+    auto was_delaying_the_load_event_of_its_container = m_replicated_state.delays_the_load_event_of_its_container;
+    auto active_document_was_completely_loaded = m_replicated_state.active_document_is_completely_loaded;
+    m_replicated_state = move(state);
+
+    // A container here hears from the document through the replicated state what a document here tells it directly.
+    auto container = this->container();
+    if (!container)
+        return;
+    if (was_delaying_the_load_event_of_its_container && !m_replicated_state.delays_the_load_event_of_its_container)
+        container->document().schedule_html_parser_end_check();
+    if (!active_document_was_completely_loaded && m_replicated_state.active_document_is_completely_loaded)
+        container->content_navigable_completely_finished_loading();
+}
+
+bool RemoteNavigable::container_is_in_document_tree() const
+{
+    // The container is here for a child hosted by another process, and in the process holding the parent's document
+    // otherwise.
+    if (auto container = this->container())
+        return container->document().is_ancestor_of(*container);
+    return m_replicated_state.container_is_in_document_tree;
+}
+
 bool RemoteNavigable::has_session_history_entry_and_ready_for_navigation() const
 {
-    // Only a navigable container asks this of its content navigable, and no remote navigable has a container in this
-    // process yet.
-    VERIFY_NOT_REACHED();
+    return m_replicated_state.has_session_history_entry_and_ready_for_navigation;
 }
 
 bool RemoteNavigable::delays_the_load_event_of_its_container() const
 {
-    VERIFY_NOT_REACHED();
+    return m_replicated_state.delays_the_load_event_of_its_container;
 }
 
 void RemoteNavigable::unload_for_child_navigable_destruction(UnloadDisplayedDocument)
 {
-    // Only a navigable container's content navigable is destroyed this way, and no remote navigable has a container in
-    // this process yet.
-    VERIFY_NOT_REACHED();
+    // The UI process unloaded the document in the process hosting it.
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate

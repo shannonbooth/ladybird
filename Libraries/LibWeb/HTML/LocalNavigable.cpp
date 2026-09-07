@@ -700,6 +700,24 @@ void LocalNavigable::set_has_been_destroyed()
     cancel_user_scroll_settlement();
 }
 
+// AD-HOC: The documents of a navigable whose next document another process hosts are unloaded here, before that
+//         document activates there.
+void LocalNavigable::unload_document_tree_for_host_change()
+{
+    set_has_been_destroyed();
+    queue_a_task(Task::Source::NavigationAndTraversal, nullptr, nullptr, GC::create_function(heap(), [navigable = GC::Ref { *this }] {
+        if (auto document = navigable->active_document()) {
+            auto descendant_navigables = local_navigables_among(document->descendant_navigables());
+            for (auto const& descendant_navigable : descendant_navigables.in_reverse()) {
+                if (auto descendant_document = descendant_navigable->active_document())
+                    descendant_document->unload();
+            }
+            document->unload();
+        }
+        navigable->remove_from_all_local_navigables();
+    }));
+}
+
 void LocalNavigable::unload_for_child_navigable_destruction(UnloadDisplayedDocument unload_displayed_document)
 {
     if (unload_displayed_document == UnloadDisplayedDocument::Yes) {
@@ -828,18 +846,16 @@ void LocalNavigable::set_delaying_load_events(bool value)
 {
     m_is_delaying_load_events = value;
 
-    // The container document's load event waits on this flag where that document lives.
-    // FIXME: A container document hosted in another process does not wait yet. Its process needs the loading state
-    //        replicated for the remote navigable that stands in for this one.
+    // The container document's load event waits on this flag where that document lives: through a delayer when the
+    // document is here, and through the replicated state when it is in another process.
     if (!value) {
         m_container_document_load_event_delayer.clear();
-        return;
-    }
-    if (auto document = container_document()) {
+    } else if (auto document = container_document()) {
         m_container_document_load_event_delayer.emplace(*document);
-        return;
+    } else {
+        VERIFY(parent() && !is<LocalNavigable>(*parent()));
     }
-    VERIFY(parent() && !is<LocalNavigable>(*parent()));
+    report_state_to_remote_container();
 }
 
 void LocalNavigable::set_navigation_load_event_guard(DOM::Document& parent_doc)
@@ -946,6 +962,12 @@ void LocalNavigable::continue_navigation_at_population(NavigationPopulationReque
     history_entry->set_step(SessionHistoryEntry::Pending::Tag);
 
     navigable->set_ongoing_navigation(request.navigation_id);
+
+    // 15. If navigable's parent is non-null, then set navigable's is delaying load events to true.
+    // NB: A navigable whose container is in another process ran the earlier steps of navigate there. Its container's
+    //     document waits on the flag through the replicated state, so set it where the population happens.
+    if (navigable->is_local_root() && navigable->parent())
+        navigable->set_delaying_load_events(true);
 
     auto& realm = navigable->active_window()->principal_realm();
     TemporaryExecutionContext execution_context { realm, TemporaryExecutionContext::CallbacksEnabled::Yes };
@@ -1468,6 +1490,8 @@ ReplicatedNavigableState LocalNavigable::replicated_state() const
         .active_document_is_completely_loaded = m_active_document->is_completely_loaded(),
         .is_closing = m_closing,
         .container_is_in_document_tree = container_is_in_document_tree(),
+        .delays_the_load_event_of_its_container = delays_the_load_event_of_its_container(),
+        .has_session_history_entry_and_ready_for_navigation = m_has_session_history_entry_and_ready_for_navigation,
     };
 }
 
@@ -1485,7 +1509,19 @@ void LocalNavigable::set_closing(bool value)
     m_closing = value;
 
     // The navigable's replicated state carries its closing flag.
+    report_replicated_state();
+}
+
+void LocalNavigable::report_replicated_state()
+{
     page().client().page_did_change_replicated_navigable_state(id(), replicated_state());
+}
+
+// A container in another process reads what it asks of its content navigable from the replicated state.
+void LocalNavigable::report_state_to_remote_container()
+{
+    if (is_local_root() && parent())
+        report_replicated_state();
 }
 
 Optional<UniqueNodeID> LocalNavigable::active_document_id() const
@@ -4408,7 +4444,7 @@ void LocalNavigable::for_each_child_navigable(Function<IterationDecision(Navigab
 //         populated, a document state carrying the canonical entry's id, and a navigable initialized in the tab's
 //         navigable graph, whose other documents live in other processes. The UI process owns the container and the
 //         session history this navigable belongs to.
-GC::Ref<LocalNavigable> LocalNavigable::create_local_root(GC::Ref<Page> page, Vector<RemoteNavigableDescriptor> remote_navigables, CrossProcessId root_navigable_id, CrossProcessId initial_document_state_id, VisibilityState system_visibility_state)
+GC::Ref<LocalNavigable> LocalNavigable::create_local_root(GC::Ref<Page> page, Vector<RemoteNavigableDescriptor> remote_navigables, CrossProcessId root_navigable_id, SessionHistoryEntryDescriptor const& initial_history_entry, VisibilityState system_visibility_state)
 {
     VERIFY(!remote_navigables.is_empty());
     page->ensure_compositor_host();
@@ -4421,12 +4457,14 @@ GC::Ref<LocalNavigable> LocalNavigable::create_local_root(GC::Ref<Page> page, Ve
 
     // 6. Let documentState be a new document state, with
     // NB: Its id is the canonical entry's, so this process addresses the entry the way the UI process does.
-    auto document_state = DocumentState::create(initial_document_state_id);
+    auto document_state = DocumentState::create(initial_history_entry.document_state.id);
     // initiator origin: document's origin
     document_state->set_initiator_origin(document->origin());
     // origin: document's origin
     document_state->set_origin(document->origin());
-    // FIXME: navigable target name: the canonical entry's, which is not sent to this process yet.
+    // navigable target name: the canonical entry's
+    if (!initial_history_entry.document_state.navigable_target_name.is_empty())
+        document_state->set_navigable_target_name(initial_history_entry.document_state.navigable_target_name);
     // about base URL: document's about base URL
     document_state->set_about_base_url(document->about_base_url());
 
@@ -4460,6 +4498,9 @@ GC::Ref<LocalNavigable> LocalNavigable::create_local_root(GC::Ref<Page> page, Ve
             // 8. Initialize the navigable navigable given documentState and parentNavigable.
             navigable->initialize_navigable(document_state, parent, *document, system_visibility_state);
             VERIFY(navigable->id() == root_navigable_id);
+            // The entry stands in for the canonical current entry, whose identity this process reports as its own.
+            navigable->active_session_history_entry()->set_navigation_api_key(initial_history_entry.navigation_api_key);
+            navigable->active_session_history_entry()->set_navigation_api_id(initial_history_entry.navigation_api_id);
             as<RemoteNavigable>(*parent).append_child(*navigable);
             graph.append(*navigable);
             initialized = true;
@@ -6167,6 +6208,7 @@ void LocalNavigable::stop_loading()
 void LocalNavigable::set_has_session_history_entry_and_ready_for_navigation()
 {
     m_has_session_history_entry_and_ready_for_navigation = true;
+    report_state_to_remote_container();
     process_pending_navigations();
 }
 

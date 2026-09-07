@@ -736,12 +736,12 @@ void WebContentClient::did_complete_navigation_unload_check(u64 page_id, Web::HT
 }
 
 // The process and page hosting the document of a navigable that a page represents. A page represents every navigable
-// of its tab outside the subtree of the one it hosts, so those are the ones it can ask to navigate or post to.
-static Optional<CanonicalTraversable::HistoryJobEndpoint> endpoint_hosting_navigable_represented_by(CanonicalNavigable& page_host, Web::HTML::CrossProcessId navigable_id)
+// of its tab whose document it does not host, so those are the ones it can ask to navigate or post to.
+static Optional<CanonicalTraversable::HistoryJobEndpoint> endpoint_hosting_navigable_represented_by(WebContentClient const& client, u64 page_id, CanonicalNavigable& page_host, Web::HTML::CrossProcessId navigable_id)
 {
     auto& traversable = page_host.top_level_traversable();
     auto target = traversable.find(navigable_id);
-    if (!target.has_value() || &*target == &page_host || page_host.is_ancestor_of(*target))
+    if (!target.has_value() || &*target == &page_host || target->is_hosted_by(client, page_id))
         return {};
 
     auto endpoint = traversable.history_job_endpoint_for(*target);
@@ -757,7 +757,7 @@ void WebContentClient::did_request_navigation_of_navigable(u64 page_id, Web::HTM
     if (!page_host)
         return;
 
-    auto endpoint = endpoint_hosting_navigable_represented_by(*page_host, navigable_id);
+    auto endpoint = endpoint_hosting_navigable_represented_by(*this, page_id, *page_host, navigable_id);
     if (!endpoint.has_value())
         return;
     endpoint->client->async_navigate_navigable(endpoint->page_id, navigable_id, move(navigation));
@@ -770,7 +770,7 @@ void WebContentClient::did_post_message_to_navigable(u64 page_id, Web::HTML::Cro
     if (!page_host)
         return;
 
-    auto endpoint = endpoint_hosting_navigable_represented_by(*page_host, navigable_id);
+    auto endpoint = endpoint_hosting_navigable_represented_by(*this, page_id, *page_host, navigable_id);
     if (!endpoint.has_value())
         return;
     endpoint->client->async_deliver_posted_message(endpoint->page_id, navigable_id, move(message));

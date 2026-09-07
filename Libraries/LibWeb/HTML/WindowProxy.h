@@ -43,6 +43,8 @@ public:
     GC::Ptr<Window> window() const { return m_window; }
     void set_window(GC::Ref<Window>);
     GC::Ptr<RemoteNavigable> remote_navigable() const { return m_remote_navigable; }
+    // The [[Window]] moved to another process, or came back: the proxy stays the object scripts hold for it.
+    void set_remote_navigable(GC::Ref<RemoteNavigable>);
 
     GC::Ptr<BrowsingContext> associated_browsing_context() const;
 

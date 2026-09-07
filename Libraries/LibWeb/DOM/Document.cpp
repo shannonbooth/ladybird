@@ -4523,27 +4523,9 @@ void Document::completely_finish_loading()
         m_active_refresh_timer->start();
 
     // 3. Let container be document's browsing context's container.
-    if (!navigable->container())
-        return;
-
-    auto container = GC::make_root(navigable->container());
-
-    // 4. If container is an iframe element, then queue an element task on the DOM manipulation task source given container to run the iframe load event steps given container.
-    if (container && is<HTML::HTMLIFrameElement>(*container)) {
-        container->queue_an_element_task(HTML::Task::Source::DOMManipulation, [container] {
-            run_iframe_load_event_steps(static_cast<HTML::HTMLIFrameElement&>(*container));
-        });
-    }
-    // 5. Otherwise, if container is non-null, then queue an element task on the DOM manipulation task source given container to fire an event named load at container.
-    else if (container) {
-        container->queue_an_element_task(HTML::Task::Source::DOMManipulation, [container] {
-            container->dispatch_event(DOM::Event::create(HTML::EventNames::load, HighResolutionTime::current_high_resolution_time(HTML::relevant_global_object(*container))));
-        });
-    }
-
-    // AD-HOC: Finishing a child document can unblock its parent's load-event-delay phase, so wake the parent parser end
-    //         state after queueing the container's load event.
-    container->document().schedule_html_parser_end_check();
+    // 4-5. Run the container's steps.
+    if (auto container = navigable->container())
+        container->content_navigable_completely_finished_loading();
 }
 
 // https://html.spec.whatwg.org/multipage/dom.html#dom-document-cookie
@@ -4994,7 +4976,11 @@ bool Document::has_focus() const
         auto focused_area = candidate->focused_area();
         if (auto* navigable_container = as_if<HTML::NavigableContainer>(focused_area.ptr())) {
             if (auto content_navigable = navigable_container->content_navigable()) {
-                candidate = as<HTML::LocalNavigable>(*content_navigable).active_document();
+                // FIXME: Continue into a document hosted by another process.
+                auto* local_navigable = as_if<HTML::LocalNavigable>(*content_navigable);
+                if (!local_navigable)
+                    return false;
+                candidate = local_navigable->active_document();
                 continue;
             }
         }
@@ -5214,9 +5200,10 @@ void Document::set_ready_for_post_load_tasks(bool ready)
             //         load event from firing while the about:blank was still the active document.
             navigable->clear_navigation_load_event_guard();
 
-            if (auto container = navigable->container()) {
+            if (auto container = navigable->container())
                 container->document().schedule_html_parser_end_check();
-            }
+            else
+                navigable->report_state_to_remote_container();
         }
     }
 }
@@ -5690,7 +5677,8 @@ void Document::destroy()
             auto& child_navigable = *navigable_container->content_navigable();
             child_navigable.report_child_frame_destroyed();
             child_navigable.set_has_been_destroyed();
-            as<HTML::LocalNavigable>(child_navigable).remove_from_all_local_navigables();
+            if (auto* local_child_navigable = as_if<HTML::LocalNavigable>(child_navigable))
+                local_child_navigable->remove_from_all_local_navigables();
         }
     }
 

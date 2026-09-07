@@ -15,14 +15,19 @@
 #include <LibWeb/HTML/BrowsingContext.h>
 #include <LibWeb/HTML/BrowsingContextGroup.h>
 #include <LibWeb/HTML/DocumentState.h>
+#include <LibWeb/HTML/EventNames.h>
 #include <LibWeb/HTML/HTMLIFrameElement.h>
 #include <LibWeb/HTML/HistoryExecutor.h>
 #include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/NavigableContainer.h>
 #include <LibWeb/HTML/NavigationParams.h>
+#include <LibWeb/HTML/RemoteNavigable.h>
+#include <LibWeb/HTML/Scripting/Environments.h>
 #include <LibWeb/HTML/Scripting/WindowEnvironmentSettingsObject.h>
+#include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/Window.h>
+#include <LibWeb/HTML/WindowProxy.h>
 #include <LibWeb/HighResolutionTime/TimeOrigin.h>
 #include <LibWeb/Layout/Node.h>
 #include <LibWeb/Page/Page.h>
@@ -157,7 +162,12 @@ DOM::Document const* NavigableContainer::content_document() const
         return nullptr;
 
     // 2. Let document be container's content navigable's active document.
-    auto document = as<LocalNavigable>(*m_content_navigable).active_document();
+    // NB: A document hosted by another process is never same origin-domain with container's node document here, until
+    //     same-origin documents of different pages are stitched together.
+    auto* local_navigable = as_if<LocalNavigable>(*m_content_navigable);
+    if (!local_navigable)
+        return nullptr;
+    auto document = local_navigable->active_document();
 
     // AD-HOC: The active document can be null during navigation, after the old document
     //         has been destroyed but before the new document has been set.
@@ -177,7 +187,11 @@ DOM::Document const* NavigableContainer::content_document_without_origin_check()
     if (!m_content_navigable)
         return nullptr;
 
-    return as<LocalNavigable>(*m_content_navigable).active_document().ptr();
+    // A document hosted by another process is not here.
+    auto* local_navigable = as_if<LocalNavigable>(*m_content_navigable);
+    if (!local_navigable)
+        return nullptr;
+    return local_navigable->active_document().ptr();
 }
 
 // https://html.spec.whatwg.org/multipage/embedded-content-other.html#dom-media-getsvgdocument
@@ -315,24 +329,26 @@ void NavigableContainer::destroy_the_child_navigable()
         return;
     navigable->set_has_been_destroyed();
 
-    // NB: No remote navigable has a container in this process yet.
-    auto& local_navigable = as<LocalNavigable>(*navigable);
+    // The load-event delays and navigation API of the navigable's document are where the document is.
+    // FIXME: Inform the navigation API of a navigable hosted by another process in that process.
+    auto* local_navigable = as_if<LocalNavigable>(*navigable);
+    if (local_navigable) {
+        // AD-HOC: Clear the navigable's "is delaying load events" flag.
+        //         This removes the DocumentLoadEventDelayer on the parent document that was
+        //         created when the navigable started loading (navigate algorithm step 15).
+        //         Without this, the delayer lingers until GC collects the LocalNavigable, which can
+        //         block the parent document's load event indefinitely.
+        local_navigable->set_delaying_load_events(false);
 
-    // AD-HOC: Clear the navigable's "is delaying load events" flag.
-    //         This removes the DocumentLoadEventDelayer on the parent document that was
-    //         created when the navigable started loading (navigate algorithm step 15).
-    //         Without this, the delayer lingers until GC collects the LocalNavigable, which can
-    //         block the parent document's load event indefinitely.
-    local_navigable.set_delaying_load_events(false);
+        // AD-HOC: Clear the navigation load event guard that may have been set by
+        //         finalize_a_cross_document_navigation. Without this, the guard's
+        //         DocumentLoadEventDelayer on the parent document persists until GC,
+        //         blocking the parent's load event indefinitely.
+        local_navigable->clear_navigation_load_event_guard();
 
-    // AD-HOC: Clear the navigation load event guard that may have been set by
-    //         finalize_a_cross_document_navigation. Without this, the guard's
-    //         DocumentLoadEventDelayer on the parent document persists until GC,
-    //         blocking the parent's load event indefinitely.
-    local_navigable.clear_navigation_load_event_guard();
-
-    // 4. Inform the navigation API about child navigable destruction given navigable.
-    local_navigable.inform_the_navigation_api_about_child_navigable_destruction();
+        // 4. Inform the navigation API about child navigable destruction given navigable.
+        local_navigable->inform_the_navigation_api_about_child_navigable_destruction();
+    }
 
     auto after_document_destruction = GC::create_function(GC::Heap::the(), [this, navigable] {
         // 3. Set container's content navigable to null.
@@ -351,7 +367,8 @@ void NavigableContainer::destroy_the_child_navigable()
 
         // Not in the spec:
         navigable->report_child_frame_destroyed();
-        as<LocalNavigable>(*navigable).remove_from_all_local_navigables();
+        if (auto* local_navigable = as_if<LocalNavigable>(*navigable))
+            local_navigable->remove_from_all_local_navigables();
 
         // 6. Let parentDocState be container's node navigable's active session history entry's document state.
         auto parent_navigable = this->navigable();
@@ -384,10 +401,109 @@ void NavigableContainer::destroy_the_child_navigable()
     //         container, we reach step 5 with navigable's active document already null. We
     //         treat the unload step as a no-op in that case and proceed with the remaining
     //         post-destruction cleanup.
-    if (local_navigable.active_document())
-        local_navigable.unload_child_navigable_before_destruction(after_document_destruction);
+    // NB: The document of a navigable hosted by another process is unloaded there, through the UI process.
+    if (!local_navigable || local_navigable->active_document())
+        navigable->unload_child_navigable_before_destruction(after_document_destruction);
     else
         after_document_destruction->function()();
+}
+
+// AD-HOC: The UI process chose another process to host the content navigable's next document. A RemoteNavigable
+//         represents the navigable here from then on, with the WindowProxy scripts hold for it, and the document it
+//         displayed here is unloaded.
+void NavigableContainer::swap_content_navigable_to_remote(ReplicatedNavigableState replicated_state, Optional<Compositor::CompositorContextId> compositor_context_id)
+{
+    VERIFY(m_content_navigable);
+    if (auto* remote_navigable = as_if<RemoteNavigable>(*m_content_navigable)) {
+        remote_navigable->set_compositor_context_id(compositor_context_id);
+        remote_navigable->set_replicated_state(move(replicated_state));
+        set_needs_repaint();
+        return;
+    }
+
+    auto& local_navigable = as<LocalNavigable>(*m_content_navigable);
+    auto remote_navigable = RemoteNavigable::create(document().page(), local_navigable.id(), local_navigable.parent(), move(replicated_state));
+    remote_navigable->set_compositor_context_id(compositor_context_id);
+    remote_navigable->set_container({}, this);
+    if (auto browsing_context = local_navigable.active_browsing_context()) {
+        auto& window_proxy = *browsing_context->window_proxy();
+        window_proxy.set_remote_navigable(remote_navigable);
+        remote_navigable->set_window_proxy({}, window_proxy);
+    }
+    m_content_navigable = remote_navigable;
+    set_needs_repaint();
+
+    local_navigable.set_container({}, nullptr);
+    local_navigable.set_delaying_load_events(false);
+    local_navigable.clear_navigation_load_event_guard();
+    local_navigable.unload_document_tree_for_host_change();
+}
+
+// AD-HOC: The UI process chose this process to host the content navigable's next document. A local navigable with a
+//         document standing in until that document is populated takes the container back, with the same WindowProxy.
+void NavigableContainer::swap_content_navigable_to_local(SessionHistoryEntryDescriptor const& initial_history_entry)
+{
+    VERIFY(m_content_navigable);
+    auto& remote_navigable = as<RemoteNavigable>(*m_content_navigable);
+    auto parent_navigable = navigable();
+    VERIFY(parent_navigable);
+    auto& page = document().page();
+
+    // 3. Let browsingContext and document be the result of creating a new browsing context and document given element's node document, element, and group.
+    auto [browsing_context, document] = BrowsingContext::create_a_new_browsing_context_and_document(page, this->document(), this, remote_navigable.window_proxy());
+
+    // 6. Let documentState be a new document state, with
+    // NB: Its id is the canonical entry's, so this process addresses the entry the way the UI process does.
+    auto document_state = HTML::DocumentState::create(initial_history_entry.document_state.id);
+    document_state->set_initiator_origin(document->origin());
+    document_state->set_origin(document->origin());
+    if (!initial_history_entry.document_state.navigable_target_name.is_empty())
+        document_state->set_navigable_target_name(initial_history_entry.document_state.navigable_target_name);
+    document_state->set_about_base_url(document->about_base_url());
+
+    // 7. Let navigable be a new navigable.
+    GC::Ref<LocalNavigable> navigable = *GC::Heap::the().allocate<LocalNavigable>(page, false);
+
+    // 8. Initialize the navigable navigable given documentState and parentNavigable.
+    navigable->initialize_navigable(document_state, parent_navigable, *document, parent_navigable->active_document()->visibility_state());
+    navigable->set_id_for_session_history_reconstruction(remote_navigable.id());
+    // The entry stands in for the canonical current entry, whose identity this page reports as its own.
+    navigable->active_session_history_entry()->set_navigation_api_key(initial_history_entry.navigation_api_key);
+    navigable->active_session_history_entry()->set_navigation_api_id(initial_history_entry.navigation_api_id);
+    navigable->inherit_page_state_from(*parent_navigable);
+
+    // 9. Set element's content navigable to navigable.
+    m_content_navigable = navigable;
+    navigable->set_container({}, this);
+    set_needs_repaint();
+
+    // The UI process appended the navigable's session history entry to the traversable before choosing this process.
+    navigable->set_has_session_history_entry_and_ready_for_navigation();
+
+    remote_navigable.set_container({}, nullptr);
+    remote_navigable.set_has_been_destroyed();
+}
+
+void NavigableContainer::content_navigable_completely_finished_loading()
+{
+    auto container = GC::make_root(*this);
+
+    // 4. If container is an iframe element, then queue an element task on the DOM manipulation task source given container to run the iframe load event steps given container.
+    if (is<HTMLIFrameElement>(*this)) {
+        queue_an_element_task(Task::Source::DOMManipulation, [container] {
+            run_iframe_load_event_steps(static_cast<HTMLIFrameElement&>(*container));
+        });
+    }
+    // 5. Otherwise, if container is non-null, then queue an element task on the DOM manipulation task source given container to fire an event named load at container.
+    else {
+        queue_an_element_task(Task::Source::DOMManipulation, [container] {
+            container->dispatch_event(DOM::Event::create(EventNames::load, HighResolutionTime::current_high_resolution_time(relevant_global_object(*container))));
+        });
+    }
+
+    // AD-HOC: Finishing a child document can unblock its parent's load-event-delay phase, so wake the parent parser end
+    //         state after queueing the container's load event.
+    document().schedule_html_parser_end_check();
 }
 
 // https://html.spec.whatwg.org/multipage/iframe-embed-object.html#potentially-delays-the-load-event

@@ -82,7 +82,7 @@ public:
     Vector<GC::Root<LocalNavigable>> child_navigables() const;
 
     bool is_local_root() const;
-    static GC::Ref<LocalNavigable> create_local_root(GC::Ref<Page>, Vector<RemoteNavigableDescriptor> remote_navigables, CrossProcessId root_navigable_id, CrossProcessId initial_document_state_id, VisibilityState system_visibility_state);
+    static GC::Ref<LocalNavigable> create_local_root(GC::Ref<Page>, Vector<RemoteNavigableDescriptor> remote_navigables, CrossProcessId root_navigable_id, SessionHistoryEntryDescriptor const& initial_history_entry, VisibilityState system_visibility_state);
     void destroy_local_root();
     void insert_remote_navigable(RemoteNavigableDescriptor);
     void remove_remote_navigable(CrossProcessId);
@@ -90,6 +90,9 @@ public:
 
     bool is_closing() const { return m_closing; }
     void set_closing(bool value);
+    void report_replicated_state();
+    void report_state_to_remote_container();
+    void unload_document_tree_for_host_change();
     bool is_script_closable();
 
     void stop_loading();

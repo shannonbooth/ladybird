@@ -98,7 +98,7 @@ CanonicalNavigable& CanonicalTraversable::insert(WebContentClient& reporting_cli
     auto& navigable_ref = parent->append_child(move(navigable));
     m_navigable_index.set(navigable_ref.id(), navigable_ref.make_weak_ptr());
 
-    for_each_page_representing(navigable_ref, PagesWithinSubtree::Include, [&](WebContentClient& client, u64 page_id) {
+    for_each_page_representing(navigable_ref, [&](WebContentClient& client, u64 page_id) {
         client.async_insert_remote_navigable(page_id, { .id = navigable_ref.id(), .parent_id = parent->id(), .replicated_state = *navigable_ref.replicated_state() });
     });
     return navigable_ref;
@@ -123,21 +123,32 @@ Vector<Web::HTML::RemoteNavigableDescriptor> CanonicalTraversable::remote_naviga
     return graph;
 }
 
-void CanonicalTraversable::for_each_page_representing(CanonicalNavigable const& navigable, PagesWithinSubtree pages_within_subtree, Function<void(WebContentClient&, u64 page_id)> const& callback) const
+// Whether the page hosting the subtree rooted at page_root hosts a navigable's document: the root's own, and those
+// of the descendants reached from it without crossing a navigable hosted by another page. A navigable a previous host
+// of the subtree reported is on the way out, and never represented by the page.
+static bool page_hosts(CanonicalNavigable const& page_root, CanonicalNavigable const& navigable)
 {
-    // The view's page hosts the traversable, whose subtree is the whole tab, so it represents no navigable until a
-    // container can hold a remote one.
-    for_each_in_subtree([&](CanonicalNavigable const& page_root) {
-        if (!page_root.has_remote_host())
-            return IterationDecision::Continue;
-        if (&page_root == &navigable || page_root.is_ancestor_of(navigable))
-            return IterationDecision::Continue;
-        if (pages_within_subtree == PagesWithinSubtree::Exclude && navigable.is_ancestor_of(page_root))
-            return IterationDecision::Continue;
+    for (auto const* ancestor = &navigable; ancestor; ancestor = ancestor->parent()) {
+        if (ancestor == &page_root)
+            return true;
+        if (ancestor->has_remote_host())
+            return false;
+    }
+    return false;
+}
 
-        auto& client = page_root.remote_host_client();
-        if (client.is_page_open(page_root.remote_host_page_id()))
-            callback(client, page_root.remote_host_page_id());
+void CanonicalTraversable::for_each_page_representing(CanonicalNavigable const& navigable, Function<void(WebContentClient&, u64 page_id)> const& callback) const
+{
+    auto visit = [&](CanonicalNavigable const& page_root, WebContentClient& client, u64 page_id) {
+        if (page_hosts(page_root, navigable) || !client.is_page_open(page_id))
+            return;
+        callback(client, page_id);
+    };
+    if (auto view = ViewImplementation::find_view_for_traversable(*this); view.has_value() && view->m_client_state.client)
+        visit(*this, *view->m_client_state.client, view->m_client_state.page_index);
+    for_each_in_subtree([&](CanonicalNavigable const& page_root) {
+        if (page_root.has_remote_host())
+            visit(page_root, page_root.remote_host_client(), page_root.remote_host_page_id());
         return IterationDecision::Continue;
     });
 }
@@ -170,7 +181,11 @@ void CanonicalTraversable::remove(CanonicalNavigable& navigable)
 {
     VERIFY(&navigable != this);
     navigable.clear_ongoing_navigation();
-    for_each_page_representing(navigable, PagesWithinSubtree::Exclude, [&](WebContentClient& client, u64 page_id) {
+    // The page holding the navigable's container drops it on its own: it reported the destruction, or the navigable is
+    // a child of a host on its way out.
+    for_each_page_representing(navigable, [&](WebContentClient& client, u64 page_id) {
+        if (&client == navigable.reporting_client_if_any() && page_id == navigable.reporting_page_id())
+            return;
         client.async_remove_remote_navigable(page_id, navigable.id());
     });
     remove_from_index(navigable);
@@ -257,6 +272,8 @@ void CanonicalTraversable::create_a_new_top_level_traversable(Optional<Canonical
         .active_document_is_completely_loaded = false,
         .is_closing = false,
         .container_is_in_document_tree = false,
+        .delays_the_load_event_of_its_container = false,
+        .has_session_history_entry_and_ready_for_navigation = true,
     });
 
     // 7. Let initialHistoryEntry be traversable's active session history entry.

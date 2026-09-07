@@ -97,13 +97,8 @@ public:
     // children, siblings in creation order, the hosted navigable among them.
     Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigable_graph_for(CanonicalNavigable const& page_root) const;
 
-    enum class PagesWithinSubtree : u8 {
-        Include,
-        Exclude,
-    };
-    // The open pages of this tab that represent a navigable: those hosting a navigable outside its inclusive subtree.
-    // Pages hosting a navigable within its subtree go away with it, so a removal leaves them out.
-    void for_each_page_representing(CanonicalNavigable const&, PagesWithinSubtree, Function<void(WebContentClient&, u64 page_id)> const&) const;
+    // The open pages of this tab that represent a navigable: every page not hosting its document.
+    void for_each_page_representing(CanonicalNavigable const&, Function<void(WebContentClient&, u64 page_id)> const&) const;
     void did_lose_history_job_endpoint(WebContentClient&, u64 page_id);
 
     TraversableSessionHistory const& session_history() const { return m_session_history; }

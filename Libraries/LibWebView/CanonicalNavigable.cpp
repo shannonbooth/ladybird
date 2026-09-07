@@ -397,7 +397,7 @@ void CanonicalNavigable::set_replicated_state(Web::HTML::ReplicatedNavigableStat
 void CanonicalNavigable::update_replicated_state(Web::HTML::ReplicatedNavigableState state)
 {
     set_replicated_state(move(state));
-    top_level_traversable().for_each_page_representing(*this, CanonicalTraversable::PagesWithinSubtree::Include, [&](WebContentClient& client, u64 page_id) {
+    top_level_traversable().for_each_page_representing(*this, [&](WebContentClient& client, u64 page_id) {
         client.async_update_remote_navigable(page_id, id(), *m_replicated_state);
     });
 }

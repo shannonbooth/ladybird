@@ -26,6 +26,8 @@ ErrorOr<void> encode(Encoder& encoder, Web::HTML::ReplicatedNavigableState const
     TRY(encoder.encode(state.active_document_is_completely_loaded));
     TRY(encoder.encode(state.is_closing));
     TRY(encoder.encode(state.container_is_in_document_tree));
+    TRY(encoder.encode(state.delays_the_load_event_of_its_container));
+    TRY(encoder.encode(state.has_session_history_entry_and_ready_for_navigation));
     return {};
 }
 
@@ -45,6 +47,8 @@ ErrorOr<Web::HTML::ReplicatedNavigableState> decode(Decoder& decoder)
         .active_document_is_completely_loaded = TRY(decoder.decode<bool>()),
         .is_closing = TRY(decoder.decode<bool>()),
         .container_is_in_document_tree = TRY(decoder.decode<bool>()),
+        .delays_the_load_event_of_its_container = TRY(decoder.decode<bool>()),
+        .has_session_history_entry_and_ready_for_navigation = TRY(decoder.decode<bool>()),
     };
 }
 

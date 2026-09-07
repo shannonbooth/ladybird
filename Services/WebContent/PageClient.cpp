@@ -42,10 +42,12 @@
 #include <LibWeb/HTML/EventLoop/EventLoop.h>
 #include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/LocalTraversableNavigable.h>
+#include <LibWeb/HTML/NavigableContainer.h>
 #include <LibWeb/HTML/NavigationPopulationRequest.h>
 #include <LibWeb/HTML/RemoteNavigable.h>
 #include <LibWeb/HTML/Scripting/ClassicScript.h>
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
+#include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HighResolutionTime/TimeOrigin.h>
 #include <LibWeb/Infra/SerializedURL.h>
@@ -362,22 +364,30 @@ void PageClient::page_did_update_child_frame_viewport(Web::HTML::CrossProcessId 
 
 void PageClient::page_did_destroy_child_frame(Web::HTML::CrossProcessId frame_id)
 {
-    m_remote_child_frame_compositor_contexts.remove(frame_id);
     client().async_did_destroy_child_frame(m_id, frame_id);
 }
 
-void PageClient::set_remote_child_frame_compositor_context(Web::HTML::CrossProcessId frame_id, Optional<Web::Compositor::CompositorContextId> context_id)
+// The container of a child navigable whose parent's document this page hosts, if any.
+static GC::Ptr<Web::HTML::NavigableContainer> container_of_child_navigable(Web::Page& page, Web::HTML::CrossProcessId navigable_id)
 {
-    if (context_id.has_value())
-        m_remote_child_frame_compositor_contexts.set(frame_id, *context_id);
-    else
-        m_remote_child_frame_compositor_contexts.remove(frame_id);
+    auto navigable = page.local_root_navigable()->find(navigable_id);
+    if (!navigable)
+        return {};
+    return navigable->container();
+}
+
+void PageClient::swap_child_navigable_to_remote(Web::HTML::CrossProcessId navigable_id, Web::HTML::ReplicatedNavigableState replicated_state, Optional<Web::Compositor::CompositorContextId> compositor_context_id)
+{
+    if (auto container = container_of_child_navigable(page(), navigable_id))
+        container->swap_content_navigable_to_remote(move(replicated_state), compositor_context_id);
     request_frame();
 }
 
-Optional<Web::Compositor::CompositorContextId> PageClient::compositor_context_id_for_remote_child_frame(Web::HTML::CrossProcessId frame_id) const
+void PageClient::swap_child_navigable_to_local(Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor const& initial_history_entry)
 {
-    return m_remote_child_frame_compositor_contexts.get(frame_id);
+    if (auto container = container_of_child_navigable(page(), navigable_id))
+        container->swap_content_navigable_to_local(initial_history_entry);
+    request_frame();
 }
 
 Gfx::Palette PageClient::palette() const

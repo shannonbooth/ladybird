@@ -7,9 +7,11 @@
 #pragma once
 
 #include <AK/Utf16String.h>
+#include <LibWeb/Compositor/Types.h>
 #include <LibWeb/Export.h>
 #include <LibWeb/HTML/HTMLElement.h>
 #include <LibWeb/HTML/InitialInsertion.h>
+#include <LibWeb/HTML/ReplicatedNavigableState.h>
 
 namespace Web::HTML {
 
@@ -34,6 +36,13 @@ public:
     DOM::Document const* get_svg_document() const;
 
     void destroy_the_child_navigable();
+
+    // The UI process chose another process to host the content navigable's next document, or this one again.
+    void swap_content_navigable_to_remote(ReplicatedNavigableState, Optional<Compositor::CompositorContextId>);
+    void swap_content_navigable_to_local(SessionHistoryEntryDescriptor const& initial_history_entry);
+
+    // Steps 4 and 5 of the completely finish loading steps, given the content navigable's active document.
+    void content_navigable_completely_finished_loading();
 
     // All elements that extend NavigableContainer "potentially delay the load event".
     // (embed, frame, iframe, and object)

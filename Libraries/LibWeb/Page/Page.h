@@ -515,7 +515,6 @@ public:
     virtual void page_did_change_replicated_navigable_state([[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] HTML::ReplicatedNavigableState const& state) { }
     virtual void page_did_update_child_frame_viewport(HTML::CrossProcessId, CSSPixelRect) { }
     virtual void page_did_destroy_child_frame(HTML::CrossProcessId) { }
-    virtual Optional<Compositor::CompositorContextId> compositor_context_id_for_remote_child_frame(HTML::CrossProcessId) const { return {}; }
     virtual String dump_site_isolation_process_tree_for_testing() { return {}; }
     virtual void crash_remote_frame_processes_for_testing() { }
     virtual Gfx::Palette palette() const = 0;

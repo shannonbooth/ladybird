@@ -37,6 +37,10 @@ struct ReplicatedNavigableState {
     // Whether the navigable's container is in its node document's tree rather than a shadow tree, which makes the
     // navigable a document-tree child navigable of that document.
     bool container_is_in_document_tree { false };
+
+    // What a navigable container asks of its content navigable.
+    bool delays_the_load_event_of_its_container { false };
+    bool has_session_history_entry_and_ready_for_navigation { false };
 };
 
 // A node of a tab's navigable graph as a process represents it: the navigable, its parent, and its replicated state.

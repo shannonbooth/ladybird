@@ -144,7 +144,8 @@ public:
     void deliver_posted_message(Web::HTML::CrossProcessId navigable_id, Web::HTML::PostedMessageDescriptor);
     void cancel_navigation_params_creation(Web::HTML::CrossProcessId navigable_id, Utf16String const& navigation_id);
     void populate_navigation(Web::HTML::NavigationPopulationRequest, Web::HTML::NavigationPopulationResult);
-    void set_remote_child_frame_compositor_context(Web::HTML::CrossProcessId, Optional<Web::Compositor::CompositorContextId>);
+    void swap_child_navigable_to_remote(Web::HTML::CrossProcessId, Web::HTML::ReplicatedNavigableState, Optional<Web::Compositor::CompositorContextId>);
+    void swap_child_navigable_to_local(Web::HTML::CrossProcessId, Web::HTML::SessionHistoryEntryDescriptor const&);
     void cancel_download(u64 download_id);
     void clear_pending_dom_mutations();
     void did_delete_all_cookies(u64 request_id);
@@ -185,7 +186,6 @@ private:
     virtual void page_did_create_child_frame(Web::HTML::CrossProcessId parent_frame_id, Web::HTML::CrossProcessId frame_id, Web::HTML::ReplicatedNavigableState const&) override;
     virtual void page_did_update_child_frame_viewport(Web::HTML::CrossProcessId frame_id, Web::CSSPixelRect) override;
     virtual void page_did_destroy_child_frame(Web::HTML::CrossProcessId frame_id) override;
-    virtual Optional<Web::Compositor::CompositorContextId> compositor_context_id_for_remote_child_frame(Web::HTML::CrossProcessId) const override;
     virtual String dump_site_isolation_process_tree_for_testing() override;
     virtual void crash_remote_frame_processes_for_testing() override;
     virtual Gfx::Palette palette() const override;
@@ -375,7 +375,6 @@ private:
     Optional<double> m_granted_rendering_opportunity_time;
     Web::HTML::EventLoop::RenderingOpportunitySource m_granted_rendering_opportunity_source { Web::HTML::EventLoop::RenderingOpportunitySource::LocalTimer };
     Queue<PendingDOMMutation> m_pending_dom_mutations;
-    HashMap<Web::HTML::CrossProcessId, Web::Compositor::CompositorContextId> m_remote_child_frame_compositor_contexts;
     Optional<Web::HTML::CrossProcessId> m_pending_root_navigable_id;
 
     u64 m_devtools_client_count { 0 };

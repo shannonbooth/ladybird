@@ -216,7 +216,7 @@ void ConnectionFromClient::initialize(u64 initial_page_id, Vector<Web::HTML::Rem
 void ConnectionFromClient::create_embedded_page(u64 page_id, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables, Web::HTML::CrossProcessId root_navigable_id, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::VisibilityState system_visibility_state)
 {
     auto& page = m_page_host->create_page(page_id, root_navigable_id);
-    Web::HTML::LocalNavigable::create_local_root(page.page(), move(remote_navigables), root_navigable_id, initial_history_entry.document_state.id, system_visibility_state);
+    Web::HTML::LocalNavigable::create_local_root(page.page(), move(remote_navigables), root_navigable_id, initial_history_entry, system_visibility_state);
 }
 
 void ConnectionFromClient::insert_remote_navigable(u64 page_id, Web::HTML::RemoteNavigableDescriptor navigable)
@@ -249,10 +249,16 @@ void ConnectionFromClient::set_page_parent_context(u64 page_id, Optional<Web::Co
     compositor_context.set_parent_context(parent_context_id);
 }
 
-void ConnectionFromClient::set_remote_child_frame_compositor_context(u64 page_id, Web::HTML::CrossProcessId frame_id, Optional<Web::Compositor::CompositorContextId> context_id)
+void ConnectionFromClient::swap_child_navigable_to_remote(u64 page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::ReplicatedNavigableState replicated_state, Optional<Web::Compositor::CompositorContextId> compositor_context_id)
 {
     if (auto page = this->page(page_id); page.has_value())
-        page->set_remote_child_frame_compositor_context(frame_id, context_id);
+        page->swap_child_navigable_to_remote(navigable_id, move(replicated_state), compositor_context_id);
+}
+
+void ConnectionFromClient::swap_child_navigable_to_local(u64 page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry)
+{
+    if (auto page = this->page(page_id); page.has_value())
+        page->swap_child_navigable_to_local(navigable_id, initial_history_entry);
 }
 
 void ConnectionFromClient::run_navigation_unload_check(u64 page_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id)
@@ -611,11 +617,13 @@ void ConnectionFromClient::run_descendant_unload_task(u64 page_id, Web::HTML::Cr
 void ConnectionFromClient::continue_child_navigable_destruction(u64 page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::UnloadDisplayedDocument unload_displayed_document)
 {
     auto page = this->page(page_id);
-    auto navigable = Web::HTML::local_navigable_with_id(navigable_id);
-    if (!page.has_value() || !navigable)
+    if (!page.has_value())
         return;
-    VERIFY(&navigable->page() == &page->page());
 
+    // The container's content navigable, whichever process hosts its document.
+    auto navigable = page->page().local_root_navigable()->find(navigable_id);
+    if (!navigable)
+        return;
     navigable->continue_child_navigable_destruction(unload_displayed_document);
 }
 

@@ -863,6 +863,7 @@ class RemoteNavigable;
 class ScriptRegistry;
 class SelectedFile;
 class SessionHistoryEntry;
+struct SessionHistoryEntryDescriptor;
 class SharedResourceRequest;
 class SharedWorker;
 class SharedWorkerGlobalScope;

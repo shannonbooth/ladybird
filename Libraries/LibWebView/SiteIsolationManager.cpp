@@ -102,7 +102,7 @@ void SiteIsolationManager::remove_page(WebContentClient& client, u64 page_id)
         remove_child_frame_subtree(*host->children().last());
 
     // If the page hosted a child frame's content, the frame node itself belongs to its container's process and stays
-    // in the tree, but its content is gone with this client. Collapse it back to local and let the container know.
+    // in the tree, but its content is gone with this client. The container's page hosts it again.
     if (host->has_remote_host() && &host->remote_host_client() == &client)
         transition_child_frame_to_local(*host);
 }
@@ -197,11 +197,9 @@ ErrorOr<SiteIsolationManager::DocumentHost> SiteIsolationManager::obtain_child_d
     u64 page_id;
     if (host) {
         page_id = Application::the().allocate_page_id();
-        host->async_create_embedded_page(page_id, traversable.remote_navigable_graph_for(navigable), navigable.id(),
-            Web::HTML::create_initial_session_history_entry_descriptor(current_entry->document_state.id, {}, {}, {}),
-            traversable.system_visibility_state());
+        host->async_create_embedded_page(page_id, traversable.remote_navigable_graph_for(navigable), navigable.id(), *current_entry, traversable.system_visibility_state());
     } else {
-        auto process = TRY(Application::the().launch_child_frame_web_content_process(navigable.reporting_client().is_private(), traversable.remote_navigable_graph_for(navigable), navigable.id(), current_entry->document_state.id));
+        auto process = TRY(Application::the().launch_child_frame_web_content_process(navigable.reporting_client().is_private(), traversable.remote_navigable_graph_for(navigable), navigable.id(), *current_entry));
         host = move(process.client);
         page_id = process.page_id;
         agent.set_hosting_process_if_unset(*host);
@@ -229,25 +227,40 @@ void SiteIsolationManager::set_child_document_host(CanonicalNavigable& navigable
     }
 }
 
+// A local navigable taking a child's container back starts from a document standing in for the canonical current
+// entry's, as the root of an embedded page does.
+static Web::HTML::SessionHistoryEntryDescriptor current_history_entry_for(CanonicalNavigable& navigable)
+{
+    auto& traversable = navigable.top_level_traversable();
+    auto current_step = traversable.session_history().current_step();
+    VERIFY(current_step.has_value());
+    auto const* current_entry = traversable.session_history().get_the_target_history_entry(navigable, *current_step);
+    VERIFY(current_entry);
+    return *current_entry;
+}
+
 void SiteIsolationManager::transition_child_frame_to_remote(WebContentClient& parent_client, u64 page_id, Web::HTML::CrossProcessId frame_id, NonnullRefPtr<WebContentClient> remote_client, u64 remote_page_id)
 {
     auto child_frame = parent_client.child_frame(page_id, frame_id);
     if (!child_frame.has_value())
         return;
 
-    transition_child_frame_to_local(*child_frame);
+    detach_child_frame_host(*child_frame);
 
     child_frame->set_remote_host(move(remote_client), remote_page_id);
-    parent_client.async_set_remote_child_frame_compositor_context(
-        page_id,
-        child_frame->id(),
-        Web::Compositor::compositor_context_id_for_page(remote_page_id));
+    // The page holding the container represents the child from its replicated state, and paints the host's context.
+    parent_client.async_swap_child_navigable_to_remote(page_id, child_frame->id(), *child_frame->replicated_state(), Web::Compositor::compositor_context_id_for_page(remote_page_id));
 }
 
+// The child's next document, or none after its host went away, is hosted by the page holding its container.
 void SiteIsolationManager::transition_child_frame_to_local(CanonicalNavigable& child_frame)
 {
-    child_frame.reporting_client().async_set_remote_child_frame_compositor_context(child_frame.reporting_page_id(), child_frame.id(), {});
+    detach_child_frame_host(child_frame);
+    child_frame.reporting_client().async_swap_child_navigable_to_local(child_frame.reporting_page_id(), child_frame.id(), current_history_entry_for(child_frame));
+}
 
+void SiteIsolationManager::detach_child_frame_host(CanonicalNavigable& child_frame)
+{
     // The frames of the closed remote page (this frame's children) die with it; that
     // page's process is going away and will not report their destruction.
     if (child_frame.has_remote_host()) {
@@ -264,7 +277,7 @@ void SiteIsolationManager::remove_child_frame_subtree(CanonicalNavigable& child_
         remove_child_frame_subtree(*child_frame.children().last());
 
     if (child_frame.has_remote_host())
-        transition_child_frame_to_local(child_frame);
+        detach_child_frame_host(child_frame);
 
     child_frame.top_level_traversable().remove(child_frame);
 }

@@ -117,7 +117,8 @@ private:
     virtual void navigate_navigable(u64 page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::PreparedNavigationDescriptor) override;
     virtual void deliver_posted_message(u64 page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::PostedMessageDescriptor) override;
     virtual void set_page_parent_context(u64 page_id, Optional<Web::Compositor::CompositorContextId>) override;
-    virtual void set_remote_child_frame_compositor_context(u64 page_id, Web::HTML::CrossProcessId frame_id, Optional<Web::Compositor::CompositorContextId>) override;
+    virtual void swap_child_navigable_to_remote(u64 page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::ReplicatedNavigableState, Optional<Web::Compositor::CompositorContextId>) override;
+    virtual void swap_child_navigable_to_local(u64 page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor) override;
     virtual void history_operation_started(u64 page_id, Web::HTML::CrossProcessId operation_id, Optional<Web::ReconstructedChildNavigation> reconstructed_child_navigation) override;
     virtual void run_history_step_unload_cancelation_job(u64 page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::SessionHistoryEntryDescriptor target_entry, Vector<Web::HTML::CrossProcessId> navigables_crossing_documents, Web::HTML::UserNavigationInvolvement user_involvement) override;
     virtual void run_history_step_beforeunload_check(u64 page_id, Web::HTML::CrossProcessId operation_id, Vector<Web::HTML::CrossProcessId> navigable_ids, Web::HTML::UnloadPromptShown unload_prompt_shown) override;

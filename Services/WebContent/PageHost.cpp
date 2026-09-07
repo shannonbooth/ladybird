@@ -30,7 +30,7 @@ void PageHost::initialize(u64 initial_page_id, Vector<Web::HTML::RemoteNavigable
     if (remote_navigables.is_empty())
         Web::HTML::LocalTraversableNavigable::create_a_fresh_top_level_traversable(first_page.page(), URL::about_blank(), Empty {}, move(initial_history_entry), system_visibility_state);
     else
-        Web::HTML::LocalNavigable::create_local_root(first_page.page(), move(remote_navigables), root_navigable_id, initial_history_entry.document_state.id, system_visibility_state);
+        Web::HTML::LocalNavigable::create_local_root(first_page.page(), move(remote_navigables), root_navigable_id, initial_history_entry, system_visibility_state);
 }
 
 PageClient& PageHost::create_page(u64 page_id, Optional<Web::HTML::CrossProcessId> pending_root_navigable_id)
