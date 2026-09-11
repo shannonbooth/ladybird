@@ -1341,6 +1341,7 @@ bool Navigation::inner_navigate_event_firing_algorithm(
                         }
                         ready->function()(Empty {});
                     }),
+                    .resumes_intercepted_traverse = true,
                 });
         }
 

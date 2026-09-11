@@ -55,6 +55,11 @@ public:
         GC::Ptr<OnApplyHistoryStepComplete> on_apply_complete {};
         GC::Ptr<OnApplyHistoryStepComplete> on_complete {};
 
+        // An intercepted traversal pauses at its navigate event and re-enters apply the history step through this
+        // operation while that navigate event is still ongoing. Marking the navigable as traversing again is then
+        // for the same traversal, so it must not inform the navigation API about aborting a navigation.
+        bool resumes_intercepted_traverse { false };
+
         // State retained between a changing job and its continuation.
         HashTable<CrossProcessId> claimed_navigables_awaiting_continuation {};
         HashMap<CrossProcessId, GC::Ref<ChangingNavigableContinuationState>> changing_navigable_continuations {};

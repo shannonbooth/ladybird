@@ -3009,11 +3009,6 @@ void LocalNavigable::create_navigation_params_for_navigation(NavigationPopulatio
         return;
     }
 
-    // 3. Queue a global task on the navigation and traversal task source given navigable's active window to abort a document and its descendants given navigable's active document.
-    queue_global_task(Task::Source::NavigationAndTraversal, HTML::relevant_global_object(*active_window()), GC::create_function(heap(), [this] {
-        active_document()->abort_a_document_and_its_descendants();
-    }));
-
     auto received_navigation_params = GC::create_function(heap(), [this, request, navigation_id](GC::Ref<InternalNavigationResult> result) mutable {
         if (!active_window() || ongoing_navigation() != navigation_id) {
             stop_or_resume_response_body_delivery(result->navigation_params);
@@ -3042,29 +3037,54 @@ void LocalNavigable::create_navigation_params_for_navigation(NavigationPopulatio
         }));
     });
 
-    auto const& document_state = request.history_entry.document_state;
-    create_navigation_params_for_population(
-        *this,
-        request.history_entry.url,
-        document_state.resource,
-        document_state.request_referrer,
-        document_state.request_referrer_policy,
-        document_state.initiator_origin,
-        document_state.origin,
-        document_state.history_policy_container,
-        document_state.about_base_url,
-        document_state.navigable_target_name,
-        document_state.reload_pending,
-        document_state.ever_populated,
-        source_snapshot_params,
-        request.target_snapshot_params,
-        request.user_involvement,
-        request.navigation_id,
-        move(navigation_params),
-        request.csp_navigation_type,
-        navigation_timing_type,
-        true,
-        received_navigation_params);
+    // 3. Queue a global task on the navigation and traversal task source given navigable's active window to run these
+    //    steps:
+    queue_global_task(Task::Source::NavigationAndTraversal, HTML::relevant_global_object(*active_window()), GC::create_function(heap(), [this, request = move(request), navigation_id, source_snapshot_params, navigation_params = move(navigation_params), navigation_timing_type, received_navigation_params]() mutable {
+        // 1. If navigable's ongoing navigation is no longer navigationId, then:
+        if (!active_window() || ongoing_navigation() != navigation_id) {
+            // FIXME: 1. Invoke WebDriver BiDi navigation failed with navigable and a new WebDriver BiDi navigation
+            //           status whose id is navigationId, status is "canceled", and url is url.
+
+            // 2. Abort these steps.
+            // NB: The UI process owns the navigation transaction, so tell it that this population will never finish.
+            stop_or_resume_response_body_delivery(navigation_params);
+            set_delaying_load_events(false);
+            page().client().navigation_population_failed(request.navigable_id, navigation_id);
+            return;
+        }
+
+        // 2. Abort a document and its descendants given navigable's active document.
+        active_document()->abort_a_document_and_its_descendants();
+
+        // 3-8. documentState, historyEntry, and navigationParams were prepared by the caller.
+
+        // 9. In parallel, attempt to populate the history entry's document for historyEntry, given navigable,
+        //    "navigate", sourceSnapshotParams, targetSnapshotParams, userInvolvement, navigationId, navigationParams,
+        //    cspNavigationType, with allowPOST set to true and completionSteps set to the following step:
+        auto const& document_state = request.history_entry.document_state;
+        create_navigation_params_for_population(
+            *this,
+            request.history_entry.url,
+            document_state.resource,
+            document_state.request_referrer,
+            document_state.request_referrer_policy,
+            document_state.initiator_origin,
+            document_state.origin,
+            document_state.history_policy_container,
+            document_state.about_base_url,
+            document_state.navigable_target_name,
+            document_state.reload_pending,
+            document_state.ever_populated,
+            source_snapshot_params,
+            request.target_snapshot_params,
+            request.user_involvement,
+            request.navigation_id,
+            move(navigation_params),
+            request.csp_navigation_type,
+            navigation_timing_type,
+            true,
+            received_navigation_params);
+    }));
 }
 
 WebIDL::ExceptionOr<void> LocalNavigable::continue_navigation_in_active_document_agent(
@@ -3123,10 +3143,6 @@ void LocalNavigable::continue_navigation_after_population_dispatch(PreparedNavig
     auto navigation_id = population_request.navigation_id;
 
     if (has_been_destroyed() || !active_window()) {
-        set_delaying_load_events(false);
-        return;
-    }
-    if (ongoing_navigation() != navigation_id) {
         set_delaying_load_events(false);
         return;
     }
@@ -3414,10 +3430,9 @@ void LocalNavigable::begin_navigation(PreparedNavigation navigation)
         // 5. If continue is false, then return.
         if (!continue_) {
             // AD-HOC: This navigation is over: the navigate event either canceled it, or intercepted it and already
-            //         committed it as a same-document navigation. In the spec, an intercepted navigation's queued
-            //         same-document finalize sets the navigable's ongoing navigation to null moments later; our
-            //         synchronous same-document commit replaces that queued step but deliberately preserves foreign
-            //         navigation IDs, so clear our own ID here. Leaving it stamped makes later same-document
+            //         committed it as a same-document navigation. The specification leaves the navigation ID stamped
+            //         until something supersedes it, since push and replace history steps never touch the ongoing
+            //         navigation; we clear our own ID here instead. Leaving it stamped makes later same-document
             //         traversals treat themselves as superseded and lets WebDriver wait forever for this navigation
             //         to finish. Preserve the Navigation API state: an intercepted navigate event stays ongoing
             //         until its handlers settle.
@@ -3490,7 +3505,7 @@ void LocalNavigable::run_navigation_unload_check(Utf16String const& navigation_i
                 return;
             }
 
-            // 2. If unloadPromptCanceled is not "continue", or navigable's ongoing navigation is no longer navigationId:
+            // 2. If unloadPromptCanceled is true, then abort these steps.
             // NB: The UI process learns of the canceled check from the population-failure report and ends the
             //     recorded load itself.
             if (unload_prompt_canceled != CheckIfUnloadingIsCanceledResult::Continue) {
@@ -3499,12 +3514,9 @@ void LocalNavigable::run_navigation_unload_check(Utf16String const& navigation_i
                 return;
             }
 
-            if (ongoing_navigation() != navigation_id) {
-                set_delaying_load_events(false);
-                completion_steps->function()(false);
-                return;
-            }
-
+            // NB: Whether this navigation is still the navigable's ongoing navigation is checked in the queued task
+            //     that aborts the active document, once the UI process has admitted population; see
+            //     create_navigation_params_for_navigation().
             completion_steps->function()(true);
         }));
 }
@@ -3862,15 +3874,29 @@ void LocalNavigable::reload(Optional<StorageSerializationRecord> navigation_api_
         if (navigation_api_state.has_value())
             destination_navigation_api_state = *navigation_api_state;
 
-        // 4. Let continue be the result of firing a push/replace/reload navigate event at navigation with
+        // 4. Let wasTraversing be true if navigable's ongoing navigation is "traversal"; otherwise false.
+        auto was_traversing = ongoing_navigation().has<Traversal>();
+
+        // 5. Set the ongoing navigation for navigable to "traversal".
+        // NB: This happens before the navigate event fires, so it aborts the navigate event of a navigation that this
+        //     reload supersedes, but never the reload's own.
+        set_ongoing_navigation(Traversal::Tag);
+
+        // 6. Let continue be the result of firing a push/replace/reload navigate event at navigation with
         //    navigationType set to "reload", isSameDocument set to false, userInvolvement set to userInvolvement,
         //    destinationURL set to navigable's active session history entry's URL, navigationAPIState set to
         //    destinationNavigationAPIState, and apiMethodTracker set to apiMethodTracker.
         auto continue_ = navigation->fire_a_push_replace_reload_navigate_event(Bindings::NavigationType::Reload, active_session_history_entry()->url(), false, user_involvement, nullptr, {}, destination_navigation_api_state);
 
-        // 5. If continue is false, then return.
-        if (!continue_)
+        // 7. If continue is false, then:
+        if (!continue_) {
+            // 1. If wasTraversing is false, then set navigable's ongoing navigation to null.
+            if (!was_traversing)
+                set_ongoing_navigation_without_informing_navigation_api({});
+
+            // 2. Return.
             return;
+        }
     }
 
     // 1. If navigationAPIState is not null, then set navigable's active session history entry's navigation API state
@@ -4056,7 +4082,12 @@ private:
         // 4. Queue a global task on the navigation and traversal task source given traversable's active window to perform the following steps:
         VERIFY(m_traversable->active_window());
         queue_global_task(Task::Source::NavigationAndTraversal, relevant_global_object(*m_traversable->active_window()), GC::create_function(GC::Heap::the(), [this] {
-            // 1. if needsBeforeunload is true, then:
+            // 1. Set the ongoing navigation for traversable to "traversal".
+            // NB: This happens before traversable's navigate event fires, so it aborts the navigate event of a
+            //     navigation that this traversal supersedes, but never the traversal's own.
+            m_traversable->set_ongoing_navigation(LocalNavigable::Traversal::Tag);
+
+            // 2. If needsBeforeunload is true, then:
             if (m_needs_beforeunload) {
                 // 1. Let (unloadPromptShownForThisDocument, unloadPromptCanceledByThisDocument) be the result of running the steps to fire beforeunload given traversable's active document and false.
                 auto [unload_prompt_shown_for_this_document, unload_prompt_canceled_by_this_document] = m_traversable->active_document()->steps_to_fire_beforeunload(false);
@@ -4070,25 +4101,30 @@ private:
                     m_final_status = Result::CanceledByBeforeUnload;
             }
 
-            // 2. If finalStatus is "canceled-by-beforeunload", then abort these steps.
+            // 3. If finalStatus is "canceled-by-beforeunload", then set traversable's ongoing navigation to null, set
+            //    eventsFired to true, and abort these steps.
             if (m_final_status == Result::CanceledByBeforeUnload) {
+                m_traversable->set_ongoing_navigation_without_informing_navigation_api({});
                 finish(m_final_status);
                 return;
             }
 
-            // 3. Let navigation be traversable's active window's navigation API.
+            // 4. Let navigation be traversable's active window's navigation API.
             VERIFY(m_traversable->active_window());
             auto navigation = m_traversable->active_window()->navigation();
 
-            // 4. Let navigateEventResult be the result of firing a traverse navigate event at navigation given targetEntry and userInvolvementForNavigateEvent.
+            // 5. Let navigateEventResult be the result of firing a traverse navigate event at navigation given targetEntry and userInvolvementForNavigateEvent.
             VERIFY(m_target_entry);
             auto navigate_event_result = navigation->fire_a_traverse_navigate_event(*m_target_entry, *m_user_involvement);
 
-            // 5. If navigateEventResult is false, then set finalStatus to "canceled-by-navigate".
-            if (!navigate_event_result)
+            // 6. If navigateEventResult is false, then set finalStatus to "canceled-by-navigate" and set traversable's
+            //    ongoing navigation to null.
+            if (!navigate_event_result) {
                 m_final_status = Result::CanceledByNavigate;
+                m_traversable->set_ongoing_navigation_without_informing_navigation_api({});
+            }
 
-            // 6. Set eventsFired to true.
+            // 7. Set eventsFired to true.
 
             phase1_completed();
         }));
@@ -4155,7 +4191,17 @@ private:
 
         // 8. Wait for completedTasks to be totalTasks.
 
-        // 9. Return finalStatus.
+        // 9. If traversable was given, and finalStatus is not "continue", then queue a global task on the navigation
+        //    and traversal task source given traversable's active window to run these steps: if traversable's ongoing
+        //    navigation is "traversal", then set traversable's ongoing navigation to null.
+        if (m_traversable && m_final_status != Result::Continue && m_traversable->active_window()) {
+            queue_global_task(Task::Source::NavigationAndTraversal, relevant_global_object(*m_traversable->active_window()), GC::create_function(heap(), [traversable = GC::Ref { *m_traversable }] {
+                if (!traversable->has_been_destroyed() && traversable->ongoing_navigation().has<LocalNavigable::Traversal>())
+                    traversable->set_ongoing_navigation_without_informing_navigation_api({});
+            }));
+        }
+
+        // 10. Return finalStatus.
         finish(m_final_status);
     }
 

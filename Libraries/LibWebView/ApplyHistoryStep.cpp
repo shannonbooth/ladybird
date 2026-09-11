@@ -155,11 +155,6 @@ void ApplyHistoryStep::get_changing_and_nonchanging_navigables()
         // AD-HOC: This implements https://github.com/whatwg/html/pull/12838.
         if (!navigable->active_document_is(*target_entry))
             m_jobs.queue_navigation_api_state_clear_task(navigable_id);
-
-        // 4. Set navigable's ongoing navigation to "traversal".
-        // AD-HOC: This implements https://github.com/whatwg/html/pull/12838.
-        if (set_ongoing_navigation_to_traversal(*navigable, *target_entry))
-            m_navigables_superseded_by_newer_navigation.set(navigable_id);
     }
 
     run_changing_navigable_jobs();
@@ -169,7 +164,7 @@ void ApplyHistoryStep::run_changing_navigable_jobs()
 {
     // 12. For each navigable of changingNavigables, queue a global task on the navigation and traversal task source.
     for (auto navigable_id : m_changing_navigables) {
-        auto const* navigable = find_navigable(navigable_id);
+        auto* navigable = find_navigable(navigable_id);
         auto const* target_entry = navigable ? m_session_history.get_the_target_history_entry(*navigable, m_target_step) : nullptr;
         if (!target_entry) {
             // AD-HOC: The canonical mirror can briefly disagree with the live navigable tree while a created or
@@ -177,6 +172,13 @@ void ApplyHistoryStep::run_changing_navigable_jobs()
             changing_navigable_job_completed(navigable_id, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped);
             continue;
         }
+
+        // 1. If navigationType is "traverse" or "reload", then set the ongoing navigation for navigable to "traversal".
+        // NB: The queued task runs in WebContent, which projects the marker onto its LocalNavigable. The UI process
+        //     installs the canonical marker here, when it dispatches that task, so navigation-start requests that race
+        //     the traversal are refused in the same order the task will observe.
+        if (set_ongoing_navigation_to_traversal(*navigable, *target_entry))
+            m_navigables_superseded_by_newer_navigation.set(navigable_id);
 
         ApplyHistoryStepJobs::ChangingNavigableHistoryStepJob job {
             .navigable_id = navigable_id,
@@ -429,17 +431,10 @@ bool ApplyHistoryStep::set_ongoing_navigation_to_traversal(CanonicalNavigable& n
         return true;
     }
 
-    // AD-HOC: Same-document push/replace finalization can run while its NavigateEvent handlers are settling.
-    if (m_navigation_type.has_value()
-        && first_is_one_of(*m_navigation_type, Web::Bindings::NavigationType::Push, Web::Bindings::NavigationType::Replace)
-        && target_document_is_active_document
-        && navigable.ongoing_navigation().has_value()) {
-        return false;
-    }
-
-    // AD-HOC: A navigable creation/destruction update skips a navigable already claimed by its requested navigation.
-    //         See https://github.com/whatwg/html/issues/12724.
-    if (!m_navigation_type.has_value() && navigable.ongoing_navigation().has_value())
+    // Only traversals and reloads mark the navigable. Push and replace history steps are the bookkeeping for a
+    // navigation that is tracked through the ongoing navigation on its own, or for a same-document navigation that
+    // already took effect, and navigable creation/destruction updates never touch it either.
+    if (m_navigation_type != Web::Bindings::NavigationType::Traverse && m_navigation_type != Web::Bindings::NavigationType::Reload)
         return false;
 
     if (m_navigation_type == Web::Bindings::NavigationType::Traverse)
@@ -447,13 +442,8 @@ bool ApplyHistoryStep::set_ongoing_navigation_to_traversal(CanonicalNavigable& n
 
     // AD-HOC: The installed marker cancels navigation-start requests that arrive while this operation is on the
     //         traversal queue, matching navigate()'s "if navigable's ongoing navigation is 'traversal', then return".
-    //         A same-document push or replace finalization must not install it. A navigation racing it genuinely
-    //         started before this step ran in its own process. Its navigate() saw no traversal, and the admission
-    //         recheck must not misattribute that ordering and drop the navigation the finalization has to yield to.
-    if (m_navigation_type == Web::Bindings::NavigationType::Traverse || traversal_crosses_documents) {
-        navigable.set_ongoing_navigation_to_traversal(m_operation_id);
-        m_navigables_with_ongoing_history_traversal.set(navigable.id());
-    }
+    navigable.set_ongoing_navigation_to_traversal(m_operation_id);
+    m_navigables_with_ongoing_history_traversal.set(navigable.id());
     return false;
 }
 

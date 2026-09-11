@@ -1384,12 +1384,10 @@ void CanonicalTraversable::deactivate_a_document_for_cross_document_navigation(H
     // FIXME: 1. Let firePageSwapBeforeUnload be the following step:
     //            1. Fire the pageswap event given displayedDocument, targetEntry, navigationType, and null.
 
-    // 2. Set navigable's ongoing navigation to null.
-    if (auto navigable = find(navigable_id); navigable.has_value())
-        navigable->clear_ongoing_navigation_traversal(operation.operation_id);
-
-    // 3. Unload a document and its descendants given displayedDocument, targetEntry's document,
+    // 2. Unload a document and its descendants given displayedDocument, targetEntry's document,
     //    afterPotentialUnloads, and firePageSwapBeforeUnload.
+    // NB: The ongoing navigation is no longer cleared here; afterPotentialUnloads clears it once the displayed
+    //     document has been unloaded, and the canonical marker is released when the continuation completes.
     auto pending_job = operation.pending_changing_jobs.get(navigable_id);
     VERIFY(pending_job.has_value());
     VERIFY(!pending_job.value()->unload_preparation_pending);
@@ -1401,9 +1399,8 @@ void CanonicalTraversable::deactivate_a_document_for_cross_document_navigation(H
 
     // FIXME: 6. Otherwise, queue a global task on the navigation and traversal task source given navigable's active window to run the steps:
     //            1. Let proceedWithNavigationAfterViewTransitionCapture be the following step:
-    //               1. Append the following session history traversal steps to navigable's traversable navigable:
-    //                  1. Set navigable's ongoing navigation to null.
-    //                  2. Unload a document and its descendants given displayedDocument, targetEntry's document, and afterPotentialUnloads.
+    //               1. Append session history traversal steps to navigable's traversable navigable to unload a document
+    //                  and its descendants given displayedDocument, targetEntry's document, and afterPotentialUnloads.
     //            2. Let viewTransition be the result of setting up a cross-document view-transition given displayedDocument,
     //               targetEntry's document, navigationType, and proceedWithNavigationAfterViewTransitionCapture.
     //            3. Fire the pageswap event given displayedDocument, targetEntry, navigationType, and viewTransition.
