@@ -1,0 +1,7 @@
+Harness status: OK
+
+Found 2 tests
+
+2 Pass
+Pass	fragment navigation then go(-2)
+Pass	pushState then go(-2)

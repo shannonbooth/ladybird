@@ -1,0 +1,9 @@
+Harness status: OK
+
+Found 4 tests
+
+4 Pass
+Pass	fragment navigation then fragment navigation
+Pass	pushState() then pushState()
+Pass	pushState() then fragment navigation
+Pass	fragment navigation then pushState()

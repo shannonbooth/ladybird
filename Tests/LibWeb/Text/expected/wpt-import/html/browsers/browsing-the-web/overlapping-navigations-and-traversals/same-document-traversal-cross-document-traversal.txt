@@ -1,0 +1,7 @@
+Harness status: OK
+
+Found 2 tests
+
+2 Pass
+Pass	traversals in the same (back) direction: queued up
+Pass	traversals in the same (forward) direction: queued up

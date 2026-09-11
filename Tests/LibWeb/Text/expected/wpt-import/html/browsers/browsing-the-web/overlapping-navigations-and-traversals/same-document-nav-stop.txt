@@ -1,0 +1,7 @@
+Harness status: OK
+
+Found 2 tests
+
+2 Pass
+Pass	fragment navigations are not stopped by stop()
+Pass	pushState() navigations are not stopped by stop()

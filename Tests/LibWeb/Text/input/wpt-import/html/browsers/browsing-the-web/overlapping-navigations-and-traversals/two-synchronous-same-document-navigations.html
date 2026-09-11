@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Two synchronous same-document navigations each contribute a session history entry</title>
+<script src="../../../../resources/testharness.js"></script>
+<script src="../../../../resources/testharnessreport.js"></script>
+
+<body>
+<script type="module">
+import { createIframe, waitForPopstate } from "./resources/helpers.mjs";
+
+promise_test(async t => {
+  const iframe = await createIframe(t);
+  const w = iframe.contentWindow;
+  const before = w.history.length;
+
+  w.history.pushState({ n: 1 }, "", "?1");
+  w.history.pushState({ n: 2 }, "", "?2");
+
+  assert_equals(w.location.search, "?2", "the later push wins synchronously");
+
+  // Give the session history traversal queue a chance to process both.
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+
+  assert_equals(w.history.length, before + 2,
+    "both pushes must contribute an entry");
+}, "pushState() twice in a task adds two entries");
+
+promise_test(async t => {
+  const iframe = await createIframe(t);
+  const w = iframe.contentWindow;
+
+  w.history.pushState({ n: 1 }, "", "?1");
+  w.history.pushState({ n: 2 }, "", "?2");
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+
+  // Traversing back must land on the first push, not skip past it.
+  const popstate = waitForPopstate(w);
+  w.history.back();
+  const event = await popstate;
+
+  assert_equals(w.location.search, "?1", "back() lands on the first push");
+  assert_equals(event.state.n, 1, "the first push's state is restored");
+}, "pushState() twice in a task: back() reaches the first push");
+
+promise_test(async t => {
+  const iframe = await createIframe(t);
+  const w = iframe.contentWindow;
+  const before = w.history.length;
+
+  w.history.replaceState({ r: 1 }, "", "?r1");
+  w.history.replaceState({ r: 2 }, "", "?r2");
+  await new Promise(resolve => t.step_timeout(resolve, 100));
+
+  assert_equals(w.history.length, before, "replaceState() adds no entries");
+  assert_equals(w.location.search, "?r2", "the later replace wins");
+  assert_equals(w.history.state.r, 2, "the later replace's state is current");
+}, "replaceState() twice in a task keeps the last state");
+</script>

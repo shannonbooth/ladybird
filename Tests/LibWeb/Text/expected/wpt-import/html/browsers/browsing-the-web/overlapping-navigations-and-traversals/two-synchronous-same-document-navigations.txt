@@ -1,0 +1,8 @@
+Harness status: OK
+
+Found 3 tests
+
+3 Pass
+Pass	pushState() twice in a task adds two entries
+Pass	pushState() twice in a task: back() reaches the first push
+Pass	replaceState() twice in a task keeps the last state

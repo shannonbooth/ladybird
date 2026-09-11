@@ -1,0 +1,9 @@
+Harness status: OK
+
+Found 4 tests
+
+4 Pass
+Pass	same-document traversals in opposite directions: queued up
+Pass	same-document traversals in opposite directions, second traversal invalid at queuing time: queued up
+Pass	same-document traversals in the same (back) direction: queue up
+Pass	same-document traversals in the same (forward) direction: queue up

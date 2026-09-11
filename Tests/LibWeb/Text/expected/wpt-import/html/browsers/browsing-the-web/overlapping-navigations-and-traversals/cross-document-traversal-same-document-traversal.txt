@@ -1,0 +1,7 @@
+Harness status: OK
+
+Found 2 tests
+
+2 Fail
+Fail	traversals in the same (back) direction: coalesced
+Fail	traversals in the same (forward) direction: coalesced
