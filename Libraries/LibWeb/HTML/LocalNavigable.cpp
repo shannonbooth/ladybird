@@ -3293,12 +3293,11 @@ void LocalNavigable::begin_navigation(PreparedNavigation navigation)
 
     // 12. If historyHandling is "auto", then:
     if (history_handling == Bindings::NavigationHistoryBehavior::Auto) {
-        // 1. If url equals navigable's active document's URL, and initiatorOriginSnapshot is same origin with
-        //    navigable's active document's origin, then set historyHandling to "replace".
-        // AD-HOC: Also replace same-URL navigations when sourceDocument is null.
-        //         See https://github.com/whatwg/html/issues/12803.
+        // 1. If url equals navigable's active document's URL, and either userInvolvement is "browser UI" or
+        //    initiatorOriginSnapshot is same origin with navigable's active document's origin, then set
+        //    historyHandling to "replace".
         if (url == active_document.url()
-            && (!source_document || initiator_origin_snapshot.is_same_origin(active_document.origin()))) {
+            && (user_involvement == UserNavigationInvolvement::BrowserUI || initiator_origin_snapshot.is_same_origin(active_document.origin()))) {
             history_handling = Bindings::NavigationHistoryBehavior::Replace;
         }
 
