@@ -1245,7 +1245,8 @@ void LocalNavigable::update_nonchanging_navigable_history_step_state(HistoryObje
     }));
 }
 
-// AD-HOC: This implements https://github.com/whatwg/html/pull/12838.
+// https://html.spec.whatwg.org/multipage/browsing-the-web.html#apply-the-history-step
+// The steps queued for a navigable of changingNavigables whose targetEntry's document is not its active document.
 void LocalNavigable::queue_navigation_api_state_clear_task()
 {
     if (has_been_destroyed() || !active_window())
