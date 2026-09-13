@@ -144,6 +144,8 @@ private:
     void send_changing_navigable_continuation_task(HistoryOperation&, Web::HTML::CrossProcessId navigable_id, Web::HTML::UnloadDisplayedDocument);
     void deactivate_a_document_for_cross_document_navigation(HistoryOperation&, Web::HTML::CrossProcessId navigable_id);
     void unload_a_document_and_its_descendants(Optional<Web::HTML::CrossProcessId> operation_id, Web::HTML::CrossProcessId root_navigable_id, Function<void()> queue_document_unload_task);
+    void unload_displayed_document_in_host(Optional<Web::HTML::CrossProcessId> operation_id, HistoryJobEndpoint, Web::HTML::CrossProcessId navigable_id, Function<void()> after_unload);
+    void discard_pending_host_at(Web::HTML::CrossProcessId navigable_id, HistoryJobEndpoint const&);
     void dispatch_next_beforeunload_group(HistoryOperation&);
     void complete_unload_cancelation(HistoryOperation&, Web::HTML::HistoryStepResult);
     void dispatch_descendant_unload_task(Web::HTML::CrossProcessId unload_id, Web::HTML::CrossProcessId navigable_id);
