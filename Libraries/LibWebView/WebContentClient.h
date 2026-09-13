@@ -105,6 +105,7 @@ public:
     void web_ui_disconnected(Badge<WebUI>);
     void register_embedded_page(u64 page_id, CanonicalNavigable&);
     void unregister_embedded_page(u64 page_id);
+    void discard_embedded_page(u64 page_id);
 
     CanonicalNavigable* embedded_page_host(u64 page_id);
     CanonicalNavigable* navigable_for_page(u64 page_id);

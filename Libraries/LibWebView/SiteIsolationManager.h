@@ -33,11 +33,13 @@ public:
     struct DocumentHost {
         NonnullRefPtr<WebContentClient> client;
         u64 page_id;
+        // Set when the page was created for the document.
+        EmbeddedPageHandle created_page {};
     };
     ErrorOr<DocumentHost> obtain_child_document_host(CanonicalNavigable&, CanonicalSimilarOriginWindowAgent&);
-    void set_child_document_host(CanonicalNavigable&, DocumentHost const&);
+    void set_child_document_host(CanonicalNavigable&, DocumentHost);
 
-    void transition_child_frame_to_remote(WebContentClient& parent_client, u64 page_id, Web::HTML::CrossProcessId frame_id, NonnullRefPtr<WebContentClient>, u64 remote_page_id);
+    void transition_child_frame_to_remote(WebContentClient& parent_client, u64 page_id, Web::HTML::CrossProcessId frame_id, EmbeddedPageHandle remote_page);
     void transition_child_frame_to_local(CanonicalNavigable&);
 
     void remove_child_frame_subtree(CanonicalNavigable&);

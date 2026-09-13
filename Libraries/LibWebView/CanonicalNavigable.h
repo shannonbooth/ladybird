@@ -36,6 +36,29 @@
 
 namespace WebView {
 
+// Holds a page created to host a child navigable's documents, and discards the page when let go.
+class WEBVIEW_API EmbeddedPageHandle {
+public:
+    EmbeddedPageHandle();
+    EmbeddedPageHandle(WebContentClient&, u64 page_id);
+    ~EmbeddedPageHandle();
+
+    EmbeddedPageHandle(EmbeddedPageHandle&&);
+    EmbeddedPageHandle& operator=(EmbeddedPageHandle&&);
+
+    EmbeddedPageHandle(EmbeddedPageHandle const&) = delete;
+    EmbeddedPageHandle& operator=(EmbeddedPageHandle const&) = delete;
+
+    WebContentClient* client() const { return m_client.ptr(); }
+    u64 page_id() const { return m_page_id; }
+
+private:
+    void release();
+
+    RefPtr<WebContentClient> m_client;
+    u64 m_page_id { 0 };
+};
+
 class WEBVIEW_API CanonicalNavigable
     : public Weakable<CanonicalNavigable> {
 public:
@@ -67,6 +90,7 @@ public:
         WeakPtr<WebContentClient> host_client {};
         u64 host_page_id { 0 };
         RefPtr<CanonicalBrowsingContext> destination_browsing_context {};
+        EmbeddedPageHandle destination_page {};
     };
 
     // The active document's load, tracked from the document's activation until WebContent reports that
@@ -117,12 +141,12 @@ public:
     IterationDecision for_each_in_inclusive_subtree(Function<IterationDecision(CanonicalNavigable const&)> const&) const;
     IterationDecision for_each_in_subtree(Function<IterationDecision(CanonicalNavigable const&)> const&) const;
 
-    bool has_remote_host() const { return m_host_locality == HostLocality::Remote && m_remote_client && m_remote_page_id != 0; }
+    bool has_remote_host() const { return m_host_locality == HostLocality::Remote && m_remote_page.client() && m_remote_page.page_id() != 0; }
     bool is_hosted_by(WebContentClient const&, u64 page_id) const;
     WebContentClient& remote_host_client() const;
-    u64 remote_host_page_id() const { return m_remote_page_id; }
+    u64 remote_host_page_id() const { return m_remote_page.page_id(); }
 
-    void set_remote_host(NonnullRefPtr<WebContentClient>, u64 remote_page_id);
+    void set_remote_host(EmbeddedPageHandle);
     void detach_remote_host();
 
     Optional<Web::DevicePixelRect> const& viewport_rect() const { return m_viewport_rect; }
@@ -213,8 +237,7 @@ private:
     double m_device_pixel_ratio { 1 };
 
     HostLocality m_host_locality { HostLocality::Local };
-    RefPtr<WebContentClient> m_remote_client;
-    u64 m_remote_page_id { 0 };
+    EmbeddedPageHandle m_remote_page;
 };
 
 }

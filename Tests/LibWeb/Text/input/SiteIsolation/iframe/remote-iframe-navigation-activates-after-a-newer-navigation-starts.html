@@ -1,0 +1,80 @@
+<!doctype html>
+<script src="../../include.js"></script>
+<script>
+    // A navigation of an out-of-process iframe that starts while the frame's document is unloading for a navigation to
+    // another process leaves that navigation's document to be activated before its own.
+    promiseTest(async () => {
+        const httpServer = httpTestServer();
+        const runId = crypto.randomUUID();
+
+        const firstUrl = new URL(
+            await httpServer.createEcho("GET", `/oop-superseded-first-${runId}`, {
+                status: 200,
+                headers: { "Content-Type": "text/html" },
+                body: `<!DOCTYPE html><script>
+                    addEventListener("unload", () => {
+                        document.cookie = "unloading=1; path=/";
+                        const end = Date.now() + 1000;
+                        while (Date.now() < end) {}
+                    });
+                    document.cookie = "loaded=1; path=/";
+                <\/script>`,
+            })
+        );
+        firstUrl.hostname = uniqueLocalhostHostname("oop-superseded-first");
+
+        const secondUrl = new URL(
+            await httpServer.createEcho("GET", `/oop-superseded-second-${runId}`, {
+                status: 200,
+                headers: { "Content-Type": "text/html" },
+                body: `<!DOCTYPE html><script>document.cookie = "loaded=1; path=/";<\/script>`,
+            })
+        );
+        secondUrl.hostname = uniqueLocalhostHostname("oop-superseded-second");
+
+        // The third document's response is held back so that the second document's script runs before the third
+        // navigation replaces it.
+        const thirdUrl = new URL(
+            await httpServer.createEcho("GET", `/oop-superseded-third-${runId}`, {
+                status: 200,
+                headers: { "Content-Type": "text/html" },
+                body: `<!DOCTYPE html><script>document.cookie = "loaded=1; path=/";<\/script>`,
+                delay_ms: 1000,
+            })
+        );
+        thirdUrl.hostname = uniqueLocalhostHostname("oop-superseded-third");
+
+        const iframe = document.createElement("iframe");
+        iframe.src = firstUrl;
+        document.body.appendChild(iframe);
+        if (
+            !(await waitForCondition(
+                () => remoteFrameCount() === 1 && internals.hasCookieForURL(firstUrl.href, "loaded", "1")
+            ))
+        ) {
+            println("first document did not load out of process");
+            return;
+        }
+
+        // The first document's unload handler keeps its process busy after recording that it runs, so the third
+        // navigation starts before the second document can be activated.
+        iframe.src = secondUrl;
+        if (!(await waitForCondition(() => internals.hasCookieForURL(firstUrl.href, "unloading", "1")))) {
+            println("first document did not unload");
+            return;
+        }
+        iframe.src = thirdUrl;
+
+        for (const [url, description] of [
+            [secondUrl, "second document"],
+            [thirdUrl, "third document"],
+        ]) {
+            if (!(await waitForCondition(() => internals.hasCookieForURL(url.href, "loaded", "1")))) {
+                println(`${description} did not run`);
+                return;
+            }
+            println(`${description} ran`);
+        }
+        println(internals.dumpSiteIsolationProcessTree().trimEnd());
+    });
+</script>

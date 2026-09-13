@@ -89,6 +89,13 @@ void SiteIsolationManager::remove_page(WebContentClient& client, u64 page_id)
     if (!host)
         return;
 
+    // A page created for a document that was never activated takes only its history work with it.
+    if (!host->is_top_level_traversable() && !host->is_hosted_by(client, page_id)) {
+        client.discard_embedded_page(page_id);
+        host->top_level_traversable().did_lose_history_job_endpoint(client, page_id);
+        return;
+    }
+
     // All children of the hosting navigable are the frames the page reported; any deeper
     // frames belong to their subtrees and follow them out.
     while (!host->children().is_empty())
@@ -199,20 +206,21 @@ ErrorOr<SiteIsolationManager::DocumentHost> SiteIsolationManager::obtain_child_d
     if (navigable.viewport_rect().has_value())
         host->async_set_viewport(page_id, navigable.viewport_rect()->size(), navigable.device_pixel_ratio(), Web::ViewportIsFullscreen::No);
     host->async_update_visibility_state(page_id, navigable.id(), traversable.system_visibility_state());
-    return DocumentHost { host.release_nonnull(), page_id };
+    EmbeddedPageHandle created_page { *host, page_id };
+    return DocumentHost { host.release_nonnull(), page_id, move(created_page) };
 }
 
-void SiteIsolationManager::set_child_document_host(CanonicalNavigable& navigable, DocumentHost const& host)
+void SiteIsolationManager::set_child_document_host(CanonicalNavigable& navigable, DocumentHost host)
 {
     if (host.client.ptr() == navigable.reporting_client_if_any() && host.page_id == navigable.reporting_page_id()) {
         if (navigable.has_remote_host())
             transition_child_frame_to_local(navigable);
     } else if (!navigable.has_remote_host() || &navigable.remote_host_client() != host.client.ptr() || navigable.remote_host_page_id() != host.page_id) {
-        transition_child_frame_to_remote(navigable.reporting_client(), navigable.reporting_page_id(), navigable.id(), host.client, host.page_id);
+        transition_child_frame_to_remote(navigable.reporting_client(), navigable.reporting_page_id(), navigable.id(), move(host.created_page));
     }
 }
 
-void SiteIsolationManager::transition_child_frame_to_remote(WebContentClient& parent_client, u64 page_id, Web::HTML::CrossProcessId frame_id, NonnullRefPtr<WebContentClient> remote_client, u64 remote_page_id)
+void SiteIsolationManager::transition_child_frame_to_remote(WebContentClient& parent_client, u64 page_id, Web::HTML::CrossProcessId frame_id, EmbeddedPageHandle remote_page)
 {
     auto child_frame = parent_client.child_frame(page_id, frame_id);
     if (!child_frame.has_value())
@@ -220,7 +228,8 @@ void SiteIsolationManager::transition_child_frame_to_remote(WebContentClient& pa
 
     transition_child_frame_to_local(*child_frame);
 
-    child_frame->set_remote_host(move(remote_client), remote_page_id);
+    auto remote_page_id = remote_page.page_id();
+    child_frame->set_remote_host(move(remote_page));
     parent_client.async_set_remote_child_frame_compositor_context(
         page_id,
         child_frame->id(),

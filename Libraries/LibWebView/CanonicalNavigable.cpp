@@ -95,7 +95,7 @@ WebContentClient& CanonicalNavigable::reporting_client() const
 bool CanonicalNavigable::is_hosted_by(WebContentClient const& client, u64 page_id) const
 {
     if (m_host_locality == HostLocality::Remote)
-        return m_remote_client.ptr() == &client && m_remote_page_id == page_id;
+        return m_remote_page.client() == &client && m_remote_page.page_id() == page_id;
     return m_reporting_client.ptr() == &client && m_reporting_page_id == page_id;
 }
 
@@ -299,34 +299,66 @@ IterationDecision CanonicalNavigable::for_each_in_subtree(Function<IterationDeci
 
 WebContentClient& CanonicalNavigable::remote_host_client() const
 {
-    VERIFY(m_remote_client);
-    return *m_remote_client;
+    VERIFY(m_remote_page.client());
+    return *m_remote_page.client();
 }
 
-void CanonicalNavigable::set_remote_host(NonnullRefPtr<WebContentClient> remote_client, u64 remote_page_id)
+void CanonicalNavigable::set_remote_host(EmbeddedPageHandle remote_page)
 {
+    VERIFY(remote_page.client());
     detach_remote_host();
 
     m_host_locality = HostLocality::Remote;
-    m_remote_client = move(remote_client);
-    m_remote_page_id = remote_page_id;
+    m_remote_page = move(remote_page);
 }
 
 void CanonicalNavigable::detach_remote_host()
 {
     if (has_remote_host()) {
-        m_remote_client->async_set_page_parent_context(m_remote_page_id, {});
-        m_remote_client->async_discard_embedded_page(m_remote_page_id);
-        // The page stops being a history job endpoint now; queued history work must not start against it. Its
-        // client outlives the discard acknowledgement, so a shared process is not closed under the page.
-        m_remote_client->prepare_for_detached_close(m_remote_page_id);
-        m_remote_client->unregister_embedded_page(m_remote_page_id);
-        top_level_traversable().did_lose_history_job_endpoint(*m_remote_client, m_remote_page_id);
+        NonnullRefPtr client = remote_host_client();
+        auto page_id = remote_host_page_id();
+        m_remote_page = {};
+        top_level_traversable().did_lose_history_job_endpoint(*client, page_id);
     }
 
     m_host_locality = HostLocality::Local;
-    m_remote_client = nullptr;
-    m_remote_page_id = 0;
+}
+
+EmbeddedPageHandle::EmbeddedPageHandle() = default;
+
+EmbeddedPageHandle::EmbeddedPageHandle(WebContentClient& client, u64 page_id)
+    : m_client(client)
+    , m_page_id(page_id)
+{
+}
+
+EmbeddedPageHandle::~EmbeddedPageHandle()
+{
+    release();
+}
+
+EmbeddedPageHandle::EmbeddedPageHandle(EmbeddedPageHandle&& other)
+    : m_client(move(other.m_client))
+    , m_page_id(exchange(other.m_page_id, 0))
+{
+}
+
+EmbeddedPageHandle& EmbeddedPageHandle::operator=(EmbeddedPageHandle&& other)
+{
+    if (this != &other) {
+        release();
+        m_client = move(other.m_client);
+        m_page_id = exchange(other.m_page_id, 0);
+    }
+    return *this;
+}
+
+void EmbeddedPageHandle::release()
+{
+    auto client = move(m_client);
+    auto page_id = exchange(m_page_id, 0);
+    if (client)
+        client->discard_embedded_page(page_id);
 }
 
 void CanonicalNavigable::set_viewport(Web::DevicePixelRect viewport_rect, double device_pixel_ratio)
@@ -335,8 +367,8 @@ void CanonicalNavigable::set_viewport(Web::DevicePixelRect viewport_rect, double
     m_device_pixel_ratio = device_pixel_ratio;
 
     if (has_remote_host()) {
-        m_remote_client->async_set_viewport(
-            m_remote_page_id,
+        remote_host_client().async_set_viewport(
+            remote_host_page_id(),
             viewport_rect.size(),
             device_pixel_ratio,
             Web::ViewportIsFullscreen::No);

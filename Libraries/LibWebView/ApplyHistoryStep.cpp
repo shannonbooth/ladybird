@@ -165,7 +165,8 @@ void ApplyHistoryStep::get_changing_and_nonchanging_navigables()
 
 void ApplyHistoryStep::run_changing_navigable_jobs()
 {
-    // 12. For each navigable of changingNavigables, queue a global task on the navigation and traversal task source.
+    // 12. For each navigable of changingNavigables, queue a global task on the navigation and traversal task source of
+    //     navigable's active window to run the steps:
     for (auto navigable_id : m_changing_navigables) {
         auto const* navigable = find_navigable(navigable_id);
         auto const* target_entry = navigable ? m_session_history.get_the_target_history_entry(*navigable, m_target_step) : nullptr;

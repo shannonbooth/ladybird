@@ -73,6 +73,8 @@ public:
     struct HistoryJobEndpoint {
         RefPtr<WebContentClient> client;
         u64 page_id { 0 };
+
+        bool operator==(HistoryJobEndpoint const&) const = default;
     };
     HistoryJobEndpoint history_job_endpoint_for(CanonicalNavigable const&) const;
     bool history_job_endpoint_is_available(HistoryJobEndpoint const&) const;
@@ -143,7 +145,7 @@ private:
     void dispatch_changing_navigable_history_step_continuation(HistoryOperation&, Web::HTML::CrossProcessId navigable_id);
     void send_changing_navigable_continuation_task(HistoryOperation&, Web::HTML::CrossProcessId navigable_id, Web::HTML::UnloadDisplayedDocument);
     void deactivate_a_document_for_cross_document_navigation(HistoryOperation&, Web::HTML::CrossProcessId navigable_id);
-    void unload_a_document_and_its_descendants(Optional<Web::HTML::CrossProcessId> operation_id, Web::HTML::CrossProcessId root_navigable_id, Function<void()> queue_document_unload_task);
+    void unload_a_document_and_its_descendants(Optional<Web::HTML::CrossProcessId> operation_id, Web::HTML::CrossProcessId navigable_id, HistoryJobEndpoint const& after_all_unloads_endpoint, Function<void(Web::HTML::UnloadDisplayedDocument)> queue_document_unload_task);
     void dispatch_next_beforeunload_group(HistoryOperation&);
     void complete_unload_cancelation(HistoryOperation&, Web::HTML::HistoryStepResult);
     void dispatch_descendant_unload_task(Web::HTML::CrossProcessId unload_id, Web::HTML::CrossProcessId navigable_id);

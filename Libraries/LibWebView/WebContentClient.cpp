@@ -340,17 +340,26 @@ void WebContentClient::unregister_embedded_page(u64 page_id)
     close_server_if_unused();
 }
 
+void WebContentClient::discard_embedded_page(u64 page_id)
+{
+    if (!m_embedded_pages.contains(page_id))
+        return;
+
+    async_set_page_parent_context(page_id, {});
+    async_discard_embedded_page(page_id);
+    // The page stops being a history job endpoint now; queued history work must not start against it. Its client
+    // outlives the discard acknowledgement, so a shared process is not closed under the page.
+    prepare_for_detached_close(page_id);
+    unregister_embedded_page(page_id);
+}
+
 CanonicalNavigable* WebContentClient::embedded_page_host(u64 page_id)
 {
     auto host = m_embedded_pages.find(page_id);
     if (host == m_embedded_pages.end())
         return nullptr;
 
-    auto* child_frame = host->value.ptr();
-    if (!child_frame || !child_frame->has_remote_host() || &child_frame->remote_host_client() != this)
-        return nullptr;
-
-    return child_frame;
+    return host->value.ptr();
 }
 
 bool WebContentClient::is_page_open(u64 page_id) const
@@ -524,9 +533,10 @@ void WebContentClient::notify_all_views_of_crash()
     // their owning traversables. A missing renderer is an exactly-once completion for descendant unload tasks.
     for (auto& view_entry : m_views)
         view_entry.value->traversable().did_lose_history_job_endpoint(*this, view_entry.key);
-    for (auto& embedded_page_entry : m_embedded_pages) {
-        if (auto* host = embedded_page_entry.value.ptr())
-            host->top_level_traversable().did_lose_history_job_endpoint(*this, embedded_page_entry.key);
+    // Completing a page's lost history work can discard embedded pages, so walk a copy of their ids.
+    for (auto page_id : m_embedded_pages.keys()) {
+        if (auto* host = embedded_page_host(page_id))
+            host->top_level_traversable().did_lose_history_job_endpoint(*this, page_id);
     }
 
     SiteIsolationManager::the().remove_all_pages_for_client(*this);
@@ -965,9 +975,12 @@ bool WebContentClient::continue_navigation_population_in_selected_process(u64 pa
     if (site_isolation_mode() != SiteIsolationMode::IFrame)
         return populate_in(*this, page_id);
 
+    // 7.4. Let agent be the result of obtaining a similar-origin window agent given navigationParams's origin,
+    //      browsingContext's group, and requestsOAC.
     // FIXME: Pass the document's requestsOAC value once Origin-Agent-Cluster is implemented.
     auto agent = browsing_context_group->obtain_similar_origin_window_agent(document->origin, false);
 
+    // NB: window is created in a page of the process hosting agent.
     auto host_or_error = SiteIsolationManager::the().obtain_child_document_host(*navigable, *agent);
     if (host_or_error.is_error()) {
         warnln("Unable to create WebContent page for child frame navigation: {}", host_or_error.error());
@@ -975,8 +988,7 @@ bool WebContentClient::continue_navigation_population_in_selected_process(u64 pa
         return false;
     }
     auto host = host_or_error.release_value();
-    navigable->set_navigation_host(*host.client, host.page_id);
-    SiteIsolationManager::the().set_child_document_host(*navigable, host);
+    ongoing_navigation->destination_page = move(host.created_page);
     return populate_in(*host.client, host.page_id);
 }
 
