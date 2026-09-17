@@ -82,6 +82,7 @@ GC::Ref<BroadcastChannel> BroadcastChannel::create(GC::Ref<DOM::EventTarget> rel
 {
     auto channel = GC::Heap::the().allocate<BroadcastChannel>(relevant_global_object, name, move(origin), move(storage_key));
     broadcast_channel_repository().register_channel(channel);
+    relevant_window_or_worker_global_scope(relevant_global_object).register_broadcast_channel({}, channel);
     return channel;
 }
 
@@ -106,6 +107,7 @@ void BroadcastChannel::finalize()
 {
     Base::finalize();
     broadcast_channel_repository().unregister_channel(*this);
+    relevant_window_or_worker_global_scope(*m_global_object).unregister_broadcast_channel({}, *this);
 }
 
 void BroadcastChannel::visit_edges(Cell::Visitor& visitor)
@@ -252,6 +254,7 @@ void BroadcastChannel::close()
     m_closed_flag = true;
 
     broadcast_channel_repository().unregister_channel(*this);
+    relevant_window_or_worker_global_scope(*m_global_object).unregister_broadcast_channel({}, *this);
 }
 
 // https://html.spec.whatwg.org/multipage/web-messaging.html#handler-broadcastchannel-onmessage

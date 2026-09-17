@@ -86,6 +86,9 @@ public:
     void unregister_event_source(Badge<EventSource>, GC::Ref<EventSource>);
     void forcibly_close_all_event_sources();
 
+    void register_broadcast_channel(Badge<BroadcastChannel>, GC::Ref<BroadcastChannel>);
+    void unregister_broadcast_channel(Badge<BroadcastChannel>, GC::Ref<BroadcastChannel>);
+
     void close_all_idb_connections();
 
     void register_web_socket(Badge<WebSockets::WebSocket>, GC::Ref<WebSockets::WebSocket>);
@@ -203,6 +206,9 @@ private:
     OrderedHashMap<Utf16FlyString, PerformanceTimeline::PerformanceEntryTuple> m_performance_entry_buffer_map;
 
     HashTable<GC::Ref<EventSource>> m_registered_event_sources;
+
+    // The open BroadcastChannel objects whose relevant global object this is.
+    HashTable<GC::Ref<BroadcastChannel>> m_registered_broadcast_channels;
 
     GC::Ptr<HighResolutionTime::Performance> m_performance;
 

@@ -33,6 +33,7 @@
 #include <LibWeb/DOM/Document.h>
 #include <LibWeb/Fetch/BindingsGlue.h>
 #include <LibWeb/Fetch/FetchMethod.h>
+#include <LibWeb/HTML/BroadcastChannel.h>
 #include <LibWeb/HTML/CanvasRenderingContext2D.h>
 #include <LibWeb/HTML/DedicatedWorkerGlobalScope.h>
 #include <LibWeb/HTML/ErrorEvent.h>
@@ -135,6 +136,15 @@ void WindowOrWorkerGlobalScopeMixin::visit_edges(JS::Cell::Visitor& visitor)
     for (auto& entry : m_performance_entry_buffer_map)
         entry.value.visit_edges(visitor);
     visitor.visit(m_registered_event_sources);
+
+    // https://html.spec.whatwg.org/multipage/web-messaging.html#broadcasting-to-other-browsing-contexts
+    // While a BroadcastChannel object whose closed flag is false has an event listener registered for message or
+    // messageerror events, there must be a strong reference from the BroadcastChannel object's relevant global object to
+    // the BroadcastChannel object itself.
+    for (auto const& broadcast_channel : m_registered_broadcast_channels) {
+        if (broadcast_channel->has_event_listener(EventNames::message) || broadcast_channel->has_event_listener(EventNames::messageerror))
+            visitor.visit(broadcast_channel);
+    }
     visitor.visit(m_crypto);
     visitor.visit(m_cache_storage);
     visitor.visit(m_resource_timing_secondary_buffer);
@@ -1205,6 +1215,16 @@ void WindowOrWorkerGlobalScopeMixin::register_event_source(Badge<EventSource>, G
 void WindowOrWorkerGlobalScopeMixin::unregister_event_source(Badge<EventSource>, GC::Ref<EventSource> event_source)
 {
     m_registered_event_sources.remove(event_source);
+}
+
+void WindowOrWorkerGlobalScopeMixin::register_broadcast_channel(Badge<BroadcastChannel>, GC::Ref<BroadcastChannel> broadcast_channel)
+{
+    m_registered_broadcast_channels.set(broadcast_channel);
+}
+
+void WindowOrWorkerGlobalScopeMixin::unregister_broadcast_channel(Badge<BroadcastChannel>, GC::Ref<BroadcastChannel> broadcast_channel)
+{
+    m_registered_broadcast_channels.remove(broadcast_channel);
 }
 
 void WindowOrWorkerGlobalScopeMixin::forcibly_close_all_event_sources()

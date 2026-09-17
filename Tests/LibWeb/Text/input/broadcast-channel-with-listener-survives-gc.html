@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<script src="include.js"></script>
+<script>
+    // An open BroadcastChannel with a message or messageerror listener is held by its global object, so one that
+    // nothing else references still hears what's posted to its channel after a garbage collection. A closed one is
+    // let go, and hears nothing either way.
+    asyncTest(done => {
+        const name = `channel-${crypto.randomUUID()}`;
+        const heard = [];
+        new BroadcastChannel(name).onmessage = e => heard.push(`open: ${e.data}`);
+        new BroadcastChannel(name).addEventListener("messageerror", () => heard.push("open, messageerror listener: message"));
+        const closed = new BroadcastChannel(name);
+        closed.onmessage = e => heard.push(`closed: ${e.data}`);
+        closed.close();
+        // Two collections, since the second finishes the sweep the first one starts.
+        internals.gc();
+        internals.gc();
+        new BroadcastChannel(name).postMessage("hello");
+        setTimeout(() => {
+            for (const line of heard)
+                println(line);
+            done();
+        }, 100);
+    });
+</script>
