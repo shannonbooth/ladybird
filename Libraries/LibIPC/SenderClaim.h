@@ -60,6 +60,17 @@ bool verify_message_argument(Stub& stub, T const& argument)
     return verify_sender_claim(stub, argument);
 }
 
+// The reply a routed synchronous message gets when there is no object to route it to: every output
+// value-initialized. A message whose outputs cannot all be empty must not be routed without an object.
+template<typename Response, typename... Outputs>
+Response empty_response()
+{
+    if constexpr (requires { Response { Outputs {}... }; })
+        return Response { Outputs {}... };
+    else
+        VERIFY_NOT_REACHED();
+}
+
 // The reply a refused synchronous message is answered with: every output value-initialized, so the
 // sender learns nothing from the refusal. A reply that cannot be built empty is not sent at all.
 template<typename Response, typename... Outputs>
