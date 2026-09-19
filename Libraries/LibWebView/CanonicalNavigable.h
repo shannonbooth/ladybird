@@ -20,6 +20,7 @@
 #include <AK/Weakable.h>
 #include <LibRequests/Forward.h>
 #include <LibURL/URL.h>
+#include <LibWeb/Compositor/Types.h>
 #include <LibWeb/Forward.h>
 #include <LibWeb/HTML/CrossOrigin/OpenerPolicyEnforcementResult.h>
 #include <LibWeb/HTML/CrossProcessId.h>
@@ -119,7 +120,26 @@ public:
     WebContentPageHandle const& remote_host() const;
 
     void set_remote_host(WebContentPageHandle);
+    // The page hosting the document stops hosting it, with the frames of that document, and represents the navigable
+    // from then on unless it holds nothing else of the tab.
     void detach_remote_host();
+
+    // The page to host the navigable's next document in the agent, chosen at population. It takes the container over
+    // when that document is activated; until then the page hosting the displayed document keeps it.
+    ErrorOr<WebContentPageHandle> obtain_document_host(CanonicalSimilarOriginWindowAgent&);
+    // The document a host was chosen for activated there, so that host takes the container over.
+    void set_document_host(WebContentPageHandle const&);
+    // The next document, or none after the host went away, is hosted by the page holding the container.
+    void transition_to_local_host();
+
+    struct RemoteChildFrameInputTarget {
+        WebContentPageHandle remote_page;
+        CanonicalNavigable const* navigable { nullptr };
+        Optional<Web::Compositor::CompositorContextId> compositor_context_id;
+        Web::DevicePixelRect viewport_rect;
+    };
+    // The remote child under this local root of a page at a position in the root's coordinates, if any.
+    Optional<RemoteChildFrameInputTarget> remote_child_frame_input_target_at(WebContentPageHandle const& page, Web::DevicePixelPoint) const;
 
     // The page chosen to host the navigable's next document, from the response that names the document
     // until the document is activated. The displayed document stays with its host until then, so that it is
@@ -229,6 +249,8 @@ private:
     Optional<Web::DevicePixelRect> m_viewport_rect;
     Web::DevicePixelRect m_viewport_intersection;
     double m_device_pixel_ratio { 1 };
+
+    void transition_to_remote_host(WebContentPageHandle);
 
     Optional<WebContentPageHandle> m_remote_host;
     Optional<WebContentPageHandle> m_pending_host;

@@ -153,6 +153,8 @@ public:
 
 private:
     void close_server_if_unused();
+    // The tabs the process held part of forget its pages.
+    void remove_all_pages();
     bool forget_compositor_context(Web::Compositor::CompositorContextId);
     void destroy_all_compositor_contexts();
     void cancel_navigation_transactions();

@@ -8,6 +8,7 @@
 
 #include <LibWeb/HTML/HistoryOperation.h>
 #include <LibWeb/Page/ViewportIsFullscreen.h>
+#include <LibWebView/Application.h>
 #include <LibWebView/BrowsingSession.h>
 #include <LibWebView/CanonicalBrowsingContext.h>
 #include <LibWebView/CanonicalBrowsingContextGroup.h>
@@ -307,9 +308,152 @@ void CanonicalNavigable::detach_remote_host()
     if (!m_remote_host.has_value())
         return;
 
+    // The frames of the displaced document, which its host reported, die with it and are not reported destroyed
+    // again. The frames of the next document, reported by its host, stay.
+    Vector<Web::HTML::CrossProcessId> displaced_frames;
+    for (auto const& child : children()) {
+        if (child->reporting_page() == *m_remote_host)
+            displaced_frames.append(child->id());
+    }
+    for (auto frame_id : displaced_frames) {
+        if (auto frame = top_level_traversable().find(frame_id); frame.has_value())
+            top_level_traversable().remove_subtree(*frame);
+    }
+
     // The page that hosted the document represents the navigable remotely from now on, unless it hosts nothing of the
     // tab any more, in which case it is discarded.
     top_level_traversable().stop_hosting_in_page(*this, m_remote_host.release_value());
+}
+
+ErrorOr<WebContentPageHandle> CanonicalNavigable::obtain_document_host(CanonicalSimilarOriginWindowAgent& agent)
+{
+    auto& traversable = top_level_traversable();
+    auto current_step = traversable.session_history().current_step();
+    VERIFY(current_step.has_value());
+    auto const* current_entry = traversable.session_history().get_the_target_history_entry(*this, *current_step);
+    VERIFY(current_entry);
+
+    auto host = agent.hosting_process();
+    auto& reporting_page = *m_reporting_page;
+    if (host && host.ptr() == &reporting_page.client()) {
+        // The page holding the container populates the document in a provisional navigable while another page hosts
+        // the displayed document.
+        if (has_remote_host())
+            reporting_page.async_begin_hosting_navigable(id(), *current_entry, traversable.system_visibility_state());
+        set_pending_host(reporting_page);
+        return reporting_page;
+    }
+    if (host && has_remote_host() && host.ptr() == &remote_host().client()) {
+        set_pending_host(remote_host());
+        return remote_host();
+    }
+
+    // A process holds one page per tab, with the tab's whole graph: the process displaying the tab hosts a document
+    // in the view's page, another process in the page it has for the tab, or in a page created for it.
+    Web::PageId page_id;
+    if (host && host->page_id_for_traversable(traversable).has_value()) {
+        page_id = *host->page_id_for_traversable(traversable);
+        host->async_begin_hosting_navigable(page_id, id(), *current_entry, traversable.system_visibility_state());
+    } else if (host) {
+        page_id = Application::the().allocate_page_id();
+        host->async_create_embedded_page(page_id, traversable.remote_navigable_graph(), id(), *current_entry, traversable.system_visibility_state());
+        host->register_embedded_page(page_id, traversable);
+        traversable.represent_openers_in(*host);
+    } else {
+        auto process = TRY(Application::the().launch_child_frame_web_content_process(reporting_page.client().is_private(), traversable.remote_navigable_graph(), id(), *current_entry));
+        host = move(process.client);
+        page_id = process.page_id;
+        agent.set_hosting_process_if_unset(*host);
+        host->register_embedded_page(page_id, traversable);
+        traversable.represent_openers_in(*host);
+    }
+    host->async_update_visibility_state(page_id, id(), traversable.system_visibility_state());
+    WebContentPageHandle page { host.release_nonnull(), page_id };
+    set_pending_host(page);
+    return page;
+}
+
+void CanonicalNavigable::set_document_host(WebContentPageHandle const& host)
+{
+    if (pending_host_matches(host))
+        clear_pending_host();
+
+    if (host == m_reporting_page) {
+        if (has_remote_host())
+            transition_to_local_host();
+    } else if (!has_remote_host() || remote_host() != host) {
+        transition_to_remote_host(host);
+    }
+}
+
+// A local navigable taking a child's container back starts from a document standing in for the canonical current
+// entry's, as the root of an embedded page does.
+static Optional<Web::HTML::SessionHistoryEntryDescriptor> current_history_entry_for(CanonicalNavigable& navigable)
+{
+    auto& traversable = navigable.top_level_traversable();
+    auto current_step = traversable.session_history().current_step();
+    if (!current_step.has_value())
+        return {};
+    // NB: The canonical session history can still lack the nested history of a newly created navigable.
+    auto const* current_entry = traversable.session_history().get_the_target_history_entry(navigable, *current_step);
+    if (!current_entry)
+        return {};
+    return *current_entry;
+}
+
+void CanonicalNavigable::transition_to_remote_host(WebContentPageHandle remote_page)
+{
+    detach_remote_host();
+    set_remote_host(move(remote_page));
+    // The page holding the container represents the child from its replicated state, which names the compositor
+    // context the host paints it through.
+    m_reporting_page->async_stop_hosting_navigable(id(), *m_replicated_state);
+}
+
+void CanonicalNavigable::transition_to_local_host()
+{
+    detach_remote_host();
+    auto current_history_entry = current_history_entry_for(*this);
+    if (!current_history_entry.has_value())
+        return;
+    m_reporting_page->async_host_navigable(id(), current_history_entry.release_value(), top_level_traversable().system_visibility_state());
+}
+
+// Whether a navigable's document is under a local root of a page without crossing a document another page hosts, so
+// that its container's position is in the root's coordinates.
+static bool is_under_root_in_page(CanonicalNavigable const& root, CanonicalNavigable const& navigable)
+{
+    for (auto const* ancestor = navigable.parent(); ancestor; ancestor = ancestor->parent()) {
+        if (ancestor == &root)
+            return true;
+        if (ancestor->has_remote_host())
+            return false;
+    }
+    return false;
+}
+
+Optional<CanonicalNavigable::RemoteChildFrameInputTarget> CanonicalNavigable::remote_child_frame_input_target_at(WebContentPageHandle const& page, Web::DevicePixelPoint position) const
+{
+    Optional<RemoteChildFrameInputTarget> target;
+    for_each_in_subtree([&](CanonicalNavigable const& child_frame) {
+        if (child_frame.reporting_page() != page)
+            return IterationDecision::Continue;
+        if (!is_under_root_in_page(*this, child_frame))
+            return IterationDecision::Continue;
+        auto const& viewport_rect = child_frame.viewport_rect();
+        if (!child_frame.has_remote_host() || !viewport_rect.has_value())
+            return IterationDecision::Continue;
+        if (!viewport_rect->contains(position))
+            return IterationDecision::Continue;
+        target = RemoteChildFrameInputTarget {
+            .remote_page = child_frame.remote_host(),
+            .navigable = &child_frame,
+            .compositor_context_id = child_frame.replicated_state().has_value() ? child_frame.replicated_state()->compositor_context_id : Optional<Web::Compositor::CompositorContextId> {},
+            .viewport_rect = *viewport_rect,
+        };
+        return IterationDecision::Break;
+    });
+    return target;
 }
 
 WebContentPageHandle const& CanonicalNavigable::pending_host() const

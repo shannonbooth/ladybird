@@ -94,6 +94,10 @@ public:
     Optional<CanonicalNavigable&> find(Web::HTML::CrossProcessId navigable_id);
     Optional<CanonicalNavigable const&> find(Web::HTML::CrossProcessId navigable_id) const;
     void remove(CanonicalNavigable&);
+    // Removes a navigable with its descendants, detaching the pages hosting their documents.
+    void remove_subtree(CanonicalNavigable&);
+    // The page no longer holds any of the tab: it closed, or its process is gone.
+    void remove_page(WebContentPageHandle const&);
 
     Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigable_graph() const;
 
@@ -124,7 +128,6 @@ public:
     void release_displaced_document_host();
     void release_displaced_document_host_after_unload();
     void discard_displaced_document_host();
-    void forget_displaced_document_host(Badge<SiteIsolationManager>);
     void did_lose_page(WebContentPageHandle const&);
 
     TraversableSessionHistory const& session_history() const { return m_session_history; }

@@ -34,7 +34,6 @@
 #include <LibWebView/NavigationLoader.h>
 #include <LibWebView/ProcessHandle.h>
 #include <LibWebView/SiteIsolation.h>
-#include <LibWebView/SiteIsolationManager.h>
 #include <LibWebView/SourceHighlighter.h>
 #include <LibWebView/ViewImplementation.h>
 #include <LibWebView/WebContentClient.h>
@@ -156,7 +155,7 @@ void WebContentClient::die()
     // The transport's peer-EOF and the process-exit notification race, and an embedded-only client can be destroyed
     // by this path before the process monitor looks it up. The removal is map-driven, so whichever path runs second
     // finds nothing left to do.
-    SiteIsolationManager::the().remove_all_pages_for_client(*this);
+    remove_all_pages();
 
     cancel_navigation_transactions();
     fail_renderer_owned_downloads();
@@ -270,7 +269,8 @@ void WebContentClient::keep_view_page_for_displaced_document(Web::PageId page_id
 void WebContentClient::unregister_view(Web::PageId page_id)
 {
     forget_compositor_context(Web::Compositor::compositor_context_id_for_page(page_id));
-    SiteIsolationManager::the().remove_page(page_handle(page_id));
+    if (auto* page = this->page(page_id))
+        page->traversable().remove_page(page->handle());
 
     if (auto* page = find_page(page_id)) {
         if (page->is_open() && page->displays_tab()) {
@@ -424,6 +424,19 @@ Optional<CanonicalNavigable&> WebContentClient::hosted_navigable(Web::HTML::Cros
     return result;
 }
 
+void WebContentClient::remove_all_pages()
+{
+    Vector<WebContentPageHandle> pages;
+    for_each_page([&](WebContentPage& page) {
+        pages.append(page.handle());
+        return IterationDecision::Continue;
+    });
+    for (auto const& page : pages) {
+        if (auto* open_page = page.page())
+            open_page->traversable().remove_page(page);
+    }
+}
+
 void WebContentClient::close_server_if_unused()
 {
     bool any_detached_close_pending = false;
@@ -540,7 +553,7 @@ void WebContentClient::notify_all_views_of_crash()
         page->traversable().did_lose_page(page->handle());
     }
 
-    SiteIsolationManager::the().remove_all_pages_for_client(*this);
+    remove_all_pages();
 
     // Collect view IDs first, then use deferred_invoke to handle crashes safely
     // (avoids signal handler deadlock and allows views to be looked up by ID

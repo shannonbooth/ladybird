@@ -93,6 +93,8 @@ public:
     void release_presented_bitmap(i32 bitmap_id);
     // Fails the downloads the page's process was feeding, once that process is gone.
     void fail_renderer_owned_downloads();
+    // The tab's frames and the processes hosting them, for tests and debugging.
+    String dump_process_tree() const;
 
 private:
     // Input over a remote child of the root is the hosting page's to handle, in the root's compositor context there.

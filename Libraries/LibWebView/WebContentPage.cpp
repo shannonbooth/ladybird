@@ -7,6 +7,7 @@
 #include <AK/Debug.h>
 #include <AK/JsonArray.h>
 #include <AK/JsonObject.h>
+#include <AK/StringBuilder.h>
 #include <LibCore/ElapsedTimer.h>
 #include <LibCore/EventLoop.h>
 #include <LibDevTools/StorageHelpers.h>
@@ -22,7 +23,6 @@
 #include <LibWebView/HistoryStore.h>
 #include <LibWebView/NavigationLoader.h>
 #include <LibWebView/SiteIsolation.h>
-#include <LibWebView/SiteIsolationManager.h>
 #include <LibWebView/SourceHighlighter.h>
 #include <LibWebView/StorageJar.h>
 #include <LibWebView/ViewImplementation.h>
@@ -261,7 +261,7 @@ bool WebContentPage::continue_navigation_population_in_selected_process(Web::HTM
     auto agent = browsing_context_group->obtain_similar_origin_window_agent(document->origin, false);
     browsing_context_group->host_opaque_origin_agent_with_initiator(*agent, document->origin, loader.request().history_entry.document_state.initiator_origin);
 
-    auto host_or_error = SiteIsolationManager::the().obtain_child_document_host(*navigable, *agent);
+    auto host_or_error = navigable->obtain_document_host(*agent);
     if (host_or_error.is_error()) {
         warnln("Unable to create WebContent page for child frame navigation: {}", host_or_error.error());
         navigable->clear_ongoing_navigation();
@@ -409,7 +409,7 @@ bool WebContentPage::handle_mouse_event_in_compositor(Web::MouseEvent const& eve
 
 bool WebContentPage::handle_mouse_event_in_compositor(CanonicalNavigable const& root, Optional<Web::Compositor::CompositorContextId> context_id, Web::MouseEvent const& event)
 {
-    if (auto target = SiteIsolationManager::the().remote_child_frame_input_target_at(handle(), root, event.position); target.has_value()) {
+    if (auto target = root.remote_child_frame_input_target_at(handle(), event.position); target.has_value()) {
         auto translated_event = event.clone_without_browser_data();
         translated_event.position.set_x(event.position.x() - target->viewport_rect.x());
         translated_event.position.set_y(event.position.y() - target->viewport_rect.y());
@@ -448,7 +448,7 @@ void WebContentPage::dispatch_mouse_event_to_web_content(Web::MouseEvent const& 
 
 void WebContentPage::dispatch_mouse_event_to_web_content(CanonicalNavigable const& root, Optional<Web::Compositor::CompositorContextId> context_id, Web::MouseEvent const& event)
 {
-    if (auto target = SiteIsolationManager::the().remote_child_frame_input_target_at(handle(), root, event.position); target.has_value()) {
+    if (auto target = root.remote_child_frame_input_target_at(handle(), event.position); target.has_value()) {
         auto translated_event = event.clone_without_browser_data();
         translated_event.position.set_x(event.position.x() - target->viewport_rect.x());
         translated_event.position.set_y(event.position.y() - target->viewport_rect.y());
@@ -498,6 +498,37 @@ void WebContentPage::release_presented_bitmap(i32 bitmap_id)
         return;
 
     Application::the().notify_compositor_presented_bitmap_ready_to_paint(context_id, bitmap_id);
+}
+
+String WebContentPage::dump_process_tree() const
+{
+    StringBuilder builder;
+    Vector<WebContentClient const*> processes;
+    auto process_index = [&](WebContentClient const& process) -> size_t {
+        for (size_t i = 0; i < processes.size(); ++i) {
+            if (processes[i] == &process)
+                return i;
+        }
+        processes.append(&process);
+        return processes.size() - 1;
+    };
+
+    Function<void(CanonicalNavigable const&, size_t)> dump_frame_tree;
+    dump_frame_tree = [&](CanonicalNavigable const& parent, size_t depth) {
+        for (size_t i = 0; i < parent.children().size(); ++i) {
+            auto const& child_frame = *parent.children()[i];
+            builder.append_repeated(' ', depth * 2);
+            builder.appendff("iframe#{}: {}", i, child_frame.has_remote_host() ? "remote"sv : "local"sv);
+            if (child_frame.has_remote_host())
+                builder.appendff(" WebContent#{}", process_index(child_frame.remote_host().client()));
+            builder.append('\n');
+            dump_frame_tree(child_frame, depth + 1);
+        }
+    };
+
+    builder.appendff("WebContent#{}\n", process_index(m_client));
+    dump_frame_tree(traversable(), 1);
+    return builder.to_string_without_validation();
 }
 
 void WebContentPage::fail_renderer_owned_downloads()
@@ -1683,7 +1714,7 @@ void WebContentPage::did_update_child_frame_viewport(Web::HTML::CrossProcessId f
 void WebContentPage::did_destroy_child_frame(Web::HTML::CrossProcessId frame_id)
 {
     if (auto child_frame = traversable().top_level_traversable().find(frame_id); child_frame.has_value())
-        SiteIsolationManager::the().remove_child_frame_subtree(*child_frame);
+        traversable().top_level_traversable().remove_subtree(*child_frame);
 }
 
 Messages::WebContentClient::DidStartDownloadWithoutRequestResponse WebContentPage::did_start_download_without_request(URL::URL url, ByteString suggested_filename, Optional<u64> total_size)
@@ -2034,7 +2065,7 @@ Messages::WebContentClient::DidRequestNewWebViewResponse WebContentPage::did_req
 
 void WebContentPage::did_close_browsing_context()
 {
-    SiteIsolationManager::the().remove_page(handle());
+    traversable().remove_page(handle());
     // NB: Before unregistering, so an acknowledged embedded discard closes an otherwise-unused server immediately.
     m_detached_close_pending = false;
     // Unregistering closes a page that only held part of the tab, so ask first.
@@ -2178,7 +2209,7 @@ Messages::WebContentTestClient::DidRequestUiProcessSessionHistoryForTestingRespo
 
 Messages::WebContentTestClient::DidRequestSiteIsolationProcessTreeForTestingResponse WebContentPage::did_request_site_isolation_process_tree_for_testing()
 {
-    return { SiteIsolationManager::the().dump_process_tree(m_client, m_id) };
+    return { dump_process_tree() };
 }
 
 void WebContentPage::did_request_crash_of_remote_frame_processes_for_testing()

@@ -13,7 +13,6 @@
 #include <LibWebView/CanonicalBrowsingContextGroup.h>
 #include <LibWebView/CanonicalTraversable.h>
 #include <LibWebView/SiteIsolation.h>
-#include <LibWebView/SiteIsolationManager.h>
 #include <LibWebView/StorageJar.h>
 #include <LibWebView/ViewImplementation.h>
 #include <LibWebView/WebContentClient.h>
@@ -392,12 +391,6 @@ void CanonicalTraversable::set_displaced_document_host(WebContentPageHandle page
     m_displaced_document_unload_pending = false;
 }
 
-void CanonicalTraversable::forget_displaced_document_host(Badge<SiteIsolationManager>)
-{
-    m_displaced_document_host.clear();
-    m_displaced_document_unload_pending = false;
-}
-
 void CanonicalTraversable::clear_ongoing_navigation()
 {
     CanonicalNavigable::clear_ongoing_navigation();
@@ -435,7 +428,7 @@ void CanonicalTraversable::release_displaced_document_host_after_unload()
         return;
     VERIFY(replicated_state().has_value());
     host.async_stop_hosting_navigable(id(), *replicated_state());
-    SiteIsolationManager::the().remove_page(host);
+    remove_page(host);
     release_page_if_unused(move(host));
 }
 
@@ -447,8 +440,56 @@ void CanonicalTraversable::discard_displaced_document_host()
     m_displaced_document_unload_pending = false;
     if (!host.is_open())
         return;
-    SiteIsolationManager::the().remove_page(host);
+    remove_page(host);
     release_page_if_unused(move(host));
+}
+
+void CanonicalTraversable::remove_subtree(CanonicalNavigable& navigable)
+{
+    while (!navigable.children().is_empty())
+        remove_subtree(*navigable.children().last());
+    if (navigable.has_remote_host())
+        navigable.detach_remote_host();
+    remove(navigable);
+}
+
+void CanonicalTraversable::remove_page(WebContentPageHandle const& page)
+{
+    if (is_displaced_document_host(page)) {
+        m_displaced_document_host.clear();
+        m_displaced_document_unload_pending = false;
+    }
+    forget_opener_page(page);
+
+    Vector<Web::HTML::CrossProcessId> reported_by_page;
+    Vector<Web::HTML::CrossProcessId> hosted_by_page;
+    Vector<Web::HTML::CrossProcessId> pending_in_page;
+    for_each_in_subtree([&](CanonicalNavigable const& navigable) {
+        if (navigable.reporting_page() == page)
+            reported_by_page.append(navigable.id());
+        if (navigable.has_remote_host() && navigable.remote_host() == page)
+            hosted_by_page.append(navigable.id());
+        if (navigable.pending_host_matches(page))
+            pending_in_page.append(navigable.id());
+        return IterationDecision::Continue;
+    });
+    for (auto navigable_id : pending_in_page) {
+        auto navigable = find(navigable_id);
+        if (!navigable.has_value())
+            continue;
+        if (navigable_id == id())
+            navigable->clear_pending_host();
+        else
+            navigable->discard_pending_host();
+    }
+    for (auto navigable_id : reported_by_page) {
+        if (auto navigable = find(navigable_id); navigable.has_value())
+            remove_subtree(*navigable);
+    }
+    for (auto navigable_id : hosted_by_page) {
+        if (auto navigable = find(navigable_id); navigable.has_value())
+            navigable->transition_to_local_host();
+    }
 }
 
 Optional<CanonicalNavigable&> CanonicalTraversable::find(Web::HTML::CrossProcessId navigable_id)
@@ -1640,7 +1681,7 @@ void CanonicalTraversable::continue_history_navigation_population(Web::HTML::Cro
             VERIFY(group);
             auto agent = group->obtain_similar_origin_window_agent(document->origin, false);
             group->host_opaque_origin_agent_with_initiator(*agent, document->origin, pending_job.value()->job.target_entry.document_state.initiator_origin);
-            auto host = SiteIsolationManager::the().obtain_child_document_host(*navigable, *agent);
+            auto host = navigable->obtain_document_host(*agent);
             if (host.is_error()) {
                 did_receive_changing_navigable_history_job_ready(*endpoint, operation_id, navigable_id, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped, Web::HTML::UnloadDisplayedDocument::No);
                 return;
@@ -1808,7 +1849,7 @@ void CanonicalTraversable::did_activate_history_entry(HistoryOperation& operatio
 
     // The view's page takes the traversable's document over below; a child's chosen host takes its container over.
     if (navigable_id != id() && navigable->pending_host_matches(source_page))
-        SiteIsolationManager::the().set_child_document_host(*navigable, source_page);
+        navigable->set_document_host(source_page);
 
     auto navigation_id = operation.parameters.visit(
         [](Web::FinalizeCrossDocumentNavigationHistoryOperationParameters const& parameters) { return parameters.navigation_id; },
