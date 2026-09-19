@@ -514,7 +514,8 @@ public:
     WebContentClient& client();
     WebContentClient const& client() const;
     Web::PageId page_id() const;
-    WebContentPageHandle web_content_page() const { return { m_client_state.client, m_client_state.page_index }; }
+    // The view's page. A view has one once it has a client.
+    WebContentPageHandle web_content_page() const { return { *m_client_state.client, m_client_state.page_index }; }
 
     virtual Web::DevicePixelSize viewport_size() const = 0;
     virtual Gfx::IntPoint to_content_position(Gfx::IntPoint widget_position) const = 0;
@@ -591,6 +592,7 @@ protected:
     virtual void initialize_client(CreateNewClient = CreateNewClient::Yes, Optional<Web::HTML::CrossProcessId> initial_document_state_id = {});
     void cancel_all_native_geolocation_requests();
     void send_geolocation_emulated_position(WebContentPageHandle const&);
+    WebContentPageHandle focused_navigable_host() const;
     void reset_page_media_state();
 
     struct CrashState;
@@ -884,6 +886,6 @@ template<>
 struct AK::Traits<WebView::GeolocationRequestKey> : public AK::DefaultTraits<WebView::GeolocationRequestKey> {
     static unsigned hash(WebView::GeolocationRequestKey const& key)
     {
-        return pair_int_hash(ptr_hash(key.page.client.ptr()), pair_int_hash(u64_hash(key.page.id.value()), u64_hash(key.request_id)));
+        return pair_int_hash(ptr_hash(&key.page.client()), pair_int_hash(u64_hash(key.page.id().value()), u64_hash(key.request_id)));
     }
 };

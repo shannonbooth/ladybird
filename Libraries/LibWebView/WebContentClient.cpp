@@ -633,7 +633,7 @@ bool WebContentClient::handle_mouse_event_in_compositor(Web::PageId page_id, Can
         auto translated_event = event.clone_without_browser_data();
         translated_event.position.set_x(event.position.x() - target->viewport_rect.x());
         translated_event.position.set_y(event.position.y() - target->viewport_rect.y());
-        return target->remote_page.client->handle_mouse_event_in_compositor(target->remote_page.id, *target->navigable, target->compositor_context_id, translated_event);
+        return target->remote_page.client().handle_mouse_event_in_compositor(target->remote_page.id(), *target->navigable, target->compositor_context_id, translated_event);
     }
 
     if (!context_id.has_value())
@@ -673,7 +673,7 @@ void WebContentClient::dispatch_mouse_event_to_web_content(Web::PageId page_id, 
         auto translated_event = event.clone_without_browser_data();
         translated_event.position.set_x(event.position.x() - target->viewport_rect.x());
         translated_event.position.set_y(event.position.y() - target->viewport_rect.y());
-        target->remote_page.client->dispatch_mouse_event_to_web_content(target->remote_page.id, *target->navigable, target->compositor_context_id, translated_event);
+        target->remote_page.client().dispatch_mouse_event_to_web_content(target->remote_page.id(), *target->navigable, target->compositor_context_id, translated_event);
         return;
     }
 
@@ -846,7 +846,7 @@ void WebContentClient::did_request_crash_of_remote_frame_processes_for_testing(W
 
     page->traversable().for_each_in_subtree([](CanonicalNavigable& child_frame) {
         if (child_frame.has_remote_host())
-            child_frame.remote_host().client->async_debug_request(child_frame.remote_host().id, "crash-current-page"sv, ""sv);
+            child_frame.remote_host().async_debug_request("crash-current-page"sv, ""sv);
         return IterationDecision::Continue;
     });
 }

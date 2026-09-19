@@ -65,15 +65,16 @@ public:
         Stage stage { Stage::ApplyingInWebContent };
     };
 
-    void enqueue_history_operation(Web::HTML::CrossProcessId operation_id, Web::HistoryOperationParameters, WebContentPageHandle requesting_page, u64 sequence_number, OnHistoryOperationComplete = nullptr);
+    void enqueue_history_operation(Web::HTML::CrossProcessId operation_id, Web::HistoryOperationParameters, Optional<WebContentPageHandle> requesting_page, u64 sequence_number, OnHistoryOperationComplete = nullptr);
     // Appends plain algorithm steps; a requested traversal defers its target resolution to its queued position, the
     // way the specification's queued steps do, and then starts its operation at that position.
     void append_history_queue_steps(SessionHistoryTraversalSteps);
-    void run_history_operation_at_queue_position(Web::HTML::CrossProcessId operation_id, Web::HistoryOperationParameters, WebContentPageHandle requesting_page, u64 sequence_number, OnHistoryOperationComplete, NonnullRefPtr<Core::Promise<Empty>>);
+    void run_history_operation_at_queue_position(Web::HTML::CrossProcessId operation_id, Web::HistoryOperationParameters, Optional<WebContentPageHandle> requesting_page, u64 sequence_number, OnHistoryOperationComplete, NonnullRefPtr<Core::Promise<Empty>>);
     u64 next_sequence_number() { return m_next_sequence_number++; }
     void abandon_history_operations();
 
-    WebContentPageHandle page_hosting(CanonicalNavigable const&) const;
+    // The page hosting the navigable's active document, if any process does.
+    Optional<WebContentPageHandle> page_hosting(CanonicalNavigable const&) const;
 
     void did_receive_history_operation_ready(WebContentPageHandle const& source_page, Web::HTML::CrossProcessId operation_id, Web::HistoryOperationReadyResult);
     void did_receive_history_step_unload_cancelation_result(WebContentPageHandle const& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::HistoryStepResult, Web::HTML::UnloadPromptShown);
@@ -115,7 +116,7 @@ public:
     // The view displaying the tab, when one owns this traversable.
     Optional<ViewImplementation&> view() const;
     void set_view(Badge<ViewImplementation>, ViewImplementation&);
-    WebContentPageHandle display_page() const;
+    Optional<WebContentPageHandle> display_page() const;
     void set_replacement_display_page(WebContentPageHandle const&);
     void did_activate_document_in_display_page();
     void set_displaced_document_host(WebContentPageHandle);
@@ -143,7 +144,7 @@ public:
 
     Optional<Web::HTML::CrossProcessId> const& focused_navigable_id() const { return m_focused_navigable_id; }
     void set_focused_navigable(CanonicalNavigable&, WebContentPageHandle const& requesting_page);
-    WebContentPageHandle focused_navigable_host() const;
+    Optional<WebContentPageHandle> focused_navigable_host() const;
     Web::DevicePixelPoint focused_navigable_host_offset() const;
     Web::DevicePixelPoint local_root_offset(CanonicalNavigable const&) const;
 
@@ -191,7 +192,7 @@ private:
         No,
         Yes,
     };
-    void unload_a_document_and_its_descendants(Optional<Web::HTML::CrossProcessId> operation_id, Web::HTML::CrossProcessId navigable_id, WebContentPageHandle continuing_endpoint, Web::HTML::ChildNavigableDestruction, Function<void(UnloadedInItsHost)> queue_document_unload_task);
+    void unload_a_document_and_its_descendants(Optional<Web::HTML::CrossProcessId> operation_id, Web::HTML::CrossProcessId navigable_id, Optional<WebContentPageHandle> continuing_endpoint, Web::HTML::ChildNavigableDestruction, Function<void(UnloadedInItsHost)> queue_document_unload_task);
     void unload_document_in_its_host(Optional<Web::HTML::CrossProcessId> operation_id, WebContentPageHandle, Web::HTML::CrossProcessId navigable_id, Web::HTML::ChildNavigableDestruction, Function<void()> after_unload);
     void discard_pending_host_at(Web::HTML::CrossProcessId navigable_id, WebContentPageHandle const&);
     void dispatch_next_beforeunload_group(HistoryOperation&);
@@ -272,7 +273,7 @@ private:
         struct Node {
             Optional<Web::HTML::CrossProcessId> parent_id;
             size_t remaining_children { 0 };
-            WebContentPageHandle endpoint;
+            Optional<WebContentPageHandle> endpoint;
             Web::HTML::ChildNavigableDestruction child_navigable_destruction { Web::HTML::ChildNavigableDestruction::No };
             Web::HTML::StopHostingAfterUnload stop_hosting_after_unload { Web::HTML::StopHostingAfterUnload::No };
         };

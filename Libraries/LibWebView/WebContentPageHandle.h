@@ -6,9 +6,7 @@
 
 #pragma once
 
-#include <AK/Optional.h>
-#include <AK/RefPtr.h>
-#include <LibWeb/HTML/CrossProcessId.h>
+#include <AK/NonnullRefPtr.h>
 #include <LibWeb/Page/PageId.h>
 #include <LibWebView/Export.h>
 #include <LibWebView/Forward.h>
@@ -17,17 +15,22 @@
 namespace WebView {
 
 // Names a page a WebContent process holds for the UI process: its client and its id. A handle is a value that
-// outlives the page it names; page() resolves the open page, and is null once the page closed.
-struct WEBVIEW_API WebContentPageHandle : public WebContentServerPageProxy<WebContentPageHandle> {
-    RefPtr<WebContentClient> client;
-    Web::PageId id { 0 };
+// outlives the page it names, so the canonical tree can record which page hosts, reported or asked for something.
+class WEBVIEW_API WebContentPageHandle : public WebContentServerPageProxy<WebContentPageHandle> {
+public:
+    WebContentPageHandle(WebContentClient&, Web::PageId);
+    WebContentPageHandle(WebContentPageHandle const&);
+    WebContentPageHandle(WebContentPageHandle&&);
+    WebContentPageHandle& operator=(WebContentPageHandle const&);
+    WebContentPageHandle& operator=(WebContentPageHandle&&);
+    ~WebContentPageHandle();
 
-    WebContentPageHandle();
-    WebContentPageHandle(RefPtr<WebContentClient>, Web::PageId);
+    WebContentClient& client() const { return *m_client; }
+    Web::PageId id() const { return m_id; }
 
     // What the bound proxy sends through, and about.
-    WebContentClient& routed_connection() const;
-    Web::PageId routed_page_id() const { return id; }
+    WebContentClient& routed_connection() const { return *m_client; }
+    Web::PageId routed_page_id() const { return m_id; }
 
     // Whether the page is open in a process that is still running.
     bool is_open() const;
@@ -35,7 +38,11 @@ struct WEBVIEW_API WebContentPageHandle : public WebContentServerPageProxy<WebCo
     // open until their tabs release what they hosted.
     WebContentPage* page() const;
 
-    bool operator==(WebContentPageHandle const& other) const { return client.ptr() == other.client.ptr() && id == other.id; }
+    bool operator==(WebContentPageHandle const& other) const { return m_client.ptr() == other.m_client.ptr() && m_id == other.m_id; }
+
+private:
+    NonnullRefPtr<WebContentClient> m_client;
+    Web::PageId m_id;
 };
 
 }

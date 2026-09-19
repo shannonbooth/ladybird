@@ -127,7 +127,7 @@ public:
     bool is_page_open(Web::PageId page_id) const { return !m_process_lost && page(page_id); }
     // The view painting the tab from this page, if the page is open and displays it.
     Optional<ViewImplementation&> display_view(Web::PageId page_id) const;
-    WebContentPageHandle page_handle(Web::PageId page_id) const { return { const_cast<WebContentClient*>(this), page_id }; }
+    WebContentPageHandle page_handle(Web::PageId page_id) const { return { const_cast<WebContentClient&>(*this), page_id }; }
     // Every open page, whether it displays its tab or only holds part of it.
     template<CallableAs<IterationDecision, WebContentPage&> Callback>
     void for_each_page(Callback);

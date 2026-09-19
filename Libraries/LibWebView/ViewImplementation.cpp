@@ -235,7 +235,7 @@ bool ViewImplementation::create_new_process_for_cross_site_navigation(Utf16Strin
     // traversal queue can serve the new process.
     m_top_level_traversable.abandon_history_operations();
     if (displaced_client)
-        m_top_level_traversable.set_displaced_document_host({ displaced_client, displaced_page_id });
+        m_top_level_traversable.set_displaced_document_host({ *displaced_client, displaced_page_id });
 
     Optional<Web::HTML::CrossProcessId> initial_document_state_id;
     if (auto const* current_entry = m_top_level_traversable.session_history().current_entry())
@@ -813,7 +813,7 @@ void ViewImplementation::enqueue_input_event(Web::InputEvent event)
         }
         // Always deliver key release to the compositor, even if it could no longer accept a new scroll. A focused
         // navigable another page hosts scrolls there.
-        if (m_top_level_traversable.focused_navigable_host() == web_content_page()
+        if (focused_navigable_host() == web_content_page()
             && (key_event->type == Web::KeyEvent::Type::KeyUp
                 || (Application::web_content_options().enable_async_scrolling == EnableAsyncScrolling::Yes
                     && m_client_state.has_usable_bitmap && !preceding_input_may_change_target))) {
@@ -868,7 +868,7 @@ void ViewImplementation::enqueue_input_event(Web::InputEvent event)
     auto& pending = m_pending_input_events.last();
     pending.event.visit(
         [&](Web::KeyEvent const& event) {
-            auto host = m_top_level_traversable.focused_navigable_host();
+            auto host = focused_navigable_host();
             if (host == web_content_page()) {
                 client().dispatch_key_event_to_web_content(m_client_state.page_index, event);
             } else {
@@ -1249,7 +1249,7 @@ NonnullRefPtr<Core::Promise<ByteString>> ViewImplementation::selected_text()
     auto promise = Core::Promise<ByteString>::construct();
     auto request_id = m_next_selection_request_id++;
     m_pending_selected_text_requests.set(request_id, promise);
-    auto host = m_top_level_traversable.focused_navigable_host();
+    auto host = focused_navigable_host();
     host.async_get_selected_text(request_id);
     return promise;
 }
@@ -1267,7 +1267,7 @@ NonnullRefPtr<Core::Promise<ByteString>> ViewImplementation::cut_selected_text()
     auto promise = Core::Promise<ByteString>::construct();
     auto request_id = m_next_selection_request_id++;
     m_pending_cut_selected_text_requests.set(request_id, promise);
-    auto host = m_top_level_traversable.focused_navigable_host();
+    auto host = focused_navigable_host();
     host.async_cut_selected_text(request_id);
     return promise;
 }
@@ -1295,7 +1295,7 @@ NonnullRefPtr<Core::Promise<Optional<DictionaryLookup>>> ViewImplementation::sel
     auto promise = Core::Promise<Optional<DictionaryLookup>>::construct();
     auto request_id = m_next_selection_request_id++;
     m_pending_selected_text_for_lookup_requests.set(request_id, promise);
-    auto host = m_top_level_traversable.focused_navigable_host();
+    auto host = focused_navigable_host();
     host.async_get_selected_text_for_lookup(request_id);
 
     return promise->map<Optional<DictionaryLookup>>([](auto& lookup) -> Optional<DictionaryLookup> {
@@ -1327,7 +1327,7 @@ NonnullRefPtr<Core::Promise<bool>> ViewImplementation::select_word_for_dictionar
     m_pending_select_word_for_dictionary_lookup_requests.set(request_id, promise);
 
     // The word is selected in the page the lookup then asks for the selection, in the viewport of its local root.
-    auto host = m_top_level_traversable.focused_navigable_host();
+    auto host = focused_navigable_host();
     auto position = to_content_position(widget_position).to_type<Web::DevicePixels>() - m_top_level_traversable.focused_navigable_host_offset();
     host.async_select_word_for_dictionary_lookup(request_id, position);
     return promise;
@@ -1375,13 +1375,13 @@ bool ViewImplementation::look_up_selected_text_at(Gfx::IntPoint widget_position)
 
 void ViewImplementation::select_all()
 {
-    auto host = m_top_level_traversable.focused_navigable_host();
+    auto host = focused_navigable_host();
     host.async_select_all();
 }
 
 void ViewImplementation::undo()
 {
-    auto host = m_top_level_traversable.focused_navigable_host();
+    auto host = focused_navigable_host();
     host.async_undo();
 }
 
@@ -1394,7 +1394,7 @@ void ViewImplementation::set_editing_history_state(bool can_undo, bool can_redo)
 
 void ViewImplementation::redo()
 {
-    auto host = m_top_level_traversable.focused_navigable_host();
+    auto host = focused_navigable_host();
     host.async_redo();
 }
 
@@ -2067,27 +2067,33 @@ void ViewImplementation::select_dropdown_closed(Optional<u32> const& selected_it
         page.async_select_dropdown_closed(selected_item_id);
 }
 
+// The page hosting the tab's focused navigable, which the view's own page is when no other process hosts it.
+WebContentPageHandle ViewImplementation::focused_navigable_host() const
+{
+    return m_top_level_traversable.focused_navigable_host().value_or(web_content_page());
+}
+
 void ViewImplementation::paste_from_clipboard()
 {
-    auto host = m_top_level_traversable.focused_navigable_host();
+    auto host = focused_navigable_host();
     host.async_paste_from_clipboard();
 }
 
 void ViewImplementation::set_marked_text_from_input_method(Utf16String const& text)
 {
-    auto host = m_top_level_traversable.focused_navigable_host();
+    auto host = focused_navigable_host();
     host.async_set_marked_text_from_input_method(text);
 }
 
 void ViewImplementation::commit_text_from_input_method(Utf16String const& text, i32 replacement_start, i32 replacement_length)
 {
-    auto host = m_top_level_traversable.focused_navigable_host();
+    auto host = focused_navigable_host();
     host.async_commit_text_from_input_method(text, replacement_start, replacement_length);
 }
 
 void ViewImplementation::unmark_text_from_input_method()
 {
-    auto host = m_top_level_traversable.focused_navigable_host();
+    auto host = focused_navigable_host();
     host.async_unmark_text_from_input_method();
 }
 
@@ -2633,24 +2639,23 @@ void ViewImplementation::run_webdriver_content_command(u64 command_id, Web::WebD
         navigable_id = m_webdriver_current_navigable_id;
 
     // NB: A command runs in the process hosting the browsing context it runs against.
-    auto page = web_content_page();
+    Optional<WebContentPageHandle> page = web_content_page();
     if (navigable_id.has_value()) {
         // https://w3c.github.io/webdriver/#dfn-no-longer-open
         // A browsing context is said to be no longer open if its navigable has been destroyed.
         auto navigable = m_top_level_traversable.find(*navigable_id);
-        if (navigable.has_value())
-            page = m_top_level_traversable.page_hosting(*navigable);
-        if (!navigable.has_value() || !page.is_open()) {
+        page = navigable.has_value() ? m_top_level_traversable.page_hosting(*navigable) : Optional<WebContentPageHandle> {};
+        if (!page.has_value() || !page->is_open()) {
             Application::the().complete_webdriver_content_command(command_id, Web::WebDriver::Error::from_code(Web::WebDriver::ErrorCode::NoSuchWindow, "Window not found"sv));
             return;
         }
     }
 
     if (name == "crash_current_page"sv)
-        m_pending_webdriver_crash_commands.set(command_id, page);
+        m_pending_webdriver_crash_commands.set(command_id, *page);
     else
-        m_pending_webdriver_commands.set(command_id, page);
-    page.async_run_webdriver_command(command_id, navigable_id, name, move(payload), move(arguments));
+        m_pending_webdriver_commands.set(command_id, *page);
+    page->async_run_webdriver_command(command_id, navigable_id, name, move(payload), move(arguments));
 }
 
 void ViewImplementation::did_lose_page(Badge<CanonicalTraversable>, WebContentPageHandle const& page)
@@ -3255,10 +3260,7 @@ void ViewImplementation::handle_web_content_process_crash()
         m_repeated_crash_timer->restart();
     }
 
-    auto crashed_endpoint = WebContentPageHandle {
-        m_client_state.client,
-        page_id(),
-    };
+    auto crashed_endpoint = web_content_page();
 
     respawn_web_content_process_after_crash();
 
@@ -4070,7 +4072,7 @@ void ViewImplementation::send_to_media_context_menu_page(Function<void(WebConten
 {
     auto page = m_media_context_menu_page.value_or(web_content_page());
     if (page.is_open())
-        send(*page.client, page.id);
+        send(page.client(), page.id());
 }
 
 void ViewImplementation::did_request_media_context_menu(Badge<WebContentPage>, WebContentPageHandle const& requesting_page, Gfx::IntPoint content_position, Web::Page::MediaContextMenu menu)

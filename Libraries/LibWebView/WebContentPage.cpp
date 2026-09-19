@@ -149,7 +149,7 @@ WebContentPage::~WebContentPage() = default;
 
 WebContentPageHandle WebContentPage::handle() const
 {
-    return { RefPtr<WebContentClient> { &m_client }, m_id };
+    return { m_client, m_id };
 }
 
 CanonicalTraversable& WebContentPage::traversable() const
@@ -184,7 +184,7 @@ Optional<WebContentPageHandle> WebContentPage::endpoint_hosting_navigable_repres
     if (!target.has_value() || traversable().hosts(*target, handle()))
         return {};
     auto endpoint = traversable().page_hosting(*target);
-    if (!endpoint.is_open())
+    if (!endpoint.has_value() || !endpoint->is_open())
         return {};
     return endpoint;
 }
@@ -945,8 +945,10 @@ void WebContentPage::did_finish_handling_input_event(u64 event_id, Web::EventRes
     }
 
     // The view displaying the tab handed the event down; it hears the result.
-    if (auto* display_page = traversable().display_page().page(); display_page && display_page != this)
-        display_page->did_finish_handling_input_event(event_id, event_result);
+    if (auto display_page = traversable().display_page(); display_page.has_value()) {
+        if (auto* open_page = display_page->page(); open_page && open_page != this)
+            open_page->did_finish_handling_input_event(event_id, event_result);
+    }
 }
 
 void WebContentPage::did_update_input_method_state(Optional<Web::DevicePixelRect> caret_rect, bool is_enabled, i32 cursor_position, i32 anchor_position, Utf16String text_before_cursor, Utf16String text_after_cursor)

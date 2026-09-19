@@ -173,7 +173,7 @@ String SiteIsolationManager::dump_process_tree(WebContentClient& client, Web::Pa
             builder.append_repeated(' ', depth * 2);
             builder.appendff("iframe#{}: {}", i, child_frame.has_remote_host() ? "remote"sv : "local"sv);
             if (child_frame.has_remote_host())
-                builder.appendff(" WebContent#{}", process_index(*child_frame.remote_host().client));
+                builder.appendff(" WebContent#{}", process_index(child_frame.remote_host().client()));
             builder.append('\n');
 
             dump_frame_tree(child_frame, depth + 1);
@@ -199,7 +199,7 @@ HashMap<pid_t, pid_t> SiteIsolationManager::remote_frame_process_embedders() con
             page.traversable().for_each_in_subtree([&](CanonicalNavigable const& navigable) {
                 if (!navigable.has_remote_host() || navigable.remote_host() != page.handle())
                     return IterationDecision::Continue;
-                embedders.set(client.pid(), navigable.reporting_page().client->pid());
+                embedders.set(client.pid(), navigable.reporting_page()->client().pid());
                 return IterationDecision::Break;
             });
             return IterationDecision::Continue;
@@ -234,15 +234,16 @@ ErrorOr<WebContentPageHandle> SiteIsolationManager::obtain_child_document_host(C
     // The host takes the navigable's node over once the document it is to display is activated; until then, the page
     // hosting the displayed document keeps it.
     auto host = agent.hosting_process();
-    if (host && host == navigable.reporting_page().client) {
+    auto& reporting_page = *navigable.reporting_page();
+    if (host && host.ptr() == &reporting_page.client()) {
         // The page holding the container populates the document in a provisional navigable while another page hosts
         // the displayed document.
         if (navigable.has_remote_host())
-            host->async_begin_hosting_navigable(navigable.reporting_page().id, navigable.id(), *current_entry, traversable.system_visibility_state());
-        navigable.set_pending_host(navigable.reporting_page());
-        return navigable.reporting_page();
+            reporting_page.async_begin_hosting_navigable(navigable.id(), *current_entry, traversable.system_visibility_state());
+        navigable.set_pending_host(reporting_page);
+        return reporting_page;
     }
-    if (host && navigable.has_remote_host() && host == navigable.remote_host().client) {
+    if (host && navigable.has_remote_host() && host.ptr() == &navigable.remote_host().client()) {
         navigable.set_pending_host(navigable.remote_host());
         return navigable.remote_host();
     }
@@ -259,7 +260,7 @@ ErrorOr<WebContentPageHandle> SiteIsolationManager::obtain_child_document_host(C
         host->register_embedded_page(page_id, traversable);
         traversable.represent_openers_in(*host);
     } else {
-        auto process = TRY(Application::the().launch_child_frame_web_content_process(navigable.reporting_page().client->is_private(), traversable.remote_navigable_graph(), navigable.id(), *current_entry));
+        auto process = TRY(Application::the().launch_child_frame_web_content_process(reporting_page.client().is_private(), traversable.remote_navigable_graph(), navigable.id(), *current_entry));
         host = move(process.client);
         page_id = process.page_id;
         agent.set_hosting_process_if_unset(*host);
@@ -282,7 +283,7 @@ void SiteIsolationManager::set_child_document_host(CanonicalNavigable& navigable
         if (navigable.has_remote_host())
             transition_child_frame_to_local(navigable);
     } else if (!navigable.has_remote_host() || navigable.remote_host() != host) {
-        transition_child_frame_to_remote(navigable.reporting_page(), navigable.id(), host);
+        transition_child_frame_to_remote(*navigable.reporting_page(), navigable.id(), host);
     }
 }
 
@@ -325,7 +326,7 @@ void SiteIsolationManager::transition_child_frame_to_local(CanonicalNavigable& c
     auto current_history_entry = current_history_entry_for(child_frame);
     if (!current_history_entry.has_value())
         return;
-    child_frame.reporting_page().client->async_host_navigable(child_frame.reporting_page().id, child_frame.id(), current_history_entry.release_value(), child_frame.top_level_traversable().system_visibility_state());
+    child_frame.reporting_page()->async_host_navigable(child_frame.id(), current_history_entry.release_value(), child_frame.top_level_traversable().system_visibility_state());
 }
 
 void SiteIsolationManager::detach_child_frame_host(CanonicalNavigable& child_frame)

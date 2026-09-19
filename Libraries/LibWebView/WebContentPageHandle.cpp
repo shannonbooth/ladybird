@@ -10,27 +10,26 @@
 
 namespace WebView {
 
-WebContentPageHandle::WebContentPageHandle() = default;
-
-WebContentPageHandle::WebContentPageHandle(RefPtr<WebContentClient> client, Web::PageId id)
-    : client(move(client))
-    , id(id)
+WebContentPageHandle::WebContentPageHandle(WebContentClient& client, Web::PageId id)
+    : m_client(client)
+    , m_id(id)
 {
 }
 
-WebContentClient& WebContentPageHandle::routed_connection() const
-{
-    return *client;
-}
+WebContentPageHandle::WebContentPageHandle(WebContentPageHandle const&) = default;
+WebContentPageHandle::WebContentPageHandle(WebContentPageHandle&&) = default;
+WebContentPageHandle& WebContentPageHandle::operator=(WebContentPageHandle const&) = default;
+WebContentPageHandle& WebContentPageHandle::operator=(WebContentPageHandle&&) = default;
+WebContentPageHandle::~WebContentPageHandle() = default;
 
 bool WebContentPageHandle::is_open() const
 {
-    return client && client->is_page_open(id);
+    return m_client->is_page_open(m_id);
 }
 
 WebContentPage* WebContentPageHandle::page() const
 {
-    return client ? client->page(id) : nullptr;
+    return m_client->page(m_id);
 }
 
 }

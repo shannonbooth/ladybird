@@ -77,7 +77,7 @@ public:
         Optional<Utf16String> navigation_id {};
     };
 
-    CanonicalNavigable(Web::HTML::CrossProcessId id, Optional<Web::HTML::CrossProcessId> parent_id, WebContentPageHandle reporting_page);
+    CanonicalNavigable(Web::HTML::CrossProcessId id, Optional<Web::HTML::CrossProcessId> parent_id, Optional<WebContentPageHandle> reporting_page);
     virtual ~CanonicalNavigable();
 
     virtual bool is_top_level_traversable() const { return false; }
@@ -88,7 +88,8 @@ public:
 
     // The page whose document tree contains this frame. When the frame is local, this page also hosts the frame's
     // active document.
-    WebContentPageHandle const& reporting_page() const { return m_reporting_page; }
+    // The page holding the navigable's container, which reported it. None for the root of a tab without a process.
+    Optional<WebContentPageHandle> const& reporting_page() const { return m_reporting_page; }
 
     CanonicalNavigable* parent() { return m_parent; }
     CanonicalNavigable const* parent() const { return m_parent; }
@@ -208,7 +209,7 @@ public:
 private:
     Web::HTML::CrossProcessId m_id;
     Optional<Web::HTML::CrossProcessId> m_parent_id;
-    WebContentPageHandle m_reporting_page;
+    Optional<WebContentPageHandle> m_reporting_page;
     CanonicalNavigable* m_parent { nullptr };
     Vector<NonnullOwnPtr<CanonicalNavigable>> m_children;
 
