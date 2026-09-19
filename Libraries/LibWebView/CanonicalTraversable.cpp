@@ -338,7 +338,9 @@ void CanonicalTraversable::stop_hosting_in_page(CanonicalNavigable& navigable, W
 void CanonicalTraversable::release_page_if_unused(WebContentPageHandle page)
 {
     // The view's page displays the tab whatever it hosts of it.
-    if (page.displays_tab() || page_hosts_any(page))
+    if (auto* open_page = page.page(); open_page && open_page->displays_tab())
+        return;
+    if (page_hosts_any(page))
         return;
     if (is_opener_page(page)) {
         if (page.client->holds_part_of_a_tab_opened_by(*this))
@@ -1567,8 +1569,8 @@ bool CanonicalTraversable::select_changing_navigable_history_step_job_endpoint(H
     // dispatched instead of having the job echo it back.
     if (navigable->is_top_level_traversable()
         && operation.parameters.has<Web::ReloadHistoryOperationParameters>()) {
-        if (auto view = ViewImplementation::find_view_for_traversable(*this); view.has_value())
-            endpoint.client->begin_top_level_load(*view, endpoint.id, {}, job.target_entry.url);
+        if (auto* page = endpoint.page())
+            page->begin_top_level_load({}, job.target_entry.url);
     }
     return true;
 }
@@ -2337,7 +2339,9 @@ void CanonicalTraversable::enqueue_history_operation(Web::HTML::CrossProcessId o
 
         // AD-HOC: The canonical tree stages same-document entries when WebContent admits their finalization request.
         // This makes the entry addressable during the interval before the spec's queued finalization steps run.
-        auto target_navigable = requesting_page.hosted_navigable(parameters.navigable_id);
+        Optional<CanonicalNavigable&> target_navigable;
+        if (auto* page = requesting_page.page())
+            target_navigable = page->hosted_navigable(parameters.navigable_id);
         if (target_navigable.has_value() && &target_navigable->top_level_traversable() == this) {
             if (parameters.previous_entry_persisted_state.has_value())
                 update_session_history_entry_persisted_state(*target_navigable, *parameters.previous_entry_persisted_state);
