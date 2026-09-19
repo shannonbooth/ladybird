@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <AK/HashTable.h>
 #include <AK/Noncopyable.h>
 #include <AK/Optional.h>
 #include <AK/String.h>
@@ -90,6 +91,8 @@ public:
     void did_present_backing_stores(Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores);
     // Hands a presented bitmap back to the compositor once nothing paints from it.
     void release_presented_bitmap(i32 bitmap_id);
+    // Fails the downloads the page's process was feeding, once that process is gone.
+    void fail_renderer_owned_downloads();
 
 private:
     // Input over a remote child of the root is the hosting page's to handle, in the root's compositor context there.
@@ -290,6 +293,8 @@ private:
     bool m_needs_beforeunload_check { true };
     bool m_detached_close_pending { false };
     Optional<String> m_history_recorded_url_for_current_load;
+    // Downloads whose data the page's process sends.
+    HashTable<u64> m_renderer_owned_downloads;
 };
 
 }
