@@ -118,7 +118,8 @@ class TestIPCGeneratorRouting(unittest.TestCase):
             """\
     void async_page_changed(u32 revision) const
     {
-        derived().routed_connection().async_page_changed(derived().routed_page_id(), revision);
+        if (auto* connection = derived().routed_connection())
+            connection->async_page_changed(derived().routed_page_id(), revision);
     }
 """,
             generated,

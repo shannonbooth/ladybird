@@ -130,6 +130,9 @@ WebContentClient::WebContentClient(NonnullOwnPtr<IPC::Transport> transport, IsPr
 
 WebContentClient::~WebContentClient()
 {
+    // The tree can still hold a page of a process that is gone; it reads as closed from now on.
+    for (auto& page : m_pages)
+        page.value->close();
     cancel_navigation_transactions();
     remove_blob_url_entries();
     WorkerProcessManager::the().remove_web_content_owner(*this);
@@ -270,7 +273,7 @@ void WebContentClient::unregister_view(Web::PageId page_id)
 {
     forget_compositor_context(Web::Compositor::compositor_context_id_for_page(page_id));
     if (auto* page = this->page(page_id))
-        page->traversable().remove_page(page->handle());
+        page->traversable().remove_page(*page);
 
     if (auto* page = find_page(page_id)) {
         if (page->is_open() && page->displays_tab()) {
@@ -302,9 +305,9 @@ void WebContentClient::register_embedded_page(Web::PageId page_id, CanonicalTrav
         m_unassigned_initial_page_id.clear();
     Application::process_manager().cancel_forced_exit(pid());
 
-    page.view().send_preferences_to_page({}, page.handle());
+    page.view().send_preferences_to_page({}, page);
     if (Application::browser_options().webdriver_browser_endpoint.has_value())
-        Application::the().push_webdriver_session_config(page.handle());
+        Application::the().push_webdriver_session_config(page);
     page.async_set_has_focus(traversable.has_system_focus());
     if (auto focused_navigable_id = traversable.focused_navigable_id(); focused_navigable_id.has_value())
         page.async_set_focused_navigable(*focused_navigable_id);
@@ -344,7 +347,7 @@ bool WebContentClient::holds_part_of_a_tab_opened_by(CanonicalTraversable const&
         if (!page->is_open())
             continue;
         auto const& traversable = page->traversable();
-        if (!page->displays_tab() && traversable.is_opener_page(page->handle()) && !traversable.page_hosts_any(page->handle()))
+        if (!page->displays_tab() && traversable.is_opener_page(*page) && !traversable.page_hosts_any(*page))
             continue;
         reach(traversable);
     }
@@ -362,24 +365,23 @@ void WebContentClient::release_unneeded_opener_pages()
     if (m_process_lost)
         return;
 
-    Vector<WebContentPageHandle> opener_pages;
+    Vector<NonnullRefPtr<WebContentPage>> opener_pages;
     for_each_page([&](WebContentPage& page) {
-        if (!page.displays_tab() && page.traversable().is_opener_page(page.handle()))
-            opener_pages.append(page.handle());
+        if (!page.displays_tab() && page.traversable().is_opener_page(page))
+            opener_pages.append(page);
         return IterationDecision::Continue;
     });
     for (auto const& page : opener_pages) {
-        if (auto* open_page = page.page())
-            open_page->traversable().release_page_if_unused(page);
+        if (page->is_open())
+            page->traversable().release_page_if_unused(page);
     }
 }
 
 WebContentPage& WebContentClient::open_page(Web::PageId page_id, CanonicalTraversable& traversable)
 {
-    auto page = make<WebContentPage>(*this, page_id, traversable);
-    auto& page_reference = *page;
-    m_pages.set(page_id, move(page));
-    return page_reference;
+    auto page = adopt_ref(*new WebContentPage(*this, page_id, traversable));
+    m_pages.set(page_id, page);
+    return page;
 }
 
 WebContentPage* WebContentClient::find_page(Web::PageId page_id) const
@@ -426,14 +428,14 @@ Optional<CanonicalNavigable&> WebContentClient::hosted_navigable(Web::HTML::Cros
 
 void WebContentClient::remove_all_pages()
 {
-    Vector<WebContentPageHandle> pages;
+    Vector<NonnullRefPtr<WebContentPage>> pages;
     for_each_page([&](WebContentPage& page) {
-        pages.append(page.handle());
+        pages.append(page);
         return IterationDecision::Continue;
     });
     for (auto const& page : pages) {
-        if (auto* open_page = page.page())
-            open_page->traversable().remove_page(page);
+        if (page->is_open())
+            page->traversable().remove_page(page);
     }
 }
 
@@ -549,8 +551,8 @@ void WebContentClient::notify_all_views_of_crash()
             continue;
         // The view displaying the tab waits for the events it handed down to a page holding part of it.
         if (!page->displays_tab())
-            page->view().did_lose_input_event_endpoint({}, page->handle());
-        page->traversable().did_lose_page(page->handle());
+            page->view().did_lose_input_event_endpoint({}, *page);
+        page->traversable().did_lose_page(*page);
     }
 
     remove_all_pages();
@@ -618,6 +620,15 @@ Messages::WebContentClient::DidRequestCookieResponse WebContentClient::did_reque
     HTTP::Cookie::VersionedCookie cookie;
     cookie.cookie = m_session->cookie_jar->get_cookie(url, source);
     return cookie;
+}
+
+Messages::WebContentClient::DidSetStorageItemResponse WebContentClient::did_set_storage_item(Web::PageId page_id, Web::StorageAPI::StorageEndpointType storage_endpoint, String storage_key, Utf16String bottle_key, Utf16String value)
+{
+    if (auto* page = this->page(page_id))
+        return page->did_set_storage_item(storage_endpoint, move(storage_key), move(bottle_key), move(value));
+
+    // A closed page has no storage left to set. Its reply cannot be empty, so it hears the refusal a full jar gives.
+    return WebView::StorageOperationError::QuotaExceededError;
 }
 
 void WebContentClient::did_close_browsing_context(Web::PageId page_id)

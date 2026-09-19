@@ -11,7 +11,6 @@
 #include <LibWebView/CanonicalBrowsingContextGroup.h>
 #include <LibWebView/CanonicalTraversable.h>
 #include <LibWebView/SiteIsolation.h>
-#include <LibWebView/SiteIsolation.h>
 
 static URL::Origin origin_for(StringView url)
 {

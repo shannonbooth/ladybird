@@ -60,6 +60,16 @@ bool verify_message_argument(Stub& stub, T const& argument)
     return verify_sender_claim(stub, argument);
 }
 
+// The value a routed synchronous message with one output gets when there is no object to send it to.
+template<typename Value>
+Value empty_value()
+{
+    if constexpr (requires { Value {}; })
+        return Value {};
+    else
+        VERIFY_NOT_REACHED();
+}
+
 // The reply a routed synchronous message gets when there is no object to route it to: every output
 // value-initialized. A message whose outputs cannot all be empty must not be routed without an object.
 template<typename Response, typename... Outputs>

@@ -111,7 +111,7 @@ struct TestTraversable {
 
     WebView::CanonicalNavigable& add_child(Web::HTML::CrossProcessId id)
     {
-        return traversable.append_child(make<WebView::CanonicalNavigable>(id, traversable.id(), Optional<WebView::WebContentPageHandle> {}));
+        return traversable.append_child(make<WebView::CanonicalNavigable>(id, traversable.id(), RefPtr<WebView::WebContentPage> {}));
     }
 
     // Two top-level entries; the current entry is the second.

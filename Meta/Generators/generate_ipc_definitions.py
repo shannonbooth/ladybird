@@ -858,12 +858,20 @@ def write_bound_proxy_method(
         )
         call_args.append(parameter.name if is_primitive_or_simple_type(forwarded_type) else f"move({parameter.name})")
 
-    call = f"derived().routed_connection().{method_name}({', '.join(call_args)})"
+    call = f"connection->{method_name}({', '.join(call_args)})"
     out.write(f"\n    {return_type} {method_name}({', '.join(signature_params)}) const\n    {{\n")
+    out.write("        if (auto* connection = derived().routed_connection())\n")
     if return_type == "void":
-        out.write(f"        {call};\n")
+        out.write(f"            {call};\n")
     else:
-        out.write(f"        return {call};\n")
+        out.write(f"            return {call};\n")
+        if is_try:
+            out.write("        return IPC::ErrorCode::PeerDisconnected;\n")
+        elif len(message.outputs) == 1:
+            out.write(f"        return IPC::empty_value<{return_type}>();\n")
+        else:
+            outputs = ", ".join(output.type for output in message.outputs)
+            out.write(f"        return IPC::empty_response<{return_type}, {outputs}>();\n")
     out.write("    }\n")
 
     if generate_unicode_string_overload:
@@ -876,7 +884,8 @@ def write_bound_proxy_class(out: TextIO, endpoint: Endpoint) -> None:
 
     out.write(f"""
 // Sends the messages about one {endpoint.route_scope()} without naming it each time. The class deriving this provides
-// routed_connection(), the proxy the messages go through, and routed_{endpoint.route.name}().
+// routed_connection(), the proxy the messages go through, or null once the {endpoint.route_scope()} has none, and
+// routed_{endpoint.route.name}(). A message for a {endpoint.route_scope()} without a connection is dropped.
 template<typename Derived>
 class {endpoint.name}{scope}Proxy {{
 public:

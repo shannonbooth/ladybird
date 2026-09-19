@@ -55,7 +55,6 @@
 #include <LibWebView/Debugger.h>
 #include <LibWebView/Forward.h>
 #include <LibWebView/WebContentPage.h>
-#include <LibWebView/WebContentPageHandle.h>
 #include <WebContent/WebContentClientEndpoint.h>
 #include <WebContent/WebContentServerEndpoint.h>
 
@@ -124,7 +123,6 @@ public:
     WebContentPage* page(Web::PageId page_id) const;
     // Whether the page is open in a process that is still running.
     bool is_page_open(Web::PageId page_id) const { return !m_process_lost && page(page_id); }
-    WebContentPageHandle page_handle(Web::PageId page_id) const { return { const_cast<WebContentClient&>(*this), page_id }; }
     // Every open page, whether it displays its tab or only holds part of it.
     template<CallableAs<IterationDecision, WebContentPage&> Callback>
     void for_each_page(Callback);
@@ -171,6 +169,7 @@ private:
     virtual Messages::WebContentClient::DidRequestNamedCookieResponse did_request_named_cookie(URL::URL, String) override;
     virtual Messages::WebContentClient::DidRequestCookieResponse did_request_cookie(Web::PageId page_id, URL::URL, HTTP::Cookie::Source) override;
     virtual void did_close_browsing_context(Web::PageId page_id) override;
+    virtual Messages::WebContentClient::DidSetStorageItemResponse did_set_storage_item(Web::PageId page_id, Web::StorageAPI::StorageEndpointType, String storage_key, Utf16String bottle_key, Utf16String value) override;
     virtual void did_set_cookie(URL::URL, HTTP::Cookie::ParsedCookie, HTTP::Cookie::Source) override;
     virtual void did_update_cookie(HTTP::Cookie::Cookie) override;
     virtual void did_store_hsts_policy(String, HTTP::HSTS::ParsedHSTSPolicy) override;
@@ -193,7 +192,7 @@ private:
 
     // Every page the UI process has handed to this connection. A page stays once it closes, because messages the
     // connection sent while it had the page can arrive after the page is gone.
-    HashMap<Web::PageId, NonnullOwnPtr<WebContentPage>> m_pages;
+    HashMap<Web::PageId, NonnullRefPtr<WebContentPage>> m_pages;
     HashMap<Web::Compositor::CompositorContextId, Optional<Web::PageId>> m_compositor_contexts;
     Optional<i32> m_compositor_connection_id;
     Optional<Web::PageId> m_unassigned_initial_page_id;

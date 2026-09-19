@@ -66,7 +66,6 @@ set(SOURCES
     ViewImplementation.cpp
     WebContentClient.cpp
     WebContentPage.cpp
-    WebContentPageHandle.cpp
     WebContentTestClient.cpp
     WebDriverBrowserConnection.cpp
     WebUI.cpp

@@ -35,7 +35,7 @@
 #include <LibWebView/Export.h>
 #include <LibWebView/Forward.h>
 #include <LibWebView/NavigationLoader.h>
-#include <LibWebView/WebContentPageHandle.h>
+#include <LibWebView/WebContentPage.h>
 
 namespace WebView {
 
@@ -63,8 +63,8 @@ public:
         Phase phase { Phase::Started };
         OwnPtr<NavigationLoader> loader {};
         // The page conducting the population until the page hosting the document takes over.
-        Optional<WebContentPageHandle> population_worker {};
-        Optional<WebContentPageHandle> host {};
+        RefPtr<WebContentPage> population_worker {};
+        RefPtr<WebContentPage> host {};
         RefPtr<CanonicalBrowsingContext> destination_browsing_context {};
     };
 
@@ -78,7 +78,7 @@ public:
         Optional<Utf16String> navigation_id {};
     };
 
-    CanonicalNavigable(Web::HTML::CrossProcessId id, Optional<Web::HTML::CrossProcessId> parent_id, Optional<WebContentPageHandle> reporting_page);
+    CanonicalNavigable(Web::HTML::CrossProcessId id, Optional<Web::HTML::CrossProcessId> parent_id, RefPtr<WebContentPage> reporting_page);
     virtual ~CanonicalNavigable();
 
     virtual bool is_top_level_traversable() const { return false; }
@@ -91,9 +91,9 @@ public:
     // document host hosts its active document, which is the reporting page unless the document is out of process.
     // The pending host is chosen to host its next document, and becomes the document host when that activates.
     // The traversable has no container, so its document host is the page of the view displaying the tab.
-    Optional<WebContentPageHandle> const& reporting_page() const { return m_reporting_page; }
-    virtual Optional<WebContentPageHandle> document_host() const;
-    bool is_hosted_by(WebContentPageHandle const& page) const { return document_host() == page; }
+    RefPtr<WebContentPage> const& reporting_page() const { return m_reporting_page; }
+    virtual RefPtr<WebContentPage> document_host() const;
+    bool is_hosted_by(WebContentPage const& page) const { return document_host().ptr() == &page; }
 
     CanonicalNavigable* parent() { return m_parent; }
     CanonicalNavigable const* parent() const { return m_parent; }
@@ -119,37 +119,37 @@ public:
     IterationDecision for_each_in_subtree(Function<IterationDecision(CanonicalNavigable const&)> const&) const;
 
     // The document host when it is not the reporting page.
-    bool has_remote_host() const { return m_remote_host.has_value(); }
-    WebContentPageHandle const& remote_host() const;
+    bool has_remote_host() const { return m_remote_host; }
+    WebContentPage& remote_host() const;
 
-    void set_remote_host(WebContentPageHandle);
+    void set_remote_host(NonnullRefPtr<WebContentPage>);
     // The page hosting the document stops hosting it, with the frames of that document, and represents the navigable
     // from then on unless it holds nothing else of the tab.
     void detach_remote_host();
 
     // The page to host the navigable's next document in the agent, chosen at population. It takes the container over
     // when that document is activated; until then the page hosting the displayed document keeps it.
-    ErrorOr<WebContentPageHandle> obtain_document_host(CanonicalSimilarOriginWindowAgent&);
+    ErrorOr<NonnullRefPtr<WebContentPage>> obtain_document_host(CanonicalSimilarOriginWindowAgent&);
     // The document a host was chosen for activated there, so that host takes the container over.
-    virtual void set_document_host(WebContentPageHandle const&);
+    virtual void set_document_host(WebContentPage&);
     // The next document, or none after the host went away, is hosted by the page holding the container.
     void transition_to_local_host();
 
     struct RemoteChildFrameInputTarget {
-        WebContentPageHandle remote_page;
+        NonnullRefPtr<WebContentPage> remote_page;
         CanonicalNavigable const* navigable { nullptr };
         Optional<Web::Compositor::CompositorContextId> compositor_context_id;
         Web::DevicePixelRect viewport_rect;
     };
     // The remote child under this local root of a page at a position in the root's coordinates, if any.
-    Optional<RemoteChildFrameInputTarget> remote_child_frame_input_target_at(WebContentPageHandle const& page, Web::DevicePixelPoint) const;
+    Optional<RemoteChildFrameInputTarget> remote_child_frame_input_target_at(WebContentPage const& page, Web::DevicePixelPoint) const;
 
     // The pending host is chosen by the response that names the next document. The displayed document stays with
     // its host until the next one activates, so that it is unloaded there before the container is handed over.
-    bool has_pending_host() const { return m_pending_host.has_value(); }
-    bool pending_host_matches(WebContentPageHandle const& page) const { return m_pending_host == page; }
-    WebContentPageHandle const& pending_host() const;
-    void set_pending_host(WebContentPageHandle);
+    bool has_pending_host() const { return m_pending_host; }
+    bool pending_host_matches(WebContentPage const& page) const { return m_pending_host.ptr() == &page; }
+    WebContentPage& pending_host() const;
+    void set_pending_host(NonnullRefPtr<WebContentPage>);
     // The pending host took the container over, so its page is no longer pending.
     void clear_pending_host();
     // The document the pending host was to display never activated: a page created for it is discarded.
@@ -160,7 +160,7 @@ public:
     double device_pixel_ratio() const { return m_device_pixel_ratio; }
     void set_viewport(Web::DevicePixelRect, Web::DevicePixelRect viewport_intersection, double device_pixel_ratio);
     void send_viewport_to_host() const;
-    void send_viewport_to(WebContentPageHandle const&) const;
+    void send_viewport_to(WebContentPage&) const;
 
     Optional<Web::HTML::ReplicatedNavigableState> const& replicated_state() const { return m_replicated_state; }
     void set_replicated_state(Web::HTML::ReplicatedNavigableState);
@@ -213,13 +213,13 @@ public:
     void set_ongoing_navigation_to_traversal(Web::HTML::CrossProcessId operation_id);
     void clear_ongoing_navigation_traversal(Web::HTML::CrossProcessId operation_id);
     virtual void clear_ongoing_navigation();
-    void set_navigation_population_worker(WebContentPageHandle const&);
-    bool navigation_population_matches(WebContentPageHandle const&, Utf16String const& navigation_id) const;
-    bool navigation_population_worker_matches(WebContentPageHandle const&) const;
-    void set_navigation_host(WebContentPageHandle const&);
-    bool navigation_host_matches(WebContentPageHandle const&) const;
-    bool navigation_owner_matches(WebContentPageHandle const&) const;
-    bool navigation_transaction_matches(Utf16String const&, WebContentPageHandle const&) const;
+    void set_navigation_population_worker(WebContentPage&);
+    bool navigation_population_matches(WebContentPage const&, Utf16String const& navigation_id) const;
+    bool navigation_population_worker_matches(WebContentPage const&) const;
+    void set_navigation_host(WebContentPage&);
+    bool navigation_host_matches(WebContentPage const&) const;
+    bool navigation_owner_matches(WebContentPage const&) const;
+    bool navigation_transaction_matches(Utf16String const&, WebContentPage const&) const;
     bool cancel_navigation_transaction_for_client(WebContentClient&);
     void did_finish_navigation_transaction(Optional<Utf16String> const&, Web::HTML::HistoryStepResult);
     bool has_uncommitted_navigation() const { return m_ongoing_navigation.has_value(); }
@@ -231,7 +231,7 @@ public:
 private:
     Web::HTML::CrossProcessId m_id;
     Optional<Web::HTML::CrossProcessId> m_parent_id;
-    Optional<WebContentPageHandle> m_reporting_page;
+    RefPtr<WebContentPage> m_reporting_page;
     CanonicalNavigable* m_parent { nullptr };
     Vector<NonnullOwnPtr<CanonicalNavigable>> m_children;
 
@@ -252,10 +252,10 @@ private:
     Web::DevicePixelRect m_viewport_intersection;
     double m_device_pixel_ratio { 1 };
 
-    void transition_to_remote_host(WebContentPageHandle);
+    void transition_to_remote_host(NonnullRefPtr<WebContentPage>);
 
-    Optional<WebContentPageHandle> m_remote_host;
-    Optional<WebContentPageHandle> m_pending_host;
+    RefPtr<WebContentPage> m_remote_host;
+    RefPtr<WebContentPage> m_pending_host;
 };
 
 }

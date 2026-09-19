@@ -9,6 +9,8 @@
 #include <AK/HashTable.h>
 #include <AK/Noncopyable.h>
 #include <AK/Optional.h>
+#include <AK/RefCounted.h>
+#include <AK/RefPtr.h>
 #include <AK/String.h>
 #include <AK/WeakPtr.h>
 #include <LibGfx/Point.h>
@@ -22,7 +24,6 @@
 #include <LibWeb/StorageAPI/StorageEndpoint.h>
 #include <LibWebView/Export.h>
 #include <LibWebView/Forward.h>
-#include <LibWebView/WebContentPageHandle.h>
 #include <WebContent/WebContentClientEndpoint.h>
 #include <WebContent/WebContentServerEndpoint.h>
 #include <WebContent/WebContentTestClientEndpoint.h>
@@ -30,9 +31,12 @@
 namespace WebView {
 
 // A page a WebContent process holds open for the UI process. It holds the graph of one tab, and displays that tab
-// when it is the view's page. The client resolves it from a page id, and it handles the messages about it.
+// when it is the view's page. The client resolves it from a page id and handles the messages about it through it.
+// The canonical tree keeps a reference to a page that hosts, reported or asked for something, so the page outlives
+// its process. Once closed it only compares equal to itself and drops what is sent to it.
 class WEBVIEW_API WebContentPage final
-    : public WebContentClientPageStub
+    : public RefCounted<WebContentPage>
+    , public WebContentClientPageStub
     , public WebContentTestClientPageStub
     , public WebContentServerPageProxy<WebContentPage> {
     AK_MAKE_NONCOPYABLE(WebContentPage);
@@ -45,10 +49,10 @@ public:
     WebContentPage(WebContentClient&, Web::PageId, CanonicalTraversable&);
     virtual ~WebContentPage() override;
 
-    WebContentClient& client() const { return m_client; }
+    // The process holding the page, which outlives an open page.
+    WebContentClient& client() const;
     Web::PageId id() const { return m_id; }
-    WebContentPageHandle handle() const;
-    WebContentClient& routed_connection() const { return m_client; }
+    WebContentClient* routed_connection() const { return m_client.ptr(); }
     Web::PageId routed_page_id() const { return m_id; }
 
     // The tab's traversable, and the view displaying that tab. A page always has both while it is open.
@@ -58,11 +62,13 @@ public:
     bool displays_tab() const;
     Optional<CanonicalNavigable&> hosted_navigable(Web::HTML::CrossProcessId) const;
     // The page hosting a navigable this page only represents, if it is open.
-    Optional<WebContentPageHandle> endpoint_hosting_navigable_represented_by(Web::HTML::CrossProcessId navigable_id) const;
+    RefPtr<WebContentPage> endpoint_hosting_navigable_represented_by(Web::HTML::CrossProcessId navigable_id) const;
 
     // False once the page can no longer host work: it is unregistered, or its tab is gone. A page awaiting a
     // detached close remains open; it still coordinates its own close.
     bool is_open() const { return m_is_open && m_traversable; }
+    // Whether the page is open in a process that is still running.
+    bool is_live() const;
     void close();
 
     bool needs_beforeunload_check() const { return m_needs_beforeunload_check; }
@@ -288,7 +294,7 @@ private:
     virtual Messages::WebContentTestClient::DidRequestRegisterSessionStoreTabForTestingResponse did_request_register_session_store_tab_for_testing() override;
     virtual Messages::WebContentTestClient::DidRequestSessionStoreTabStateForTestingResponse did_request_session_store_tab_state_for_testing() override;
 
-    WebContentClient& m_client;
+    WeakPtr<WebContentClient> m_client;
     Web::PageId m_id;
     WeakPtr<CanonicalTraversable> m_traversable;
     bool m_is_open { true };
