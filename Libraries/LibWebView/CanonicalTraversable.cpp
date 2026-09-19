@@ -1618,7 +1618,7 @@ void CanonicalTraversable::continue_history_navigation_population(Web::HTML::Cro
         auto group_switch = context.ptr() != &navigable->active_browsing_context();
         pending_job.value()->browsing_context = context;
         if (navigable->is_top_level_traversable()) {
-            auto swap_process = group_switch || SiteIsolationManager::the().top_level_navigation_requires_process_swap(active_browsing_context(), replicated_state()->active_document_url, document->url);
+            auto swap_process = group_switch || top_level_navigation_requires_process_swap(active_browsing_context(), replicated_state()->active_document_url, document->url);
             if (swap_process) {
                 auto view = ViewImplementation::find_view_for_traversable(*this);
                 if (!view.has_value())
@@ -1639,7 +1639,7 @@ void CanonicalTraversable::continue_history_navigation_population(Web::HTML::Cro
             auto group = active_browsing_context().group();
             VERIFY(group);
             auto agent = group->obtain_similar_origin_window_agent(document->origin, false);
-            SiteIsolationManager::the().host_opaque_origin_agent_with_initiator(*group, *agent, document->origin, pending_job.value()->job.target_entry.document_state.initiator_origin);
+            group->host_opaque_origin_agent_with_initiator(*agent, document->origin, pending_job.value()->job.target_entry.document_state.initiator_origin);
             auto host = SiteIsolationManager::the().obtain_child_document_host(*navigable, *agent);
             if (host.is_error()) {
                 did_receive_changing_navigable_history_job_ready(*endpoint, operation_id, navigable_id, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped, Web::HTML::UnloadDisplayedDocument::No);

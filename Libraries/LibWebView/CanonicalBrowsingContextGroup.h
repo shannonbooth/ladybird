@@ -47,6 +47,7 @@ public:
 
     // https://html.spec.whatwg.org/multipage/webappapis.html#obtain-similar-origin-window-agent
     NonnullRefPtr<CanonicalSimilarOriginWindowAgent> obtain_similar_origin_window_agent(URL::Origin const&, bool requests_oac);
+    void host_opaque_origin_agent_with_initiator(CanonicalSimilarOriginWindowAgent&, URL::Origin const& origin, Optional<URL::Origin> const& initiator_origin);
 
 private:
     CanonicalBrowsingContextGroup() = default;

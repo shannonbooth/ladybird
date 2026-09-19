@@ -25,36 +25,6 @@ SiteIsolationManager& SiteIsolationManager::the()
     return manager;
 }
 
-bool SiteIsolationManager::top_level_navigation_requires_process_swap(CanonicalBrowsingContext const& browsing_context, URL::URL const& current_url, URL::URL const& target_url) const
-{
-    if (site_isolation_mode() == SiteIsolationMode::Disabled)
-        return false;
-
-    // Obtaining a browsing context to use for a navigation response only lets an implementation-defined browsing
-    // context group switch happen when the group holds a single browsing context (step 8). Ladybird cannot retain
-    // WindowProxy relationships across a process swap either, so related top-level browsing contexts share a process.
-    auto group = browsing_context.group();
-    VERIFY(group);
-    if (group->browsing_context_set().size() > 1)
-        return false;
-
-    // Allow navigating from about:blank to any site.
-    if (Web::HTML::url_matches_about_blank(current_url))
-        return false;
-
-    // Make sure JavaScript URLs run in the same process.
-    if (target_url.scheme() == "javascript"sv)
-        return false;
-
-    // Allow cross-scheme non-HTTP(S) navigation. Disallow cross-scheme HTTP(S) navigation.
-    auto current_url_is_http = Web::Fetch::Infrastructure::is_http_or_https_scheme(current_url.scheme());
-    auto target_url_is_http = Web::Fetch::Infrastructure::is_http_or_https_scheme(target_url.scheme());
-    if (!current_url_is_http || !target_url_is_http)
-        return current_url_is_http || target_url_is_http;
-
-    return !current_url.origin().is_same_site(target_url.origin());
-}
-
 // Whether a navigable's document is under a local root of a page without crossing a document another page hosts, so
 // that its container's position is in the root's coordinates.
 static bool is_under_root_in_page(CanonicalNavigable const& root, CanonicalNavigable const& navigable)
@@ -209,18 +179,6 @@ HashMap<pid_t, pid_t> SiteIsolationManager::remote_frame_process_embedders() con
     });
 
     return embedders;
-}
-
-// The specification keys the agent cluster of an opaque origin by that origin, so each such document is isolated in
-// an agent cluster of its own, and leaves which process hosts an agent cluster to the user agent. Nothing can address
-// an opaque origin but the documents it was created from, so its agent cluster is hosted where the agent cluster of
-// the navigation's initiator origin is.
-void SiteIsolationManager::host_opaque_origin_agent_with_initiator(CanonicalBrowsingContextGroup& group, CanonicalSimilarOriginWindowAgent& agent, URL::Origin const& origin, Optional<URL::Origin> const& initiator_origin)
-{
-    if (!origin.is_opaque() || agent.hosting_process() || !initiator_origin.has_value())
-        return;
-    if (auto initiator_host = group.obtain_similar_origin_window_agent(*initiator_origin, false)->hosting_process())
-        agent.set_hosting_process_if_unset(*initiator_host);
 }
 
 ErrorOr<WebContentPageHandle> SiteIsolationManager::obtain_child_document_host(CanonicalNavigable& navigable, CanonicalSimilarOriginWindowAgent& agent)

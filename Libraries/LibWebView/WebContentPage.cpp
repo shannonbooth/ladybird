@@ -228,7 +228,7 @@ bool WebContentPage::continue_navigation_population_in_selected_process(Web::HTM
 
     if (navigable->is_top_level_traversable()) {
         auto& traversable = navigable->top_level_traversable();
-        auto site_isolation_process_swap = SiteIsolationManager::the().top_level_navigation_requires_process_swap(
+        auto site_isolation_process_swap = top_level_navigation_requires_process_swap(
             traversable.active_browsing_context(),
             traversable.replicated_state()->active_document_url,
             document->url);
@@ -259,7 +259,7 @@ bool WebContentPage::continue_navigation_population_in_selected_process(Web::HTM
 
     // FIXME: Pass the document's requestsOAC value once Origin-Agent-Cluster is implemented.
     auto agent = browsing_context_group->obtain_similar_origin_window_agent(document->origin, false);
-    SiteIsolationManager::the().host_opaque_origin_agent_with_initiator(*browsing_context_group, *agent, document->origin, loader.request().history_entry.document_state.initiator_origin);
+    browsing_context_group->host_opaque_origin_agent_with_initiator(*agent, document->origin, loader.request().history_entry.document_state.initiator_origin);
 
     auto host_or_error = SiteIsolationManager::the().obtain_child_document_host(*navigable, *agent);
     if (host_or_error.is_error()) {

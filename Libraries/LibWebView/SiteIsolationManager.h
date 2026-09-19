@@ -34,10 +34,7 @@ public:
         Web::DevicePixelRect viewport_rect;
     };
 
-    [[nodiscard]] bool top_level_navigation_requires_process_swap(CanonicalBrowsingContext const&, URL::URL const& current_url, URL::URL const& target_url) const;
-
     ErrorOr<WebContentPageHandle> obtain_child_document_host(CanonicalNavigable&, CanonicalSimilarOriginWindowAgent&);
-    void host_opaque_origin_agent_with_initiator(CanonicalBrowsingContextGroup&, CanonicalSimilarOriginWindowAgent&, URL::Origin const& origin, Optional<URL::Origin> const& initiator_origin);
     void set_child_document_host(CanonicalNavigable&, WebContentPageHandle const&);
 
     void transition_child_frame_to_remote(WebContentPageHandle const& parent_page, Web::HTML::CrossProcessId frame_id, WebContentPageHandle remote_page);
