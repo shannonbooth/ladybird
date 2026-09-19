@@ -104,6 +104,19 @@ Optional<WebContentPage> WebContentPage::endpoint_hosting_navigable_represented_
     return endpoint;
 }
 
+WebContentPage::WebContentPage() = default;
+
+WebContentPage::WebContentPage(RefPtr<WebContentClient> client, Web::PageId id)
+    : client(move(client))
+    , id(id)
+{
+}
+
+WebContentClient& WebContentPage::routed_connection() const
+{
+    return *client;
+}
+
 bool WebContentPage::is_open() const
 {
     return client && client->is_page_open(id);
@@ -150,7 +163,7 @@ void WebContentPage::did_request_navigation_of_navigable(Web::HTML::CrossProcess
     auto endpoint = endpoint_hosting_navigable_represented_by(*traversable, navigable_id);
     if (!endpoint.has_value())
         return;
-    endpoint->client->async_navigate_navigable(endpoint->id, navigable_id, move(navigation));
+    endpoint->async_navigate_navigable(navigable_id, move(navigation));
 }
 
 void WebContentPage::did_post_message_to_navigable(Web::HTML::CrossProcessId navigable_id, Web::HTML::PostedMessageDescriptor message)
@@ -163,7 +176,7 @@ void WebContentPage::did_post_message_to_navigable(Web::HTML::CrossProcessId nav
     auto endpoint = endpoint_hosting_navigable_represented_by(*traversable, navigable_id);
     if (!endpoint.has_value())
         return;
-    endpoint->client->async_deliver_posted_message(endpoint->id, navigable_id, move(message));
+    endpoint->async_deliver_posted_message(navigable_id, move(message));
 }
 
 void WebContentPage::did_request_focusing_steps_for_navigable(Web::HTML::CrossProcessId navigable_id, Web::HTML::FocusTrigger focus_trigger)
@@ -176,7 +189,7 @@ void WebContentPage::did_request_focusing_steps_for_navigable(Web::HTML::CrossPr
     auto endpoint = endpoint_hosting_navigable_represented_by(*traversable, navigable_id);
     if (!endpoint.has_value())
         return;
-    endpoint->client->async_run_focusing_steps_for_navigable(endpoint->id, navigable_id, focus_trigger);
+    endpoint->async_run_focusing_steps_for_navigable(navigable_id, focus_trigger);
 }
 
 void WebContentPage::did_request_window_focus_of_navigable(Web::HTML::CrossProcessId navigable_id)
@@ -189,7 +202,7 @@ void WebContentPage::did_request_window_focus_of_navigable(Web::HTML::CrossProce
     auto endpoint = endpoint_hosting_navigable_represented_by(*traversable, navigable_id);
     if (!endpoint.has_value())
         return;
-    endpoint->client->async_focus_window_of_navigable(endpoint->id, navigable_id);
+    endpoint->async_focus_window_of_navigable(navigable_id);
 }
 
 void WebContentPage::did_request_set_opener_of_navigable(Web::HTML::CrossProcessId navigable_id, Web::HTML::CrossProcessId opener_navigable_id)
@@ -203,7 +216,7 @@ void WebContentPage::did_request_set_opener_of_navigable(Web::HTML::CrossProcess
     auto endpoint = endpoint_hosting_navigable_represented_by(*traversable, navigable_id);
     if (!endpoint.has_value())
         return;
-    endpoint->client->async_set_opener_of_navigable(endpoint->id, navigable_id, opener_navigable_id);
+    endpoint->async_set_opener_of_navigable(navigable_id, opener_navigable_id);
 }
 
 void WebContentPage::did_completely_finish_loading(Web::HTML::CrossProcessId navigable_id)
@@ -588,7 +601,7 @@ void WebContentPage::did_request_document_cookie_version_index(i64 document_id, 
 {
     if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (auto document_index = view->ensure_document_cookie_version_index({}, domain); !document_index.is_error())
-            client->async_set_document_cookie_version_index(id, document_id, document_index.value());
+            async_set_document_cookie_version_index(document_id, document_index.value());
     }
 }
 
@@ -650,7 +663,7 @@ void WebContentPage::did_consume_user_activation(Web::HTML::UserActivationConsum
     page_host->top_level_traversable().for_each_hosting_page([&](WebContentPage const& page) {
         if (page == *this)
             return;
-        page.client->async_consume_user_activation(page.id, consumption);
+        page.async_consume_user_activation(consumption);
     });
 }
 
@@ -694,7 +707,7 @@ void WebContentPage::did_request_reposition_window(Gfx::IntPoint position, u64 c
         if (view->on_reposition_window)
             view->on_reposition_window(position);
     }
-    client->async_did_complete_window_rect_request(id, completion_id);
+    async_did_complete_window_rect_request(completion_id);
 }
 
 void WebContentPage::did_request_resize_window(Gfx::IntSize size, u64 completion_id)
@@ -703,7 +716,7 @@ void WebContentPage::did_request_resize_window(Gfx::IntSize size, u64 completion
         if (view->on_resize_window)
             view->on_resize_window(size);
     }
-    client->async_did_complete_window_rect_request(id, completion_id);
+    async_did_complete_window_rect_request(completion_id);
 }
 
 void WebContentPage::did_request_maximize_window(u64 completion_id)
@@ -712,7 +725,7 @@ void WebContentPage::did_request_maximize_window(u64 completion_id)
         if (view->on_maximize_window)
             view->on_maximize_window();
     }
-    client->async_did_complete_window_rect_request(id, completion_id);
+    async_did_complete_window_rect_request(completion_id);
 }
 
 void WebContentPage::did_request_minimize_window()
@@ -743,9 +756,9 @@ void WebContentPage::did_request_file(ByteString path, i32 request_id)
 {
     auto file = Core::File::open(path, Core::File::OpenMode::Read);
     if (file.is_error())
-        client->async_handle_file_return(id, file.error().code(), {}, request_id);
+        async_handle_file_return(file.error().code(), {}, request_id);
     else
-        client->async_handle_file_return(id, 0, IPC::File::adopt_file(file.release_value()), request_id);
+        async_handle_file_return(0, IPC::File::adopt_file(file.release_value()), request_id);
 }
 
 void WebContentPage::did_request_color_picker(Color current_color)
@@ -944,7 +957,7 @@ void WebContentPage::request_navigable_document_abort(Web::HTML::CrossProcessId 
     auto endpoint = endpoint_hosting_navigable_represented_by(*page_host, navigable_id);
     if (!endpoint.has_value())
         return;
-    endpoint->client->async_abort_navigable_document(endpoint->id, navigable_id);
+    endpoint->async_abort_navigable_document(navigable_id);
 }
 
 void WebContentPage::request_navigable_document_unfullscreen(Web::HTML::CrossProcessId navigable_id)
@@ -955,7 +968,7 @@ void WebContentPage::request_navigable_document_unfullscreen(Web::HTML::CrossPro
     auto endpoint = endpoint_hosting_navigable_represented_by(*page_host, navigable_id);
     if (!endpoint.has_value())
         return;
-    endpoint->client->async_unfullscreen_navigable_document(endpoint->id, navigable_id);
+    endpoint->async_unfullscreen_navigable_document(navigable_id);
 }
 
 void WebContentPage::request_child_navigable_unload(Web::HTML::CrossProcessId navigable_id)
@@ -991,7 +1004,7 @@ void WebContentPage::did_request_close_of_traversable(Web::HTML::CrossProcessId 
     auto endpoint = endpoint_hosting_navigable_represented_by(*traversable, navigable_id);
     if (!endpoint.has_value())
         return;
-    endpoint->client->async_close_traversable_from_script(endpoint->id, navigable_id, source_navigable_id);
+    endpoint->async_close_traversable_from_script(navigable_id, source_navigable_id);
 }
 
 void WebContentPage::did_inspect_dom_tree(String dom_tree)
@@ -1090,7 +1103,7 @@ void WebContentPage::did_request_clipboard_entries(u64 request_id)
         if (auto item = view->clipboard_item(); !item.system_clipboard_representations.is_empty())
             items.append(move(item));
 
-        client->async_retrieved_clipboard_entries(id, request_id, items);
+        async_retrieved_clipboard_entries(request_id, items);
     }
 }
 

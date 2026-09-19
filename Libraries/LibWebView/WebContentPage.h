@@ -13,14 +13,22 @@
 #include <LibWebView/Export.h>
 #include <LibWebView/Forward.h>
 #include <WebContent/WebContentClientEndpoint.h>
+#include <WebContent/WebContentServerEndpoint.h>
 
 namespace WebView {
 
 // A page a WebContent process holds for the UI process. It holds the graph of one tab, and displays that tab when it
 // is the view's page.
-struct WEBVIEW_API WebContentPage {
+struct WEBVIEW_API WebContentPage : public WebContentServerPageProxy<WebContentPage> {
     RefPtr<WebContentClient> client;
     Web::PageId id { 0 };
+
+    WebContentPage();
+    WebContentPage(RefPtr<WebContentClient>, Web::PageId);
+
+    // What the bound proxy sends through, and about.
+    WebContentClient& routed_connection() const;
+    Web::PageId routed_page_id() const { return id; }
 
     bool is_open() const;
     CanonicalTraversable* traversable() const;

@@ -873,7 +873,7 @@ void ViewImplementation::enqueue_input_event(Web::InputEvent event)
                 client().dispatch_key_event_to_web_content(m_client_state.page_index, event);
             } else {
                 pending.endpoint = host;
-                host.client->async_key_event(host.id, event.clone_without_browser_data());
+                host.async_key_event(event.clone_without_browser_data());
             }
         },
         [this](Web::MouseEvent const& event) {
@@ -1097,7 +1097,7 @@ void ViewImplementation::set_preferred_color_scheme(Web::CSS::PreferredColorSche
     set_page_background_color(preferred_canvas_background_color());
 
     m_top_level_traversable.for_each_hosting_page([&](WebContentPage const& page) {
-        page.client->async_set_preferred_color_scheme(page.id, color_scheme);
+        page.async_set_preferred_color_scheme(color_scheme);
     });
 }
 
@@ -1105,7 +1105,7 @@ void ViewImplementation::set_preferred_contrast(Web::CSS::PreferredContrast cont
 {
     m_preferred_contrast = contrast;
     m_top_level_traversable.for_each_hosting_page([&](WebContentPage const& page) {
-        page.client->async_set_preferred_contrast(page.id, contrast);
+        page.async_set_preferred_contrast(contrast);
     });
 }
 
@@ -1113,13 +1113,13 @@ void ViewImplementation::set_preferred_motion(Web::CSS::PreferredMotion motion)
 {
     m_preferred_motion = motion;
     m_top_level_traversable.for_each_hosting_page([&](WebContentPage const& page) {
-        page.client->async_set_preferred_motion(page.id, motion);
+        page.async_set_preferred_motion(motion);
     });
 }
 
 static void send_browsing_behavior(WebContentPage const& page)
 {
-    page.client->async_set_browsing_behavior(page.id, Application::settings().browsing_behavior());
+    page.async_set_browsing_behavior(Application::settings().browsing_behavior());
 }
 
 static void send_autoplay_settings(WebContentPage const& page)
@@ -1136,22 +1136,22 @@ static void send_autoplay_settings(WebContentPage const& page)
     for (auto const& site_filter : autoplay_settings.site_filters)
         allowlist.unchecked_append(Utf16String::from_utf8(site_filter));
 
-    page.client->async_set_autoplay_settings(page.id, policy, move(allowlist));
+    page.async_set_autoplay_settings(policy, move(allowlist));
 }
 
 static void send_global_privacy_control(WebContentPage const& page)
 {
-    page.client->async_set_enable_global_privacy_control(page.id, Application::settings().global_privacy_control() == GlobalPrivacyControl::Yes);
+    page.async_set_enable_global_privacy_control(Application::settings().global_privacy_control() == GlobalPrivacyControl::Yes);
 }
 
 void ViewImplementation::send_preferences_to_page(Badge<WebContentClient>, WebContentPage const& page)
 {
-    page.client->async_set_preferred_color_scheme(page.id, m_preferred_color_scheme);
-    page.client->async_set_preferred_contrast(page.id, m_preferred_contrast);
-    page.client->async_set_preferred_motion(page.id, m_preferred_motion);
-    page.client->async_set_preferred_languages(page.id, Application::settings().languages());
+    page.async_set_preferred_color_scheme(m_preferred_color_scheme);
+    page.async_set_preferred_contrast(m_preferred_contrast);
+    page.async_set_preferred_motion(m_preferred_motion);
+    page.async_set_preferred_languages(Application::settings().languages());
     if (m_user_style_sheet.has_value())
-        page.client->async_set_user_style(page.id, *m_user_style_sheet);
+        page.async_set_user_style(*m_user_style_sheet);
     send_browsing_behavior(page);
     send_autoplay_settings(page);
     send_global_privacy_control(page);
@@ -1250,7 +1250,7 @@ NonnullRefPtr<Core::Promise<ByteString>> ViewImplementation::selected_text()
     auto request_id = m_next_selection_request_id++;
     m_pending_selected_text_requests.set(request_id, promise);
     auto host = m_top_level_traversable.focused_navigable_host();
-    host.client->async_get_selected_text(host.id, request_id);
+    host.async_get_selected_text(request_id);
     return promise;
 }
 
@@ -1268,7 +1268,7 @@ NonnullRefPtr<Core::Promise<ByteString>> ViewImplementation::cut_selected_text()
     auto request_id = m_next_selection_request_id++;
     m_pending_cut_selected_text_requests.set(request_id, promise);
     auto host = m_top_level_traversable.focused_navigable_host();
-    host.client->async_cut_selected_text(host.id, request_id);
+    host.async_cut_selected_text(request_id);
     return promise;
 }
 
@@ -1296,7 +1296,7 @@ NonnullRefPtr<Core::Promise<Optional<DictionaryLookup>>> ViewImplementation::sel
     auto request_id = m_next_selection_request_id++;
     m_pending_selected_text_for_lookup_requests.set(request_id, promise);
     auto host = m_top_level_traversable.focused_navigable_host();
-    host.client->async_get_selected_text_for_lookup(host.id, request_id);
+    host.async_get_selected_text_for_lookup(request_id);
 
     return promise->map<Optional<DictionaryLookup>>([](auto& lookup) -> Optional<DictionaryLookup> {
         if (!lookup.has_value())
@@ -1329,7 +1329,7 @@ NonnullRefPtr<Core::Promise<bool>> ViewImplementation::select_word_for_dictionar
     // The word is selected in the page the lookup then asks for the selection, in the viewport of its local root.
     auto host = m_top_level_traversable.focused_navigable_host();
     auto position = to_content_position(widget_position).to_type<Web::DevicePixels>() - m_top_level_traversable.focused_navigable_host_offset();
-    host.client->async_select_word_for_dictionary_lookup(host.id, request_id, position);
+    host.async_select_word_for_dictionary_lookup(request_id, position);
     return promise;
 }
 
@@ -1376,13 +1376,13 @@ bool ViewImplementation::look_up_selected_text_at(Gfx::IntPoint widget_position)
 void ViewImplementation::select_all()
 {
     auto host = m_top_level_traversable.focused_navigable_host();
-    host.client->async_select_all(host.id);
+    host.async_select_all();
 }
 
 void ViewImplementation::undo()
 {
     auto host = m_top_level_traversable.focused_navigable_host();
-    host.client->async_undo(host.id);
+    host.async_undo();
 }
 
 void ViewImplementation::set_editing_history_state(bool can_undo, bool can_redo)
@@ -1395,7 +1395,7 @@ void ViewImplementation::set_editing_history_state(bool can_undo, bool can_redo)
 void ViewImplementation::redo()
 {
     auto host = m_top_level_traversable.focused_navigable_host();
-    host.client->async_redo(host.id);
+    host.async_redo();
 }
 
 void ViewImplementation::find_in_page(Utf16String const& query, CaseSensitivity case_sensitivity)
@@ -1985,21 +1985,21 @@ void ViewImplementation::set_is_fullscreen(Web::ViewportIsFullscreen is_fullscre
 void ViewImplementation::alert_closed()
 {
     m_top_level_traversable.for_each_hosting_page([&](WebContentPage const& page) {
-        page.client->async_alert_closed(page.id);
+        page.async_alert_closed();
     });
 }
 
 void ViewImplementation::confirm_closed(bool accepted)
 {
     m_top_level_traversable.for_each_hosting_page([&](WebContentPage const& page) {
-        page.client->async_confirm_closed(page.id, accepted);
+        page.async_confirm_closed(accepted);
     });
 }
 
 void ViewImplementation::prompt_closed(Optional<Utf16String> const& response)
 {
     m_top_level_traversable.for_each_hosting_page([&](WebContentPage const& page) {
-        page.client->async_prompt_closed(page.id, response);
+        page.async_prompt_closed(response);
     });
 }
 
@@ -2012,7 +2012,7 @@ static bool another_page_awaits(Optional<WebContentPage> const& owner, WebConten
 void ViewImplementation::did_request_color_picker(Badge<WebContentPage>, WebContentPage const& requesting_page, Color current_color)
 {
     if (another_page_awaits(m_color_picker_page, requesting_page)) {
-        requesting_page.client->async_color_picker_update(requesting_page.id, {}, Web::HTML::ColorPickerUpdateState::Closed);
+        requesting_page.async_color_picker_update({}, Web::HTML::ColorPickerUpdateState::Closed);
         return;
     }
     m_color_picker_page = requesting_page;
@@ -2026,13 +2026,13 @@ void ViewImplementation::color_picker_update(Optional<Color> picked_color, Web::
     if (state == Web::HTML::ColorPickerUpdateState::Closed)
         m_color_picker_page.clear();
     if (page.is_open())
-        page.client->async_color_picker_update(page.id, picked_color, state);
+        page.async_color_picker_update(picked_color, state);
 }
 
 void ViewImplementation::did_request_file_picker(Badge<WebContentPage>, WebContentPage const& requesting_page, Web::HTML::FileFilter const& accepted_file_types, Web::HTML::AllowMultipleFiles allow_multiple_files)
 {
     if (another_page_awaits(m_file_picker_page, requesting_page)) {
-        requesting_page.client->async_file_picker_closed(requesting_page.id, {});
+        requesting_page.async_file_picker_closed({});
         return;
     }
     m_file_picker_page = requesting_page;
@@ -2045,13 +2045,13 @@ void ViewImplementation::file_picker_closed(Vector<Web::HTML::SelectedFile> sele
     auto page = m_file_picker_page.value_or(web_content_page());
     m_file_picker_page.clear();
     if (page.is_open())
-        page.client->async_file_picker_closed(page.id, move(selected_files));
+        page.async_file_picker_closed(move(selected_files));
 }
 
 void ViewImplementation::did_request_select_dropdown(Badge<WebContentClient>, WebContentPage const& requesting_page, Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items)
 {
     if (another_page_awaits(m_select_dropdown_page, requesting_page)) {
-        requesting_page.client->async_select_dropdown_closed(requesting_page.id, {});
+        requesting_page.async_select_dropdown_closed({});
         return;
     }
     m_select_dropdown_page = requesting_page;
@@ -2064,31 +2064,31 @@ void ViewImplementation::select_dropdown_closed(Optional<u32> const& selected_it
     auto page = m_select_dropdown_page.value_or(web_content_page());
     m_select_dropdown_page.clear();
     if (page.is_open())
-        page.client->async_select_dropdown_closed(page.id, selected_item_id);
+        page.async_select_dropdown_closed(selected_item_id);
 }
 
 void ViewImplementation::paste_from_clipboard()
 {
     auto host = m_top_level_traversable.focused_navigable_host();
-    host.client->async_paste_from_clipboard(host.id);
+    host.async_paste_from_clipboard();
 }
 
 void ViewImplementation::set_marked_text_from_input_method(Utf16String const& text)
 {
     auto host = m_top_level_traversable.focused_navigable_host();
-    host.client->async_set_marked_text_from_input_method(host.id, text);
+    host.async_set_marked_text_from_input_method(text);
 }
 
 void ViewImplementation::commit_text_from_input_method(Utf16String const& text, i32 replacement_start, i32 replacement_length)
 {
     auto host = m_top_level_traversable.focused_navigable_host();
-    host.client->async_commit_text_from_input_method(host.id, text, replacement_start, replacement_length);
+    host.async_commit_text_from_input_method(text, replacement_start, replacement_length);
 }
 
 void ViewImplementation::unmark_text_from_input_method()
 {
     auto host = m_top_level_traversable.focused_navigable_host();
-    host.client->async_unmark_text_from_input_method(host.id);
+    host.async_unmark_text_from_input_method();
 }
 
 Optional<Web::DevicePixelRect> ViewImplementation::get_input_caret_rect()
@@ -2390,11 +2390,11 @@ void ViewImplementation::initialize_client(CreateNewClient create_new_client, Op
             if (!Application::settings().geolocation_enabled()) {
                 if (auto provider_watch_id = view->m_geolocation_watch_ids.take(key); provider_watch_id.has_value())
                     Application::the().stop_watching_geolocation_position(*provider_watch_id);
-                request_page.client->async_geolocation_position_response(request_page.id, request_id, {}, to_underlying(GeolocationErrorCode::PermissionDenied));
+                request_page.async_geolocation_position_response(request_id, {}, to_underlying(GeolocationErrorCode::PermissionDenied));
                 return;
             }
 
-            request_page.client->async_geolocation_position_response(request_page.id, request_id,
+            request_page.async_geolocation_position_response(request_id,
                 { coords.latitude, coords.longitude, coords.accuracy, coords.altitude, coords.altitude_accuracy, coords.heading, coords.speed }, {});
         };
     };
@@ -2422,13 +2422,13 @@ void ViewImplementation::initialize_client(CreateNewClient create_new_client, Op
                     Application::the().stop_watching_geolocation_position(*provider_watch_id);
             }
 
-            request_page.client->async_geolocation_position_response(request_page.id, request_id, {}, to_underlying(code));
+            request_page.async_geolocation_position_response(request_id, {}, to_underlying(code));
         };
     };
 
     on_request_geolocation_position = [this, geolocation_error_code, make_geolocation_success_handler, make_geolocation_error_handler](WebContentPage const& requesting_page, u64 request_id) {
         if (!Application::settings().geolocation_enabled()) {
-            requesting_page.client->async_geolocation_position_response(requesting_page.id, request_id, {}, to_underlying(GeolocationErrorCode::PermissionDenied));
+            requesting_page.async_geolocation_position_response(request_id, {}, to_underlying(GeolocationErrorCode::PermissionDenied));
             return;
         }
 
@@ -2439,7 +2439,7 @@ void ViewImplementation::initialize_client(CreateNewClient create_new_client, Op
             make_geolocation_success_handler(requesting_page, request_id, false),
             make_geolocation_error_handler(requesting_page, request_id, false));
         if (provider_request_id.is_error()) {
-            requesting_page.client->async_geolocation_position_response(requesting_page.id, request_id, {}, to_underlying(geolocation_error_code(provider_request_id.error())));
+            requesting_page.async_geolocation_position_response(request_id, {}, to_underlying(geolocation_error_code(provider_request_id.error())));
             return;
         }
 
@@ -2454,7 +2454,7 @@ void ViewImplementation::initialize_client(CreateNewClient create_new_client, Op
 
     on_start_geolocation_position_watch = [this, geolocation_error_code, make_geolocation_success_handler, make_geolocation_error_handler](WebContentPage const& requesting_page, u64 request_id) {
         if (!Application::settings().geolocation_enabled()) {
-            requesting_page.client->async_geolocation_position_response(requesting_page.id, request_id, {}, to_underlying(GeolocationErrorCode::PermissionDenied));
+            requesting_page.async_geolocation_position_response(request_id, {}, to_underlying(GeolocationErrorCode::PermissionDenied));
             return;
         }
 
@@ -2466,7 +2466,7 @@ void ViewImplementation::initialize_client(CreateNewClient create_new_client, Op
             make_geolocation_error_handler(requesting_page, request_id, true));
 
         if (provider_watch_id.is_error()) {
-            requesting_page.client->async_geolocation_position_response(requesting_page.id, request_id, {}, to_underlying(geolocation_error_code(provider_watch_id.error())));
+            requesting_page.async_geolocation_position_response(request_id, {}, to_underlying(geolocation_error_code(provider_watch_id.error())));
             return;
         }
 
@@ -2649,7 +2649,7 @@ void ViewImplementation::run_webdriver_content_command(u64 command_id, Web::WebD
         m_pending_webdriver_crash_commands.set(command_id, page);
     else
         m_pending_webdriver_commands.set(command_id, page);
-    page.client->async_run_webdriver_command(page.id, command_id, navigable_id, name, move(payload), move(arguments));
+    page.async_run_webdriver_command(command_id, navigable_id, name, move(payload), move(arguments));
 }
 
 void ViewImplementation::did_lose_page(Badge<CanonicalTraversable>, WebContentPage const& page)
@@ -3336,7 +3336,7 @@ void ViewImplementation::languages_changed()
 {
     auto const& languages = Application::settings().languages();
     m_top_level_traversable.for_each_hosting_page([&](WebContentPage const& page) {
-        page.client->async_set_preferred_languages(page.id, languages);
+        page.async_set_preferred_languages(languages);
     });
 }
 
@@ -3372,14 +3372,14 @@ void ViewImplementation::geolocation_settings_changed()
         for (auto const& request : geolocation_position_request_ids) {
             Application::the().cancel_geolocation_position_request(request.value);
             if (request.key.page.is_open())
-                request.key.page.client->async_geolocation_position_response(request.key.page.id, request.key.request_id, {}, to_underlying(ErrorCode::PermissionDenied));
+                request.key.page.async_geolocation_position_response(request.key.request_id, {}, to_underlying(ErrorCode::PermissionDenied));
         }
 
         auto geolocation_watch_ids = move(m_geolocation_watch_ids);
         for (auto const& watch : geolocation_watch_ids) {
             Application::the().stop_watching_geolocation_position(watch.value);
             if (watch.key.page.is_open())
-                watch.key.page.client->async_geolocation_position_response(watch.key.page.id, watch.key.request_id, {}, to_underlying(ErrorCode::PermissionDenied));
+                watch.key.page.async_geolocation_position_response(watch.key.request_id, {}, to_underlying(ErrorCode::PermissionDenied));
         }
     }
 
@@ -3395,11 +3395,11 @@ void ViewImplementation::send_geolocation_emulated_position(WebContentPage const
     using ErrorCode = Web::Geolocation::GeolocationPositionError::ErrorCode;
 
     if (Application::web_content_options().is_test_mode == IsTestMode::Yes)
-        page.client->async_set_geolocation_emulated_position(page.id, { 37.7647658, -122.4345892, 100.0, 0.0, 0.0, 0.0, 0.0 }, {});
+        page.async_set_geolocation_emulated_position({ 37.7647658, -122.4345892, 100.0, 0.0, 0.0, 0.0, 0.0 }, {});
     else if (Application::settings().geolocation_enabled())
-        page.client->async_set_geolocation_emulated_position(page.id, {}, {});
+        page.async_set_geolocation_emulated_position({}, {});
     else
-        page.client->async_set_geolocation_emulated_position(page.id, {}, to_underlying(ErrorCode::PermissionDenied));
+        page.async_set_geolocation_emulated_position({}, to_underlying(ErrorCode::PermissionDenied));
 }
 
 void ViewImplementation::bookmarks_changed()
@@ -3560,7 +3560,7 @@ void ViewImplementation::set_user_style_sheet(String const& source)
 {
     m_user_style_sheet = source;
     m_top_level_traversable.for_each_hosting_page([&](WebContentPage const& page) {
-        page.client->async_set_user_style(page.id, source);
+        page.async_set_user_style(source);
     });
 }
 

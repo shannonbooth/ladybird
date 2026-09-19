@@ -312,7 +312,7 @@ void SiteIsolationManager::transition_child_frame_to_remote(WebContentPage const
     child_frame->set_remote_host(move(remote_page));
     // The page holding the container represents the child from its replicated state, which names the compositor
     // context the host paints it through.
-    parent_page.client->async_stop_hosting_navigable(parent_page.id, child_frame->id(), *child_frame->replicated_state());
+    parent_page.async_stop_hosting_navigable(child_frame->id(), *child_frame->replicated_state());
 }
 
 // The child's next document, or none after its host went away, is hosted by the page holding its container.

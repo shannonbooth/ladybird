@@ -1149,7 +1149,7 @@ bool WebContentClient::continue_navigation_population_in_selected_process(Web::P
 
     auto populate_in = [&](WebContentPage const& host) {
         navigable->set_navigation_host(*host.client, host.id);
-        host.client->async_populate_navigation(host.id, loader.request(), loader.take_result());
+        host.async_populate_navigation(loader.request(), loader.take_result());
         return true;
     };
 
@@ -1849,7 +1849,7 @@ void WebContentClient::did_open_dialog(ViewImplementation& view, Web::PageId pag
 {
     view.traversable().for_each_hosting_page([&](WebContentPage const& page) {
         if (page != this->page(page_id))
-            page.client->async_did_open_dialog_in_another_process(page.id, dialog, message);
+            page.async_did_open_dialog_in_another_process(dialog, message);
     });
 }
 
