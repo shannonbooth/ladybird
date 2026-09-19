@@ -122,7 +122,7 @@ public:
     bool create_new_process_for_cross_site_navigation(Utf16String const& navigation_id);
     void replace_web_content_process_for_history_traversal(Web::HTML::CrossProcessId target_document_state_id);
 
-    void server_did_paint(Badge<WebContentClient>, i32 bitmap_id, Gfx::IntSize size, Gfx::IntRect damage_rect);
+    void server_did_paint(Badge<WebContentPage>, i32 bitmap_id, Gfx::IntSize size, Gfx::IntRect damage_rect);
 
     void set_window_position(Gfx::IntPoint);
     void set_window_size(Gfx::IntSize);
@@ -369,7 +369,7 @@ public:
     void did_change_background_color(Badge<WebContentPage>, Gfx::Color);
     Gfx::Color page_background_color() const { return m_page_background_color; }
 
-    void did_allocate_backing_stores(Badge<WebContentClient>, Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores);
+    void did_allocate_backing_stores(Badge<WebContentPage>, Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores);
 
     enum class ScreenshotType {
         Visible,
@@ -515,6 +515,7 @@ public:
     WebContentClient const& client() const;
     Web::PageId page_id() const;
     // The view's page. A view has one once it has a client.
+    WebContentPage& page() const;
     WebContentPageHandle web_content_page() const { return { *m_client_state.client, m_client_state.page_index }; }
 
     virtual Web::DevicePixelSize viewport_size() const = 0;

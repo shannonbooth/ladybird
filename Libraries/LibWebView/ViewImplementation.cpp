@@ -137,6 +137,13 @@ WebContentClient& ViewImplementation::client()
     return *m_client_state.client;
 }
 
+WebContentPage& ViewImplementation::page() const
+{
+    auto* page = client().page(m_client_state.page_index);
+    VERIFY(page);
+    return *page;
+}
+
 WebContentClient const& ViewImplementation::client() const
 {
     VERIFY(m_client_state.client);
@@ -315,7 +322,7 @@ void ViewImplementation::replace_web_content_process_for_history_traversal(Web::
     fail_webdriver_content_commands_after_process_replacement(pending_webdriver_crash_commands);
 }
 
-void ViewImplementation::server_did_paint(Badge<WebContentClient>, i32 bitmap_id, Gfx::IntSize size, Gfx::IntRect damage_rect)
+void ViewImplementation::server_did_paint(Badge<WebContentPage>, i32 bitmap_id, Gfx::IntSize size, Gfx::IntRect damage_rect)
 {
     bool did_swap_bitmap = false;
     auto previous_front_bitmap_id = m_client_state.front_bitmap.id;
@@ -348,7 +355,7 @@ void ViewImplementation::server_did_paint(Badge<WebContentClient>, i32 bitmap_id
 
 void ViewImplementation::release_backing_store(i32 bitmap_id)
 {
-    client().notify_presented_bitmap_ready_to_paint(page_id(), bitmap_id);
+    page().release_presented_bitmap(bitmap_id);
 }
 
 void ViewImplementation::set_window_position(Gfx::IntPoint position)
@@ -376,7 +383,7 @@ void ViewImplementation::set_system_visibility_state(Web::HTML::VisibilityState 
         return;
 
     m_top_level_traversable.set_system_visibility_state(visibility_state);
-    Application::the().update_compositor_context_visibility(client().compositor_context_id_for_page(m_client_state.page_index), visibility_state);
+    Application::the().update_compositor_context_visibility(page().compositor_context_id(), visibility_state);
 }
 
 void ViewImplementation::set_has_system_focus(bool has_system_focus)
@@ -817,7 +824,7 @@ void ViewImplementation::enqueue_input_event(Web::InputEvent event)
             && (key_event->type == Web::KeyEvent::Type::KeyUp
                 || (Application::web_content_options().enable_async_scrolling == EnableAsyncScrolling::Yes
                     && m_client_state.has_usable_bitmap && !preceding_input_may_change_target))) {
-            auto handled = client().handle_key_event_in_compositor(m_client_state.page_index, *key_event);
+            auto handled = page().handle_key_event_in_compositor(*key_event);
             key_event->async_scroll_performed_default_action = handled && key_event->type == Web::KeyEvent::Type::KeyDown;
         }
     }
@@ -839,11 +846,11 @@ void ViewImplementation::enqueue_input_event(Web::InputEvent event)
             auto delta_in_device_pixels = Gfx::FloatPoint { wheel_delta_x, wheel_delta_y }.scaled(device_pixels_per_css_pixel);
             dbgln_if(COMPOSITOR_DEBUG, "[Compositor] UI attempting compositor wheel bypass for page {} at {},{} device delta {},{}",
                 m_client_state.page_index, position.x(), position.y(), delta_in_device_pixels.x(), delta_in_device_pixels.y());
-            if (client().send_async_scroll_to_compositor(m_client_state.page_index, position, delta_in_device_pixels, mouse_event->wheel_delta_precision, mouse_event->scroll_gesture_phase))
+            if (page().send_async_scroll_to_compositor(position, delta_in_device_pixels, mouse_event->wheel_delta_precision, mouse_event->scroll_gesture_phase))
                 mouse_event->async_scroll_performed_default_action = true;
             dbgln_if(COMPOSITOR_DEBUG, "[Compositor] UI compositor wheel bypass result for page {}: {}",
                 m_client_state.page_index, mouse_event->async_scroll_performed_default_action ? "accepted"sv : "rejected"sv);
-        } else if (client().handle_mouse_event_in_compositor(m_client_state.page_index, *mouse_event)) {
+        } else if (page().handle_mouse_event_in_compositor(*mouse_event)) {
             dbgln_if(COMPOSITOR_DEBUG, "[Compositor] UI compositor handled mouse event for page {} at {},{}",
                 m_client_state.page_index, mouse_event->position.x().value(), mouse_event->position.y().value());
             return;
@@ -854,7 +861,7 @@ void ViewImplementation::enqueue_input_event(Web::InputEvent event)
         && pinch_event) {
         dbgln_if(COMPOSITOR_DEBUG, "[Compositor] UI attempting compositor pinch bypass for page {} at {},{} scale delta {}",
             m_client_state.page_index, pinch_event->position.x().value(), pinch_event->position.y().value(), pinch_event->scale_delta);
-        auto handled = client().handle_pinch_event_in_compositor(m_client_state.page_index, *pinch_event);
+        auto handled = page().handle_pinch_event_in_compositor(*pinch_event);
         dbgln_if(COMPOSITOR_DEBUG, "[Compositor] UI compositor pinch bypass result for page {}: {}",
             m_client_state.page_index, handled ? "accepted"sv : "rejected"sv);
     }
@@ -870,14 +877,14 @@ void ViewImplementation::enqueue_input_event(Web::InputEvent event)
         [&](Web::KeyEvent const& event) {
             auto host = focused_navigable_host();
             if (host == web_content_page()) {
-                client().dispatch_key_event_to_web_content(m_client_state.page_index, event);
+                page().dispatch_key_event_to_web_content(event);
             } else {
                 pending.endpoint = host;
                 host.async_key_event(event.clone_without_browser_data());
             }
         },
         [this](Web::MouseEvent const& event) {
-            client().dispatch_mouse_event_to_web_content(m_client_state.page_index, event);
+            page().dispatch_mouse_event_to_web_content(event);
         },
         [this](Web::DragEvent& event) {
             auto cloned_event = event.clone_without_browser_data();
@@ -1748,7 +1755,7 @@ void ViewImplementation::update_paused_debugger_overlay()
     if (!m_client_state.client)
         return;
 
-    auto context_id = client().compositor_context_id_for_page(page_id());
+    auto context_id = page().compositor_context_id();
     Optional<u8> hovered_action;
     if (m_debugger_overlay_hovered_action.has_value())
         hovered_action = to_underlying(*m_debugger_overlay_hovered_action);
@@ -2221,7 +2228,7 @@ Gfx::Color ViewImplementation::preferred_canvas_background_color() const
     return m_system_canvas_background_color;
 }
 
-void ViewImplementation::did_allocate_backing_stores(Badge<WebContentClient>, Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores)
+void ViewImplementation::did_allocate_backing_stores(Badge<WebContentPage>, Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores)
 {
     VERIFY(bitmap_ids.size() == backing_stores.size());
     VERIFY(!bitmap_ids.is_empty());
@@ -2274,7 +2281,7 @@ void ViewImplementation::handle_resize()
         return;
 
     client().async_set_viewport(page_id(), viewport_size(), m_device_pixel_ratio, m_is_fullscreen);
-    Application::the().update_compositor_viewport(client().compositor_context_id_for_page(page_id()), viewport_size().to_type<int>(), Web::Compositor::WindowResizingInProgress::Yes);
+    Application::the().update_compositor_viewport(page().compositor_context_id(), viewport_size().to_type<int>(), Web::Compositor::WindowResizingInProgress::Yes);
     if (m_debugger_paused) {
         m_debugger_overlay_pointer_state.cancel();
         if (m_debugger_overlay_hovered_action.has_value())
@@ -2342,7 +2349,7 @@ void ViewImplementation::initialize_client(CreateNewClient create_new_client, Op
         client().async_set_focused_navigable(m_client_state.page_index, *focused_navigable_id);
     if (!m_top_level_traversable.has_pending_host())
         client().async_update_visibility_state(m_client_state.page_index, m_top_level_traversable.id(), m_top_level_traversable.system_visibility_state());
-    auto compositor_context_id = client().compositor_context_id_for_page(m_client_state.page_index);
+    auto compositor_context_id = page().compositor_context_id();
     Application::the().update_compositor_viewport(compositor_context_id, viewport_size().to_type<int>());
     Application::the().update_compositor_context_visibility(compositor_context_id, m_top_level_traversable.system_visibility_state());
     client().async_set_document_cookie_version_buffer(m_client_state.page_index, m_document_cookie_version_buffer);
@@ -4136,7 +4143,7 @@ void ViewImplementation::request_close()
         return;
     }
 
-    client().request_close(page_id());
+    page().request_close();
 }
 
 void ViewImplementation::force_close()
@@ -4153,11 +4160,9 @@ Function<void()> ViewImplementation::prepare_for_immediate_close()
         set_debugger_paused(false);
     }
 
-    auto client = m_client_state.client;
-    auto page_id = m_client_state.page_index;
-    client->prepare_for_detached_close(page_id);
-    return [client = move(client), page_id] {
-        client->async_request_close(page_id);
+    page().set_detached_close_pending(true);
+    return [page = web_content_page()] {
+        page.async_request_close();
     };
 }
 

@@ -166,7 +166,7 @@ void WebViewBridge::update_compositor_display_metadata()
     if (!m_client_state.client)
         return;
 
-    auto compositor_context_id = client().compositor_context_id_for_page(m_client_state.page_index);
+    auto compositor_context_id = page().compositor_context_id();
     WebView::Application::the().update_compositor_display_metadata(compositor_context_id, m_display_id, m_maximum_frames_per_second);
 }
 

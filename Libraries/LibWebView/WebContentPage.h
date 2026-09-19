@@ -11,7 +11,11 @@
 #include <AK/String.h>
 #include <AK/WeakPtr.h>
 #include <LibGfx/Point.h>
+#include <LibGfx/Rect.h>
+#include <LibGfx/SharedImage.h>
+#include <LibWeb/Compositor/Types.h>
 #include <LibWeb/HTML/CrossProcessId.h>
+#include <LibWeb/Page/InputEvent.h>
 #include <LibWeb/Page/Page.h>
 #include <LibWeb/Page/PageId.h>
 #include <LibWeb/StorageAPI/StorageEndpoint.h>
@@ -69,7 +73,29 @@ public:
     // Begins the recorded load of the tab's document, which this page's process populates.
     void begin_top_level_load(Optional<Utf16String> navigation_id, URL::URL const&);
 
+    // Asks the process to close the page, and closes it here once the view is gone, without waiting.
+    void request_close();
+    // Discards a page holding part of a tab from its process, and closes it here without waiting.
+    void discard();
+
+    // The compositor context presenting the page, registered on first use.
+    Web::Compositor::CompositorContextId compositor_context_id();
+    bool send_async_scroll_to_compositor(Gfx::FloatPoint position, Gfx::FloatPoint delta_in_device_pixels, Web::WheelDeltaPrecision, Web::ScrollGesturePhase);
+    bool handle_key_event_in_compositor(Web::KeyEvent const&);
+    void dispatch_key_event_to_web_content(Web::KeyEvent const&);
+    bool handle_pinch_event_in_compositor(Web::PinchEvent const&);
+    bool handle_mouse_event_in_compositor(Web::MouseEvent const&);
+    void dispatch_mouse_event_to_web_content(Web::MouseEvent const&);
+    void did_present_bitmap(Gfx::IntRect content_rect, Gfx::IntRect damage_rect, i32 bitmap_id);
+    void did_present_backing_stores(Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores);
+    // Hands a presented bitmap back to the compositor once nothing paints from it.
+    void release_presented_bitmap(i32 bitmap_id);
+
 private:
+    // Input over a remote child of the root is the hosting page's to handle, in the root's compositor context there.
+    bool handle_mouse_event_in_compositor(CanonicalNavigable const& root, Optional<Web::Compositor::CompositorContextId>, Web::MouseEvent const&);
+    void dispatch_mouse_event_to_web_content(CanonicalNavigable const& root, Optional<Web::Compositor::CompositorContextId>, Web::MouseEvent const&);
+
     // The navigable whose navigation this page populates: one it hosts, or one whose population it was admitted for.
     Optional<CanonicalNavigable&> population_worker_navigable(Web::HTML::CrossProcessId navigable_id) const;
     bool continue_navigation_population_in_selected_process(Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id);
