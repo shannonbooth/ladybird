@@ -937,7 +937,7 @@ CanonicalBrowsingContext& CanonicalTraversable::browsing_context_for_document_cr
     // A response can create child contexts before its top-level document commits. They belong to the destination
     // group, while the traversable's active browsing context still belongs to the displayed document.
     if (ongoing_navigation().has_value() && ongoing_navigation()->destination_browsing_context
-        && navigation_host_matches(*page.client, page.id))
+        && navigation_host_matches(page))
         return *ongoing_navigation()->destination_browsing_context;
     for (auto const& operation : m_history_operations) {
         auto job = operation.value->pending_changing_jobs.get(id());
@@ -1527,7 +1527,7 @@ bool CanonicalTraversable::navigation_transaction_matches(HistoryOperation const
     if (!parameters.navigation_id.has_value())
         return page_hosting(*navigable) == page;
 
-    return navigable->navigation_transaction_matches(*parameters.navigation_id, *page.client, page.id);
+    return navigable->navigation_transaction_matches(*parameters.navigation_id, page);
 }
 
 void CanonicalTraversable::add_history_operation_completion_endpoint(HistoryOperation& operation, WebContentPageHandle endpoint)
@@ -2779,7 +2779,7 @@ void CanonicalTraversable::start_history_operation(HistoryOperation& operation, 
                     .phase = CanonicalNavigable::OngoingNavigation::Phase::Populating,
                 };
                 child_navigable->set_ongoing_navigation(move(ongoing_navigation));
-                child_navigable->set_navigation_host(*operation.initiating_page.client, operation.initiating_page.id);
+                child_navigable->set_navigation_host(operation.initiating_page);
                 child_navigable->set_active_session_history_entry(*target_entry);
                 reconstructed_child_navigation = Web::ReconstructedChildNavigation {
                     .target_entry = *target_entry,

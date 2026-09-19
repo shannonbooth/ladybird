@@ -271,7 +271,7 @@ bool ViewImplementation::create_new_process_for_cross_site_navigation(Utf16Strin
         return false;
 
     begin_webdriver_navigation(WebDriverNavigationCompletionSource::Load);
-    m_top_level_traversable.set_navigation_host(client(), page_id());
+    m_top_level_traversable.set_navigation_host(web_content_page());
     auto& current_navigation = *m_top_level_traversable.ongoing_navigation();
     auto result = current_navigation.loader->take_result();
     dump_session_history("process-swap-load"sv);

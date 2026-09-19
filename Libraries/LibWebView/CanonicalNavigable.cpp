@@ -545,58 +545,51 @@ void CanonicalNavigable::retain_blob_url_token(URL::BlobURLEntry::Token token)
         m_pending_navigation_blob_url = BlobURLHandle { *store, token };
 }
 
-void CanonicalNavigable::set_navigation_population_worker(WebContentClient& client, Web::PageId page_id)
+void CanonicalNavigable::set_navigation_population_worker(WebContentPageHandle const& page)
 {
     auto& ongoing_navigation = ensure_ongoing_navigation();
-    VERIFY(!ongoing_navigation.population_worker_client);
-    ongoing_navigation.population_worker_client = client;
-    ongoing_navigation.population_worker_page_id = page_id;
+    VERIFY(!ongoing_navigation.population_worker.has_value());
+    ongoing_navigation.population_worker = page;
 }
 
-bool CanonicalNavigable::navigation_population_matches(WebContentClient const& client, Web::PageId page_id, Utf16String const& navigation_id) const
+bool CanonicalNavigable::navigation_population_matches(WebContentPageHandle const& page, Utf16String const& navigation_id) const
 {
     return m_ongoing_navigation.has_value()
         && m_ongoing_navigation->navigation_id == navigation_id
         && m_ongoing_navigation->phase == OngoingNavigation::Phase::Populating
-        && navigation_population_worker_matches(client, page_id);
+        && navigation_population_worker_matches(page);
 }
 
-bool CanonicalNavigable::navigation_population_worker_matches(WebContentClient const& client, Web::PageId page_id) const
+bool CanonicalNavigable::navigation_population_worker_matches(WebContentPageHandle const& page) const
 {
-    return m_ongoing_navigation.has_value()
-        && m_ongoing_navigation->population_worker_client.ptr() == &client
-        && m_ongoing_navigation->population_worker_page_id == page_id;
+    return m_ongoing_navigation.has_value() && m_ongoing_navigation->population_worker == page;
 }
 
-void CanonicalNavigable::set_navigation_host(WebContentClient& client, Web::PageId page_id)
+void CanonicalNavigable::set_navigation_host(WebContentPageHandle const& page)
 {
     auto& ongoing_navigation = ensure_ongoing_navigation();
-    ongoing_navigation.host_client = client;
-    ongoing_navigation.host_page_id = page_id;
+    ongoing_navigation.host = page;
 
     // The population worker conducts the navigation until the hosting process takes over.
-    ongoing_navigation.population_worker_client = {};
-    ongoing_navigation.population_worker_page_id = 0;
+    ongoing_navigation.population_worker = {};
 }
 
-bool CanonicalNavigable::navigation_host_matches(WebContentClient const& client, Web::PageId page_id) const
+bool CanonicalNavigable::navigation_host_matches(WebContentPageHandle const& page) const
 {
-    return m_ongoing_navigation.has_value()
-        && m_ongoing_navigation->host_client.ptr() == &client
-        && m_ongoing_navigation->host_page_id == page_id;
+    return m_ongoing_navigation.has_value() && m_ongoing_navigation->host == page;
 }
 
-bool CanonicalNavigable::navigation_owner_matches(WebContentClient const& client, Web::PageId page_id) const
+bool CanonicalNavigable::navigation_owner_matches(WebContentPageHandle const& page) const
 {
-    return navigation_population_worker_matches(client, page_id) || navigation_host_matches(client, page_id);
+    return navigation_population_worker_matches(page) || navigation_host_matches(page);
 }
 
-bool CanonicalNavigable::navigation_transaction_matches(Utf16String const& navigation_id, WebContentClient const& client, Web::PageId page_id) const
+bool CanonicalNavigable::navigation_transaction_matches(Utf16String const& navigation_id, WebContentPageHandle const& page) const
 {
     return m_ongoing_navigation.has_value()
         && m_ongoing_navigation->navigation_id == navigation_id
         && m_ongoing_navigation->phase == OngoingNavigation::Phase::Populating
-        && navigation_host_matches(client, page_id);
+        && navigation_host_matches(page);
 }
 
 bool CanonicalNavigable::cancel_navigation_transaction_for_client(WebContentClient& client)
@@ -604,9 +597,10 @@ bool CanonicalNavigable::cancel_navigation_transaction_for_client(WebContentClie
     if (!m_ongoing_navigation.has_value())
         return false;
 
-    auto depends_on_client = m_ongoing_navigation->population_worker_client.ptr() == &client
-        || m_ongoing_navigation->host_client.ptr() == &client;
-    if (!depends_on_client)
+    auto is_page_of_client = [&](Optional<WebContentPageHandle> const& page) {
+        return page.has_value() && page->client == &client;
+    };
+    if (!is_page_of_client(m_ongoing_navigation->population_worker) && !is_page_of_client(m_ongoing_navigation->host))
         return false;
 
     clear_ongoing_navigation();

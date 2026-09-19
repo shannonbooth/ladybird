@@ -61,10 +61,9 @@ public:
         bool has_started { false };
         Phase phase { Phase::Started };
         OwnPtr<NavigationLoader> loader {};
-        WeakPtr<WebContentClient> population_worker_client {};
-        Web::PageId population_worker_page_id { 0 };
-        WeakPtr<WebContentClient> host_client {};
-        Web::PageId host_page_id { 0 };
+        // The page conducting the population until the page hosting the document takes over.
+        Optional<WebContentPageHandle> population_worker {};
+        Optional<WebContentPageHandle> host {};
         RefPtr<CanonicalBrowsingContext> destination_browsing_context {};
     };
 
@@ -191,13 +190,13 @@ public:
     void set_ongoing_navigation_to_traversal(Web::HTML::CrossProcessId operation_id);
     void clear_ongoing_navigation_traversal(Web::HTML::CrossProcessId operation_id);
     virtual void clear_ongoing_navigation();
-    void set_navigation_population_worker(WebContentClient&, Web::PageId page_id);
-    bool navigation_population_matches(WebContentClient const&, Web::PageId page_id, Utf16String const& navigation_id) const;
-    bool navigation_population_worker_matches(WebContentClient const&, Web::PageId page_id) const;
-    void set_navigation_host(WebContentClient&, Web::PageId page_id);
-    bool navigation_host_matches(WebContentClient const&, Web::PageId page_id) const;
-    bool navigation_owner_matches(WebContentClient const&, Web::PageId page_id) const;
-    bool navigation_transaction_matches(Utf16String const&, WebContentClient const&, Web::PageId page_id) const;
+    void set_navigation_population_worker(WebContentPageHandle const&);
+    bool navigation_population_matches(WebContentPageHandle const&, Utf16String const& navigation_id) const;
+    bool navigation_population_worker_matches(WebContentPageHandle const&) const;
+    void set_navigation_host(WebContentPageHandle const&);
+    bool navigation_host_matches(WebContentPageHandle const&) const;
+    bool navigation_owner_matches(WebContentPageHandle const&) const;
+    bool navigation_transaction_matches(Utf16String const&, WebContentPageHandle const&) const;
     bool cancel_navigation_transaction_for_client(WebContentClient&);
     void did_finish_navigation_transaction(Optional<Utf16String> const&, Web::HTML::HistoryStepResult);
     bool has_uncommitted_navigation() const { return m_ongoing_navigation.has_value(); }

@@ -208,7 +208,7 @@ bool WebContentPage::continue_navigation_population_in_selected_process(Web::HTM
     ongoing_navigation->phase = CanonicalNavigable::OngoingNavigation::Phase::Populating;
 
     auto populate_in = [&](WebContentPageHandle const& host) {
-        navigable->set_navigation_host(*host.client, host.id);
+        navigable->set_navigation_host(host);
         host.async_populate_navigation(loader.request(), loader.take_result());
         return true;
     };
@@ -279,7 +279,7 @@ Optional<CanonicalNavigable&> WebContentPage::population_worker_navigable(Web::H
         return navigable;
 
     auto navigable = traversable().top_level_traversable().find(navigable_id);
-    if (!navigable.has_value() || !navigable->navigation_population_worker_matches(m_client, m_id))
+    if (!navigable.has_value() || !navigable->navigation_population_worker_matches(handle()))
         return {};
     return *navigable;
 }
@@ -1261,7 +1261,7 @@ void WebContentPage::did_request_navigation_start(Web::HTML::CrossProcessId navi
             .navigation_id = navigation_id,
             .sequence_number = sequence_number,
         });
-        target_navigable->set_navigation_population_worker(m_client, m_id);
+        target_navigable->set_navigation_population_worker(handle());
         if (target_navigable->is_top_level_traversable()) {
             if (displays_tab())
                 begin_top_level_load(move(navigation_id), url);
@@ -1276,7 +1276,7 @@ void WebContentPage::did_request_navigation_start(Web::HTML::CrossProcessId navi
         .sequence_number = sequence_number,
         .phase = CanonicalNavigable::OngoingNavigation::Phase::AwaitingUnloadCheck,
     });
-    target_navigable->set_navigation_population_worker(m_client, m_id);
+    target_navigable->set_navigation_population_worker(handle());
 
     // Navigate, step 21.2: checking if unloading is canceled for navigable's active document's inclusive descendant
     // navigables. The pages hosting the documents the requesting page does not run their checks first; the
@@ -1309,8 +1309,7 @@ void WebContentPage::did_complete_navigation_unload_check(Web::HTML::CrossProces
     if (!ongoing_navigation.has_value()
         || ongoing_navigation->navigation_id != navigation_id
         || ongoing_navigation->phase != CanonicalNavigable::OngoingNavigation::Phase::AwaitingUnloadCheck
-        || ongoing_navigation->population_worker_client.ptr() != &m_client
-        || ongoing_navigation->population_worker_page_id != m_id
+        || ongoing_navigation->population_worker != handle()
         || !ongoing_navigation->start_request.has_value()) {
         return;
     }
@@ -1366,7 +1365,7 @@ void WebContentPage::did_request_navigation_population(Web::HTML::CrossProcessId
         && target_navigable->ongoing_navigation()->navigation_id == request.navigation_id
         && target_navigable->ongoing_navigation()->phase == CanonicalNavigable::OngoingNavigation::Phase::Populating
         && !target_navigable->ongoing_navigation()->loader
-        && target_navigable->navigation_host_matches(m_client, m_id);
+        && target_navigable->navigation_host_matches(handle());
     if (continues_reconstructed_child_navigation) {
         auto& ongoing_navigation = *target_navigable->ongoing_navigation();
         ongoing_navigation.url = target_url;
@@ -1385,8 +1384,8 @@ void WebContentPage::did_request_navigation_population(Web::HTML::CrossProcessId
     // The UI process owns the in-parallel population work. Dispatch the document-dependent
     // steps through step 4 to the process with the live source document. The response URL then
     // determines which process receives the task queued by step 5.
-    if (!target_navigable->ongoing_navigation()->population_worker_client)
-        target_navigable->set_navigation_population_worker(m_client, m_id);
+    if (!target_navigable->ongoing_navigation()->population_worker.has_value())
+        target_navigable->set_navigation_population_worker(handle());
     async_create_navigation_params(target_navigable->ongoing_navigation()->loader->request());
 
     // Requesting navigation params starts the fetch, so a view's top-level population begins its recorded
@@ -1406,7 +1405,7 @@ void WebContentPage::did_finish_navigation_params_creation(Web::HTML::CrossProce
         return;
     }
 
-    if (!navigable->navigation_population_matches(m_client, m_id, navigation_id)) {
+    if (!navigable->navigation_population_matches(handle(), navigation_id)) {
         if (result.has_value())
             NavigationLoader::discard(m_client.is_private(), *result);
         return;
@@ -1481,12 +1480,12 @@ void WebContentPage::did_fail_navigation_population(Web::HTML::CrossProcessId na
     auto& ongoing_navigation = navigable->ongoing_navigation();
     if (!ongoing_navigation.has_value()
         || ongoing_navigation->navigation_id != navigation_id
-        || !navigable->navigation_owner_matches(m_client, m_id)) {
+        || !navigable->navigation_owner_matches(handle())) {
         return;
     }
 
     // Only a failed population handoff owns the loader's response body.
-    if (ongoing_navigation->loader && navigable->navigation_host_matches(m_client, m_id))
+    if (ongoing_navigation->loader && navigable->navigation_host_matches(handle()))
         ongoing_navigation->loader->reclaim_response_body_after_failed_handoff();
 
     m_history_recorded_url_for_current_load.clear();
