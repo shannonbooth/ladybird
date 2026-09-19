@@ -896,7 +896,7 @@ void ViewImplementation::enqueue_input_event(Web::InputEvent event)
         });
 }
 
-void ViewImplementation::handle_external_url(Badge<WebContentClient>, URL::URL url, URL::Origin initiator_origin, bool has_transient_activation)
+void ViewImplementation::handle_external_url(Badge<WebContentPage>, URL::URL url, URL::Origin initiator_origin, bool has_transient_activation)
 {
     handle_external_url(move(url), move(initiator_origin), has_transient_activation);
 }
@@ -1061,7 +1061,7 @@ static bool is_history_traversal_key_event(Web::KeyEvent const& event)
     return event.modifiers == modifier || event.modifiers == (modifier | Web::UIEvents::Mod_Keypad);
 }
 
-void ViewImplementation::did_finish_handling_input_event(Badge<WebContentClient>, u64 event_id, Web::EventResult event_result)
+void ViewImplementation::did_finish_handling_input_event(Badge<WebContentPage>, u64 event_id, Web::EventResult event_result)
 {
     // Adjacent events can be handled by different processes, which finish them in no particular order.
     auto index = m_pending_input_events.find_first_index_if([&](auto const& pending) { return Web::input_event_id(pending.event) == event_id; });
@@ -1223,7 +1223,7 @@ void ViewImplementation::remove_indexed_database_change_listener(u64 listener_id
     m_indexed_database_change_listeners.remove(listener_id);
 }
 
-ErrorOr<Core::SharedVersionIndex> ViewImplementation::ensure_document_cookie_version_index(Badge<WebContentClient>, String const& domain)
+ErrorOr<Core::SharedVersionIndex> ViewImplementation::ensure_document_cookie_version_index(Badge<WebContentPage>, String const& domain)
 {
     return m_document_cookie_version_indices.try_ensure(domain, [&]() -> ErrorOr<Core::SharedVersionIndex> {
         Core::SharedVersionIndex document_index = m_document_cookie_version_indices.size();
@@ -1260,7 +1260,7 @@ NonnullRefPtr<Core::Promise<ByteString>> ViewImplementation::selected_text()
     return promise;
 }
 
-void ViewImplementation::did_receive_selected_text(Badge<WebContentClient>, u64 request_id, ByteString selection)
+void ViewImplementation::did_receive_selected_text(Badge<WebContentPage>, u64 request_id, ByteString selection)
 {
     auto promise = m_pending_selected_text_requests.take(request_id);
     if (!promise.has_value())
@@ -1278,7 +1278,7 @@ NonnullRefPtr<Core::Promise<ByteString>> ViewImplementation::cut_selected_text()
     return promise;
 }
 
-void ViewImplementation::did_cut_selected_text(Badge<WebContentClient>, u64 request_id, ByteString selection)
+void ViewImplementation::did_cut_selected_text(Badge<WebContentPage>, u64 request_id, ByteString selection)
 {
     auto promise = m_pending_cut_selected_text_requests.take(request_id);
     if (!promise.has_value())
@@ -1318,7 +1318,7 @@ NonnullRefPtr<Core::Promise<Optional<DictionaryLookup>>> ViewImplementation::sel
     });
 }
 
-void ViewImplementation::did_receive_selected_text_for_lookup(Badge<WebContentClient>, u64 request_id, Optional<DictionaryLookup> lookup)
+void ViewImplementation::did_receive_selected_text_for_lookup(Badge<WebContentPage>, u64 request_id, Optional<DictionaryLookup> lookup)
 {
     auto promise = m_pending_selected_text_for_lookup_requests.take(request_id);
     if (!promise.has_value())
@@ -1339,7 +1339,7 @@ NonnullRefPtr<Core::Promise<bool>> ViewImplementation::select_word_for_dictionar
     return promise;
 }
 
-void ViewImplementation::did_select_word_for_dictionary_lookup(Badge<WebContentClient>, u64 request_id, bool selected)
+void ViewImplementation::did_select_word_for_dictionary_lookup(Badge<WebContentPage>, u64 request_id, bool selected)
 {
     auto promise = m_pending_select_word_for_dictionary_lookup_requests.take(request_id);
     if (!promise.has_value())
@@ -1391,7 +1391,7 @@ void ViewImplementation::undo()
     host.client->async_undo(host.id);
 }
 
-void ViewImplementation::set_editing_history_state(Badge<WebContentClient>, bool can_undo, bool can_redo)
+void ViewImplementation::set_editing_history_state(bool can_undo, bool can_redo)
 {
     m_can_undo = can_undo;
     m_can_redo = can_redo;
@@ -1702,19 +1702,19 @@ void ViewImplementation::fail_pending_debugger_requests()
     fail_pending_debugger_request_map(m_pending_debugger_source_positions_requests, &m_cancelled_debugger_source_positions_requests, make_error);
 }
 
-void ViewImplementation::did_pause_debugger(Badge<WebContentClient>)
+void ViewImplementation::did_pause_debugger(Badge<WebContentPage>)
 {
     set_debugger_paused(true);
 }
 
-void ViewImplementation::did_resume_debugger(Badge<WebContentClient>)
+void ViewImplementation::did_resume_debugger(Badge<WebContentPage>)
 {
     set_debugger_paused(false);
     if (on_debugger_resumed)
         on_debugger_resumed();
 }
 
-void ViewImplementation::did_request_cursor_change(Badge<WebContentClient>, Gfx::Cursor cursor)
+void ViewImplementation::did_request_cursor_change(Badge<WebContentPage>, Gfx::Cursor cursor)
 {
     m_page_cursor = move(cursor);
     if (!m_debugger_overlay_hovered_action.has_value() && on_cursor_change)
@@ -2015,7 +2015,7 @@ static bool another_page_awaits(Optional<WebContentPage> const& owner, WebConten
     return owner.has_value() && owner->is_open() && *owner != requesting_page;
 }
 
-void ViewImplementation::did_request_color_picker(Badge<WebContentClient>, WebContentPage const& requesting_page, Color current_color)
+void ViewImplementation::did_request_color_picker(Badge<WebContentPage>, WebContentPage const& requesting_page, Color current_color)
 {
     if (another_page_awaits(m_color_picker_page, requesting_page)) {
         requesting_page.client->async_color_picker_update(requesting_page.id, {}, Web::HTML::ColorPickerUpdateState::Closed);
@@ -2035,7 +2035,7 @@ void ViewImplementation::color_picker_update(Optional<Color> picked_color, Web::
         page.client->async_color_picker_update(page.id, picked_color, state);
 }
 
-void ViewImplementation::did_request_file_picker(Badge<WebContentClient>, WebContentPage const& requesting_page, Web::HTML::FileFilter const& accepted_file_types, Web::HTML::AllowMultipleFiles allow_multiple_files)
+void ViewImplementation::did_request_file_picker(Badge<WebContentPage>, WebContentPage const& requesting_page, Web::HTML::FileFilter const& accepted_file_types, Web::HTML::AllowMultipleFiles allow_multiple_files)
 {
     if (another_page_awaits(m_file_picker_page, requesting_page)) {
         requesting_page.client->async_file_picker_closed(requesting_page.id, {});
@@ -2105,7 +2105,7 @@ Optional<Web::DevicePixelRect> ViewImplementation::get_input_caret_rect()
     return m_input_method_state.caret_rect;
 }
 
-void ViewImplementation::set_input_method_state(Badge<WebContentClient>, InputMethodState state)
+void ViewImplementation::set_input_method_state(Badge<WebContentPage>, InputMethodState state)
 {
     m_input_method_state = move(state);
 
@@ -2129,7 +2129,7 @@ void ViewImplementation::toggle_page_mute_state()
     client().async_set_page_mute_state(page_id(), m_mute_state);
 }
 
-void ViewImplementation::did_change_audio_play_state(Badge<WebContentClient>, Web::HTML::AudioPlayState play_state)
+void ViewImplementation::did_change_audio_play_state(Badge<WebContentPage>, Web::HTML::AudioPlayState play_state)
 {
     bool state_changed = false;
 
@@ -2171,7 +2171,7 @@ void ViewImplementation::reset_page_media_state()
     }
 }
 
-void ViewImplementation::did_change_screen_wake_lock_state(Badge<WebContentClient>, Web::ScreenWakeLockState wake_lock_state)
+void ViewImplementation::did_change_screen_wake_lock_state(Badge<WebContentPage>, Web::ScreenWakeLockState wake_lock_state)
 {
     if (m_screen_wake_lock_state == wake_lock_state)
         return;
@@ -2192,7 +2192,7 @@ bool ViewImplementation::needs_beforeunload_check() const
     return needs_beforeunload_check;
 }
 
-void ViewImplementation::did_change_background_color(Badge<WebContentClient>, Gfx::Color color)
+void ViewImplementation::did_change_background_color(Badge<WebContentPage>, Gfx::Color color)
 {
     set_page_background_color(color);
 }
@@ -2672,7 +2672,7 @@ void ViewImplementation::did_lose_page(Badge<CanonicalTraversable>, WebContentPa
     });
 }
 
-void ViewImplementation::did_set_webdriver_current_browsing_context(Badge<WebContentClient>, u64 command_id, Web::HTML::CrossProcessId navigable_id)
+void ViewImplementation::did_set_webdriver_current_browsing_context(Badge<WebContentPage>, u64 command_id, Web::HTML::CrossProcessId navigable_id)
 {
     if (!m_pending_webdriver_commands.contains(command_id))
         return;
@@ -2741,7 +2741,7 @@ void ViewImplementation::switch_webdriver_to_parent_frame(Function<void(Web::Web
     });
 }
 
-void ViewImplementation::did_complete_webdriver_content_command(Badge<WebContentClient>, u64 command_id, Web::WebDriver::Response response)
+void ViewImplementation::did_complete_webdriver_content_command(Badge<WebContentPage>, u64 command_id, Web::WebDriver::Response response)
 {
     if (m_pending_webdriver_crash_commands.contains(command_id)) {
         // WebContent acknowledges the command before its deferred process exit. Keep the command pending until the
@@ -2806,7 +2806,7 @@ void ViewImplementation::run_webdriver_user_prompt_handling(Function<void(Web::W
     client().async_run_webdriver_user_prompt_handling(page_id(), request_id);
 }
 
-void ViewImplementation::did_complete_webdriver_user_prompt_handling(Badge<WebContentClient>, u64 request_id, Web::WebDriver::Response response)
+void ViewImplementation::did_complete_webdriver_user_prompt_handling(Badge<WebContentPage>, u64 request_id, Web::WebDriver::Response response)
 {
     if (auto on_complete = m_pending_webdriver_user_prompt_requests.take(request_id); on_complete.has_value())
         on_complete.value()(move(response));
@@ -3125,7 +3125,7 @@ NonnullRefPtr<Core::Promise<Empty>> ViewImplementation::reset_session_history_fo
     return *m_pending_session_history_reset_for_testing;
 }
 
-void ViewImplementation::request_history_operation(Badge<WebContentClient>, WebContentPage const& requesting_page, Web::HTML::CrossProcessId operation_id, Web::HistoryOperationParameters parameters)
+void ViewImplementation::request_history_operation(Badge<WebContentPage>, WebContentPage const& requesting_page, Web::HTML::CrossProcessId operation_id, Web::HistoryOperationParameters parameters)
 {
     auto sequence_number = m_top_level_traversable.next_sequence_number();
 
@@ -3152,51 +3152,6 @@ void ViewImplementation::request_history_operation(Badge<WebContentClient>, WebC
     };
 
     m_top_level_traversable.enqueue_history_operation(operation_id, move(parameters), requesting_page, sequence_number, move(requested_operation_completion));
-}
-
-void ViewImplementation::did_receive_history_operation_ready(Badge<WebContentClient>, WebContentPage const& source_page, Web::HTML::CrossProcessId operation_id, Web::HistoryOperationReadyResult result)
-{
-    m_top_level_traversable.did_receive_history_operation_ready(source_page, operation_id, move(result));
-}
-
-void ViewImplementation::did_receive_history_step_unload_cancelation_result(Badge<WebContentClient>, WebContentPage const& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::HistoryStepResult result, Web::HTML::UnloadPromptShown unload_prompt_shown)
-{
-    m_top_level_traversable.did_receive_history_step_unload_cancelation_result(source_page, operation_id, result, unload_prompt_shown);
-}
-
-void ViewImplementation::did_receive_beforeunload_check_result(Badge<WebContentClient>, WebContentPage const& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::HistoryStepResult result, Web::HTML::UnloadPromptShown unload_prompt_shown)
-{
-    m_top_level_traversable.did_receive_beforeunload_check_result(source_page, operation_id, result, unload_prompt_shown);
-}
-
-void ViewImplementation::did_receive_changing_navigable_history_job_ready(Badge<WebContentClient>, WebContentPage const& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::ChangingNavigableHistoryStepJobDisposition disposition, Web::HTML::UnloadDisplayedDocument unload_displayed_document)
-{
-    m_top_level_traversable.did_receive_changing_navigable_history_job_ready(source_page, operation_id, navigable_id, disposition, unload_displayed_document);
-}
-
-void ViewImplementation::did_receive_changing_navigable_unload_preparation_complete(Badge<WebContentClient>, WebContentPage const& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
-{
-    m_top_level_traversable.did_receive_changing_navigable_unload_preparation_complete(source_page, operation_id, navigable_id);
-}
-
-void ViewImplementation::did_receive_descendant_unload_task_complete(Badge<WebContentClient>, WebContentPage const& source_page, Web::HTML::CrossProcessId unload_id, Web::HTML::CrossProcessId navigable_id)
-{
-    m_top_level_traversable.did_receive_descendant_unload_task_complete(source_page, unload_id, navigable_id);
-}
-
-void ViewImplementation::did_receive_child_navigable_unload_request(Badge<WebContentClient>, WebContentPage const& source_page, Web::HTML::CrossProcessId navigable_id)
-{
-    m_top_level_traversable.did_receive_child_navigable_unload_request(source_page, navigable_id);
-}
-
-void ViewImplementation::did_receive_changing_navigable_continuation_applied(Badge<WebContentClient>, WebContentPage const& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::ReplicatedNavigableState> activated_navigable_state, Optional<Web::HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state)
-{
-    m_top_level_traversable.did_receive_changing_navigable_continuation_applied(source_page, operation_id, navigable_id, move(activated_navigable_state), move(previous_entry_persisted_state));
-}
-
-void ViewImplementation::did_receive_nonchanging_navigable_history_state_updated(Badge<WebContentClient>, WebContentPage const& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
-{
-    m_top_level_traversable.did_receive_nonchanging_navigable_history_state_updated(source_page, operation_id, navigable_id);
 }
 
 void ViewImplementation::did_reset_session_history_for_testing(
@@ -3548,7 +3503,7 @@ NonnullRefPtr<Core::Promise<LexicalPath>> ViewImplementation::take_dom_node_scre
     return promise;
 }
 
-void ViewImplementation::did_receive_screenshot(Badge<WebContentClient>, Gfx::ShareableBitmap const& screenshot)
+void ViewImplementation::did_receive_screenshot(Badge<WebContentPage>, Gfx::ShareableBitmap const& screenshot)
 {
     VERIFY(m_pending_screenshot);
 
@@ -3576,7 +3531,7 @@ NonnullRefPtr<Core::Promise<String>> ViewImplementation::request_internal_page_i
     return promise;
 }
 
-void ViewImplementation::did_receive_internal_page_info(Badge<WebContentClient>, PageInfoType, Optional<Core::AnonymousBuffer> const& info)
+void ViewImplementation::did_receive_internal_page_info(Badge<WebContentPage>, PageInfoType, Optional<Core::AnonymousBuffer> const& info)
 {
     VERIFY(m_pending_info_request);
 

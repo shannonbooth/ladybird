@@ -68,6 +68,7 @@ class WEBVIEW_API WebContentClient final
     C_OBJECT_ABSTRACT(WebContentClient);
 
     friend class WebContentTestClient;
+    friend struct WebContentPage;
 
 public:
     using InitTransport = Messages::WebContentServer::InitTransport;
