@@ -268,7 +268,7 @@ void WebContentClient::assign_view(Badge<Application>, ViewImplementation& view)
     auto initial_page_id = m_unassigned_initial_page_id.release_value();
     view.m_client_state.page_index = initial_page_id;
     view.traversable().set_id(m_root_navigable_id);
-    m_pages.set(initial_page_id, open_page(view.traversable(), &view));
+    m_pages.set(initial_page_id, open_page(view.traversable()));
 
     if (m_initial_top_level_history_entry.has_value()) {
         view.traversable().create_a_new_top_level_traversable({}, m_initial_top_level_history_entry.release_value(), *this);
@@ -289,14 +289,13 @@ void WebContentClient::register_view(Web::PageId page_id, ViewImplementation& vi
         m_detached_page_close_timer->stop();
     Application::process_manager().cancel_forced_exit(pid());
     view.m_client_state.page_index = page_id;
-    m_pages.set(page_id, open_page(view.traversable(), &view));
+    m_pages.set(page_id, open_page(view.traversable()));
 }
 
 void WebContentClient::keep_view_page_for_displaced_document(Web::PageId page_id, CanonicalTraversable& traversable)
 {
     auto* page = find_page(page_id);
-    VERIFY(page && page->view);
-    page->view = nullptr;
+    VERIFY(page);
     page->traversable = traversable.make_weak_ptr<CanonicalTraversable>();
     page->history_recorded_url_for_current_load.clear();
 }
@@ -307,7 +306,7 @@ void WebContentClient::unregister_view(Web::PageId page_id)
     SiteIsolationManager::the().remove_page(page(page_id));
 
     if (auto* page = find_page(page_id)) {
-        if (page->view) {
+        if (this->page(page_id).displays_tab()) {
             // A page that still needs a beforeunload check is not a detached
             // background close. It is being closed without waiting for WebContent,
             // e.g. because the user requested a forced close.
@@ -325,7 +324,6 @@ void WebContentClient::unregister_view(Web::PageId page_id)
 
 void WebContentClient::close_page(Page& page)
 {
-    page.view = nullptr;
     page.traversable = nullptr;
     page.is_open = false;
     page.needs_beforeunload_check = true;
@@ -374,7 +372,7 @@ void WebContentClient::request_close(Web::PageId page_id)
 
 void WebContentClient::register_embedded_page(Web::PageId page_id, CanonicalTraversable& traversable)
 {
-    m_pages.set(page_id, open_page(traversable, nullptr));
+    m_pages.set(page_id, open_page(traversable));
     if (m_unassigned_initial_page_id == page_id)
         m_unassigned_initial_page_id.clear();
     Application::process_manager().cancel_forced_exit(pid());
@@ -399,7 +397,7 @@ Optional<Web::PageId> WebContentClient::page_id_for_traversable(CanonicalTravers
 
 void WebContentClient::unregister_embedded_page(Web::PageId page_id)
 {
-    if (auto* page = find_page(page_id); page && !page->view)
+    if (auto* page = find_page(page_id); page && !this->page(page_id).displays_tab())
         close_page(*page);
     release_unneeded_opener_pages();
     close_server_if_unused();
@@ -422,7 +420,7 @@ bool WebContentClient::holds_part_of_a_tab_opened_by(CanonicalTraversable const&
         auto const* traversable = page.is_open ? page.traversable.ptr() : nullptr;
         if (!traversable)
             continue;
-        if (!page.view && traversable->is_opener_page(this->page(page_id)) && !traversable->page_hosts_any(this->page(page_id)))
+        if (!this->page(page_id).displays_tab() && traversable->is_opener_page(this->page(page_id)) && !traversable->page_hosts_any(this->page(page_id)))
             continue;
         reach(*traversable);
     }
@@ -442,7 +440,7 @@ void WebContentClient::release_unneeded_opener_pages()
 
     Vector<WebContentPage> opener_pages;
     for_each_page([&](WebContentPage const& page) {
-        if (auto* traversable = page.traversable(); traversable && !page.view().has_value() && traversable->is_opener_page(page))
+        if (auto* traversable = page.traversable(); traversable && !page.displays_tab() && traversable->is_opener_page(page))
             opener_pages.append(page);
         return IterationDecision::Continue;
     });
@@ -460,19 +458,10 @@ CanonicalTraversable* WebContentClient::traversable_for_page(Web::PageId page_id
     return page->traversable.ptr();
 }
 
-Optional<ViewImplementation&> WebContentClient::view_displaying_page(Web::PageId page_id)
-{
-    auto const* page = find_page(page_id);
-    if (!page || !page->is_open || !page->view)
-        return {};
-    return *page->view;
-}
-
-WebContentClient::Page WebContentClient::open_page(CanonicalTraversable& traversable, ViewImplementation* view)
+WebContentClient::Page WebContentClient::open_page(CanonicalTraversable& traversable)
 {
     return Page {
         .traversable = traversable.make_weak_ptr<CanonicalTraversable>(),
-        .view = view,
         .is_open = true,
         .needs_beforeunload_check = true,
         .detached_close_pending = false,
@@ -502,7 +491,7 @@ bool WebContentClient::page_needs_beforeunload_check(Web::PageId page_id) const
 bool WebContentClient::has_views() const
 {
     for (auto const& page : m_pages) {
-        if (page.value.is_open && page.value.view)
+        if (page.value.is_open && this->page(page.key).displays_tab())
             return true;
     }
     return false;
@@ -633,9 +622,9 @@ void WebContentClient::replay_compositor_view_state_after_reconnect(Badge<Applic
         return;
 
     for (auto& [page_id, page] : m_pages) {
-        if (!page.is_open || !page.view)
+        auto view = this->page(page_id).view();
+        if (!page.is_open || !view.has_value() || !this->page(page_id).displays_tab())
             continue;
-        auto* view = page.view;
         auto context_id = Web::Compositor::compositor_context_id_for_page(page_id);
         if (!m_compositor_contexts.contains(context_id))
             continue;
@@ -671,8 +660,8 @@ void WebContentClient::notify_all_views_of_crash()
         if (!traversable)
             continue;
         // The view displaying the tab waits for the events it handed down to a page holding part of it.
-        if (!page.view) {
-            if (auto view = ViewImplementation::find_view_for_traversable(*traversable); view.has_value())
+        if (!this->page(page_id).displays_tab()) {
+            if (auto view = traversable->view(); view.has_value())
                 view->did_lose_input_event_endpoint({}, this->page(page_id));
         }
         traversable->did_lose_page(this->page(page_id));
@@ -685,8 +674,8 @@ void WebContentClient::notify_all_views_of_crash()
     // in case they're destroyed before the deferred_invoke runs).
     Vector<u64> view_ids;
     for (auto& page : m_pages) {
-        if (page.value.view)
-            view_ids.append(page.value.view->view_id());
+        if (auto view = this->page(page.key).view(); view.has_value() && this->page(page.key).displays_tab())
+            view_ids.append(view->view_id());
     }
 
     auto crash_reason = m_rejected_ipc ? ViewImplementation::WebContentCrashReason::RejectedIPC : ViewImplementation::WebContentCrashReason::ProcessCrash;
@@ -808,7 +797,7 @@ void WebContentClient::did_present_bitmap(Web::PageId page_id, Gfx::IntRect rect
 {
     dbgln_if(COMPOSITOR_DEBUG, "[Compositor] UI compositor IPC did_paint for page {} bitmap {} rect={}x{} at {},{}",
         page_id, bitmap_id, rect.width(), rect.height(), rect.x(), rect.y());
-    if (auto view = page(page_id).view(); view.has_value()) {
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab()) {
         view->server_did_paint({}, bitmap_id, rect.size(), damage_rect);
     } else {
         dbgln_if(COMPOSITOR_DEBUG, "[Compositor] UI dropping did_paint for page {} bitmap {}: no view",
@@ -869,7 +858,7 @@ void WebContentClient::did_request_navigation_start(Web::PageId page_id, Web::HT
         });
         target_navigable->set_navigation_population_worker(*this, page_id);
         if (target_navigable->is_top_level_traversable()) {
-            if (auto view = page(page_id).view(); view.has_value())
+            if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab())
                 begin_top_level_load(*view, page_id, move(navigation_id), url);
         }
         return;
@@ -930,7 +919,7 @@ void WebContentClient::did_complete_navigation_unload_check(Web::PageId page_id,
     // Requesting navigation params starts the fetch, so a view's top-level population begins its recorded
     // load here.
     if (navigable->is_top_level_traversable()) {
-        if (auto view = page(page_id).view(); view.has_value())
+        if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab())
             begin_top_level_load(*view, page_id, move(navigation_id), ongoing_navigation->loader->request().history_entry.url);
     }
 }
@@ -1029,7 +1018,7 @@ void WebContentClient::did_request_navigation_population(Web::PageId page_id, We
     // Requesting navigation params starts the fetch, so a view's top-level population begins its recorded
     // load here.
     if (target_navigable->is_top_level_traversable()) {
-        if (auto view = page(page_id).view(); view.has_value())
+        if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab())
             begin_top_level_load(*view, page_id, target_navigable->ongoing_navigation()->navigation_id, target_navigable->ongoing_navigation()->loader->request().history_entry.url);
     }
 }
@@ -1052,7 +1041,7 @@ void WebContentClient::did_finish_navigation_params_creation(Web::PageId page_id
     auto end_recorded_load_for_canceled_navigation = [&] {
         if (!navigable->is_top_level_traversable())
             return;
-        if (auto view = page(page_id).view(); view.has_value())
+        if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab())
             view->did_cancel_loading(navigation_id);
     };
 
@@ -1080,7 +1069,7 @@ void WebContentClient::did_finish_navigation_params_creation(Web::PageId page_id
     ongoing_navigation->loader->acquire_response_body([self, page_id, navigable_id, navigation_id = move(navigation_id)](bool succeeded) mutable {
         auto cancel_navigation = [&](CanonicalNavigable& navigable) {
             if (navigable.is_top_level_traversable()) {
-                if (auto view = self->page(page_id).view(); view.has_value())
+                if (auto view = self->page(page_id).view(); view.has_value() && self->page(page_id).displays_tab())
                     view->did_cancel_loading(navigation_id);
             }
             navigable.clear_ongoing_navigation();
@@ -1185,7 +1174,7 @@ bool WebContentClient::continue_navigation_population_in_selected_process(Web::P
         if (!browsing_context_group_switch && !site_isolation_process_swap)
             return populate_in(page(page_id));
 
-        auto view = page(page_id).view();
+        auto view = page(page_id).displays_tab() ? page(page_id).view() : Optional<ViewImplementation&> {};
         if (!view.has_value()) {
             navigable->clear_ongoing_navigation();
             return false;
@@ -1288,7 +1277,7 @@ void WebContentClient::maybe_record_history_visit_for_current_load(Web::PageId p
     // Title and favicon updates already give us a useful history entry, so
     // do not wait for did_finish_loading() on pages that never reach it.
     auto transition = HistoryVisitTransition::Link;
-    if (auto view = page(page_id).view(); view.has_value())
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab())
         transition = view->m_history_visit_transition_for_current_load;
     m_session->history_store->record_visit(url, move(title), UnixDateTime::now(), transition);
     if (record)
@@ -1362,7 +1351,7 @@ Messages::WebContentClient::DidStartDownloadResponse WebContentClient::did_start
             && ongoing_navigation->loader
             && ongoing_navigation->loader->response_body_matches(request_server_client_id, request_server_request_id)) {
             if (navigable->is_top_level_traversable()) {
-                if (auto view = page(page_id).view(); view.has_value())
+                if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab())
                     view->did_cancel_loading(ongoing_navigation->navigation_id);
             }
             matches_in_flight_navigation = true;
@@ -1431,7 +1420,7 @@ void WebContentClient::did_finish_loading(Web::PageId page_id, Web::HTML::CrossP
         return;
     }
 
-    if (auto view = page(page_id).view(); view.has_value()) {
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab()) {
         auto const& committed_url = view->url();
 
         if (committed_url.scheme() == "about"sv && committed_url.path_segment_count() == 1) {
@@ -1468,7 +1457,7 @@ void WebContentClient::did_finish_loading(Web::PageId page_id, Web::HTML::CrossP
 
 void WebContentClient::did_finish_test(Web::PageId page_id, String text)
 {
-    if (auto view = page(page_id).view(); view.has_value()) {
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab()) {
         if (view->on_test_finish)
             view->on_test_finish(text);
     }
@@ -1476,7 +1465,7 @@ void WebContentClient::did_finish_test(Web::PageId page_id, String text)
 
 void WebContentClient::did_set_test_timeout(Web::PageId page_id, double milliseconds)
 {
-    if (auto view = page(page_id).view(); view.has_value()) {
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab()) {
         if (view->on_set_test_timeout)
             view->on_set_test_timeout(milliseconds);
     }
@@ -1484,7 +1473,7 @@ void WebContentClient::did_set_test_timeout(Web::PageId page_id, double millisec
 
 void WebContentClient::did_receive_reference_test_metadata(Web::PageId page_id, JsonValue metadata)
 {
-    if (auto view = page(page_id).view(); view.has_value()) {
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab()) {
         if (view->on_reference_test_metadata)
             view->on_reference_test_metadata(metadata);
     }
@@ -1520,7 +1509,7 @@ void WebContentClient::did_change_title(Web::PageId page_id, Utf16String title)
     if (auto process = WebView::Application::the().find_process(m_process_handle.pid); process.has_value())
         process->set_title(title);
 
-    if (auto view = page(page_id).view(); view.has_value()) {
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab()) {
         if (!title.is_empty()) {
             auto title_utf8 = title.to_utf8();
 
@@ -1727,7 +1716,7 @@ void WebContentClient::did_complete_debugger_breakpoint_operation(Web::PageId pa
 
 void WebContentClient::did_get_debugger_environments(Web::PageId page_id, u64 request_id, Optional<String> error, Vector<DebuggerEnvironment> environments)
 {
-    if (auto view = page(page_id).view(); view.has_value()) {
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab()) {
         auto callback = view->m_pending_debugger_environments_requests.take(request_id);
         if (!callback.has_value()) {
             if (view->m_cancelled_debugger_environments_requests.remove(request_id))
@@ -1744,7 +1733,7 @@ void WebContentClient::did_get_debugger_environments(Web::PageId page_id, u64 re
 
 void WebContentClient::did_evaluate_javascript_in_debugger_frame(Web::PageId page_id, u64 request_id, Optional<String> error, DebuggerEvaluationResult result)
 {
-    if (auto view = page(page_id).view(); view.has_value()) {
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab()) {
         auto callback = view->m_pending_debugger_evaluation_requests.take(request_id);
         if (!callback.has_value()) {
             if (view->m_cancelled_debugger_evaluation_requests.remove(request_id))
@@ -1761,7 +1750,7 @@ void WebContentClient::did_evaluate_javascript_in_debugger_frame(Web::PageId pag
 
 void WebContentClient::did_get_debugger_object_properties(Web::PageId page_id, u64 request_id, Optional<String> error, DebuggerObjectProperties properties)
 {
-    if (auto view = page(page_id).view(); view.has_value()) {
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab()) {
         auto callback = view->m_pending_debugger_object_properties_requests.take(request_id);
         if (!callback.has_value()) {
             if (view->m_cancelled_debugger_object_properties_requests.remove(request_id))
@@ -1778,7 +1767,7 @@ void WebContentClient::did_get_debugger_object_properties(Web::PageId page_id, u
 
 void WebContentClient::did_get_debugger_source_positions(Web::PageId page_id, u64 request_id, Vector<DebuggerSourcePosition> positions)
 {
-    if (auto view = page(page_id).view(); view.has_value()) {
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab()) {
         auto callback = view->m_pending_debugger_source_positions_requests.take(request_id);
         if (!callback.has_value()) {
             if (view->m_cancelled_debugger_source_positions_requests.remove(request_id))
@@ -1866,7 +1855,7 @@ void WebContentClient::did_open_dialog(ViewImplementation& view, Web::PageId pag
 
 void WebContentClient::did_request_alert(Web::PageId page_id, Utf16String message)
 {
-    if (auto view = page(page_id).owning_view(); view.has_value()) {
+    if (auto view = page(page_id).view(); view.has_value()) {
         did_open_dialog(*view, page_id, Web::Page::PendingDialog::Alert, message);
         if (view->on_request_alert)
             view->on_request_alert(message);
@@ -1875,7 +1864,7 @@ void WebContentClient::did_request_alert(Web::PageId page_id, Utf16String messag
 
 void WebContentClient::did_request_confirm(Web::PageId page_id, Utf16String message)
 {
-    if (auto view = page(page_id).owning_view(); view.has_value()) {
+    if (auto view = page(page_id).view(); view.has_value()) {
         did_open_dialog(*view, page_id, Web::Page::PendingDialog::Confirm, message);
         if (view->on_request_confirm)
             view->on_request_confirm(message);
@@ -1884,7 +1873,7 @@ void WebContentClient::did_request_confirm(Web::PageId page_id, Utf16String mess
 
 void WebContentClient::did_request_prompt(Web::PageId page_id, Utf16String message, Utf16String default_)
 {
-    if (auto view = page(page_id).owning_view(); view.has_value()) {
+    if (auto view = page(page_id).view(); view.has_value()) {
         did_open_dialog(*view, page_id, Web::Page::PendingDialog::Prompt, message);
         if (view->on_request_prompt)
             view->on_request_prompt(message, default_);
@@ -1913,7 +1902,7 @@ void WebContentClient::did_change_favicon(Web::PageId page_id, Gfx::ShareableBit
         return;
     }
 
-    if (auto view = page(page_id).view(); view.has_value()) {
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab()) {
         maybe_record_history_visit_for_current_load(page_id, view->url(), history_title(view->title(), view->url()), "favicon change"sv);
         view->set_favicon({}, *favicon.bitmap());
     }
@@ -1949,7 +1938,7 @@ Messages::WebContentClient::DidRequestCookieResponse WebContentClient::did_reque
     cookie.cookie = m_session->cookie_jar->get_cookie(url, source);
 
     if (source == HTTP::Cookie::Source::NonHttp) {
-        if (auto view = page(page_id).owning_view(); view.has_value())
+        if (auto view = page(page_id).view(); view.has_value())
             cookie.cookie_version = view->document_cookie_version(url);
     }
 
@@ -2085,13 +2074,13 @@ Messages::WebContentClient::DidRequestNewWebViewResponse WebContentClient::did_r
 
     auto new_page_id = Application::the().allocate_page_id();
     String handle;
-    auto opener_view = page(page_id).owning_view();
+    auto opener_view = page(page_id).view();
     if (opener_view.has_value()) {
         if (opener_view->on_new_web_view)
             handle = opener_view->on_new_web_view(activate_tab, hints, new_page_id);
     }
 
-    auto view = page(new_page_id).view();
+    auto view = page(new_page_id).displays_tab() ? page(new_page_id).view() : Optional<ViewImplementation&> {};
     if (!view.has_value())
         return { {}, {}, {}, Web::HTML::VisibilityState::Hidden, move(handle) };
 
@@ -2124,7 +2113,7 @@ void WebContentClient::did_close_browsing_context(Web::PageId page_id)
         page->detached_close_pending = false;
     unregister_embedded_page(page_id);
 
-    if (auto view = view_displaying_page(page_id); view.has_value()) {
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab()) {
         view->did_close_browsing_context({});
         if (view->on_close)
             view->on_close();
@@ -2272,7 +2261,7 @@ void WebContentClient::did_request_clipboard_entries(Web::PageId page_id, u64 re
 
 void WebContentClient::did_request_primary_paste(Web::PageId page_id)
 {
-    if (page(page_id).owning_view().has_value()) {
+    if (page(page_id).view().has_value()) {
         auto text = Application::the().clipboard_text(Application::ClipboardType::Selection);
         async_paste(page_id, text);
     }
@@ -2280,7 +2269,7 @@ void WebContentClient::did_request_primary_paste(Web::PageId page_id)
 
 void WebContentClient::did_update_primary_selection(Web::PageId page_id, String text)
 {
-    if (auto view = page(page_id).owning_view(); view.has_value())
+    if (auto view = page(page_id).view(); view.has_value())
         Application::the().set_clipboard_text(move(text), Application::ClipboardType::Selection);
 }
 
@@ -2343,7 +2332,7 @@ void WebContentClient::did_request_webdriver_mouse_event(Web::PageId page_id, u6
         self->async_did_handle_webdriver_mouse_event(page_id, request_id);
     };
 
-    auto view = page(page_id).owning_view();
+    auto view = page(page_id).view();
     if (!view.has_value()) {
         on_handled();
         return;
@@ -2365,7 +2354,7 @@ void WebContentClient::did_request_set_system_visibility_state(Web::PageId page_
 
 String WebContentClient::did_request_ui_process_session_history_for_testing(Web::PageId page_id)
 {
-    if (auto view = page(page_id).view(); view.has_value())
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab())
         return { view->ui_process_session_history_for_testing({}) };
 
     return { "{}"_string };
@@ -2391,7 +2380,7 @@ void WebContentClient::did_request_crash_of_remote_frame_processes_for_testing(W
 
 void WebContentClient::did_reset_session_history_for_testing(Web::PageId page_id, Web::HTML::SessionHistoryEntryDescriptor active_entry)
 {
-    if (auto view = page(page_id).view(); view.has_value())
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab())
         view->did_reset_session_history_for_testing({}, move(active_entry));
 }
 
@@ -2479,7 +2468,7 @@ void WebContentClient::nonchanging_navigable_history_state_updated(Web::PageId p
 
 bool WebContentClient::did_request_capture_session_history_snapshot_for_testing(Web::PageId page_id)
 {
-    if (auto view = page(page_id).view(); view.has_value())
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab())
         return view->capture_session_history_snapshot_for_testing({});
 
     return false;
@@ -2487,7 +2476,7 @@ bool WebContentClient::did_request_capture_session_history_snapshot_for_testing(
 
 bool WebContentClient::did_request_restore_session_history_snapshot_for_testing(Web::PageId page_id)
 {
-    if (auto view = page(page_id).view(); view.has_value())
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab())
         return view->restore_captured_session_history_snapshot_for_testing({});
 
     return false;
@@ -2495,7 +2484,7 @@ bool WebContentClient::did_request_restore_session_history_snapshot_for_testing(
 
 bool WebContentClient::did_request_register_session_store_tab_for_testing(Web::PageId page_id)
 {
-    if (auto view = page(page_id).view(); view.has_value())
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab())
         return view->register_session_store_tab_for_testing({});
 
     return false;
@@ -2503,7 +2492,7 @@ bool WebContentClient::did_request_register_session_store_tab_for_testing(Web::P
 
 String WebContentClient::did_request_session_store_tab_state_for_testing(Web::PageId page_id)
 {
-    if (auto view = page(page_id).view(); view.has_value())
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab())
         return { view->session_store_tab_state_for_testing({}) };
 
     return { "{}"_string };
@@ -2512,7 +2501,7 @@ String WebContentClient::did_request_session_store_tab_state_for_testing(Web::Pa
 void WebContentClient::did_present_backing_stores(Web::PageId page_id, Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores)
 {
     dbgln_if(COMPOSITOR_DEBUG, "[Compositor] UI received {} backing stores for page {}", backing_stores.size(), page_id);
-    if (auto view = page(page_id).view(); view.has_value()) {
+    if (auto view = page(page_id).view(); view.has_value() && page(page_id).displays_tab()) {
         view->did_allocate_backing_stores({}, move(bitmap_ids), move(backing_stores));
     } else {
         dbgln_if(COMPOSITOR_DEBUG, "[Compositor] UI dropping {} backing stores for page {}: no view", backing_stores.size(), page_id);
@@ -2522,7 +2511,7 @@ void WebContentClient::did_present_backing_stores(Web::PageId page_id, Vector<i3
 Messages::WebContentClient::StartWorkerAgentResponse WebContentClient::start_worker_agent(Web::PageId page_id, Web::HTML::WorkerAgentStartRequest request)
 {
     // A page hosting an isolated iframe's document belongs to its tab's view as much as the view's own page does.
-    if (auto view = page(page_id).owning_view(); view.has_value()) {
+    if (auto view = page(page_id).view(); view.has_value()) {
         auto agent_id = WorkerProcessManager::the().start_worker_agent(*this, page_id, move(request));
         return { agent_id };
     }
@@ -2562,10 +2551,8 @@ Optional<u64> WebContentClient::exclusive_performance_owner() const
         if (!page.is_open)
             continue;
         Optional<ViewImplementation&> view;
-        if (page.view)
-            view = *page.view;
-        else if (page.traversable)
-            view = ViewImplementation::find_view_for_traversable(*page.traversable);
+        if (page.traversable)
+            view = page.traversable->view();
         if (!view.has_value() || !add_owner(view->view_id()))
             return {};
     }

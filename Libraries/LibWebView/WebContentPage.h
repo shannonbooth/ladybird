@@ -24,10 +24,10 @@ struct WEBVIEW_API WebContentPage {
 
     bool is_open() const;
     CanonicalTraversable* traversable() const;
-    // The view when this page displays its tab.
+    // The view of the tab this page holds a graph of.
     Optional<ViewImplementation&> view() const;
-    // The view of the tab this page holds, whichever page displays it.
-    Optional<ViewImplementation&> owning_view() const;
+    // Whether this page is the one the view paints the tab from.
+    bool displays_tab() const;
     Optional<CanonicalNavigable&> hosted_navigable(Web::HTML::CrossProcessId) const;
     bool needs_beforeunload_check() const;
     Optional<WebContentPage> endpoint_hosting_navigable_represented_by(CanonicalTraversable&, Web::HTML::CrossProcessId navigable_id) const;

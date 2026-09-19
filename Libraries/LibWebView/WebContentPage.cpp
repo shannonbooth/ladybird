@@ -116,17 +116,16 @@ CanonicalTraversable* WebContentPage::traversable() const
 
 Optional<ViewImplementation&> WebContentPage::view() const
 {
-    if (!client)
-        return {};
-    return client->view_displaying_page(id);
-}
-
-Optional<ViewImplementation&> WebContentPage::owning_view() const
-{
     auto* traversable = this->traversable();
     if (!traversable)
         return {};
-    return ViewImplementation::find_view_for_traversable(*traversable);
+    return traversable->view();
+}
+
+bool WebContentPage::displays_tab() const
+{
+    auto* traversable = this->traversable();
+    return traversable && traversable->display_page() == *this;
 }
 
 Optional<CanonicalNavigable&> WebContentPage::hosted_navigable(Web::HTML::CrossProcessId navigable_id) const
@@ -246,13 +245,13 @@ void WebContentPage::did_create_child_frame(Web::HTML::CrossProcessId parent_fra
 
 void WebContentPage::did_set_browser_zoom(double factor)
 {
-    if (auto view = owning_view(); view.has_value())
+    if (auto view = this->view(); view.has_value())
         view->set_zoom(factor);
 }
 
 void WebContentPage::did_find_in_page(size_t current_match_index, Optional<size_t> total_match_count)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_find_in_page)
             view->on_find_in_page(current_match_index, total_match_count);
     }
@@ -260,20 +259,20 @@ void WebContentPage::did_find_in_page(size_t current_match_index, Optional<size_
 
 void WebContentPage::did_request_refresh()
 {
-    if (auto view = this->view(); view.has_value())
+    if (auto view = this->view(); view.has_value() && displays_tab())
         view->reload();
 }
 
 void WebContentPage::did_request_cursor_change(Gfx::Cursor cursor)
 {
-    if (auto view = owning_view(); view.has_value())
+    if (auto view = this->view(); view.has_value())
         view->did_request_cursor_change({}, move(cursor));
 }
 
 void WebContentPage::did_update_editing_history_state(bool can_undo, bool can_redo)
 {
     // Undo and redo go to the page hosting the tab's focused navigable.
-    auto view = owning_view();
+    auto view = this->view();
     if (!view.has_value())
         return;
     auto host = view->traversable().focused_navigable_host();
@@ -284,7 +283,7 @@ void WebContentPage::did_update_editing_history_state(bool can_undo, bool can_re
 
 void WebContentPage::did_request_tooltip_override(Gfx::IntPoint position, ByteString title)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_request_tooltip_override)
             view->on_request_tooltip_override(view->to_widget_position(position), title);
     }
@@ -292,7 +291,7 @@ void WebContentPage::did_request_tooltip_override(Gfx::IntPoint position, ByteSt
 
 void WebContentPage::did_stop_tooltip_override()
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_stop_tooltip_override)
             view->on_stop_tooltip_override();
     }
@@ -300,7 +299,7 @@ void WebContentPage::did_stop_tooltip_override()
 
 void WebContentPage::did_enter_tooltip_area(ByteString title)
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_enter_tooltip_area)
             view->on_enter_tooltip_area(title);
     }
@@ -308,7 +307,7 @@ void WebContentPage::did_enter_tooltip_area(ByteString title)
 
 void WebContentPage::did_leave_tooltip_area()
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_leave_tooltip_area)
             view->on_leave_tooltip_area();
     }
@@ -316,7 +315,7 @@ void WebContentPage::did_leave_tooltip_area()
 
 void WebContentPage::did_hover_link(URL::URL url)
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_link_hover)
             view->on_link_hover(url);
     }
@@ -324,7 +323,7 @@ void WebContentPage::did_hover_link(URL::URL url)
 
 void WebContentPage::did_unhover_link()
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_link_unhover)
             view->on_link_unhover();
     }
@@ -335,28 +334,28 @@ void WebContentPage::did_click_link(URL::URL url, ByteString target, unsigned mo
     auto open_in_background = modifiers == Web::UIEvents::Mod_PlatformCtrl;
     auto open_in_foreground = modifiers == (Web::UIEvents::Mod_PlatformCtrl | Web::UIEvents::Mod_Shift);
     if (open_in_background || open_in_foreground || target == "_blank"sv) {
-        if (auto view = owning_view(); view.has_value())
+        if (auto view = this->view(); view.has_value())
             view->open_url_in_new_tab(url, open_in_background ? Web::HTML::ActivateTab::No : Web::HTML::ActivateTab::Yes);
-    } else if (auto view = owning_view(); view.has_value()) {
+    } else if (auto view = this->view(); view.has_value()) {
         view->load(url);
     }
 }
 
 void WebContentPage::did_middle_click_link(URL::URL url, ByteString, unsigned)
 {
-    if (auto view = owning_view(); view.has_value())
+    if (auto view = this->view(); view.has_value())
         view->open_url_in_new_tab(url, Web::HTML::ActivateTab::No);
 }
 
 void WebContentPage::did_request_external_url(URL::URL url, URL::Origin initiator_origin, bool has_transient_activation)
 {
-    if (auto view = owning_view(); view.has_value())
+    if (auto view = this->view(); view.has_value())
         view->handle_external_url({}, move(url), move(initiator_origin), has_transient_activation);
 }
 
 void WebContentPage::did_inspect_storage(u64 request_id, String storage_items)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         auto handler = view->on_received_storage_items.take(request_id);
         if (handler.has_value())
             (*handler)(parse_storage_items(storage_items));
@@ -365,7 +364,7 @@ void WebContentPage::did_inspect_storage(u64 request_id, String storage_items)
 
 void WebContentPage::did_inspect_grid_layouts(String grid_layouts)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_received_grid_layouts)
             view->on_received_grid_layouts(parse_json_array(grid_layouts, "grid layouts"sv));
     }
@@ -373,7 +372,7 @@ void WebContentPage::did_inspect_grid_layouts(String grid_layouts)
 
 void WebContentPage::did_inspect_current_grid(String grid_layout)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_received_current_grid)
             view->on_received_current_grid(parse_optional_json_object(grid_layout, "current grid"sv));
     }
@@ -381,7 +380,7 @@ void WebContentPage::did_inspect_current_grid(String grid_layout)
 
 void WebContentPage::did_inspect_current_flexbox(String flexbox_layout)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_received_current_flexbox)
             view->on_received_current_flexbox(parse_optional_json_object(flexbox_layout, "current flexbox"sv));
     }
@@ -389,13 +388,13 @@ void WebContentPage::did_inspect_current_flexbox(String flexbox_layout)
 
 void WebContentPage::did_inspect_indexed_database(u64 request_id, String result)
 {
-    if (auto view = this->view(); view.has_value())
+    if (auto view = this->view(); view.has_value() && displays_tab())
         view->did_receive_indexed_database_inspection(request_id, parse_json(result, "IndexedDB inspection result"sv));
 }
 
 void WebContentPage::did_inspect_accessibility_tree(String accessibility_tree)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_received_accessibility_tree)
             view->on_received_accessibility_tree(parse_json(accessibility_tree, "accessibility tree"sv));
     }
@@ -403,7 +402,7 @@ void WebContentPage::did_inspect_accessibility_tree(String accessibility_tree)
 
 void WebContentPage::did_get_hovered_node_id(Web::UniqueNodeID node_id)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_received_hovered_node_id)
             view->on_received_hovered_node_id(node_id);
     }
@@ -411,14 +410,14 @@ void WebContentPage::did_get_hovered_node_id(Web::UniqueNodeID node_id)
 
 void WebContentPage::did_get_node_id_at_position(u64 request_id, Web::UniqueNodeID node_id)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         view->did_receive_node_picker_hit_test(request_id, node_id);
     }
 }
 
 void WebContentPage::did_list_style_sheets(Vector<Web::CSS::StyleSheetIdentifier> stylesheets)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_received_style_sheet_list)
             view->on_received_style_sheet_list(stylesheets);
     }
@@ -426,7 +425,7 @@ void WebContentPage::did_list_style_sheets(Vector<Web::CSS::StyleSheetIdentifier
 
 void WebContentPage::did_get_style_sheet_source(Web::CSS::StyleSheetIdentifier identifier, URL::URL base_url, Utf16String source)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_received_style_sheet_source)
             view->on_received_style_sheet_source(identifier, base_url, source);
     }
@@ -434,7 +433,7 @@ void WebContentPage::did_get_style_sheet_source(Web::CSS::StyleSheetIdentifier i
 
 void WebContentPage::did_list_devtools_sources(u64 request_id, Vector<Web::HTML::ScriptRegistry::Description> sources)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         auto handler = view->on_received_devtools_sources.take(request_id);
         if (handler.has_value())
             (*handler)(move(sources));
@@ -443,7 +442,7 @@ void WebContentPage::did_list_devtools_sources(u64 request_id, Vector<Web::HTML:
 
 void WebContentPage::did_get_devtools_source(Web::HTML::ScriptRegistry::Identifier source_id, Optional<Web::HTML::ScriptRegistry::Content> source)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         auto handler = view->on_received_devtools_source.take(source_id);
         if (handler.has_value())
             (*handler)(move(source));
@@ -452,7 +451,7 @@ void WebContentPage::did_get_devtools_source(Web::HTML::ScriptRegistry::Identifi
 
 void WebContentPage::did_add_devtools_source(Web::HTML::ScriptRegistry::Description source)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_devtools_source_available)
             view->on_devtools_source_available(move(source));
     }
@@ -460,7 +459,7 @@ void WebContentPage::did_add_devtools_source(Web::HTML::ScriptRegistry::Descript
 
 void WebContentPage::did_pause_debugger(DebuggerPause pause)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         view->did_pause_debugger({});
         if (view->on_debugger_paused)
             view->on_debugger_paused(move(pause));
@@ -469,37 +468,37 @@ void WebContentPage::did_pause_debugger(DebuggerPause pause)
 
 void WebContentPage::did_resume_debugger()
 {
-    if (auto view = this->view(); view.has_value())
+    if (auto view = this->view(); view.has_value() && displays_tab())
         view->did_resume_debugger({});
 }
 
 void WebContentPage::did_complete_debugger_breakpoint_operation(u64 request_id, Optional<String> error)
 {
-    if (auto view = this->view(); view.has_value())
+    if (auto view = this->view(); view.has_value() && displays_tab())
         view->did_complete_debugger_breakpoint_operation(request_id, move(error));
 }
 
 void WebContentPage::did_take_screenshot(Gfx::ShareableBitmap screenshot)
 {
-    if (auto view = this->view(); view.has_value())
+    if (auto view = this->view(); view.has_value() && displays_tab())
         view->did_receive_screenshot({}, screenshot);
 }
 
 void WebContentPage::did_get_internal_page_info(WebView::PageInfoType type, Optional<Core::AnonymousBuffer> info)
 {
-    if (auto view = this->view(); view.has_value())
+    if (auto view = this->view(); view.has_value() && displays_tab())
         view->did_receive_internal_page_info({}, type, info);
 }
 
 void WebContentPage::did_get_selected_text(u64 request_id, ByteString selection)
 {
-    if (auto view = owning_view(); view.has_value())
+    if (auto view = this->view(); view.has_value())
         view->did_receive_selected_text({}, request_id, move(selection));
 }
 
 void WebContentPage::did_get_selected_text_for_lookup(u64 request_id, Optional<DictionaryLookup> lookup)
 {
-    auto view = owning_view();
+    auto view = this->view();
     if (!view.has_value())
         return;
 
@@ -511,19 +510,19 @@ void WebContentPage::did_get_selected_text_for_lookup(u64 request_id, Optional<D
 
 void WebContentPage::did_select_word_for_dictionary_lookup(u64 request_id, bool selected)
 {
-    if (auto view = owning_view(); view.has_value())
+    if (auto view = this->view(); view.has_value())
         view->did_select_word_for_dictionary_lookup({}, request_id, selected);
 }
 
 void WebContentPage::did_cut_selected_text(u64 request_id, ByteString selection)
 {
-    if (auto view = owning_view(); view.has_value())
+    if (auto view = this->view(); view.has_value())
         view->did_cut_selected_text({}, request_id, move(selection));
 }
 
 void WebContentPage::did_execute_js_console_input(JsonValue result)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_received_js_console_result)
             view->on_received_js_console_result(move(result));
     }
@@ -531,7 +530,7 @@ void WebContentPage::did_execute_js_console_input(JsonValue result)
 
 void WebContentPage::did_output_js_console_message(ConsoleOutput console_output)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_console_message)
             view->on_console_message(move(console_output));
     }
@@ -539,7 +538,7 @@ void WebContentPage::did_output_js_console_message(ConsoleOutput console_output)
 
 void WebContentPage::did_start_network_request(u64 request_id, URL::URL url, ByteString method, Vector<HTTP::Header> request_headers, ByteBuffer request_body, Optional<String> initiator_type, String referrer_policy, bool is_navigation_request, Web::Fetch::Infrastructure::Request::Priority priority)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_network_request_started)
             view->on_network_request_started(request_id, url, method, request_headers, move(request_body), move(initiator_type), move(referrer_policy), is_navigation_request, priority);
     }
@@ -547,7 +546,7 @@ void WebContentPage::did_start_network_request(u64 request_id, URL::URL url, Byt
 
 void WebContentPage::did_receive_network_response_body(u64 request_id, ByteBuffer data)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_network_response_body_received)
             view->on_network_response_body_received(request_id, move(data));
     }
@@ -555,7 +554,7 @@ void WebContentPage::did_receive_network_response_body(u64 request_id, ByteBuffe
 
 void WebContentPage::did_finish_network_request(u64 request_id, u64 body_size, Requests::RequestTimingInfo timing_info, Optional<Requests::NetworkError> network_error)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_network_request_finished)
             view->on_network_request_finished(request_id, body_size, timing_info, network_error);
     }
@@ -563,7 +562,7 @@ void WebContentPage::did_finish_network_request(u64 request_id, u64 body_size, R
 
 void WebContentPage::did_request_set_prompt_text(Utf16String message)
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_request_set_prompt_text)
             view->on_request_set_prompt_text(message);
     }
@@ -571,7 +570,7 @@ void WebContentPage::did_request_set_prompt_text(Utf16String message)
 
 void WebContentPage::did_request_accept_dialog()
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_request_accept_dialog)
             view->on_request_accept_dialog();
     }
@@ -579,7 +578,7 @@ void WebContentPage::did_request_accept_dialog()
 
 void WebContentPage::did_request_dismiss_dialog()
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_request_dismiss_dialog)
             view->on_request_dismiss_dialog();
     }
@@ -587,7 +586,7 @@ void WebContentPage::did_request_dismiss_dialog()
 
 void WebContentPage::did_request_document_cookie_version_index(i64 document_id, String domain)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (auto document_index = view->ensure_document_cookie_version_index({}, domain); !document_index.is_error())
             client->async_set_document_cookie_version_index(id, document_id, document_index.value());
     }
@@ -631,7 +630,7 @@ void WebContentPage::did_clear_storage(Web::StorageAPI::StorageEndpointType stor
 
 void WebContentPage::did_request_activate_tab()
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_activate_tab)
             view->on_activate_tab();
     }
@@ -657,25 +656,25 @@ void WebContentPage::did_consume_user_activation(Web::HTML::UserActivationConsum
 
 void WebContentPage::webdriver_user_prompt_handling_complete(u64 request_id, Web::WebDriver::Response response)
 {
-    if (auto view = this->view(); view.has_value())
+    if (auto view = this->view(); view.has_value() && displays_tab())
         view->did_complete_webdriver_user_prompt_handling({}, request_id, move(response));
 }
 
 void WebContentPage::webdriver_did_set_current_browsing_context(u64 command_id, Web::HTML::CrossProcessId navigable_id)
 {
-    if (auto view = owning_view(); view.has_value())
+    if (auto view = this->view(); view.has_value())
         view->did_set_webdriver_current_browsing_context({}, command_id, navigable_id);
 }
 
 void WebContentPage::webdriver_command_complete(u64 command_id, Web::WebDriver::Response response)
 {
-    if (auto view = owning_view(); view.has_value())
+    if (auto view = this->view(); view.has_value())
         view->did_complete_webdriver_content_command({}, command_id, move(response));
 }
 
 void WebContentPage::did_update_resource_count(i32 count_waiting)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_resource_status_change)
             view->on_resource_status_change(count_waiting);
     }
@@ -683,7 +682,7 @@ void WebContentPage::did_update_resource_count(i32 count_waiting)
 
 void WebContentPage::did_request_restore_window()
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_restore_window)
             view->on_restore_window();
     }
@@ -691,7 +690,7 @@ void WebContentPage::did_request_restore_window()
 
 void WebContentPage::did_request_reposition_window(Gfx::IntPoint position, u64 completion_id)
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_reposition_window)
             view->on_reposition_window(position);
     }
@@ -700,7 +699,7 @@ void WebContentPage::did_request_reposition_window(Gfx::IntPoint position, u64 c
 
 void WebContentPage::did_request_resize_window(Gfx::IntSize size, u64 completion_id)
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_resize_window)
             view->on_resize_window(size);
     }
@@ -709,7 +708,7 @@ void WebContentPage::did_request_resize_window(Gfx::IntSize size, u64 completion
 
 void WebContentPage::did_request_maximize_window(u64 completion_id)
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_maximize_window)
             view->on_maximize_window();
     }
@@ -718,7 +717,7 @@ void WebContentPage::did_request_maximize_window(u64 completion_id)
 
 void WebContentPage::did_request_minimize_window()
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_minimize_window)
             view->on_minimize_window();
     }
@@ -726,7 +725,7 @@ void WebContentPage::did_request_minimize_window()
 
 void WebContentPage::did_request_fullscreen_window()
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_fullscreen_window)
             view->on_fullscreen_window();
     }
@@ -734,7 +733,7 @@ void WebContentPage::did_request_fullscreen_window()
 
 void WebContentPage::did_request_exit_fullscreen()
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_exit_fullscreen_window)
             view->on_exit_fullscreen_window();
     }
@@ -751,13 +750,13 @@ void WebContentPage::did_request_file(ByteString path, i32 request_id)
 
 void WebContentPage::did_request_color_picker(Color current_color)
 {
-    if (auto view = owning_view(); view.has_value())
+    if (auto view = this->view(); view.has_value())
         view->did_request_color_picker({}, *this, current_color);
 }
 
 void WebContentPage::did_request_geolocation_position(u64 request_id)
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_request_geolocation_position)
             view->on_request_geolocation_position(*this, request_id);
     }
@@ -765,7 +764,7 @@ void WebContentPage::did_request_geolocation_position(u64 request_id)
 
 void WebContentPage::did_cancel_geolocation_position_request(u64 request_id)
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_cancel_geolocation_position_request)
             view->on_cancel_geolocation_position_request(*this, request_id);
     }
@@ -773,7 +772,7 @@ void WebContentPage::did_cancel_geolocation_position_request(u64 request_id)
 
 void WebContentPage::did_start_geolocation_position_watch(u64 request_id)
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_start_geolocation_position_watch)
             view->on_start_geolocation_position_watch(*this, request_id);
     }
@@ -781,7 +780,7 @@ void WebContentPage::did_start_geolocation_position_watch(u64 request_id)
 
 void WebContentPage::did_stop_geolocation_position_watch(u64 request_id)
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         if (view->on_stop_geolocation_position_watch)
             view->on_stop_geolocation_position_watch(*this, request_id);
     }
@@ -789,13 +788,13 @@ void WebContentPage::did_stop_geolocation_position_watch(u64 request_id)
 
 void WebContentPage::did_request_file_picker(Web::HTML::FileFilter accepted_file_types, Web::HTML::AllowMultipleFiles allow_multiple_files)
 {
-    if (auto view = owning_view(); view.has_value())
+    if (auto view = this->view(); view.has_value())
         view->did_request_file_picker({}, *this, accepted_file_types, allow_multiple_files);
 }
 
 void WebContentPage::did_finish_handling_input_event(u64 event_id, Web::EventResult event_result)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         view->did_finish_handling_input_event({}, event_id, event_result);
         return;
     }
@@ -810,7 +809,7 @@ void WebContentPage::did_finish_handling_input_event(u64 event_id, Web::EventRes
 
 void WebContentPage::did_update_input_method_state(Optional<Web::DevicePixelRect> caret_rect, bool is_enabled, i32 cursor_position, i32 anchor_position, Utf16String text_before_cursor, Utf16String text_after_cursor)
 {
-    auto view = owning_view();
+    auto view = this->view();
     if (!view.has_value())
         return;
 
@@ -826,7 +825,7 @@ void WebContentPage::did_update_input_method_state(Optional<Web::DevicePixelRect
 
 void WebContentPage::did_change_theme_color(Gfx::Color color)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_theme_color_change)
             view->on_theme_color_change(color);
     }
@@ -834,25 +833,25 @@ void WebContentPage::did_change_theme_color(Gfx::Color color)
 
 void WebContentPage::did_change_background_color(Gfx::Color color)
 {
-    if (auto view = this->view(); view.has_value())
+    if (auto view = this->view(); view.has_value() && displays_tab())
         view->did_change_background_color({}, color);
 }
 
 void WebContentPage::did_insert_clipboard_item(Web::Clipboard::SystemClipboardItem item, String)
 {
-    if (auto view = owning_view(); view.has_value())
+    if (auto view = this->view(); view.has_value())
         view->insert_clipboard_item(move(item));
 }
 
 void WebContentPage::did_change_audio_play_state(Web::HTML::AudioPlayState play_state)
 {
-    if (auto view = this->view(); view.has_value())
+    if (auto view = this->view(); view.has_value() && displays_tab())
         view->did_change_audio_play_state({}, play_state);
 }
 
 void WebContentPage::did_change_screen_wake_lock_state(Web::ScreenWakeLockState wake_lock_state)
 {
-    if (auto view = this->view(); view.has_value())
+    if (auto view = this->view(); view.has_value() && displays_tab())
         view->did_change_screen_wake_lock_state({}, wake_lock_state);
 }
 
@@ -891,13 +890,13 @@ void WebContentPage::did_change_focused_navigable(Web::HTML::CrossProcessId navi
 
 void WebContentPage::did_request_key_event_for_testing(Web::KeyEvent event)
 {
-    if (auto view = owning_view(); view.has_value())
+    if (auto view = this->view(); view.has_value())
         view->enqueue_input_event(move(event));
 }
 
 void WebContentPage::request_history_operation(Web::HTML::CrossProcessId operation_id, Web::HistoryOperationParameters parameters)
 {
-    if (auto view = owning_view(); view.has_value())
+    if (auto view = this->view(); view.has_value())
         view->request_history_operation({}, *this, operation_id, move(parameters));
 }
 
@@ -997,7 +996,7 @@ void WebContentPage::did_request_close_of_traversable(Web::HTML::CrossProcessId 
 
 void WebContentPage::did_inspect_dom_tree(String dom_tree)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_received_dom_tree)
             view->on_received_dom_tree(parse_json(dom_tree, "DOM tree"sv));
     }
@@ -1005,7 +1004,7 @@ void WebContentPage::did_inspect_dom_tree(String dom_tree)
 
 void WebContentPage::did_inspect_dom_node(DOMNodeProperties properties)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_received_dom_node_properties)
             view->on_received_dom_node_properties(move(properties));
     }
@@ -1013,7 +1012,7 @@ void WebContentPage::did_inspect_dom_node(DOMNodeProperties properties)
 
 void WebContentPage::did_finish_editing_dom_node(Optional<Web::UniqueNodeID> node_id)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_finished_editing_dom_node)
             view->on_finished_editing_dom_node(node_id);
     }
@@ -1021,7 +1020,7 @@ void WebContentPage::did_finish_editing_dom_node(Optional<Web::UniqueNodeID> nod
 
 void WebContentPage::did_mutate_dom(Mutation mutation)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_dom_mutation_received)
             view->on_dom_mutation_received(move(mutation));
     }
@@ -1029,7 +1028,7 @@ void WebContentPage::did_mutate_dom(Mutation mutation)
 
 void WebContentPage::did_get_dom_node_html(String html)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_received_dom_node_html)
             view->on_received_dom_node_html(move(html));
     }
@@ -1037,7 +1036,7 @@ void WebContentPage::did_get_dom_node_html(String html)
 
 void WebContentPage::did_resolve_dom_node_url(u64 request_id, String resolved_url)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         auto handler = view->on_resolved_dom_node_url.take(request_id);
         if (handler.has_value())
             (*handler)(move(resolved_url));
@@ -1046,7 +1045,7 @@ void WebContentPage::did_resolve_dom_node_url(u64 request_id, String resolved_ur
 
 void WebContentPage::did_receive_network_response_headers(u64 request_id, u32 status_code, Optional<String> reason_phrase, Vector<HTTP::Header> response_headers, Requests::CameFromCache came_from_cache)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         if (view->on_network_response_headers_received)
             view->on_network_response_headers_received(request_id, status_code, reason_phrase, response_headers, came_from_cache);
     }
@@ -1054,7 +1053,7 @@ void WebContentPage::did_receive_network_response_headers(u64 request_id, u32 st
 
 void WebContentPage::did_change_storage_item(Web::StorageAPI::StorageEndpointType storage_endpoint, String url, Optional<Utf16String> key, Optional<Utf16String> old_value, Optional<Utf16String> new_value)
 {
-    if (auto view = this->view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value() && displays_tab()) {
         auto host = DevTools::storage_host_for_url(url);
         if (!host.has_value())
             return;
@@ -1080,13 +1079,13 @@ void WebContentPage::did_change_storage_item(Web::StorageAPI::StorageEndpointTyp
 
 void WebContentPage::did_update_indexed_database(String update)
 {
-    if (auto view = this->view(); view.has_value())
+    if (auto view = this->view(); view.has_value() && displays_tab())
         view->notify_indexed_database_changed(parse_json(update, "IndexedDB update"sv));
 }
 
 void WebContentPage::did_request_clipboard_entries(u64 request_id)
 {
-    if (auto view = owning_view(); view.has_value()) {
+    if (auto view = this->view(); view.has_value()) {
         Vector<Web::Clipboard::SystemClipboardItem> items;
         if (auto item = view->clipboard_item(); !item.system_clipboard_representations.is_empty())
             items.append(move(item));
@@ -1103,7 +1102,7 @@ void WebContentPage::did_request_set_system_focus(bool has_system_focus)
 
 void WebContentPage::did_request_set_system_visibility_state(Web::HTML::VisibilityState visibility_state)
 {
-    if (auto view = owning_view(); view.has_value())
+    if (auto view = this->view(); view.has_value())
         view->set_system_visibility_state(visibility_state);
 }
 

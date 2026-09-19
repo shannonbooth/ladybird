@@ -84,14 +84,7 @@ Optional<ViewImplementation&> ViewImplementation::find_view_by_id(u64 id)
 
 Optional<ViewImplementation&> ViewImplementation::find_view_for_traversable(CanonicalTraversable const& traversable)
 {
-    Optional<ViewImplementation&> result;
-    for_each_view([&](auto& view) {
-        if (&view.traversable() != &traversable)
-            return IterationDecision::Continue;
-        result = view;
-        return IterationDecision::Break;
-    });
-    return result;
+    return traversable.view();
 }
 
 ViewImplementation::ViewImplementation(IsPrivate is_private)
@@ -101,6 +94,7 @@ ViewImplementation::ViewImplementation(IsPrivate is_private)
     , m_view_id(s_view_count++)
 {
     all_views().set(m_view_id, this);
+    m_top_level_traversable.set_view({}, *this);
 
     initialize_context_menus();
 

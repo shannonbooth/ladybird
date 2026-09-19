@@ -112,6 +112,9 @@ public:
     // The view's page paints the tab and runs its history jobs. It is the traversable's pending host from the moment
     // the view replaces its process until a document activates there. The page that displayed the document before
     // keeps hosting it until it is unloaded there.
+    // The view displaying the tab, when one owns this traversable.
+    Optional<ViewImplementation&> view() const;
+    void set_view(Badge<ViewImplementation>, ViewImplementation&);
     WebContentPage display_page() const;
     void set_replacement_display_page(WebContentPage const&);
     void did_activate_document_in_display_page();
@@ -168,6 +171,7 @@ public:
     static StringView browser_history_traversal_stage_to_string(BrowserHistoryTraversalDiagnostic::Stage);
 
 private:
+    ViewImplementation* m_view { nullptr };
     struct HistoryOperation;
     void session_history_changed();
     HistoryOperation* find_history_operation(Web::HTML::CrossProcessId operation_id);

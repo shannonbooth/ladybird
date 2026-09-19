@@ -120,13 +120,12 @@ public:
     void release_unneeded_opener_pages();
     bool page_needs_beforeunload_check(Web::PageId page_id) const;
 
-    WebContentPage page(Web::PageId page_id) { return { this, page_id }; }
+    WebContentPage page(Web::PageId page_id) const { return { const_cast<WebContentClient*>(this), page_id }; }
     // Every open page, whether it displays its tab or only holds part of it.
     template<CallableAs<IterationDecision, WebContentPage const&> Callback>
     void for_each_page(Callback);
 
     CanonicalTraversable* traversable_for_page(Web::PageId page_id);
-    Optional<ViewImplementation&> view_displaying_page(Web::PageId page_id);
     // False once the page can no longer host work: the page is unregistered or the process is gone. A page
     // awaiting a detached close remains open; it still coordinates its own close.
     bool is_page_open(Web::PageId page_id) const;
@@ -387,14 +386,12 @@ private:
 
     struct Page {
         WeakPtr<CanonicalTraversable> traversable;
-        // Set while this page displays its tab.
-        ViewImplementation* view { nullptr };
         bool is_open { false };
         bool needs_beforeunload_check { true };
         bool detached_close_pending { false };
         Optional<String> history_recorded_url_for_current_load;
     };
-    static Page open_page(CanonicalTraversable&, ViewImplementation*);
+    static Page open_page(CanonicalTraversable&);
     Page* find_page(Web::PageId);
     Page const* find_page(Web::PageId) const;
     void close_page(Page&);

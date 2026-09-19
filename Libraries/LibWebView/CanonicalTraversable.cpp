@@ -338,7 +338,7 @@ void CanonicalTraversable::stop_hosting_in_page(CanonicalNavigable& navigable, W
 void CanonicalTraversable::release_page_if_unused(WebContentPage page)
 {
     // The view's page displays the tab whatever it hosts of it.
-    if (page.view().has_value() || page_hosts_any(page))
+    if (page.displays_tab() || page_hosts_any(page))
         return;
     if (is_opener_page(page)) {
         if (page.client->holds_part_of_a_tab_opened_by(*this))
@@ -353,10 +353,22 @@ void CanonicalTraversable::release_page_if_unused(WebContentPage page)
     did_lose_page(page);
 }
 
+Optional<ViewImplementation&> CanonicalTraversable::view() const
+{
+    if (!m_view)
+        return {};
+    return *m_view;
+}
+
+void CanonicalTraversable::set_view(Badge<ViewImplementation>, ViewImplementation& view)
+{
+    m_view = &view;
+}
+
 WebContentPage CanonicalTraversable::display_page() const
 {
-    if (auto view = ViewImplementation::find_view_for_traversable(*this); view.has_value() && view->m_client_state.client)
-        return view->web_content_page();
+    if (m_view && m_view->m_client_state.client)
+        return m_view->web_content_page();
     return {};
 }
 
