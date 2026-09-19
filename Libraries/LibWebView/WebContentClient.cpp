@@ -438,8 +438,8 @@ void WebContentClient::release_unneeded_opener_pages()
     if (m_process_lost)
         return;
 
-    Vector<WebContentPage> opener_pages;
-    for_each_page([&](WebContentPage const& page) {
+    Vector<WebContentPageHandle> opener_pages;
+    for_each_page([&](WebContentPageHandle const& page) {
         if (auto* traversable = page.traversable(); traversable && !page.displays_tab() && traversable->is_opener_page(page))
             opener_pages.append(page);
         return IterationDecision::Continue;
@@ -508,7 +508,7 @@ bool WebContentClient::is_page_open(Web::PageId page_id) const
 Optional<CanonicalNavigable&> WebContentClient::hosted_navigable(Web::HTML::CrossProcessId navigable_id)
 {
     Optional<CanonicalNavigable&> result;
-    for_each_page([&](WebContentPage const& page) {
+    for_each_page([&](WebContentPageHandle const& page) {
         result = page.hosted_navigable(navigable_id);
         return result.has_value() ? IterationDecision::Break : IterationDecision::Continue;
     });
@@ -1147,7 +1147,7 @@ bool WebContentClient::continue_navigation_population_in_selected_process(Web::P
     auto& loader = *ongoing_navigation->loader;
     ongoing_navigation->phase = CanonicalNavigable::OngoingNavigation::Phase::Populating;
 
-    auto populate_in = [&](WebContentPage const& host) {
+    auto populate_in = [&](WebContentPageHandle const& host) {
         navigable->set_navigation_host(*host.client, host.id);
         host.async_populate_navigation(loader.request(), loader.take_result());
         return true;
@@ -1847,7 +1847,7 @@ void WebContentClient::did_finish_network_request(Web::PageId page_id, u64 reque
 // A dialog blocks the whole tab, so every other page of the tab is told of the one a document of this page opened.
 void WebContentClient::did_open_dialog(ViewImplementation& view, Web::PageId page_id, Web::Page::PendingDialog dialog, Utf16String const& message)
 {
-    view.traversable().for_each_hosting_page([&](WebContentPage const& page) {
+    view.traversable().for_each_hosting_page([&](WebContentPageHandle const& page) {
         if (page != this->page(page_id))
             page.async_did_open_dialog_in_another_process(dialog, message);
     });

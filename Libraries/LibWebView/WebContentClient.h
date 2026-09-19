@@ -54,7 +54,7 @@
 #include <LibWebView/BrowsingSession.h>
 #include <LibWebView/Debugger.h>
 #include <LibWebView/Forward.h>
-#include <LibWebView/WebContentPage.h>
+#include <LibWebView/WebContentPageHandle.h>
 #include <WebContent/WebContentClientEndpoint.h>
 #include <WebContent/WebContentServerEndpoint.h>
 
@@ -68,7 +68,7 @@ class WEBVIEW_API WebContentClient final
     C_OBJECT_ABSTRACT(WebContentClient);
 
     friend class WebContentTestClient;
-    friend struct WebContentPage;
+    friend struct WebContentPageHandle;
 
 public:
     using InitTransport = Messages::WebContentServer::InitTransport;
@@ -120,9 +120,9 @@ public:
     void release_unneeded_opener_pages();
     bool page_needs_beforeunload_check(Web::PageId page_id) const;
 
-    WebContentPage page(Web::PageId page_id) const { return { const_cast<WebContentClient*>(this), page_id }; }
+    WebContentPageHandle page(Web::PageId page_id) const { return { const_cast<WebContentClient*>(this), page_id }; }
     // Every open page, whether it displays its tab or only holds part of it.
-    template<CallableAs<IterationDecision, WebContentPage const&> Callback>
+    template<CallableAs<IterationDecision, WebContentPageHandle const&> Callback>
     void for_each_page(Callback);
 
     CanonicalTraversable* traversable_for_page(Web::PageId page_id);
@@ -414,13 +414,13 @@ private:
     static HashTable<WebContentClient*>& clients();
 };
 
-template<CallableAs<IterationDecision, WebContentPage const&> Callback>
+template<CallableAs<IterationDecision, WebContentPageHandle const&> Callback>
 void WebContentClient::for_each_page(Callback callback)
 {
     for (auto const& [page_id, page] : m_pages) {
         if (!page.is_open)
             continue;
-        if (callback(WebContentPage { this, page_id }) == IterationDecision::Break)
+        if (callback(WebContentPageHandle { this, page_id }) == IterationDecision::Break)
             return;
     }
 }

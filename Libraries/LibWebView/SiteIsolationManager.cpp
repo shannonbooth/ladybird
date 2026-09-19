@@ -68,7 +68,7 @@ static bool is_under_root_in_page(CanonicalNavigable const& root, CanonicalNavig
     return false;
 }
 
-Optional<SiteIsolationManager::RemoteChildFrameInputTarget> SiteIsolationManager::remote_child_frame_input_target_at(WebContentPage const& page, CanonicalNavigable const& root, Web::DevicePixelPoint position) const
+Optional<SiteIsolationManager::RemoteChildFrameInputTarget> SiteIsolationManager::remote_child_frame_input_target_at(WebContentPageHandle const& page, CanonicalNavigable const& root, Web::DevicePixelPoint position) const
 {
     Optional<RemoteChildFrameInputTarget> target;
     root.for_each_in_subtree([&](CanonicalNavigable const& child_frame) {
@@ -95,7 +95,7 @@ Optional<SiteIsolationManager::RemoteChildFrameInputTarget> SiteIsolationManager
     return target;
 }
 
-void SiteIsolationManager::remove_page(WebContentPage const& page)
+void SiteIsolationManager::remove_page(WebContentPageHandle const& page)
 {
     auto* traversable = page.traversable();
     if (!traversable)
@@ -141,8 +141,8 @@ void SiteIsolationManager::remove_page(WebContentPage const& page)
 
 void SiteIsolationManager::remove_all_pages_for_client(WebContentClient& client)
 {
-    Vector<WebContentPage> pages;
-    client.for_each_page([&](WebContentPage const& page) {
+    Vector<WebContentPageHandle> pages;
+    client.for_each_page([&](WebContentPageHandle const& page) {
         pages.append(page);
         return IterationDecision::Continue;
     });
@@ -190,7 +190,7 @@ HashMap<pid_t, pid_t> SiteIsolationManager::remote_frame_process_embedders() con
     HashMap<pid_t, pid_t> embedders;
 
     WebContentClient::for_each_client([&](WebContentClient& client) {
-        client.for_each_page([&](WebContentPage const& page) {
+        client.for_each_page([&](WebContentPageHandle const& page) {
             auto* traversable = page.traversable();
             if (!traversable || page.displays_tab())
                 return IterationDecision::Continue;
@@ -223,7 +223,7 @@ void SiteIsolationManager::host_opaque_origin_agent_with_initiator(CanonicalBrow
         agent.set_hosting_process_if_unset(*initiator_host);
 }
 
-ErrorOr<WebContentPage> SiteIsolationManager::obtain_child_document_host(CanonicalNavigable& navigable, CanonicalSimilarOriginWindowAgent& agent)
+ErrorOr<WebContentPageHandle> SiteIsolationManager::obtain_child_document_host(CanonicalNavigable& navigable, CanonicalSimilarOriginWindowAgent& agent)
 {
     auto& traversable = navigable.top_level_traversable();
     auto current_step = traversable.session_history().current_step();
@@ -268,12 +268,12 @@ ErrorOr<WebContentPage> SiteIsolationManager::obtain_child_document_host(Canonic
     }
 
     host->async_update_visibility_state(page_id, navigable.id(), traversable.system_visibility_state());
-    WebContentPage page { host.release_nonnull(), page_id };
+    WebContentPageHandle page { host.release_nonnull(), page_id };
     navigable.set_pending_host(page);
     return page;
 }
 
-void SiteIsolationManager::set_child_document_host(CanonicalNavigable& navigable, WebContentPage const& host)
+void SiteIsolationManager::set_child_document_host(CanonicalNavigable& navigable, WebContentPageHandle const& host)
 {
     if (navigable.pending_host_matches(host))
         navigable.clear_pending_host();
@@ -301,7 +301,7 @@ static Optional<Web::HTML::SessionHistoryEntryDescriptor> current_history_entry_
     return *current_entry;
 }
 
-void SiteIsolationManager::transition_child_frame_to_remote(WebContentPage const& parent_page, Web::HTML::CrossProcessId frame_id, WebContentPage remote_page)
+void SiteIsolationManager::transition_child_frame_to_remote(WebContentPageHandle const& parent_page, Web::HTML::CrossProcessId frame_id, WebContentPageHandle remote_page)
 {
     auto child_frame = parent_page.client->child_frame(parent_page.id, frame_id);
     if (!child_frame.has_value())

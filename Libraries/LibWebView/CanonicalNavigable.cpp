@@ -16,7 +16,7 @@
 
 namespace WebView {
 
-CanonicalNavigable::CanonicalNavigable(Web::HTML::CrossProcessId id, Optional<Web::HTML::CrossProcessId> parent_id, WebContentPage reporting_page)
+CanonicalNavigable::CanonicalNavigable(Web::HTML::CrossProcessId id, Optional<Web::HTML::CrossProcessId> parent_id, WebContentPageHandle reporting_page)
     : m_id(id)
     , m_parent_id(parent_id)
     , m_reporting_page(move(reporting_page))
@@ -85,7 +85,7 @@ CanonicalNavigable::~CanonicalNavigable()
     clear_ongoing_navigation();
 }
 
-bool CanonicalNavigable::is_hosted_by(WebContentPage const& page) const
+bool CanonicalNavigable::is_hosted_by(WebContentPageHandle const& page) const
 {
     return m_remote_host.value_or(m_reporting_page) == page;
 }
@@ -288,13 +288,13 @@ IterationDecision CanonicalNavigable::for_each_in_subtree(Function<IterationDeci
     return IterationDecision::Continue;
 }
 
-WebContentPage const& CanonicalNavigable::remote_host() const
+WebContentPageHandle const& CanonicalNavigable::remote_host() const
 {
     VERIFY(m_remote_host.has_value());
     return *m_remote_host;
 }
 
-void CanonicalNavigable::set_remote_host(WebContentPage page)
+void CanonicalNavigable::set_remote_host(WebContentPageHandle page)
 {
     VERIFY(page.client);
     detach_remote_host();
@@ -312,13 +312,13 @@ void CanonicalNavigable::detach_remote_host()
     top_level_traversable().stop_hosting_in_page(*this, m_remote_host.release_value());
 }
 
-WebContentPage const& CanonicalNavigable::pending_host() const
+WebContentPageHandle const& CanonicalNavigable::pending_host() const
 {
     VERIFY(m_pending_host.has_value());
     return *m_pending_host;
 }
 
-void CanonicalNavigable::set_pending_host(WebContentPage page)
+void CanonicalNavigable::set_pending_host(WebContentPageHandle page)
 {
     VERIFY(page.client);
     discard_pending_host();
@@ -367,7 +367,7 @@ void CanonicalNavigable::send_viewport_to_host() const
         send_viewport_to(*m_pending_host);
 }
 
-void CanonicalNavigable::send_viewport_to(WebContentPage const& host) const
+void CanonicalNavigable::send_viewport_to(WebContentPageHandle const& host) const
 {
     host.async_set_hosted_root_viewport(id(), m_viewport_rect->size(), m_viewport_intersection, m_device_pixel_ratio);
 }
@@ -396,7 +396,7 @@ void CanonicalNavigable::update_replicated_state(Web::HTML::ReplicatedNavigableS
     auto& traversable = top_level_traversable();
     Vector<NonnullRefPtr<WebContentClient>> clients;
     if (opener_changed) {
-        traversable.for_each_hosting_page([&](WebContentPage const& page) {
+        traversable.for_each_hosting_page([&](WebContentPageHandle const& page) {
             if (!any_of(clients, [&](auto const& client) { return client.ptr() == page.client.ptr(); }))
                 clients.append(*page.client);
         });
@@ -408,7 +408,7 @@ void CanonicalNavigable::update_replicated_state(Web::HTML::ReplicatedNavigableS
             traversable.represent_openers_in(client);
     }
 
-    traversable.for_each_page_representing(*this, [&](WebContentPage const& page) {
+    traversable.for_each_page_representing(*this, [&](WebContentPageHandle const& page) {
         page.async_update_remote_navigable(id(), *m_replicated_state);
     });
 
@@ -421,7 +421,7 @@ void CanonicalNavigable::active_document_completely_finished_loading()
 {
     // The navigable's container runs the load event steps in the page hosting its parent's document, which is among
     // the pages representing the navigable.
-    top_level_traversable().for_each_page_representing(*this, [&](WebContentPage const& page) {
+    top_level_traversable().for_each_page_representing(*this, [&](WebContentPageHandle const& page) {
         page.async_content_navigable_completely_finished_loading(id());
     });
 }

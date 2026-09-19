@@ -19,12 +19,12 @@ namespace WebView {
 
 // A page a WebContent process holds for the UI process. It holds the graph of one tab, and displays that tab when it
 // is the view's page.
-struct WEBVIEW_API WebContentPage : public WebContentServerPageProxy<WebContentPage> {
+struct WEBVIEW_API WebContentPageHandle : public WebContentServerPageProxy<WebContentPageHandle> {
     RefPtr<WebContentClient> client;
     Web::PageId id { 0 };
 
-    WebContentPage();
-    WebContentPage(RefPtr<WebContentClient>, Web::PageId);
+    WebContentPageHandle();
+    WebContentPageHandle(RefPtr<WebContentClient>, Web::PageId);
 
     // What the bound proxy sends through, and about.
     WebContentClient& routed_connection() const;
@@ -38,7 +38,7 @@ struct WEBVIEW_API WebContentPage : public WebContentServerPageProxy<WebContentP
     bool displays_tab() const;
     Optional<CanonicalNavigable&> hosted_navigable(Web::HTML::CrossProcessId) const;
     bool needs_beforeunload_check() const;
-    Optional<WebContentPage> endpoint_hosting_navigable_represented_by(CanonicalTraversable&, Web::HTML::CrossProcessId navigable_id) const;
+    Optional<WebContentPageHandle> endpoint_hosting_navigable_represented_by(CanonicalTraversable&, Web::HTML::CrossProcessId navigable_id) const;
 
     // Handlers for messages the page's process sends about it. The client forwards each message here.
     void did_request_navigation_of_navigable(Web::HTML::CrossProcessId navigable_id, Web::HTML::PreparedNavigationDescriptor navigation);
@@ -158,7 +158,7 @@ struct WEBVIEW_API WebContentPage : public WebContentServerPageProxy<WebContentP
     void did_request_set_system_focus(bool has_system_focus);
     void did_request_set_system_visibility_state(Web::HTML::VisibilityState visibility_state);
 
-    bool operator==(WebContentPage const& other) const { return client.ptr() == other.client.ptr() && id == other.id; }
+    bool operator==(WebContentPageHandle const& other) const { return client.ptr() == other.client.ptr() && id == other.id; }
 };
 
 }

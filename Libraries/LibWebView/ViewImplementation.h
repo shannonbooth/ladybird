@@ -73,13 +73,13 @@
 #include <LibWebView/StorageSetResult.h>
 #include <LibWebView/TabPerformanceStats.h>
 #include <LibWebView/WebContentClient.h>
-#include <LibWebView/WebContentPage.h>
+#include <LibWebView/WebContentPageHandle.h>
 #include <LibWebView/WebDriverSessionConfig.h>
 
 namespace WebView {
 
 struct GeolocationRequestKey {
-    WebContentPage page;
+    WebContentPageHandle page;
     u64 request_id { 0 };
 
     bool operator==(GeolocationRequestKey const&) const = default;
@@ -90,7 +90,7 @@ class WEBVIEW_API ViewImplementation
     , public BookmarkStoreObserver
     , public Weakable<ViewImplementation> {
     friend class WebContentClient;
-    friend struct WebContentPage;
+    friend struct WebContentPageHandle;
     friend class CanonicalTraversable;
 
 public:
@@ -183,16 +183,16 @@ public:
     Optional<u64> display_id() const { return m_display_id; }
     double maximum_frames_per_second() const { return m_maximum_frames_per_second; }
     void enqueue_input_event(Web::InputEvent);
-    void did_finish_handling_input_event(Badge<WebContentPage>, u64 event_id, Web::EventResult event_result);
-    void did_lose_input_event_endpoint(Badge<WebContentClient>, WebContentPage const&);
-    void handle_external_url(Badge<WebContentPage>, URL::URL, URL::Origin, bool has_transient_activation);
-    void did_request_cursor_change(Badge<WebContentPage>, Gfx::Cursor);
+    void did_finish_handling_input_event(Badge<WebContentPageHandle>, u64 event_id, Web::EventResult event_result);
+    void did_lose_input_event_endpoint(Badge<WebContentClient>, WebContentPageHandle const&);
+    void handle_external_url(Badge<WebContentPageHandle>, URL::URL, URL::Origin, bool has_transient_activation);
+    void did_request_cursor_change(Badge<WebContentPageHandle>, Gfx::Cursor);
 
     void set_preferred_color_scheme(Web::CSS::PreferredColorScheme);
     void set_preferred_contrast(Web::CSS::PreferredContrast);
     void set_preferred_motion(Web::CSS::PreferredMotion);
     // A page created to host documents of the tab in another process takes the preferences the view's page has.
-    void send_preferences_to_page(Badge<WebContentClient>, WebContentPage const&);
+    void send_preferences_to_page(Badge<WebContentClient>, WebContentPageHandle const&);
 
     void notify_cookies_changed(HashTable<String> const& changed_domains, ReadonlySpan<HTTP::Cookie::Cookie> page_cookies, ReadonlySpan<HTTP::Cookie::Cookie> host_cookies);
     void listen_for_host_cookie_changes(DevTools::DevToolsDelegate::OnHostCookieChange);
@@ -200,7 +200,7 @@ public:
     void notify_indexed_database_changed(JsonObject);
     u64 add_indexed_database_change_listener(DevTools::DevToolsDelegate::OnIndexedDatabaseChange);
     void remove_indexed_database_change_listener(u64 listener_id);
-    ErrorOr<Core::SharedVersionIndex> ensure_document_cookie_version_index(Badge<WebContentPage>, String const&);
+    ErrorOr<Core::SharedVersionIndex> ensure_document_cookie_version_index(Badge<WebContentPageHandle>, String const&);
     Optional<Core::SharedVersion> document_cookie_version(URL::URL const&) const;
 
     void notify_storage_changed(DevTools::DevToolsDelegate::StorageChange);
@@ -218,10 +218,10 @@ public:
     NonnullRefPtr<Core::Promise<Optional<String>>> selected_text_with_whitespace_collapsed();
     NonnullRefPtr<Core::Promise<Optional<DictionaryLookup>>> selected_text_for_dictionary_lookup();
     bool look_up_selected_text_at(Gfx::IntPoint widget_position);
-    void did_receive_selected_text(Badge<WebContentPage>, u64 request_id, ByteString selection);
-    void did_receive_selected_text_for_lookup(Badge<WebContentPage>, u64 request_id, Optional<DictionaryLookup> lookup);
-    void did_select_word_for_dictionary_lookup(Badge<WebContentPage>, u64 request_id, bool selected);
-    void did_cut_selected_text(Badge<WebContentPage>, u64 request_id, ByteString selection);
+    void did_receive_selected_text(Badge<WebContentPageHandle>, u64 request_id, ByteString selection);
+    void did_receive_selected_text_for_lookup(Badge<WebContentPageHandle>, u64 request_id, Optional<DictionaryLookup> lookup);
+    void did_select_word_for_dictionary_lookup(Badge<WebContentPageHandle>, u64 request_id, bool selected);
+    void did_cut_selected_text(Badge<WebContentPageHandle>, u64 request_id, ByteString selection);
     void select_all();
     void undo();
     void redo();
@@ -261,8 +261,8 @@ public:
     void detach_debugger();
     void interrupt_debugger();
     void resume_debugger(DebuggerResumeMode);
-    void did_pause_debugger(Badge<WebContentPage>);
-    void did_resume_debugger(Badge<WebContentPage>);
+    void did_pause_debugger(Badge<WebContentPageHandle>);
+    void did_resume_debugger(Badge<WebContentPageHandle>);
     void update_debugger_blackboxing(Utf16String, Vector<DebuggerBlackboxRange>, DebuggerBlackboxingOperation);
     void set_debugger_breakpoint(DebuggerBreakpointLocation, DebuggerBreakpointOptions, DevTools::DevToolsDelegate::OnDebuggerBreakpointOperationComplete);
     void remove_debugger_breakpoint(DebuggerBreakpointLocation, DevTools::DevToolsDelegate::OnDebuggerBreakpointOperationComplete);
@@ -334,17 +334,17 @@ public:
     void unmark_text_from_input_method();
     Optional<Web::DevicePixelRect> get_input_caret_rect();
     InputMethodState const& input_method_state() const { return m_input_method_state; }
-    void set_input_method_state(Badge<WebContentPage>, InputMethodState);
+    void set_input_method_state(Badge<WebContentPageHandle>, InputMethodState);
 
     Web::HTML::MuteState page_mute_state() const { return m_mute_state; }
     void toggle_page_mute_state();
 
-    void did_change_audio_play_state(Badge<WebContentPage>, Web::HTML::AudioPlayState);
+    void did_change_audio_play_state(Badge<WebContentPageHandle>, Web::HTML::AudioPlayState);
     Web::HTML::AudioPlayState audio_play_state() const { return m_audio_play_state; }
-    void did_change_screen_wake_lock_state(Badge<WebContentPage>, Web::ScreenWakeLockState);
+    void did_change_screen_wake_lock_state(Badge<WebContentPageHandle>, Web::ScreenWakeLockState);
     Web::ScreenWakeLockState screen_wake_lock_state() const { return m_screen_wake_lock_state; }
 
-    void request_history_operation(Badge<WebContentPage>, WebContentPage const& requesting_page, Web::HTML::CrossProcessId operation_id, Web::HistoryOperationParameters);
+    void request_history_operation(Badge<WebContentPageHandle>, WebContentPageHandle const& requesting_page, Web::HTML::CrossProcessId operation_id, Web::HistoryOperationParameters);
     void did_reset_session_history_for_testing(Badge<WebContentClient>, Web::HTML::SessionHistoryEntryDescriptor);
     bool capture_session_history_snapshot_for_testing(Badge<WebContentClient>);
     bool restore_captured_session_history_snapshot_for_testing(Badge<WebContentClient>);
@@ -356,17 +356,17 @@ public:
     JsonValue webdriver_session_history() const;
     void wait_for_webdriver_navigation_completion(Optional<u64> page_load_timeout, Function<void(Web::WebDriver::Response)>);
     void run_webdriver_content_command(u64 command_id, Web::WebDriver::SessionBrowsingContext, String const& name, JsonValue payload, Vector<String> arguments);
-    void did_complete_webdriver_content_command(Badge<WebContentPage>, u64 command_id, Web::WebDriver::Response);
-    void did_set_webdriver_current_browsing_context(Badge<WebContentPage>, u64 command_id, Web::HTML::CrossProcessId navigable_id);
+    void did_complete_webdriver_content_command(Badge<WebContentPageHandle>, u64 command_id, Web::WebDriver::Response);
+    void did_set_webdriver_current_browsing_context(Badge<WebContentPageHandle>, u64 command_id, Web::HTML::CrossProcessId navigable_id);
     void enqueue_webdriver_mouse_event(Badge<WebContentClient>, Web::MouseEvent, Function<void()> on_handled);
-    void did_lose_page(Badge<CanonicalTraversable>, WebContentPage const&);
+    void did_lose_page(Badge<CanonicalTraversable>, WebContentPageHandle const&);
     void set_webdriver_current_browsing_context_to_top_level();
     void switch_webdriver_to_parent_frame(Function<void(Web::WebDriver::Response)> on_complete);
     void did_close_browsing_context(Badge<WebContentClient>);
     void run_webdriver_user_prompt_handling(Function<void(Web::WebDriver::Response)> on_complete);
-    void did_complete_webdriver_user_prompt_handling(Badge<WebContentPage>, u64 request_id, Web::WebDriver::Response);
+    void did_complete_webdriver_user_prompt_handling(Badge<WebContentPageHandle>, u64 request_id, Web::WebDriver::Response);
     static Optional<ViewImplementation&> find_view_by_handle(StringView);
-    void did_change_background_color(Badge<WebContentPage>, Gfx::Color);
+    void did_change_background_color(Badge<WebContentPageHandle>, Gfx::Color);
     Gfx::Color page_background_color() const { return m_page_background_color; }
 
     void did_allocate_backing_stores(Badge<WebContentClient>, Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores);
@@ -377,10 +377,10 @@ public:
     };
     NonnullRefPtr<Core::Promise<LexicalPath>> take_screenshot(ScreenshotType);
     NonnullRefPtr<Core::Promise<LexicalPath>> take_dom_node_screenshot(Web::UniqueNodeID);
-    virtual void did_receive_screenshot(Badge<WebContentPage>, Gfx::ShareableBitmap const&);
+    virtual void did_receive_screenshot(Badge<WebContentPageHandle>, Gfx::ShareableBitmap const&);
 
     NonnullRefPtr<Core::Promise<String>> request_internal_page_info(PageInfoType);
-    void did_receive_internal_page_info(Badge<WebContentPage>, PageInfoType, Optional<Core::AnonymousBuffer> const&);
+    void did_receive_internal_page_info(Badge<WebContentPageHandle>, PageInfoType, Optional<Core::AnonymousBuffer> const&);
 
     ErrorOr<LexicalPath> dump_gc_graph();
 
@@ -462,10 +462,10 @@ public:
     Function<void()> on_fullscreen_window;
     Function<void()> on_exit_fullscreen_window;
     Function<void(Color current_color)> on_request_color_picker;
-    Function<void(WebContentPage const& requesting_page, u64 request_id)> on_request_geolocation_position;
-    Function<void(WebContentPage const& requesting_page, u64 request_id)> on_cancel_geolocation_position_request;
-    Function<void(WebContentPage const& requesting_page, u64 request_id)> on_start_geolocation_position_watch;
-    Function<void(WebContentPage const& requesting_page, u64 request_id)> on_stop_geolocation_position_watch;
+    Function<void(WebContentPageHandle const& requesting_page, u64 request_id)> on_request_geolocation_position;
+    Function<void(WebContentPageHandle const& requesting_page, u64 request_id)> on_cancel_geolocation_position_request;
+    Function<void(WebContentPageHandle const& requesting_page, u64 request_id)> on_start_geolocation_position_watch;
+    Function<void(WebContentPageHandle const& requesting_page, u64 request_id)> on_stop_geolocation_position_watch;
     Function<void(Web::HTML::FileFilter const& accepted_file_types, Web::HTML::AllowMultipleFiles)> on_request_file_picker;
     Function<void(Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items)> on_request_select_dropdown;
     Function<void(Web::KeyEvent const&)> on_finish_handling_key_event;
@@ -499,12 +499,12 @@ public:
     void did_request_page_context_menu(Badge<WebContentClient>, Gfx::IntPoint content_position, Web::ContextMenuForInputEventsTarget for_input_events_target);
     void did_request_link_context_menu(Badge<WebContentClient>, Gfx::IntPoint content_position, URL::URL url);
     void did_request_image_context_menu(Badge<WebContentClient>, Gfx::IntPoint content_position, URL::URL url, Optional<Gfx::ShareableBitmap> bitmap);
-    void did_request_media_context_menu(Badge<WebContentClient>, WebContentPage const& requesting_page, Gfx::IntPoint content_position, Web::Page::MediaContextMenu menu);
+    void did_request_media_context_menu(Badge<WebContentClient>, WebContentPageHandle const& requesting_page, Gfx::IntPoint content_position, Web::Page::MediaContextMenu menu);
     void send_to_media_context_menu_page(Function<void(WebContentClient&, Web::PageId)> const&);
 
-    void did_request_color_picker(Badge<WebContentPage>, WebContentPage const& requesting_page, Color current_color);
-    void did_request_file_picker(Badge<WebContentPage>, WebContentPage const& requesting_page, Web::HTML::FileFilter const& accepted_file_types, Web::HTML::AllowMultipleFiles);
-    void did_request_select_dropdown(Badge<WebContentClient>, WebContentPage const& requesting_page, Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items);
+    void did_request_color_picker(Badge<WebContentPageHandle>, WebContentPageHandle const& requesting_page, Color current_color);
+    void did_request_file_picker(Badge<WebContentPageHandle>, WebContentPageHandle const& requesting_page, Web::HTML::FileFilter const& accepted_file_types, Web::HTML::AllowMultipleFiles);
+    void did_request_select_dropdown(Badge<WebContentClient>, WebContentPageHandle const& requesting_page, Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items);
 
     Action& navigate_back_action() { return *m_navigate_back_action; }
     Action& navigate_forward_action() { return *m_navigate_forward_action; }
@@ -514,7 +514,7 @@ public:
     WebContentClient& client();
     WebContentClient const& client() const;
     Web::PageId page_id() const;
-    WebContentPage web_content_page() const { return { m_client_state.client, m_client_state.page_index }; }
+    WebContentPageHandle web_content_page() const { return { m_client_state.client, m_client_state.page_index }; }
 
     virtual Web::DevicePixelSize viewport_size() const = 0;
     virtual Gfx::IntPoint to_content_position(Gfx::IntPoint widget_position) const = 0;
@@ -563,7 +563,7 @@ protected:
         Always,
     };
     void dump_session_history(StringView reason, SessionHistoryDumpMode = SessionHistoryDumpMode::IfDebuggingEnabled) const;
-    void recover_current_session_history_entry_with_history_operation(Optional<WebContentPage> crashed_endpoint = {});
+    void recover_current_session_history_entry_with_history_operation(Optional<WebContentPageHandle> crashed_endpoint = {});
     void reconstruct_current_session_history_entry_with_history_operation(StringView reason);
     enum class ReconstructCanceledNavigation {
         No,
@@ -590,7 +590,7 @@ protected:
     };
     virtual void initialize_client(CreateNewClient = CreateNewClient::Yes, Optional<Web::HTML::CrossProcessId> initial_document_state_id = {});
     void cancel_all_native_geolocation_requests();
-    void send_geolocation_emulated_position(WebContentPage const&);
+    void send_geolocation_emulated_position(WebContentPageHandle const&);
     void reset_page_media_state();
 
     struct CrashState;
@@ -724,7 +724,7 @@ protected:
 
         // The page handling the event, which is not the view's own page when another process hosts the focused
         // navigable. A lost page never finishes the events it held.
-        WebContentPage endpoint;
+        WebContentPageHandle endpoint;
     };
     Vector<PendingInputEvent> m_pending_input_events;
     u64 m_next_input_event_id { 1 };
@@ -781,8 +781,8 @@ protected:
 
     u64 m_next_webdriver_user_prompt_request_id { 0 };
     HashMap<u64, Function<void(Web::WebDriver::Response)>> m_pending_webdriver_user_prompt_requests;
-    HashMap<u64, WebContentPage> m_pending_webdriver_commands;
-    HashMap<u64, WebContentPage> m_pending_webdriver_crash_commands;
+    HashMap<u64, WebContentPageHandle> m_pending_webdriver_commands;
+    HashMap<u64, WebContentPageHandle> m_pending_webdriver_crash_commands;
 
     // https://w3c.github.io/webdriver/#dfn-current-browsing-context
     // NB: The current top-level browsing context is the current browsing context when this is unset.
@@ -816,10 +816,10 @@ protected:
 
     Web::ViewportIsFullscreen m_is_fullscreen { Web::ViewportIsFullscreen::No };
 
-    Optional<WebContentPage> m_color_picker_page;
-    Optional<WebContentPage> m_file_picker_page;
-    Optional<WebContentPage> m_select_dropdown_page;
-    Optional<WebContentPage> m_media_context_menu_page;
+    Optional<WebContentPageHandle> m_color_picker_page;
+    Optional<WebContentPageHandle> m_file_picker_page;
+    Optional<WebContentPageHandle> m_select_dropdown_page;
+    Optional<WebContentPageHandle> m_media_context_menu_page;
 
     HashMap<GeolocationRequestKey, Core::GeolocationProvider::RequestId> m_geolocation_position_request_ids;
     HashMap<GeolocationRequestKey, Core::GeolocationProvider::WatchId> m_geolocation_watch_ids;
