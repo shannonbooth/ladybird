@@ -778,6 +778,23 @@ Messages::WebContentClient::DidRequestCookieResponse WebContentClient::did_reque
     return cookie;
 }
 
+void WebContentClient::did_close_browsing_context(Web::PageId page_id)
+{
+    if (auto* page = this->page(page_id)) {
+        page->did_close_browsing_context();
+        return;
+    }
+
+    // A view closed without waiting for its process closes the page here, and the process still acknowledges
+    // the close it was asked for. That acknowledgement is what lets an otherwise unused process go.
+    auto* page = find_page(page_id);
+    if (!page || !page->detached_close_pending())
+        return;
+    page->set_detached_close_pending(false);
+    release_unneeded_opener_pages();
+    close_server_if_unused();
+}
+
 void WebContentClient::did_set_cookie(URL::URL url, HTTP::Cookie::ParsedCookie cookie, HTTP::Cookie::Source source)
 {
     m_session->cookie_jar->set_cookie(url, cookie, source);
