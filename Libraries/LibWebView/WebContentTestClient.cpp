@@ -4,13 +4,15 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+#include <LibWebView/CookieJar.h>
 #include <LibWebView/WebContentClient.h>
+#include <LibWebView/WebContentPage.h>
 #include <LibWebView/WebContentTestClient.h>
 
 namespace WebView {
 
 WebContentTestClient::WebContentTestClient(NonnullOwnPtr<IPC::Transport> transport, WebContentClient& client)
-    : IPC::ConnectionToServer<WebContentTestClientEndpoint, WebContentTestServerEndpoint>(*this, move(transport))
+    : WebContentTestClientPageRoutingStub(*this, move(transport))
     , m_client(client)
 {
 }
@@ -29,69 +31,14 @@ void WebContentTestClient::die()
     // The WebContent process going away is handled by the main connection.
 }
 
-void WebContentTestClient::did_finish_test(Web::PageId page_id, String text)
+WebContentTestClientPageStub* WebContentTestClient::page_stub(Web::PageId const& page_id)
 {
-    m_client.did_finish_test(page_id, move(text));
-}
-
-void WebContentTestClient::did_set_test_timeout(Web::PageId page_id, double milliseconds)
-{
-    m_client.did_set_test_timeout(page_id, milliseconds);
-}
-
-void WebContentTestClient::did_receive_reference_test_metadata(Web::PageId page_id, JsonValue metadata)
-{
-    m_client.did_receive_reference_test_metadata(page_id, move(metadata));
+    return m_client.page(page_id);
 }
 
 void WebContentTestClient::did_expire_cookies_with_time_offset(AK::Duration offset)
 {
-    m_client.did_expire_cookies_with_time_offset(offset);
-}
-
-void WebContentTestClient::did_simulate_worker_request_server_connection_loss(Web::PageId page_id)
-{
-    m_client.did_simulate_worker_request_server_connection_loss(page_id);
-}
-
-Messages::WebContentTestClient::DidRequestUiProcessSessionHistoryForTestingResponse WebContentTestClient::did_request_ui_process_session_history_for_testing(Web::PageId page_id)
-{
-    return m_client.did_request_ui_process_session_history_for_testing(page_id);
-}
-
-Messages::WebContentTestClient::DidRequestSiteIsolationProcessTreeForTestingResponse WebContentTestClient::did_request_site_isolation_process_tree_for_testing(Web::PageId page_id)
-{
-    return m_client.did_request_site_isolation_process_tree_for_testing(page_id);
-}
-
-void WebContentTestClient::did_request_crash_of_remote_frame_processes_for_testing(Web::PageId page_id)
-{
-    m_client.did_request_crash_of_remote_frame_processes_for_testing(page_id);
-}
-
-void WebContentTestClient::did_reset_session_history_for_testing(Web::PageId page_id, Web::HTML::SessionHistoryEntryDescriptor active_entry)
-{
-    m_client.did_reset_session_history_for_testing(page_id, move(active_entry));
-}
-
-Messages::WebContentTestClient::DidRequestCaptureSessionHistorySnapshotForTestingResponse WebContentTestClient::did_request_capture_session_history_snapshot_for_testing(Web::PageId page_id)
-{
-    return m_client.did_request_capture_session_history_snapshot_for_testing(page_id);
-}
-
-Messages::WebContentTestClient::DidRequestRestoreSessionHistorySnapshotForTestingResponse WebContentTestClient::did_request_restore_session_history_snapshot_for_testing(Web::PageId page_id)
-{
-    return m_client.did_request_restore_session_history_snapshot_for_testing(page_id);
-}
-
-Messages::WebContentTestClient::DidRequestRegisterSessionStoreTabForTestingResponse WebContentTestClient::did_request_register_session_store_tab_for_testing(Web::PageId page_id)
-{
-    return m_client.did_request_register_session_store_tab_for_testing(page_id);
-}
-
-Messages::WebContentTestClient::DidRequestSessionStoreTabStateForTestingResponse WebContentTestClient::did_request_session_store_tab_state_for_testing(Web::PageId page_id)
-{
-    return m_client.did_request_session_store_tab_state_for_testing(page_id);
+    m_client.session().cookie_jar->expire_cookies_with_time_offset(offset);
 }
 
 }

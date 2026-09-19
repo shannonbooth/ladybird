@@ -1,7 +1,7 @@
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/Page/PageId.h>
 
-endpoint WebContentTestClient
+endpoint WebContentTestClient routed by Web::PageId page_id
 {
     did_finish_test(Web::PageId page_id, String text) =|
     did_set_test_timeout(Web::PageId page_id, double milliseconds) =|
