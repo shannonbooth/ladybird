@@ -168,13 +168,13 @@ ViewImplementation& WebContentPage::view() const
 
 bool WebContentPage::displays_tab() const
 {
-    return traversable().display_page() == handle();
+    return traversable().is_hosted_by(handle());
 }
 
 Optional<CanonicalNavigable&> WebContentPage::hosted_navigable(Web::HTML::CrossProcessId navigable_id) const
 {
     auto navigable = traversable().find(navigable_id);
-    if (!navigable.has_value() || !traversable().hosts(*navigable, handle()))
+    if (!navigable.has_value() || !navigable->is_hosted_by(handle()))
         return {};
     return *navigable;
 }
@@ -182,9 +182,9 @@ Optional<CanonicalNavigable&> WebContentPage::hosted_navigable(Web::HTML::CrossP
 Optional<WebContentPageHandle> WebContentPage::endpoint_hosting_navigable_represented_by(Web::HTML::CrossProcessId navigable_id) const
 {
     auto target = traversable().find(navigable_id);
-    if (!target.has_value() || traversable().hosts(*target, handle()))
+    if (!target.has_value() || target->is_hosted_by(handle()))
         return {};
-    auto endpoint = traversable().page_hosting(*target);
+    auto endpoint = target->document_host();
     if (!endpoint.has_value() || !endpoint->is_open())
         return {};
     return endpoint;

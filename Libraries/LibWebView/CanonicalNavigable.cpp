@@ -86,10 +86,9 @@ CanonicalNavigable::~CanonicalNavigable()
     clear_ongoing_navigation();
 }
 
-bool CanonicalNavigable::is_hosted_by(WebContentPageHandle const& page) const
+Optional<WebContentPageHandle> CanonicalNavigable::document_host() const
 {
-    auto const& host = m_remote_host.has_value() ? m_remote_host : m_reporting_page;
-    return host == page;
+    return m_remote_host.has_value() ? m_remote_host : m_reporting_page;
 }
 
 void CanonicalNavigable::stage_same_document_session_history_entry(Web::HTML::CrossProcessId operation_id, Web::HTML::SameDocumentNavigationEntry entry)
@@ -608,7 +607,7 @@ void CanonicalNavigable::did_commit_navigation(Web::HTML::ReplicatedNavigableSta
     update_replicated_state(move(replicated_state));
 
     auto& traversable = top_level_traversable();
-    auto endpoint = traversable.page_hosting(*this);
+    auto endpoint = document_host();
     if (endpoint.has_value()) {
         // FIXME: Pass the document's requestsOAC value once Origin-Agent-Cluster is implemented.
         auto browsing_context_group = traversable.active_browsing_context().group();

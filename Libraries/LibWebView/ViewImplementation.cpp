@@ -2330,7 +2330,7 @@ void ViewImplementation::initialize_client(CreateNewClient create_new_client, Op
         m_client_state.client = client_or_error.release_value_but_fixme_should_propagate_errors();
         // A replacement process hosts the committed entry's document once a top-level activation commits there.
         if (replaces_existing_client)
-            m_top_level_traversable.set_replacement_display_page(web_content_page());
+            m_top_level_traversable.set_pending_host(web_content_page());
     } else {
         m_client_state.client->register_view(m_client_state.page_index, *this);
     }
@@ -2650,7 +2650,7 @@ void ViewImplementation::run_webdriver_content_command(u64 command_id, Web::WebD
         // https://w3c.github.io/webdriver/#dfn-no-longer-open
         // A browsing context is said to be no longer open if its navigable has been destroyed.
         auto navigable = m_top_level_traversable.find(*navigable_id);
-        page = navigable.has_value() ? m_top_level_traversable.page_hosting(*navigable) : Optional<WebContentPageHandle> {};
+        page = navigable.has_value() ? navigable->document_host() : Optional<WebContentPageHandle> {};
         if (!page.has_value() || !page->is_open()) {
             Application::the().complete_webdriver_content_command(command_id, Web::WebDriver::Error::from_code(Web::WebDriver::ErrorCode::NoSuchWindow, "Window not found"sv));
             return;
@@ -3167,7 +3167,7 @@ void ViewImplementation::did_reset_session_history_for_testing(
     m_top_level_traversable.reset_session_history_for_testing(move(active_entry));
     m_webdriver_navigation_observation.clear();
     // The reset installed the process's own active entry as the canonical current entry.
-    m_top_level_traversable.did_activate_document_in_display_page();
+    m_top_level_traversable.clear_pending_host();
     update_navigation_action_state();
 
     if (auto queue_promise = move(m_pending_session_history_reset_queue_promise))

@@ -87,10 +87,13 @@ public:
     Optional<Web::HTML::CrossProcessId> parent_id() const { return m_parent_id; }
     void set_id(Web::HTML::CrossProcessId id) { m_id = id; }
 
-    // The page whose document tree contains this frame. When the frame is local, this page also hosts the frame's
-    // active document.
-    // The page holding the navigable's container, which reported it. None for the root of a tab without a process.
+    // A page plays one of three roles for a navigable. The reporting page holds its container, and reported it. The
+    // document host hosts its active document, which is the reporting page unless the document is out of process.
+    // The pending host is chosen to host its next document, and becomes the document host when that activates.
+    // The traversable has no container, so its document host is the page of the view displaying the tab.
     Optional<WebContentPageHandle> const& reporting_page() const { return m_reporting_page; }
+    virtual Optional<WebContentPageHandle> document_host() const;
+    bool is_hosted_by(WebContentPageHandle const& page) const { return document_host() == page; }
 
     CanonicalNavigable* parent() { return m_parent; }
     CanonicalNavigable const* parent() const { return m_parent; }
@@ -115,8 +118,8 @@ public:
     IterationDecision for_each_in_inclusive_subtree(Function<IterationDecision(CanonicalNavigable const&)> const&) const;
     IterationDecision for_each_in_subtree(Function<IterationDecision(CanonicalNavigable const&)> const&) const;
 
+    // The document host when it is not the reporting page.
     bool has_remote_host() const { return m_remote_host.has_value(); }
-    bool is_hosted_by(WebContentPageHandle const&) const;
     WebContentPageHandle const& remote_host() const;
 
     void set_remote_host(WebContentPageHandle);
@@ -128,7 +131,7 @@ public:
     // when that document is activated; until then the page hosting the displayed document keeps it.
     ErrorOr<WebContentPageHandle> obtain_document_host(CanonicalSimilarOriginWindowAgent&);
     // The document a host was chosen for activated there, so that host takes the container over.
-    void set_document_host(WebContentPageHandle const&);
+    virtual void set_document_host(WebContentPageHandle const&);
     // The next document, or none after the host went away, is hosted by the page holding the container.
     void transition_to_local_host();
 
@@ -141,9 +144,8 @@ public:
     // The remote child under this local root of a page at a position in the root's coordinates, if any.
     Optional<RemoteChildFrameInputTarget> remote_child_frame_input_target_at(WebContentPageHandle const& page, Web::DevicePixelPoint) const;
 
-    // The page chosen to host the navigable's next document, from the response that names the document
-    // until the document is activated. The displayed document stays with its host until then, so that it is
-    // unloaded there before the container is handed over.
+    // The pending host is chosen by the response that names the next document. The displayed document stays with
+    // its host until the next one activates, so that it is unloaded there before the container is handed over.
     bool has_pending_host() const { return m_pending_host.has_value(); }
     bool pending_host_matches(WebContentPageHandle const& page) const { return m_pending_host == page; }
     WebContentPageHandle const& pending_host() const;
@@ -151,7 +153,7 @@ public:
     // The pending host took the container over, so its page is no longer pending.
     void clear_pending_host();
     // The document the pending host was to display never activated: a page created for it is discarded.
-    void discard_pending_host();
+    virtual void discard_pending_host();
 
     Optional<Web::DevicePixelRect> const& viewport_rect() const { return m_viewport_rect; }
     Web::DevicePixelRect const& viewport_intersection() const { return m_viewport_intersection; }

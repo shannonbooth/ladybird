@@ -73,9 +73,6 @@ public:
     u64 next_sequence_number() { return m_next_sequence_number++; }
     void abandon_history_operations();
 
-    // The page hosting the navigable's active document, if any process does.
-    Optional<WebContentPageHandle> page_hosting(CanonicalNavigable const&) const;
-
     void did_receive_history_operation_ready(WebContentPageHandle const& source_page, Web::HTML::CrossProcessId operation_id, Web::HistoryOperationReadyResult);
     void did_receive_history_step_unload_cancelation_result(WebContentPageHandle const& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::HistoryStepResult, Web::HTML::UnloadPromptShown);
     void did_receive_beforeunload_check_result(WebContentPageHandle const& source_page, Web::HTML::CrossProcessId check_id, Web::HTML::HistoryStepResult, Web::HTML::UnloadPromptShown);
@@ -108,21 +105,22 @@ public:
     void forget_opener_page(WebContentPageHandle const&);
     void discard_opener_pages();
     void for_each_page_representing(CanonicalNavigable const&, Function<void(WebContentPageHandle const&)> const&) const;
-    bool hosts(CanonicalNavigable const&, WebContentPageHandle const&) const;
     bool represents(CanonicalNavigable const&, WebContentPageHandle const&) const;
     bool page_hosts_any(WebContentPageHandle const&) const;
     void stop_hosting_in_page(CanonicalNavigable&, WebContentPageHandle);
     void release_page_if_unused(WebContentPageHandle);
 
-    // The view's page paints the tab and runs its history jobs. It is the traversable's pending host from the moment
-    // the view replaces its process until a document activates there. The page that displayed the document before
-    // keeps hosting it until it is unloaded there.
     // The view displaying the tab, when one owns this traversable.
     Optional<ViewImplementation&> view() const;
     void set_view(Badge<ViewImplementation>, ViewImplementation&);
+    // The view's page paints the tab and runs its history jobs, and is the traversable's document host. It is the
+    // pending host instead from the moment the view replaces its process until a document activates there. The
+    // displaced document host is the page that displayed the document before, which keeps hosting it until it is
+    // unloaded there.
     Optional<WebContentPageHandle> display_page() const;
-    void set_replacement_display_page(WebContentPageHandle const&);
-    void did_activate_document_in_display_page();
+    virtual Optional<WebContentPageHandle> document_host() const override { return display_page(); }
+    virtual void set_document_host(WebContentPageHandle const&) override;
+    virtual void discard_pending_host() override;
     void set_displaced_document_host(WebContentPageHandle);
     bool is_displaced_document_host(WebContentPageHandle const& page) const { return m_displaced_document_host == page; }
     void release_displaced_document_host();
