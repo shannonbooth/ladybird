@@ -97,7 +97,7 @@ Optional<SiteIsolationManager::RemoteChildFrameInputTarget> SiteIsolationManager
 
 void SiteIsolationManager::remove_page(WebContentPage const& page)
 {
-    auto* traversable = page.client->traversable_for_page(page.id);
+    auto* traversable = page.traversable();
     if (!traversable)
         return;
 
@@ -136,15 +136,13 @@ void SiteIsolationManager::remove_page(WebContentPage const& page)
 
 void SiteIsolationManager::remove_all_pages_for_client(WebContentClient& client)
 {
-    Vector<Web::PageId> page_ids;
-    page_ids.ensure_capacity(client.m_views.size() + client.m_embedded_pages.size());
-    for (auto const& view_entry : client.m_views)
-        page_ids.append(view_entry.key);
-    for (auto const& embedded_page_entry : client.m_embedded_pages)
-        page_ids.append(embedded_page_entry.key);
-
-    for (auto page_id : page_ids)
-        remove_page({ &client, page_id });
+    Vector<WebContentPage> pages;
+    client.for_each_page([&](WebContentPage const& page) {
+        pages.append(page);
+        return IterationDecision::Continue;
+    });
+    for (auto const& page : pages)
+        remove_page(page);
 }
 
 String SiteIsolationManager::dump_process_tree(WebContentClient& client, Web::PageId page_id) const
@@ -187,19 +185,20 @@ HashMap<pid_t, pid_t> SiteIsolationManager::remote_frame_process_embedders() con
     HashMap<pid_t, pid_t> embedders;
 
     WebContentClient::for_each_client([&](WebContentClient& client) {
-        for (auto const& embedded_page_entry : client.m_embedded_pages) {
-            auto* traversable = client.traversable_for_page(embedded_page_entry.key);
-            if (!traversable)
-                continue;
+        client.for_each_page([&](WebContentPage const& page) {
+            auto* traversable = page.traversable();
+            if (!traversable || page.view().has_value())
+                return IterationDecision::Continue;
 
             // The process holding the container of a navigable the page hosts embeds the page.
             traversable->for_each_in_subtree([&](CanonicalNavigable const& navigable) {
-                if (!navigable.has_remote_host() || navigable.remote_host() != WebContentPage { &client, embedded_page_entry.key })
+                if (!navigable.has_remote_host() || navigable.remote_host() != page)
                     return IterationDecision::Continue;
                 embedders.set(client.pid(), navigable.reporting_page().client->pid());
                 return IterationDecision::Break;
             });
-        }
+            return IterationDecision::Continue;
+        });
 
         return IterationDecision::Continue;
     });

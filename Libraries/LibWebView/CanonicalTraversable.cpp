@@ -341,7 +341,7 @@ void CanonicalTraversable::stop_hosting_in_page(CanonicalNavigable& navigable, W
 void CanonicalTraversable::release_page_if_unused(WebContentPage page)
 {
     // The view's page displays the tab whatever it hosts of it.
-    if (page.client->is_view_page(page.id) || page_hosts_any(page))
+    if (page.view().has_value() || page_hosts_any(page))
         return;
     if (is_opener_page(page)) {
         if (page.client->holds_part_of_a_tab_opened_by(*this))
@@ -381,7 +381,7 @@ void CanonicalTraversable::release_displaced_document_host()
 {
     if (!m_displaced_document_host.has_value())
         return;
-    if (!m_displaced_document_host->client->is_page_open(m_displaced_document_host->id)) {
+    if (!m_displaced_document_host->is_open()) {
         m_displaced_document_host.clear();
         return;
     }
@@ -2309,7 +2309,7 @@ void CanonicalTraversable::enqueue_history_operation(Web::HTML::CrossProcessId o
 
         // AD-HOC: The canonical tree stages same-document entries when WebContent admits their finalization request.
         // This makes the entry addressable during the interval before the spec's queued finalization steps run.
-        auto target_navigable = requesting_page.client->hosted_navigable_for_page(requesting_page.id, parameters.navigable_id);
+        auto target_navigable = requesting_page.hosted_navigable(parameters.navigable_id);
         if (target_navigable.has_value() && &target_navigable->top_level_traversable() == this) {
             if (parameters.previous_entry_persisted_state.has_value())
                 update_session_history_entry_persisted_state(*target_navigable, *parameters.previous_entry_persisted_state);

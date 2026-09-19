@@ -2186,7 +2186,7 @@ bool ViewImplementation::needs_beforeunload_check() const
     // Each page of the tab reports for the documents it hosts.
     bool needs_beforeunload_check = false;
     m_top_level_traversable.for_each_hosting_page([&](WebContentPage const& page) {
-        if (page.client->page_needs_beforeunload_check(page.id))
+        if (page.needs_beforeunload_check())
             needs_beforeunload_check = true;
     });
     return needs_beforeunload_check;
