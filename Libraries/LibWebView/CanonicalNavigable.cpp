@@ -21,11 +21,18 @@
 
 namespace WebView {
 
-CanonicalNavigable::CanonicalNavigable(Web::HTML::CrossProcessId id, Optional<Web::HTML::CrossProcessId> parent_id, RefPtr<WebContentPage> reporting_page)
+CanonicalNavigable::CanonicalNavigable(Web::HTML::CrossProcessId id, Optional<Web::HTML::CrossProcessId> parent_id, RefPtr<CanonicalDocument> container_document)
     : m_id(id)
     , m_parent_id(parent_id)
-    , m_reporting_page(move(reporting_page))
+    , m_container_document(move(container_document))
 {
+}
+
+RefPtr<WebContentPage> CanonicalNavigable::reporting_page() const
+{
+    if (!m_container_document)
+        return nullptr;
+    return m_container_document->page_created_in();
 }
 
 CanonicalDocument& CanonicalNavigable::active_document() const
@@ -38,7 +45,33 @@ CanonicalDocument& CanonicalNavigable::active_document() const
 
 void CanonicalNavigable::set_active_document(NonnullRefPtr<CanonicalDocument> document)
 {
+    // The document this one replaces was unloaded where it was hosted before this one activated.
+    if (m_active_document && m_active_document != document)
+        m_active_document->set_unloaded();
     m_active_document = move(document);
+}
+
+// The document the navigable's ongoing navigation or the history step being applied populates, until it activates.
+RefPtr<CanonicalDocument> CanonicalNavigable::document_being_populated() const
+{
+    RefPtr<CanonicalDocument> document;
+    if (m_ongoing_navigation.has_value() && m_ongoing_navigation->document)
+        document = m_ongoing_navigation->document;
+    else
+        document = top_level_traversable().document_of_pending_history_job(*this);
+    if (document == m_active_document)
+        return nullptr;
+    return document;
+}
+
+// The navigable's document that page hosts: the one it populates, or the active document.
+RefPtr<CanonicalDocument> CanonicalNavigable::document_hosted_by(WebContentPage const& page) const
+{
+    if (auto document = document_being_populated(); document && document->host() == &page)
+        return document;
+    if (m_active_document && m_active_document->host() == &page)
+        return m_active_document;
+    return nullptr;
 }
 
 CanonicalBrowsingContext& CanonicalNavigable::active_browsing_context() const
@@ -101,6 +134,16 @@ static CanonicalBrowsingContextGroup& group_of(CanonicalNavigable const& navigab
         group = navigable.top_level_traversable().active_browsing_context().group();
     VERIFY(group);
     return *group;
+}
+
+// A document the process hosting the navigable created without the UI process choosing a page for it, as for a
+// javascript: URL, with the agent obtained for its origin in the navigable's browsing context group.
+NonnullRefPtr<CanonicalDocument> CanonicalNavigable::document_created_by_host(URL::Origin const& origin)
+{
+    auto& browsing_context = active_browsing_context();
+    // FIXME: Pass the document's requestsOAC value once Origin-Agent-Cluster is implemented.
+    auto window = CanonicalWindow::create(group_of(*this, browsing_context).obtain_similar_origin_window_agent(origin, false));
+    return CanonicalDocument::create(origin, browsing_context, move(window), CanonicalDocument::IsInitialAboutBlank::No);
 }
 
 // https://html.spec.whatwg.org/multipage/document-lifecycle.html#initialise-the-document-object
@@ -200,7 +243,7 @@ RefPtr<WebContentClient> CanonicalNavigable::obtain_process_to_host(CanonicalDoc
 }
 
 // The page of the process to create a child navigable's next document in, or of a new process when that is null.
-ErrorOr<NonnullRefPtr<WebContentPage>> CanonicalNavigable::obtain_page_to_host_document_in(RefPtr<WebContentClient> process)
+ErrorOr<NonnullRefPtr<WebContentPage>> CanonicalNavigable::obtain_page_to_host_document_in(CanonicalDocument& document, RefPtr<WebContentClient> process)
 {
     VERIFY(parent());
     auto& traversable = top_level_traversable();
@@ -243,18 +286,22 @@ ErrorOr<NonnullRefPtr<WebContentPage>> CanonicalNavigable::obtain_page_to_host_d
         page = process->page(page_id);
     }
 
-    set_pending_host(*page);
+    document.set_host(*page);
+    send_viewport_to(*page);
     return page.release_nonnull();
 }
 
 CanonicalNavigable::~CanonicalNavigable()
 {
-    clear_ongoing_navigation();
+    // The traversable, which removal and the view ask to discard a navigation's host, is gone before this runs.
+    clear_ongoing_navigation_state();
 }
 
 bool CanonicalNavigable::is_hosted_by(WebContentPage const& page) const
 {
-    return (m_remote_host ? m_remote_host : m_reporting_page).ptr() == &page;
+    if (is_top_level_traversable())
+        return false;
+    return (has_remote_host() ? active_document().host() : reporting_page()).ptr() == &page;
 }
 
 void CanonicalNavigable::stage_same_document_session_history_entry(Web::HTML::CrossProcessId operation_id, Web::HTML::SameDocumentNavigationEntry entry)
@@ -455,17 +502,19 @@ IterationDecision CanonicalNavigable::for_each_in_subtree(Function<IterationDeci
     return IterationDecision::Continue;
 }
 
-WebContentPage& CanonicalNavigable::remote_host() const
+// A child navigable's active document is hosted by the page holding its container, or by another page.
+bool CanonicalNavigable::has_remote_host() const
 {
-    VERIFY(m_remote_host);
-    return *m_remote_host;
+    if (is_top_level_traversable() || !m_active_document)
+        return false;
+    auto host = m_active_document->host();
+    return host && host != reporting_page();
 }
 
-void CanonicalNavigable::set_remote_host(NonnullRefPtr<WebContentPage> page)
+WebContentPage& CanonicalNavigable::remote_host() const
 {
-    detach_remote_host();
-    m_remote_host = move(page);
-    send_viewport_to_host();
+    VERIFY(has_remote_host());
+    return *m_active_document->host();
 }
 
 void CanonicalNavigable::hand_pending_webdriver_commands_to(WebContentPage& new_host)
@@ -478,50 +527,43 @@ void CanonicalNavigable::hand_pending_webdriver_commands_to(WebContentPage& new_
         view->move_pending_webdriver_commands_to_new_host({}, id(), *old_host, new_host);
 }
 
+// The active document is gone from the page hosting it, which represents the navigable remotely from now on, unless it
+// hosts nothing of the tab any more, in which case it is discarded.
 void CanonicalNavigable::detach_remote_host()
 {
-    if (!m_remote_host)
+    if (!has_remote_host())
         return;
-
-    // The page that hosted the document represents the navigable remotely from now on, unless it hosts nothing of the
-    // tab any more, in which case it is discarded.
-    top_level_traversable().stop_hosting_in_page(*this, m_remote_host.release_nonnull());
+    NonnullRefPtr<WebContentPage> host = remote_host();
+    m_active_document->set_unloaded();
+    top_level_traversable().stop_hosting_in_page(*this, move(host));
 }
 
-WebContentPage& CanonicalNavigable::pending_host() const
+RefPtr<WebContentPage> CanonicalNavigable::pending_host() const
 {
-    VERIFY(m_pending_host);
-    return *m_pending_host;
-}
-
-void CanonicalNavigable::set_pending_host(NonnullRefPtr<WebContentPage> page)
-{
-    discard_pending_host();
-    m_pending_host = move(page);
-    send_viewport_to_host();
-}
-
-void CanonicalNavigable::clear_pending_host()
-{
-    m_pending_host.clear();
+    auto document = document_being_populated();
+    if (!document)
+        return nullptr;
+    return document->host();
 }
 
 void CanonicalNavigable::discard_pending_host()
 {
-    if (!m_pending_host)
-        return;
-    auto page = m_pending_host.release_nonnull();
+    if (auto document = document_being_populated())
+        discard_document(*document);
+}
 
-    // The page hosting the displayed document was to host the next one too, and keeps hosting the displayed one.
-    if (m_remote_host == page)
+// A document that never activated is discarded. The page chosen to host it drops the provisional navigable it created
+// for it, unless it hosts the displayed document itself, and is released when it holds nothing else of the tab.
+void CanonicalNavigable::discard_document(CanonicalDocument& document)
+{
+    auto page = document.host();
+    if (!page)
         return;
-
-    // The chosen page drops the provisional navigable it created for a document another page displays. A page holding
-    // the container hosts the displayed document itself when the navigable has no remote host, and created none.
-    if (page == m_reporting_page && !has_remote_host())
+    document.set_unloaded();
+    if (is_hosted_by(*page))
         return;
     page->async_discard_provisional_navigable(id());
-    top_level_traversable().release_page_if_unused(move(page));
+    top_level_traversable().release_page_if_unused(page.release_nonnull());
 }
 
 void CanonicalNavigable::set_viewport(Compositing::DevicePixelRect viewport_rect, Compositing::DevicePixelRect viewport_intersection, double device_pixel_ratio)
@@ -534,16 +576,16 @@ void CanonicalNavigable::set_viewport(Compositing::DevicePixelRect viewport_rect
 
 void CanonicalNavigable::send_viewport_to_host() const
 {
-    if (!m_viewport_rect.has_value())
-        return;
-    if (m_remote_host)
-        send_viewport_to(*m_remote_host);
-    if (m_pending_host && m_pending_host != m_remote_host)
-        send_viewport_to(*m_pending_host);
+    if (has_remote_host())
+        send_viewport_to(remote_host());
+    if (auto pending_host = this->pending_host(); pending_host && (!has_remote_host() || pending_host != &remote_host()))
+        send_viewport_to(*pending_host);
 }
 
 void CanonicalNavigable::send_viewport_to(WebContentPage& host) const
 {
+    if (!m_viewport_rect.has_value())
+        return;
     host.async_set_hosted_root_viewport(id(), m_viewport_rect->size(), m_viewport_intersection, m_device_pixel_ratio);
 }
 
@@ -560,7 +602,7 @@ void CanonicalNavigable::update_container_state(Web::HTML::ReplicatedContainerSt
         return;
     m_replicated_state->container = state;
     if (has_remote_host())
-        m_remote_host->async_update_local_root_container_state(id(), move(state));
+        remote_host().async_update_local_root_container_state(id(), move(state));
 }
 
 void CanonicalNavigable::update_replicated_state(Web::HTML::ReplicatedNavigableState state)
@@ -637,23 +679,18 @@ void CanonicalNavigable::did_commit_navigation(Web::HTML::ReplicatedNavigableSta
 
     if (!document && navigation_id.has_value() && commits_ongoing_navigation && m_ongoing_navigation.has_value())
         document = m_ongoing_navigation->document;
-    // NB: The process hosting the navigable created a document the UI process did not, as for a javascript: URL,
-    //     with the agent obtained for its origin in the navigable's browsing context group.
-    if (!document && active_document_changed) {
-        auto& browsing_context = active_browsing_context();
-        // FIXME: Pass the document's requestsOAC value once Origin-Agent-Cluster is implemented.
-        auto window = CanonicalWindow::create(group_of(*this, browsing_context).obtain_similar_origin_window_agent(replicated_state.active_document_origin, false));
-        document = CanonicalDocument::create(replicated_state.active_document_origin, browsing_context, move(window), CanonicalDocument::IsInitialAboutBlank::No);
-    }
+    if (!document && active_document_changed)
+        document = document_created_by_host(replicated_state.active_document_origin);
     if (document) {
+        // The page hosting the navigable created the document, when the UI process chose no page for it.
+        if (!document->host()) {
+            if (auto endpoint = top_level_traversable().page_hosting(*this))
+                document->set_host(*endpoint);
+        }
         set_active_document(*document);
         document->make_active();
     }
     update_replicated_state(move(replicated_state));
-
-    auto& traversable = top_level_traversable();
-    if (auto endpoint = traversable.page_hosting(*this))
-        endpoint->client().host_agent(active_document().relevant_global_object().agent());
 
     // A navigation can commit while a newer navigation is already in flight. In that case update the replicated
     // state for the committed document without changing the newer navigation's transaction.
@@ -712,8 +749,8 @@ void CanonicalNavigable::clear_ongoing_navigation_state()
 
 void CanonicalNavigable::clear_ongoing_navigation()
 {
-    clear_ongoing_navigation_state();
     discard_pending_host();
+    clear_ongoing_navigation_state();
 }
 
 void CanonicalNavigable::clear_superseded_navigation()
@@ -723,7 +760,8 @@ void CanonicalNavigable::clear_superseded_navigation()
 
 BlobURLStore* CanonicalNavigable::blob_url_store() const
 {
-    return m_reporting_page ? m_reporting_page->client().session().blob_url_store.ptr() : nullptr;
+    auto page = reporting_page();
+    return page ? page->client().session().blob_url_store.ptr() : nullptr;
 }
 
 void CanonicalNavigable::retain_blob_url_token(URL::BlobURLEntry::Token token)
@@ -756,9 +794,9 @@ void CanonicalNavigable::set_navigation_host(WebContentPage& page)
 {
     auto& ongoing_navigation = ensure_ongoing_navigation();
     ongoing_navigation.host = page;
-    // The page creates the document the navigation populates, so its process hosts the document's agent.
+    // The page creates the document the navigation populates.
     if (ongoing_navigation.document)
-        page.client().host_agent(ongoing_navigation.document->relevant_global_object().agent());
+        ongoing_navigation.document->set_host(page);
 
     // The population worker conducts the navigation until the hosting process takes over.
     ongoing_navigation.population_worker = nullptr;

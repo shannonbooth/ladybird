@@ -241,7 +241,7 @@ void WebContentClient::assign_view(Badge<Application>, ViewImplementation& view)
     view.m_client_state.page = open_page(initial_page_id, view.traversable());
 
     if (m_initial_top_level_history_entry.has_value()) {
-        view.traversable().create_a_new_top_level_traversable({}, m_initial_top_level_history_entry.release_value(), *this);
+        view.traversable().create_a_new_top_level_traversable({}, m_initial_top_level_history_entry.release_value(), *view.m_client_state.page);
         view.update_navigation_action_state();
     }
 }

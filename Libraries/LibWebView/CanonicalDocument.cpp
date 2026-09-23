@@ -7,6 +7,7 @@
 #include <LibWebView/CanonicalBrowsingContext.h>
 #include <LibWebView/CanonicalDocument.h>
 #include <LibWebView/CanonicalWindow.h>
+#include <LibWebView/WebContentClient.h>
 
 namespace WebView {
 
@@ -24,6 +25,22 @@ CanonicalDocument::CanonicalDocument(URL::Origin origin, NonnullRefPtr<Canonical
 }
 
 CanonicalDocument::~CanonicalDocument() = default;
+
+// The page whose process the Document is created in, until it is unloaded, or discarded before it activated.
+RefPtr<WebContentPage> CanonicalDocument::host() const
+{
+    if (m_is_unloaded)
+        return nullptr;
+    return m_page_created_in;
+}
+
+// NB: The Document is created in page's process, which hosts its agent from then on.
+void CanonicalDocument::set_host(WebContentPage& page)
+{
+    VERIFY(!m_page_created_in || m_page_created_in == &page);
+    m_page_created_in = page;
+    page.client().host_agent(relevant_global_object().agent());
+}
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#make-active
 void CanonicalDocument::make_active()

@@ -127,17 +127,15 @@ public:
     Optional<ViewImplementation&> view() const;
     void set_view(Badge<ViewImplementation>, ViewImplementation&);
     RefPtr<WebContentPage> display_page() const;
-    virtual void discard_pending_host() override;
-    void set_replacement_display_page(WebContentPage&);
-    void did_activate_document_in_display_page();
-    void set_displaced_document_host(NonnullRefPtr<WebContentPage>);
-    bool is_displaced_document_host(WebContentPage const& page) const { return m_displaced_document_host.ptr() == &page; }
+    virtual RefPtr<WebContentPage> pending_host() const override;
+    void discard_stand_in(NonnullRefPtr<WebContentPage>);
+    RefPtr<WebContentPage> displaced_document_host() const;
+    bool is_displaced_document_host(WebContentPage const& page) const { return displaced_document_host() == &page; }
     RefPtr<WebContentPage> page_displaying_displaced_document() const;
-    NonnullRefPtr<WebContentPage> take_page_displaying_displaced_document();
     void release_displaced_document_host();
     void release_displaced_document_host_after_unload();
     void discard_displaced_document_host();
-    void forget_displaced_document_host(Badge<SiteIsolationManager>);
+    RefPtr<CanonicalDocument> document_of_pending_history_job(CanonicalNavigable const&) const;
     void did_lose_page(WebContentPage&, WebContentProcessLost);
 
     TraversableSessionHistory const& session_history() const { return m_session_history; }
@@ -166,7 +164,7 @@ public:
     ByteString pending_same_document_session_history_entries_for_debug() const;
 
     void prepare_for_reload();
-    void create_a_new_top_level_traversable(Optional<CanonicalNavigable&> opener, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, WebContentClient& process);
+    void create_a_new_top_level_traversable(Optional<CanonicalNavigable&> opener, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, WebContentPage&);
     bool update_session_history_entry_navigation_api_state(CanonicalNavigable&, Web::HTML::SessionHistoryEntryIdentity const&, Web::HTML::StorageSerializationRecord navigation_api_state);
     bool update_session_history_entry_scroll_restoration_mode(CanonicalNavigable&, Web::HTML::SessionHistoryEntryIdentity const&, Web::HTML::ScrollRestorationMode scroll_restoration_mode);
     bool update_session_history_entry_document_state_navigable_target_name(CanonicalNavigable&, Web::HTML::SessionHistoryEntryIdentity const&, Utf16String navigable_target_name);
@@ -207,7 +205,7 @@ private:
     };
     void unload_a_document_and_its_descendants(Optional<Web::HTML::CrossProcessId> operation_id, Web::HTML::CrossProcessId navigable_id, RefPtr<WebContentPage> continuing_endpoint, Web::HTML::ChildNavigableDestruction, Function<void(UnloadedInItsHost)> queue_document_unload_task);
     void unload_document_in_its_host(Optional<Web::HTML::CrossProcessId> operation_id, NonnullRefPtr<WebContentPage>, Web::HTML::CrossProcessId navigable_id, Web::HTML::ChildNavigableDestruction, Function<void()> after_unload);
-    void discard_pending_host_at(Web::HTML::CrossProcessId navigable_id, WebContentPage&);
+    void discard_pending_host_at(Web::HTML::CrossProcessId navigable_id, WebContentPage&, RefPtr<CanonicalDocument>);
     void dispatch_next_beforeunload_group(HistoryOperation&);
     void complete_unload_cancelation(HistoryOperation&, Web::HTML::HistoryStepResult);
     void dispatch_descendant_unload_task(Web::HTML::CrossProcessId unload_id, Web::HTML::CrossProcessId navigable_id);
@@ -298,8 +296,6 @@ private:
     };
     HashMap<Web::HTML::CrossProcessId, PendingUnload> m_pending_unloads;
 
-    RefPtr<WebContentPage> m_displaced_document_host;
-
     // Pages that hold this tab, and host none of it, in a process holding part of a related tab.
     Vector<NonnullRefPtr<WebContentPage>> m_representing_pages;
 
@@ -315,7 +311,6 @@ private:
     };
     HashMap<Web::HTML::CrossProcessId, PendingBeforeunloadCheck> m_pending_beforeunload_checks;
     void dispatch_next_beforeunload_group(Web::HTML::CrossProcessId check_id);
-    bool m_displaced_document_unload_pending { false };
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#system-visibility-state
     Web::HTML::VisibilityState m_system_visibility_state { Web::HTML::VisibilityState::Hidden };

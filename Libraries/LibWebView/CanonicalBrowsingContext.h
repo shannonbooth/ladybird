@@ -30,9 +30,9 @@ public:
     // A WebContent process creates the document of a new browsing context. The UI process models the browsing context,
     // the document, and the similar-origin window agent of that document, given the document's origin and the process
     // creating it.
-    static BrowsingContextAndDocument create_a_new_browsing_context_and_document(CanonicalBrowsingContextGroup&, URL::Origin const& document_origin, Optional<WebContentClient&> document_process);
-    static BrowsingContextAndDocument create_a_new_top_level_browsing_context_and_document(URL::Origin const& document_origin, Optional<WebContentClient&> document_process);
-    static BrowsingContextAndDocument create_a_new_auxiliary_browsing_context_and_document(CanonicalNavigable& opener, URL::Origin const& document_origin, Optional<WebContentClient&> document_process);
+    static BrowsingContextAndDocument create_a_new_browsing_context_and_document(CanonicalBrowsingContextGroup&, URL::Origin const& document_origin, Optional<WebContentPage&> document_page);
+    static BrowsingContextAndDocument create_a_new_top_level_browsing_context_and_document(URL::Origin const& document_origin, Optional<WebContentPage&> document_page);
+    static BrowsingContextAndDocument create_a_new_auxiliary_browsing_context_and_document(CanonicalNavigable& opener, URL::Origin const& document_origin, Optional<WebContentPage&> document_page);
 
     ~CanonicalBrowsingContext();
 

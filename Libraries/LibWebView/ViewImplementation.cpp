@@ -102,7 +102,8 @@ ViewImplementation::~ViewImplementation()
 {
     TabPerformanceMonitor::forget_view(view_id());
     m_top_level_traversable.clear_ongoing_navigation();
-    m_top_level_traversable.discard_pending_host();
+    if (auto stand_in = m_top_level_traversable.pending_host())
+        m_top_level_traversable.discard_stand_in(*stand_in);
     cancel_all_native_geolocation_requests();
 
     if (!m_client_state.client_handle.is_empty())
@@ -229,8 +230,6 @@ bool ViewImplementation::switch_process_for_navigation(Utf16String const& naviga
     // Replies from the replaced process will never arrive. Complete the in-flight operations so the
     // traversal queue can serve the new process.
     m_top_level_traversable.abandon_history_operations();
-    if (displaced_page)
-        m_top_level_traversable.set_displaced_document_host(*displaced_page);
 
     Optional<Web::HTML::CrossProcessId> initial_document_state_id;
     if (auto const* current_entry = m_top_level_traversable.session_history().current_entry())
@@ -290,10 +289,8 @@ void ViewImplementation::switch_process_for_history_traversal(Web::HTML::CrossPr
     // The outgoing process keeps displaying the traversable's document until the UI process has unloaded it there,
     // before the document the new process populates activates. A page that was to display a document that never
     // activated displays none, and the page displaying the traversable's document stays displaced.
-    if (m_client_state.page && !m_top_level_traversable.pending_host_matches(page())) {
+    if (m_client_state.page && !m_top_level_traversable.pending_host_matches(page()))
         client().keep_view_page_for_displaced_document(page_id(), m_top_level_traversable);
-        m_top_level_traversable.set_displaced_document_host(page());
-    }
 
     reset_page_media_state();
     // NB: Preserve the in-flight traversal operations so crash recovery can redispatch them to the
@@ -316,7 +313,9 @@ void ViewImplementation::switch_process_for_history_traversal(Web::HTML::CrossPr
 // display the displacing document is let go of.
 void ViewImplementation::cancel_process_switch()
 {
-    auto page = m_top_level_traversable.take_page_displaying_displaced_document();
+    auto page = m_top_level_traversable.page_displaying_displaced_document();
+    VERIFY(page);
+    RefPtr<WebContentPage> stand_in = m_client_state.page;
 
     auto pending_webdriver_commands = move(m_pending_webdriver_commands);
     auto pending_webdriver_crash_commands = move(m_pending_webdriver_crash_commands);
@@ -328,7 +327,8 @@ void ViewImplementation::cancel_process_switch()
     m_client_state.client_handle = move(client_handle);
     m_client_state.page = page;
     page->client().display_page_of_this_process({}, *page);
-    m_top_level_traversable.discard_pending_host();
+    if (stand_in)
+        m_top_level_traversable.discard_stand_in(*stand_in);
     initialize_client(CreateNewClient::No);
 
     if (on_web_content_process_change_for_cross_site_navigation)
@@ -2370,6 +2370,8 @@ void ViewImplementation::display_page_populating_next_document(KeepsBrowsingCont
         return;
     }
 
+    RefPtr<WebContentPage> previous_page = m_client_state.page;
+    auto previous_page_is_stand_in = previous_page && m_top_level_traversable.pending_host_matches(*previous_page);
     prepare_to_replace_client();
     auto client_handle = m_client_state.client_handle;
     m_client_state = {};
@@ -2392,7 +2394,8 @@ void ViewImplementation::display_page_populating_next_document(KeepsBrowsingCont
         VERIFY(m_client_state.page);
     }
 
-    m_top_level_traversable.set_replacement_display_page(page());
+    if (previous_page_is_stand_in)
+        m_top_level_traversable.discard_stand_in(*previous_page);
     // The page holds the related tabs before it begins hosting the traversable, whose browsing context reaches them.
     m_top_level_traversable.represent_related_tabs_in(client());
     // NB: The stand-in's document is not the displayed one. Keep it hidden so it cannot paint over the outgoing page;
@@ -2411,7 +2414,8 @@ void ViewImplementation::initialize_client(CreateNewClient create_new_client, Op
             ? Optional<Web::HTML::CrossProcessId> { m_top_level_traversable.id() }
             : Optional<Web::HTML::CrossProcessId> {};
         auto client_handle = m_client_state.client_handle;
-        auto replaces_existing_client = m_client_state.page != nullptr;
+        RefPtr<WebContentPage> previous_page = m_client_state.page;
+        auto previous_page_is_stand_in = previous_page && m_top_level_traversable.pending_host_matches(*previous_page);
         m_client_state = {};
         m_client_state.client_handle = move(client_handle);
 
@@ -2421,8 +2425,8 @@ void ViewImplementation::initialize_client(CreateNewClient create_new_client, Op
             warnln("Failed to launch WebContent during process swap: {}", client_or_error.error());
         // Launching the process assigns this view the process's initial page.
         VERIFY(m_client_state.page);
-        if (replaces_existing_client)
-            m_top_level_traversable.set_replacement_display_page(page());
+        if (previous_page_is_stand_in)
+            m_top_level_traversable.discard_stand_in(*previous_page);
     } else {
         resume_debugger_for_initialization();
         // The view was given a page of its parent's process before it asked to be initialized, or a page to display
@@ -3309,8 +3313,6 @@ void ViewImplementation::did_reset_session_history_for_testing(
     auto promise = move(m_pending_session_history_reset_for_testing);
     m_top_level_traversable.reset_session_history_for_testing(move(active_entry));
     m_webdriver_navigation_observation.clear();
-    // The reset installed the process's own active entry as the canonical current entry.
-    m_top_level_traversable.did_activate_document_in_display_page();
     update_navigation_action_state();
 
     if (auto queue_promise = move(m_pending_session_history_reset_queue_promise))

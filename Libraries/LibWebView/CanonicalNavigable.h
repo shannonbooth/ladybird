@@ -78,7 +78,7 @@ public:
         Optional<Utf16String> navigation_id {};
     };
 
-    CanonicalNavigable(Web::HTML::CrossProcessId id, Optional<Web::HTML::CrossProcessId> parent_id, RefPtr<WebContentPage> reporting_page);
+    CanonicalNavigable(Web::HTML::CrossProcessId id, Optional<Web::HTML::CrossProcessId> parent_id, RefPtr<CanonicalDocument> container_document);
     virtual ~CanonicalNavigable();
 
     virtual bool is_top_level_traversable() const { return false; }
@@ -87,9 +87,10 @@ public:
     Optional<Web::HTML::CrossProcessId> parent_id() const { return m_parent_id; }
     void set_id(Web::HTML::CrossProcessId id) { m_id = id; }
 
-    // The page whose document tree contains this frame. When the frame is local, this page also hosts the frame's
-    // active document.
-    RefPtr<WebContentPage> const& reporting_page() const { return m_reporting_page; }
+    // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-container-document
+    RefPtr<CanonicalDocument> const& container_document() const { return m_container_document; }
+    // The page holding the frame's container. A local frame's active document is hosted there too.
+    RefPtr<WebContentPage> reporting_page() const;
 
     CanonicalNavigable* parent() { return m_parent; }
     CanonicalNavigable const* parent() const { return m_parent; }
@@ -102,6 +103,9 @@ public:
     CanonicalDocument& active_document() const;
     bool has_active_document() const { return m_active_document; }
     void set_active_document(NonnullRefPtr<CanonicalDocument>);
+    NonnullRefPtr<CanonicalDocument> document_created_by_host(URL::Origin const&);
+    RefPtr<CanonicalDocument> document_being_populated() const;
+    RefPtr<CanonicalDocument> document_hosted_by(WebContentPage const&) const;
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-bc
     CanonicalBrowsingContext& active_browsing_context() const;
@@ -109,7 +113,7 @@ public:
     NonnullRefPtr<CanonicalBrowsingContext> obtain_a_browsing_context_to_use_for_a_navigation_response(Web::HTML::OpenerPolicyEnforcementResult const&);
     NonnullRefPtr<CanonicalDocument> create_and_initialize_a_document(NavigationLoader::ResponseDocument const&);
     RefPtr<WebContentClient> obtain_process_to_host(CanonicalDocument const&, Optional<URL::Origin> const& initiator_origin) const;
-    ErrorOr<NonnullRefPtr<WebContentPage>> obtain_page_to_host_document_in(RefPtr<WebContentClient> process);
+    ErrorOr<NonnullRefPtr<WebContentPage>> obtain_page_to_host_document_in(CanonicalDocument&, RefPtr<WebContentClient> process);
 
     CanonicalNavigable& append_child(NonnullOwnPtr<CanonicalNavigable>);
     NonnullOwnPtr<CanonicalNavigable> remove_child(CanonicalNavigable&);
@@ -120,25 +124,20 @@ public:
     IterationDecision for_each_in_inclusive_subtree(Function<IterationDecision(CanonicalNavigable const&)> const&) const;
     IterationDecision for_each_in_subtree(Function<IterationDecision(CanonicalNavigable const&)> const&) const;
 
-    bool has_remote_host() const { return m_remote_host; }
+    bool has_remote_host() const;
     bool is_hosted_by(WebContentPage const&) const;
     WebContentPage& remote_host() const;
 
-    void set_remote_host(NonnullRefPtr<WebContentPage>);
     void detach_remote_host();
     void hand_pending_webdriver_commands_to(WebContentPage& new_host);
 
-    // The page chosen to host the navigable's next document, from the response that names the document
-    // until the document is activated. The displayed document stays with its host until then, so that it is
-    // unloaded there before the container is handed over.
-    bool has_pending_host() const { return m_pending_host; }
-    bool pending_host_matches(WebContentPage const& page) const { return m_pending_host.ptr() == &page; }
-    WebContentPage& pending_host() const;
-    void set_pending_host(NonnullRefPtr<WebContentPage>);
-    // The pending host took the container over, so its page is no longer pending.
-    void clear_pending_host();
-    // The document the pending host was to display never activated: a page created for it is discarded.
-    virtual void discard_pending_host();
+    // The page hosting the document the navigable is populating, until that document is activated. The displayed
+    // document stays with its host until then, so that it is unloaded there before the container is handed over.
+    virtual RefPtr<WebContentPage> pending_host() const;
+    bool has_pending_host() const { return pending_host(); }
+    bool pending_host_matches(WebContentPage const& page) const { return pending_host() == &page; }
+    void discard_pending_host();
+    void discard_document(CanonicalDocument&);
 
     Optional<Compositing::DevicePixelRect> const& viewport_rect() const { return m_viewport_rect; }
     Compositing::DevicePixelRect const& viewport_intersection() const { return m_viewport_intersection; }
@@ -218,7 +217,7 @@ public:
 private:
     Web::HTML::CrossProcessId m_id;
     Optional<Web::HTML::CrossProcessId> m_parent_id;
-    RefPtr<WebContentPage> m_reporting_page;
+    RefPtr<CanonicalDocument> m_container_document;
     CanonicalNavigable* m_parent { nullptr };
     Vector<NonnullOwnPtr<CanonicalNavigable>> m_children;
 
@@ -238,9 +237,6 @@ private:
     Optional<Compositing::DevicePixelRect> m_viewport_rect;
     Compositing::DevicePixelRect m_viewport_intersection;
     double m_device_pixel_ratio { 1 };
-
-    RefPtr<WebContentPage> m_remote_host;
-    RefPtr<WebContentPage> m_pending_host;
 };
 
 }

@@ -257,7 +257,7 @@ bool WebContentPage::continue_navigation_population_in_selected_process(Web::HTM
         return view().switch_process_for_navigation(navigation_id, keeps_browsing_context, process ? traversable.page_to_display_document_in(*process) : nullptr);
     }
 
-    auto host_or_error = navigable->obtain_page_to_host_document_in(process);
+    auto host_or_error = navigable->obtain_page_to_host_document_in(*document, process);
     if (host_or_error.is_error()) {
         warnln("Unable to create WebContent page for child frame navigation: {}", host_or_error.error());
         navigable->clear_ongoing_navigation();
@@ -558,7 +558,7 @@ void WebContentPage::did_create_child_frame(Web::HTML::CrossProcessId parent_fra
     VERIFY(group);
 
     // 3. Let browsingContext and document be the result of creating a new browsing context and document given element's node document, element, and group.
-    auto document = CanonicalBrowsingContext::create_a_new_browsing_context_and_document(*group, replicated_state.active_document_origin, client()).document;
+    auto document = CanonicalBrowsingContext::create_a_new_browsing_context_and_document(*group, replicated_state.active_document_origin, *this).document;
 
     // 6. Let documentState be a new document state, with [...]
     // 7. Let navigable be a new navigable.
@@ -2066,7 +2066,7 @@ Messages::WebContentClient::DidRequestNewWebViewResponse WebContentPage::did_req
 
     auto initial_history_entry = Web::HTML::create_initial_session_history_entry_descriptor(
         Application::the().allocate_ui_process_cross_process_id(), move(opener_origin), move(opener_base_url), move(target_name));
-    new_view.traversable().create_a_new_top_level_traversable(opener, initial_history_entry, client());
+    new_view.traversable().create_a_new_top_level_traversable(opener, initial_history_entry, *new_page);
     new_view.traversable().represent_in_processes_holding_related_tabs();
     new_view.update_navigation_action_state();
 
