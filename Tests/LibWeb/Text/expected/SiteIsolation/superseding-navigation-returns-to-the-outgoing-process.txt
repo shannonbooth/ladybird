@@ -1,0 +1,3 @@
+first document loaded
+second document loaded
+popup document reachable from its opener: true

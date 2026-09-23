@@ -198,6 +198,7 @@ public:
     void set_ongoing_navigation_to_traversal(Web::HTML::CrossProcessId operation_id);
     void clear_ongoing_navigation_traversal(Web::HTML::CrossProcessId operation_id);
     virtual void clear_ongoing_navigation();
+    virtual void clear_superseded_navigation();
     void clear_ongoing_navigation_state();
     void set_navigation_population_worker(WebContentPage&);
     bool navigation_population_matches(WebContentPage const&, Utf16String const& navigation_id) const;

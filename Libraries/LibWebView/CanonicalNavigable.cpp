@@ -684,7 +684,7 @@ void CanonicalNavigable::set_ongoing_navigation(OngoingNavigation ongoing_naviga
     //     let go of in between.
     auto blob_url = BlobURLHandle::for_url(blob_url_store(), ongoing_navigation.url);
 
-    clear_ongoing_navigation();
+    clear_superseded_navigation();
     m_navigation_blob_url = move(blob_url);
     m_ongoing_navigation = move(ongoing_navigation);
 }
@@ -714,6 +714,11 @@ void CanonicalNavigable::clear_ongoing_navigation()
 {
     clear_ongoing_navigation_state();
     discard_pending_host();
+}
+
+void CanonicalNavigable::clear_superseded_navigation()
+{
+    clear_ongoing_navigation();
 }
 
 BlobURLStore* CanonicalNavigable::blob_url_store() const

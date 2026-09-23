@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    // A popup navigating cross-site moves to another process, while the process it left keeps displaying its
+    // document until the cross-site document activates. A navigation superseding that one, to a document of the
+    // displayed document's agent, returns the popup to the process displaying it: its opener, in that process,
+    // reaches the popup's new document directly.
+    promiseTest(async () => {
+        const httpServer = httpTestServer();
+        const runId = crypto.randomUUID();
+
+        const nextMessage = () => new Promise(resolve => addEventListener("message", event => resolve(event.data), { once: true }));
+
+        const secondUrl = await httpServer.createEcho("GET", `/superseding-second-${runId}`, {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+            body: `<!DOCTYPE html><script>opener.postMessage("second document loaded", "*");<\/script>`,
+        });
+
+        const crossSiteUrl = new URL(
+            await httpServer.createEcho("GET", `/superseding-cross-site-${runId}`, {
+                status: 200,
+                headers: { "Content-Type": "text/html" },
+                body: `<!DOCTYPE html><script>opener.postMessage("cross-site document loaded", "*");<\/script>`,
+            })
+        );
+        crossSiteUrl.hostname = uniqueLocalhostHostname("superseding-cross-site");
+
+        // The cross-site navigation is superseded while its new process starts, before its document activates.
+        const firstUrl = await httpServer.createEcho("GET", `/superseding-first-${runId}`, {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+            body: `<!DOCTYPE html>first<script>
+                opener.postMessage("first document loaded", "*");
+                location.href = ${JSON.stringify(crossSiteUrl.href)};
+                setTimeout(() => { location.href = ${JSON.stringify(secondUrl)}; }, 150);
+            <\/script>`,
+        });
+
+        let message = nextMessage();
+        const popup = window.open(firstUrl);
+        println(await message);
+        println(await nextMessage());
+
+        let reachable = false;
+        try {
+            reachable = popup.document.URL === secondUrl;
+        } catch (error) {
+            println(`popup document threw: ${error.name}`);
+        }
+        println(`popup document reachable from its opener: ${reachable}`);
+        popup.close();
+    });
+</script>

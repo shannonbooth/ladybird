@@ -303,8 +303,8 @@ RefPtr<WebContentPage> CanonicalTraversable::page_to_display_document_in(WebCont
 {
     if (auto page_id = process.page_id_for_traversable(*this); page_id.has_value()) {
         RefPtr<WebContentPage> page = process.page(*page_id);
-        // The page still displays the document it is to unload before the next one activates, so a new process
-        // populates that one.
+        // The page is unloading the document it displayed before the next one activates, so a new process populates
+        // that one.
         if (is_displaced_document_host(*page))
             return nullptr;
         return page;
@@ -455,14 +455,17 @@ RefPtr<WebContentPage> CanonicalTraversable::display_page() const
     return {};
 }
 
+// The page that was to display the traversable's next document drops the traversable standing in for the one
+// displaying the tab, and represents the tab from then on when its process holds a related tab.
 void CanonicalTraversable::discard_pending_host()
 {
-    // A replacement the view left before a document activated in it hosts nothing of the tab. It is the
-    // process the view installed, not a provisional navigable a page created, so nothing is discarded in it.
     if (!has_pending_host())
         return;
     NonnullRefPtr previous = pending_host();
     clear_pending_host();
+    previous->async_discard_provisional_navigable(id());
+    if (!previous->displays_tab() && !is_representing_page(previous) && previous->client().holds_part_of_a_tab_related_to(*this))
+        m_representing_pages.append(previous);
     release_page_if_unused(previous);
 }
 
@@ -489,12 +492,38 @@ void CanonicalTraversable::forget_displaced_document_host(Badge<SiteIsolationMan
     m_displaced_document_unload_pending = false;
 }
 
+// The page still displaying the traversable's document while another process populates the document displacing it,
+// until that document is being unloaded.
+RefPtr<WebContentPage> CanonicalTraversable::page_displaying_displaced_document() const
+{
+    if (m_displaced_document_unload_pending)
+        return nullptr;
+    for (auto const& pending_unload : m_pending_unloads) {
+        if (pending_unload.value.nodes.contains(id()))
+            return nullptr;
+    }
+    return m_displaced_document_host;
+}
+
+NonnullRefPtr<WebContentPage> CanonicalTraversable::take_page_displaying_displaced_document()
+{
+    VERIFY(m_displaced_document_host && !m_displaced_document_unload_pending);
+    return m_displaced_document_host.release_nonnull();
+}
+
 void CanonicalTraversable::clear_ongoing_navigation()
 {
     // The replacement process the view installed is the pending host until a document activates in it. It is not
     // part of the navigation being cleared, so clearing one does not unmake it.
     clear_ongoing_navigation_state();
     release_displaced_document_host();
+}
+
+// A navigation superseding another leaves the page displaying the traversable's document displaced: its own document
+// may be created there, and is otherwise unloaded before the superseding navigation's document activates.
+void CanonicalTraversable::clear_superseded_navigation()
+{
+    clear_ongoing_navigation_state();
 }
 
 void CanonicalTraversable::release_displaced_document_host()
@@ -1725,8 +1754,14 @@ void CanonicalTraversable::continue_history_navigation_population(Web::HTML::Cro
                     return;
                 operation->unavailable_job_endpoints.append(*endpoint);
                 operation->changing_job_endpoints.remove(navigable_id);
-                auto keeps_browsing_context = &document->browsing_context() == &active_browsing_context() ? ViewImplementation::KeepsBrowsingContext::Yes : ViewImplementation::KeepsBrowsingContext::No;
-                view->switch_process_for_history_traversal(pending_job.value()->job.target_entry.document_state.id, keeps_browsing_context, process ? page_to_display_document_in(*process) : nullptr);
+                // A document created in the process still displaying the traversable's document, while another
+                // process populates the document displacing it, returns the tab to that process.
+                if (auto displaced_page = page_displaying_displaced_document(); process && displaced_page && process == &displaced_page->client()) {
+                    view->cancel_process_switch();
+                } else {
+                    auto keeps_browsing_context = &document->browsing_context() == &active_browsing_context() ? ViewImplementation::KeepsBrowsingContext::Yes : ViewImplementation::KeepsBrowsingContext::No;
+                    view->switch_process_for_history_traversal(pending_job.value()->job.target_entry.document_state.id, keeps_browsing_context, process ? page_to_display_document_in(*process) : nullptr);
+                }
                 operation = find_history_operation(operation_id);
                 if (!operation)
                     return;

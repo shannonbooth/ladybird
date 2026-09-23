@@ -214,8 +214,11 @@ bool ViewImplementation::switch_process_for_navigation(Utf16String const& naviga
     }
 
     // The outgoing process keeps displaying the traversable's document until the UI process has unloaded it there,
-    // before the document the new process populates activates.
+    // before the document the new process populates activates. A page that was to display a document that never
+    // activated displays none, and the page displaying the traversable's document stays displaced.
     RefPtr<WebContentPage> displaced_page = m_client_state.page;
+    if (displaced_page && m_top_level_traversable.pending_host_matches(*displaced_page))
+        displaced_page = nullptr;
     if (displaced_page) {
         fail_pending_debugger_requests();
         displaced_page->client().keep_view_page_for_displaced_document(displaced_page->id(), m_top_level_traversable);
@@ -285,8 +288,9 @@ void ViewImplementation::switch_process_for_history_traversal(Web::HTML::CrossPr
     }
 
     // The outgoing process keeps displaying the traversable's document until the UI process has unloaded it there,
-    // before the document the new process populates activates.
-    if (m_client_state.page) {
+    // before the document the new process populates activates. A page that was to display a document that never
+    // activated displays none, and the page displaying the traversable's document stays displaced.
+    if (m_client_state.page && !m_top_level_traversable.pending_host_matches(page())) {
         client().keep_view_page_for_displaced_document(page_id(), m_top_level_traversable);
         m_top_level_traversable.set_displaced_document_host(page());
     }
@@ -302,6 +306,36 @@ void ViewImplementation::switch_process_for_history_traversal(Web::HTML::CrossPr
 
     handle_resize();
     dump_session_history("after-history-traversal-process-swap"sv);
+
+    complete_webdriver_content_commands_after_process_replacement(pending_webdriver_commands);
+    complete_webdriver_content_commands_after_process_replacement(pending_webdriver_crash_commands);
+}
+
+// A document created in the process still displaying the traversable's document, while another process populates the
+// document displacing it, returns the tab to that process: its page displays the tab again, and the page that was to
+// display the displacing document is let go of.
+void ViewImplementation::cancel_process_switch()
+{
+    auto page = m_top_level_traversable.take_page_displaying_displaced_document();
+
+    auto pending_webdriver_commands = move(m_pending_webdriver_commands);
+    auto pending_webdriver_crash_commands = move(m_pending_webdriver_crash_commands);
+
+    dump_session_history("before-process-swap-cancellation"sv);
+    prepare_to_replace_client();
+    auto client_handle = m_client_state.client_handle;
+    m_client_state = {};
+    m_client_state.client_handle = move(client_handle);
+    m_client_state.page = page;
+    page->client().display_page_of_this_process({}, *page);
+    m_top_level_traversable.discard_pending_host();
+    initialize_client(CreateNewClient::No);
+
+    if (on_web_content_process_change_for_cross_site_navigation)
+        on_web_content_process_change_for_cross_site_navigation();
+
+    handle_resize();
+    dump_session_history("after-process-swap-cancellation"sv);
 
     complete_webdriver_content_commands_after_process_replacement(pending_webdriver_commands);
     complete_webdriver_content_commands_after_process_replacement(pending_webdriver_crash_commands);

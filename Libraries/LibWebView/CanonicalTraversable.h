@@ -53,6 +53,7 @@ public:
 
     virtual bool is_top_level_traversable() const override { return true; }
     virtual void clear_ongoing_navigation() override;
+    virtual void clear_superseded_navigation() override;
     CanonicalBrowsingContext& browsing_context_for_document_creation(WebContentPage const&) const;
 
     // Apply-the-history-step coordination. Operations serialize on the traversable's session history traversal
@@ -131,6 +132,8 @@ public:
     void did_activate_document_in_display_page();
     void set_displaced_document_host(NonnullRefPtr<WebContentPage>);
     bool is_displaced_document_host(WebContentPage const& page) const { return m_displaced_document_host.ptr() == &page; }
+    RefPtr<WebContentPage> page_displaying_displaced_document() const;
+    NonnullRefPtr<WebContentPage> take_page_displaying_displaced_document();
     void release_displaced_document_host();
     void release_displaced_document_host_after_unload();
     void discard_displaced_document_host();

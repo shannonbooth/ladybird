@@ -241,8 +241,12 @@ bool WebContentPage::continue_navigation_population_in_selected_process(Web::HTM
     // The view displays the page populating the traversable's next document from the start of the population.
     if (navigable->is_top_level_traversable()) {
         auto& traversable = navigable->top_level_traversable();
+        // A document created in the process still displaying the traversable's document, while another process
+        // populates the document displacing it, returns the tab to that process.
+        if (auto displaced_page = traversable.page_displaying_displaced_document(); process && displaced_page && process == &displaced_page->client())
+            view().cancel_process_switch();
         if (process && process == &traversable.display_page()->client())
-            return populate_in(*this);
+            return populate_in(*traversable.display_page());
         if (!displays_tab()) {
             navigable->clear_ongoing_navigation();
             return false;
