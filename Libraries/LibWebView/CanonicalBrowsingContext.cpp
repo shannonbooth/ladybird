@@ -33,7 +33,7 @@ CanonicalBrowsingContext::BrowsingContextAndDocument CanonicalBrowsingContext::c
     // NB: The realm is in the process creating the document, so that process hosts agent.
     auto window = CanonicalWindow::create(agent);
     if (document_process.has_value())
-        agent->set_hosting_process_if_unset(*document_process);
+        document_process->host_agent(*agent);
 
     // 15. Let document be a new Document, with:
     //     origin: origin

@@ -222,58 +222,45 @@ bool WebContentPage::continue_navigation_population_in_selected_process(Web::HTM
     };
 
     // The task queued by step 5 of attempting to populate the history entry's document runs in the process hosting
-    // the browsing context that the document it creates belongs to. A response that creates no document is finished
-    // by the process that fetched it.
+    // the agent of the document it creates. A response that creates no document is finished by the process that
+    // fetched it.
     auto response_document = loader.response_document();
     if (!response_document.has_value())
         return populate_in(*this);
 
     auto document = navigable->create_and_initialize_a_document(*response_document);
     ongoing_navigation->document = document;
-    auto browsing_context_group_switch = &document->browsing_context() != &navigable->active_browsing_context();
 
+    // A document created for inline content stands in for the resource the process that fetched could not load, in an
+    // agent of its own; that process hosts it.
+    if (response_document->is_inline_content)
+        return populate_in(*this);
+
+    auto process = navigable->obtain_process_to_host(*document, loader.request().history_entry.document_state.initiator_origin);
+
+    // The view displays the page populating the traversable's next document from the start of the population.
     if (navigable->is_top_level_traversable()) {
         auto& traversable = navigable->top_level_traversable();
-        auto site_isolation_process_swap = SiteIsolationManager::the().top_level_navigation_requires_process_swap(
-            traversable.active_browsing_context(),
-            traversable.replicated_state()->active_document_url,
-            response_document->url);
-        if (!browsing_context_group_switch && !site_isolation_process_swap)
+        if (process && process == &traversable.display_page()->client())
             return populate_in(*this);
-
         if (!displays_tab()) {
             navigable->clear_ongoing_navigation();
             return false;
         }
-        return view().switch_process_for_navigation(navigation_id, browsing_context_group_switch ? ViewImplementation::KeepsBrowsingContext::No : ViewImplementation::KeepsBrowsingContext::Yes);
+        auto keeps_browsing_context = &document->browsing_context() == &navigable->active_browsing_context()
+            ? ViewImplementation::KeepsBrowsingContext::Yes
+            : ViewImplementation::KeepsBrowsingContext::No;
+        return view().switch_process_for_navigation(navigation_id, keeps_browsing_context, process ? traversable.page_to_display_document_in(*process) : nullptr);
     }
 
-    // A child navigable's document is created in the process hosting the agent cluster of the document's origin
-    // within the browsing context group. Without iframe isolation, every agent cluster of a child's document is
-    // hosted by its container document's process.
-    auto browsing_context_group = navigable->top_level_traversable().active_browsing_context().group();
-    VERIFY(browsing_context_group);
-    if (site_isolation_mode() != SiteIsolationMode::IFrame)
-        return populate_in(*this);
-
-    // A document created for inline content stands in for the resource the process that fetched could not load, in
-    // an agent cluster of its own; that process hosts it.
-    if (response_document->is_inline_content)
-        return populate_in(*this);
-
-    // FIXME: Pass the document's requestsOAC value once Origin-Agent-Cluster is implemented.
-    auto agent = browsing_context_group->obtain_similar_origin_window_agent(response_document->origin, false);
-    SiteIsolationManager::the().host_opaque_origin_agent_with_initiator(*browsing_context_group, *agent, response_document->origin, loader.request().history_entry.document_state.initiator_origin);
-
-    auto host_or_error = SiteIsolationManager::the().obtain_child_document_host(*navigable, *agent);
+    auto host_or_error = navigable->obtain_page_to_host_document_in(process);
     if (host_or_error.is_error()) {
         warnln("Unable to create WebContent page for child frame navigation: {}", host_or_error.error());
         navigable->clear_ongoing_navigation();
         return false;
     }
     // The host takes the container over when the document is activated, after the displayed document is unloaded.
-    auto host = host_or_error.release_value();
-    return populate_in(host);
+    return populate_in(host_or_error.release_value());
 }
 
 // A navigation's population steps run in the process recorded as its population worker at admission, which is

@@ -8,12 +8,14 @@
 
 #include <LibWeb/HTML/HistoryOperation.h>
 #include <LibWeb/Page/ViewportIsFullscreen.h>
+#include <LibWebView/Application.h>
 #include <LibWebView/BrowsingSession.h>
 #include <LibWebView/CanonicalBrowsingContext.h>
 #include <LibWebView/CanonicalBrowsingContextGroup.h>
 #include <LibWebView/CanonicalDocument.h>
 #include <LibWebView/CanonicalTraversable.h>
 #include <LibWebView/CanonicalWindow.h>
+#include <LibWebView/SiteIsolation.h>
 #include <LibWebView/ViewImplementation.h>
 #include <LibWebView/WebContentClient.h>
 
@@ -149,6 +151,100 @@ NonnullRefPtr<CanonicalDocument> CanonicalNavigable::create_and_initialize_a_doc
     // NB: The process hosting window's agent creates the document, with its other fields, and runs the remaining steps.
     // 22. Return document.
     return CanonicalDocument::create(navigation_params.origin, browsing_context, window.release_nonnull(), CanonicalDocument::IsInitialAboutBlank::No);
+}
+
+// NB: Which process hosts an agent is implementation-defined, and is where the documents of the agent are created. A
+//     process hosting an agent keeps hosting it. A null process is a new one.
+RefPtr<WebContentClient> CanonicalNavigable::obtain_process_to_host(CanonicalDocument const& document, Optional<URL::Origin> const& initiator_origin) const
+{
+    auto process_hosting_active_document = [&] -> WebContentClient& {
+        auto page = top_level_traversable().page_hosting(*this);
+        VERIFY(page);
+        return page->client();
+    };
+
+    // A process creates the documents of the browsing contexts it holds. A browsing context created by a browsing
+    // context group switch is created with its document in a new process.
+    if (&document.browsing_context() != &active_browsing_context())
+        return nullptr;
+
+    // Without site isolation, the process hosting the active document hosts the next one. With site isolation of
+    // top-level traversables, so does the process holding a child navigable's container.
+    if (site_isolation_mode() == SiteIsolationMode::Disabled || (site_isolation_mode() == SiteIsolationMode::TopLevel && parent()))
+        return process_hosting_active_document();
+
+    if (auto process = document.relevant_global_object().agent().hosting_process())
+        return process;
+
+    // Nothing can address an opaque origin but the documents it was created from, so its agent is hosted where the
+    // agent of the navigation's initiator origin is. When no process hosts that agent, as when the navigation was
+    // not initiated by a document, the process hosting the navigable's active document does.
+    if (document.origin().is_opaque()) {
+        if (initiator_origin.has_value()) {
+            if (auto process = group_of(*this, document.browsing_context()).obtain_similar_origin_window_agent(*initiator_origin, false)->hosting_process())
+                return process;
+        }
+        return process_hosting_active_document();
+    }
+
+    // A process displaying a tab's initial about:blank that no document created, and hosting no other agent, is not
+    // yet used for any site. A child navigable's initial about:blank is in the process hosting its container's
+    // document instead.
+    auto& active_document = this->active_document();
+    if (!parent() && active_document.is_initial_about_blank() && active_document.origin().is_opaque()) {
+        auto& process = process_hosting_active_document();
+        if (process.hosts_only_agent(active_document.relevant_global_object().agent()))
+            return process;
+    }
+    return nullptr;
+}
+
+// The page of the process to create a child navigable's next document in, or of a new process when that is null.
+ErrorOr<NonnullRefPtr<WebContentPage>> CanonicalNavigable::obtain_page_to_host_document_in(RefPtr<WebContentClient> process)
+{
+    VERIFY(parent());
+    auto& traversable = top_level_traversable();
+    auto current_step = traversable.session_history().current_step();
+    VERIFY(current_step.has_value());
+    auto const* current_entry = traversable.session_history().get_the_target_history_entry(*this, *current_step);
+    VERIFY(current_entry);
+
+    RefPtr<WebContentPage> page;
+    // The host takes the navigable's node over once the document it is to display is activated; until then, the page
+    // hosting the displayed document keeps it.
+    if (process && process == &reporting_page()->client()) {
+        // The page holding the container populates the document in a provisional navigable while another page hosts
+        // the displayed document.
+        if (has_remote_host())
+            process->async_begin_hosting_navigable(reporting_page()->id(), id(), *current_entry, traversable.system_visibility_state());
+        page = reporting_page();
+    } else if (process && has_remote_host() && process == &remote_host().client()) {
+        page = remote_host();
+    } else {
+        // A process holds one page per tab, with the tab's whole graph: the process displaying the tab hosts a document
+        // in the view's page, another process in the page it has for the tab, or in a page created for it.
+        Compositing::PageId page_id;
+        if (process && process->page_id_for_traversable(traversable).has_value()) {
+            page_id = *process->page_id_for_traversable(traversable);
+            process->async_begin_hosting_navigable(page_id, id(), *current_entry, traversable.system_visibility_state());
+        } else if (process) {
+            page_id = Application::the().allocate_page_id();
+            process->async_create_embedded_page(page_id, traversable.remote_navigable_graph(), id(), *current_entry, traversable.system_visibility_state());
+            process->register_embedded_page(page_id, traversable);
+            traversable.represent_related_tabs_in(*process);
+        } else {
+            auto new_process = TRY(Application::the().launch_child_frame_web_content_process(reporting_page()->client().is_private(), traversable.remote_navigable_graph(), id(), *current_entry));
+            process = move(new_process.client);
+            page_id = new_process.page_id;
+            process->register_embedded_page(page_id, traversable);
+            traversable.represent_related_tabs_in(*process);
+        }
+        process->async_update_visibility_state(page_id, id(), traversable.system_visibility_state());
+        page = process->page(page_id);
+    }
+
+    set_pending_host(*page);
+    return page.release_nonnull();
 }
 
 CanonicalNavigable::~CanonicalNavigable()
@@ -557,7 +653,7 @@ void CanonicalNavigable::did_commit_navigation(Web::HTML::ReplicatedNavigableSta
 
     auto& traversable = top_level_traversable();
     if (auto endpoint = traversable.page_hosting(*this))
-        active_document().relevant_global_object().agent().set_hosting_process_if_unset(endpoint->client());
+        endpoint->client().host_agent(active_document().relevant_global_object().agent());
 
     // A navigation can commit while a newer navigation is already in flight. In that case update the replicated
     // state for the committed document without changing the newer navigation's transaction.
@@ -655,6 +751,9 @@ void CanonicalNavigable::set_navigation_host(WebContentPage& page)
 {
     auto& ongoing_navigation = ensure_ongoing_navigation();
     ongoing_navigation.host = page;
+    // The page creates the document the navigation populates, so its process hosts the document's agent.
+    if (ongoing_navigation.document)
+        page.client().host_agent(ongoing_navigation.document->relevant_global_object().agent());
 
     // The population worker conducts the navigation until the hosting process takes over.
     ongoing_navigation.population_worker = nullptr;

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    // A window that navigates cross-site keeps its browsing context: the document it navigated to has its opener, finds
+    // the popup it opened by name, and is that popup's opener, in the process hosting the popup too.
+    promiseTest(async () => {
+        const httpServer = httpTestServer();
+        const runId = crypto.randomUUID();
+        const popupName = `popup-${runId}`;
+
+        const crossSiteUrl = new URL(
+            await httpServer.createEcho("GET", `/popup-keeps-opener-cross-site-${runId}`, {
+                status: 200,
+                headers: { "Content-Type": "text/html" },
+                body: `<!DOCTYPE html><script>
+                    const popup = window.open("", ${JSON.stringify(popupName)});
+                    // A window.open() that finds no navigable by the name opens a same-origin about:blank one.
+                    let openedANewWindow = true;
+                    try { popup.document; } catch { openedANewWindow = false; }
+                    opener.postMessage("has an opener: " + (opener !== null), "*");
+                    opener.postMessage("found its popup by name: " + (!openedANewWindow && popup.opener === window), "*");
+                    if (openedANewWindow) {
+                        popup.close();
+                        opener.postMessage("its popup replied: nothing", "*");
+                    } else {
+                        addEventListener("message", event => {
+                            opener.postMessage("its popup replied: " + event.data, "*");
+                        });
+                        popup.postMessage("ping", "*");
+                    }
+                <\/script>`,
+            })
+        );
+        crossSiteUrl.hostname = uniqueLocalhostHostname("popup-keeps-opener");
+
+        const popupUrl = await httpServer.createEcho("GET", `/popup-keeps-opener-popup-${runId}`, {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+            body: `<!DOCTYPE html><script>
+                addEventListener("message", event => {
+                    opener.postMessage("pong", "*");
+                    window.close();
+                });
+                opener.postMessage("ready", "*");
+            <\/script>`,
+        });
+
+        const openerUrl = await httpServer.createEcho("GET", `/popup-keeps-opener-opener-${runId}`, {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+            body: `<!DOCTYPE html><script>
+                addEventListener("message", event => {
+                    if (event.data === "ready")
+                        location.href = ${JSON.stringify(crossSiteUrl.href)};
+                });
+                window.open(${JSON.stringify(popupUrl)}, ${JSON.stringify(popupName)});
+            <\/script>`,
+        });
+
+        const messages = [];
+        const received = new Promise(resolve => {
+            addEventListener("message", event => {
+                messages.push(event.data);
+                if (messages.length === 3)
+                    resolve();
+            });
+        });
+        const opener = window.open(openerUrl);
+        await received;
+        for (const message of messages)
+            println(message);
+        println(`opener.closed: ${opener.closed}`);
+
+        opener.close();
+    });
+</script>

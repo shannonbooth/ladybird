@@ -108,6 +108,8 @@ public:
 
     NonnullRefPtr<CanonicalBrowsingContext> obtain_a_browsing_context_to_use_for_a_navigation_response(Web::HTML::OpenerPolicyEnforcementResult const&);
     NonnullRefPtr<CanonicalDocument> create_and_initialize_a_document(NavigationLoader::ResponseDocument const&);
+    RefPtr<WebContentClient> obtain_process_to_host(CanonicalDocument const&, Optional<URL::Origin> const& initiator_origin) const;
+    ErrorOr<NonnullRefPtr<WebContentPage>> obtain_page_to_host_document_in(RefPtr<WebContentClient> process);
 
     CanonicalNavigable& append_child(NonnullOwnPtr<CanonicalNavigable>);
     NonnullOwnPtr<CanonicalNavigable> remove_child(CanonicalNavigable&);

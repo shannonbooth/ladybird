@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    // A popup that navigates cross-site keeps its browsing context, and with it its opener, its name in the group and
+    // the WindowProxy its opener holds for it, whichever process hosts the document it navigated to.
+    promiseTest(async () => {
+        const httpServer = httpTestServer();
+        const runId = crypto.randomUUID();
+        const popupName = `popup-${runId}`;
+
+        const nextMessage = () => new Promise(resolve => addEventListener("message", event => resolve(event.data), { once: true }));
+
+        const crossSiteUrl = new URL(
+            await httpServer.createEcho("GET", `/opener-keeps-popup-cross-site-${runId}`, {
+                status: 200,
+                headers: { "Content-Type": "text/html" },
+                body: `<!DOCTYPE html><script>
+                    addEventListener("message", event => {
+                        if (event.data === "ping")
+                            opener.postMessage("pong", "*");
+                    });
+                    opener.postMessage("cross-site document loaded", "*");
+                <\/script>`,
+            })
+        );
+        crossSiteUrl.hostname = uniqueLocalhostHostname("opener-keeps-popup");
+
+        const popupUrl = await httpServer.createEcho("GET", `/opener-keeps-popup-same-site-${runId}`, {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+            body: `<!DOCTYPE html><script>location.href = ${JSON.stringify(crossSiteUrl.href)};<\/script>`,
+        });
+
+        let message = nextMessage();
+        const popup = window.open(popupUrl, popupName);
+        println(await message);
+
+        println(`popup.closed: ${popup.closed}`);
+        println(`window.open("", popupName) returns the popup: ${window.open("", popupName) === popup}`);
+
+        message = nextMessage();
+        popup.postMessage("ping", "*");
+        println(`popup replied: ${await message}`);
+
+        const renavigatedUrl = await httpServer.createEcho("GET", `/opener-keeps-popup-renavigated-${runId}`, {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+            body: `<!DOCTYPE html><script>opener.postMessage("renavigated by its opener", "*");<\/script>`,
+        });
+        message = nextMessage();
+        popup.location.href = renavigatedUrl;
+        println(await message);
+
+        popup.close();
+    });
+</script>

@@ -4,15 +4,12 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include <AK/ScopeGuard.h>
 #include <LibTest/TestCase.h>
 #include <LibURL/Parser.h>
 #include <LibWebView/CanonicalBrowsingContext.h>
 #include <LibWebView/CanonicalBrowsingContextGroup.h>
 #include <LibWebView/CanonicalDocument.h>
 #include <LibWebView/CanonicalTraversable.h>
-#include <LibWebView/SiteIsolation.h>
-#include <LibWebView/SiteIsolationManager.h>
 
 static URL::Origin origin_for(StringView url)
 {
@@ -216,28 +213,4 @@ TEST_CASE(opaque_origins_have_distinct_agent_clusters)
 
     EXPECT_EQ(first_agent.ptr(), first_agent_again.ptr());
     EXPECT_NE(first_agent.ptr(), second_agent.ptr());
-}
-
-TEST_CASE(top_level_site_isolation_process_swaps)
-{
-    auto restore_site_isolation_mode = ScopeGuard([mode = WebView::site_isolation_mode()] {
-        WebView::set_site_isolation_mode(mode);
-    });
-    WebView::set_site_isolation_mode(WebView::SiteIsolationMode::TopLevel);
-
-    auto browsing_context_and_document = WebView::CanonicalBrowsingContext::create_a_new_top_level_browsing_context_and_document(URL::Origin::create_opaque(), {});
-    auto browsing_context = browsing_context_and_document.browsing_context;
-    auto current_url = URL::Parser::basic_parse("https://a.example/path"sv).release_value();
-    auto same_site_url = URL::Parser::basic_parse("https://sub.a.example/other"sv).release_value();
-    auto cross_site_url = URL::Parser::basic_parse("https://b.example/path"sv).release_value();
-
-    EXPECT(!WebView::SiteIsolationManager::the().top_level_navigation_requires_process_swap(*browsing_context, URL::about_blank(), cross_site_url));
-    EXPECT(!WebView::SiteIsolationManager::the().top_level_navigation_requires_process_swap(*browsing_context, current_url, same_site_url));
-    EXPECT(WebView::SiteIsolationManager::the().top_level_navigation_requires_process_swap(*browsing_context, current_url, cross_site_url));
-
-    WebView::CanonicalTraversable opener;
-    opener.set_active_document(browsing_context_and_document.document);
-    auto related_browsing_context = WebView::CanonicalBrowsingContext::create_a_new_auxiliary_browsing_context_and_document(opener, URL::Origin::create_opaque(), {}).browsing_context;
-    EXPECT(browsing_context->group()->browsing_context_set().contains(related_browsing_context.ptr()));
-    EXPECT(!WebView::SiteIsolationManager::the().top_level_navigation_requires_process_swap(*browsing_context, current_url, cross_site_url));
 }

@@ -297,6 +297,26 @@ void CanonicalTraversable::represent_in_processes_holding_related_tabs()
     });
 }
 
+// The page of the process to populate the traversable's next document in, which displays the tab from then on: the
+// page the process has for the tab, or one representing it in the group of the related tabs the process holds.
+RefPtr<WebContentPage> CanonicalTraversable::page_to_display_document_in(WebContentClient& process)
+{
+    if (auto page_id = process.page_id_for_traversable(*this); page_id.has_value()) {
+        RefPtr<WebContentPage> page = process.page(*page_id);
+        // The page still displays the document it is to unload before the next one activates, so a new process
+        // populates that one.
+        if (is_displaced_document_host(*page))
+            return nullptr;
+        return page;
+    }
+    Optional<Compositing::PageId> group_page_id;
+    for_each_related_traversable([&](CanonicalTraversable& related_traversable) {
+        if (!group_page_id.has_value() && is_in_the_browsing_context_group_of(related_traversable, *this))
+            group_page_id = process.page_id_for_traversable(related_traversable);
+    });
+    return create_representing_page_in(process, group_page_id);
+}
+
 void CanonicalTraversable::forget_representing_page(WebContentPage& page)
 {
     m_representing_pages.remove_all_matching([&](auto const& representing_page) { return representing_page.ptr() == &page; });
@@ -1693,17 +1713,20 @@ void CanonicalTraversable::continue_history_navigation_population(Web::HTML::Cro
     if (response_document.has_value()) {
         pending_job.value()->did_populate_document = CanonicalNavigable::DidPopulateDocument::Yes;
         auto document = navigable->create_and_initialize_a_document(*response_document);
-        auto group_switch = &document->browsing_context() != &navigable->active_browsing_context();
         pending_job.value()->document = document;
-        if (navigable->is_top_level_traversable()) {
-            auto swap_process = group_switch || SiteIsolationManager::the().top_level_navigation_requires_process_swap(active_browsing_context(), replicated_state()->active_document_url, response_document->url);
-            if (swap_process) {
+
+        // A document created for inline content stands in for the resource the process that fetched could not load, in
+        // an agent of its own; that process hosts it.
+        if (!response_document->is_inline_content) {
+            auto process = navigable->obtain_process_to_host(*document, pending_job.value()->job.target_entry.document_state.initiator_origin);
+            if (navigable->is_top_level_traversable() && (!process || process != &display_page()->client())) {
                 auto view = this->view();
                 if (!view.has_value())
                     return;
                 operation->unavailable_job_endpoints.append(*endpoint);
                 operation->changing_job_endpoints.remove(navigable_id);
-                view->switch_process_for_history_traversal(pending_job.value()->job.target_entry.document_state.id, group_switch ? ViewImplementation::KeepsBrowsingContext::No : ViewImplementation::KeepsBrowsingContext::Yes);
+                auto keeps_browsing_context = &document->browsing_context() == &active_browsing_context() ? ViewImplementation::KeepsBrowsingContext::Yes : ViewImplementation::KeepsBrowsingContext::No;
+                view->switch_process_for_history_traversal(pending_job.value()->job.target_entry.document_state.id, keeps_browsing_context, process ? page_to_display_document_in(*process) : nullptr);
                 operation = find_history_operation(operation_id);
                 if (!operation)
                     return;
@@ -1712,28 +1735,26 @@ void CanonicalTraversable::continue_history_navigation_population(Web::HTML::Cro
                     return;
                 endpoint = page_hosting(*navigable);
                 operation->changing_job_endpoints.set(navigable_id, *endpoint);
+            } else if (!navigable->is_top_level_traversable()) {
+                auto host = navigable->obtain_page_to_host_document_in(process);
+                if (host.is_error()) {
+                    did_receive_changing_navigable_history_job_ready(*endpoint, operation_id, navigable_id, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped, Web::HTML::UnloadDisplayedDocument::No);
+                    return;
+                }
+                // The host takes the container over when the document is activated, after the displayed document is
+                // unloaded.
+                endpoint = host.value();
+                operation->changing_job_endpoints.set(navigable_id, *endpoint);
+                operation = find_history_operation(operation_id);
+                if (!operation)
+                    return;
+                pending_job = operation->pending_changing_jobs.get(navigable_id);
+                if (!pending_job.has_value())
+                    return;
             }
-        } else if (site_isolation_mode() == SiteIsolationMode::IFrame && !response_document->is_inline_content) {
-            auto group = active_browsing_context().group();
-            VERIFY(group);
-            auto agent = group->obtain_similar_origin_window_agent(response_document->origin, false);
-            SiteIsolationManager::the().host_opaque_origin_agent_with_initiator(*group, *agent, response_document->origin, pending_job.value()->job.target_entry.document_state.initiator_origin);
-            auto host = SiteIsolationManager::the().obtain_child_document_host(*navigable, *agent);
-            if (host.is_error()) {
-                did_receive_changing_navigable_history_job_ready(*endpoint, operation_id, navigable_id, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped, Web::HTML::UnloadDisplayedDocument::No);
-                return;
-            }
-            // The host takes the container over when the document is activated, after the displayed document is
-            // unloaded.
-            endpoint = host.value();
-            operation->changing_job_endpoints.set(navigable_id, *endpoint);
-            operation = find_history_operation(operation_id);
-            if (!operation)
-                return;
-            pending_job = operation->pending_changing_jobs.get(navigable_id);
-            if (!pending_job.has_value())
-                return;
         }
+        // The endpoint creates the document, so its process hosts the document's agent.
+        endpoint->client().host_agent(document->relevant_global_object().agent());
     }
     add_history_operation_completion_endpoint(*operation, *endpoint);
     auto& job = *pending_job.value();

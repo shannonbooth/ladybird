@@ -12,7 +12,6 @@
 #include <AK/RefCounted.h>
 #include <AK/RefPtr.h>
 #include <AK/Variant.h>
-#include <AK/WeakPtr.h>
 #include <LibURL/Origin.h>
 #include <LibURL/Site.h>
 #include <LibWebView/Export.h>
@@ -25,13 +24,11 @@ class WEBVIEW_API CanonicalSimilarOriginWindowAgent final : public RefCounted<Ca
 public:
     static NonnullRefPtr<CanonicalSimilarOriginWindowAgent> create();
 
+    // NB: Which process hosts an agent is implementation-defined. It hosts every realm of the agent.
     RefPtr<WebContentClient> hosting_process() const;
-    void set_hosting_process_if_unset(WebContentClient&);
 
 private:
     CanonicalSimilarOriginWindowAgent() = default;
-
-    WeakPtr<WebContentClient> m_hosting_process;
 };
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#browsing-context-group

@@ -1,0 +1,5 @@
+cross-site document loaded
+popup.closed: false
+window.open("", popupName) returns the popup: true
+popup replied: pong
+renavigated by its opener

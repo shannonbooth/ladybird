@@ -1,0 +1,4 @@
+has an opener: true
+found its popup by name: true
+its popup replied: pong
+opener.closed: false

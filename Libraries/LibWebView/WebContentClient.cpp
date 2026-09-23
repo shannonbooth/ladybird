@@ -262,6 +262,23 @@ void WebContentClient::register_view(Compositing::PageId page_id, ViewImplementa
     view.m_client_state.page = open_page(page_id, view.traversable());
 }
 
+// A process hosting an agent keeps hosting it.
+void WebContentClient::host_agent(CanonicalSimilarOriginWindowAgent& agent)
+{
+    if (!hosts_agent(agent))
+        m_hosted_agents.append(agent);
+}
+
+bool WebContentClient::hosts_agent(CanonicalSimilarOriginWindowAgent const& agent) const
+{
+    return any_of(m_hosted_agents, [&](auto const& hosted_agent) { return hosted_agent.ptr() == &agent; });
+}
+
+bool WebContentClient::hosts_only_agent(CanonicalSimilarOriginWindowAgent const& agent) const
+{
+    return m_hosted_agents.size() == 1 && m_hosted_agents[0].ptr() == &agent;
+}
+
 // A page of this process that held part of the tab displays it from now on.
 void WebContentClient::display_page_of_this_process(Badge<ViewImplementation>, WebContentPage& page)
 {

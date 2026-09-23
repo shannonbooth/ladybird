@@ -15,20 +15,17 @@ NonnullRefPtr<CanonicalSimilarOriginWindowAgent> CanonicalSimilarOriginWindowAge
     return adopt_ref(*new CanonicalSimilarOriginWindowAgent);
 }
 
+// The process the agent's documents are created in. A process that has exited hosts nothing.
 RefPtr<WebContentClient> CanonicalSimilarOriginWindowAgent::hosting_process() const
 {
-    // A process that has exited hosts nothing.
-    auto process = m_hosting_process.strong_ref();
-    if (!process || !process->is_open())
-        return nullptr;
-    return process;
-}
-
-void CanonicalSimilarOriginWindowAgent::set_hosting_process_if_unset(WebContentClient& process)
-{
-    if (hosting_process())
-        return;
-    m_hosting_process = process.make_weak_ptr<WebContentClient>();
+    RefPtr<WebContentClient> hosting_process;
+    WebContentClient::for_each_client([&](WebContentClient& process) {
+        if (!process.is_open() || !process.hosts_agent(*this))
+            return IterationDecision::Continue;
+        hosting_process = process;
+        return IterationDecision::Break;
+    });
+    return hosting_process;
 }
 
 NonnullRefPtr<CanonicalBrowsingContextGroup> CanonicalBrowsingContextGroup::create()

@@ -117,6 +117,10 @@ public:
     void keep_view_page_for_displaced_document(Compositing::PageId page_id, CanonicalTraversable&);
     Optional<Compositing::PageId> page_id_for_traversable(CanonicalTraversable const&) const;
     bool holds_part_of_a_tab_related_to(CanonicalTraversable const&);
+
+    void host_agent(CanonicalSimilarOriginWindowAgent&);
+    bool hosts_agent(CanonicalSimilarOriginWindowAgent const&) const;
+    bool hosts_only_agent(CanonicalSimilarOriginWindowAgent const&) const;
     void release_unneeded_representing_pages();
 
     WebContentPage* page(Compositing::PageId page_id) const;
@@ -182,6 +186,8 @@ private:
     RefPtr<WebContentTestClient> m_test_connection;
 
     IsPrivate m_is_private { IsPrivate::No };
+    // The agents whose documents the process creates, of any browsing context group.
+    Vector<NonnullRefPtr<CanonicalSimilarOriginWindowAgent>> m_hosted_agents;
     RefPtr<BrowsingSession> m_session;
     bool m_process_lost { false };
     bool m_rejected_ipc { false };
