@@ -3503,6 +3503,9 @@ void LocalNavigable::deliver_posted_message_from_another_process(PostedMessageDe
     //     posting to its opener's tab, or the other way round, posts from a tab another page of this process holds.
     GC::Ptr<WindowProxy> source;
     if (message.source_navigable_id.has_value()) {
+        // The page holding the posting tab can host no document of it, in which case the WindowProxy is created in
+        // the current realm: the target's.
+        TemporaryExecutionContext execution_context { relevant_realm(*window) };
         if (auto source_navigable = navigable_with_id_in_any_page(page(), *message.source_navigable_id))
             source = source_navigable->active_window_proxy();
     }
