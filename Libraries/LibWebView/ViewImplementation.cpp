@@ -2373,7 +2373,7 @@ void ViewImplementation::initialize_client(CreateNewClient create_new_client, Op
         prepare_to_replace_client();
 
         // Only a view's first process creates its traversable. A process replacing another adopts it
-        auto navigable_to_adopt = m_top_level_traversable.has_active_browsing_context()
+        auto navigable_to_adopt = m_top_level_traversable.has_active_document()
             ? Optional<Web::HTML::CrossProcessId> { m_top_level_traversable.id() }
             : Optional<Web::HTML::CrossProcessId> {};
         auto client_handle = m_client_state.client_handle;

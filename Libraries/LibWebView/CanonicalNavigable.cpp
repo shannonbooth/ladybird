@@ -11,7 +11,9 @@
 #include <LibWebView/BrowsingSession.h>
 #include <LibWebView/CanonicalBrowsingContext.h>
 #include <LibWebView/CanonicalBrowsingContextGroup.h>
+#include <LibWebView/CanonicalDocument.h>
 #include <LibWebView/CanonicalTraversable.h>
+#include <LibWebView/CanonicalWindow.h>
 #include <LibWebView/ViewImplementation.h>
 #include <LibWebView/WebContentClient.h>
 
@@ -24,17 +26,23 @@ CanonicalNavigable::CanonicalNavigable(Web::HTML::CrossProcessId id, Optional<We
 {
 }
 
+CanonicalDocument& CanonicalNavigable::active_document() const
+{
+    // A navigable's active document is its active session history entry's document.
+    // NB: The document is made the navigable's active document when its session history entry is activated.
+    VERIFY(m_active_document);
+    return *m_active_document;
+}
+
+void CanonicalNavigable::set_active_document(NonnullRefPtr<CanonicalDocument> document)
+{
+    m_active_document = move(document);
+}
+
 CanonicalBrowsingContext& CanonicalNavigable::active_browsing_context() const
 {
     // A navigable's active browsing context is its active document's browsing context.
-    // NB: Only a top-level browsing context group switch changes it, so it is kept with the navigable.
-    VERIFY(m_active_browsing_context);
-    return *m_active_browsing_context;
-}
-
-void CanonicalNavigable::set_active_browsing_context(NonnullRefPtr<CanonicalBrowsingContext> browsing_context)
-{
-    m_active_browsing_context = move(browsing_context);
+    return active_document().browsing_context();
 }
 
 // https://html.spec.whatwg.org/multipage/browsers.html#obtain-browsing-context-navigation
@@ -64,7 +72,7 @@ NonnullRefPtr<CanonicalBrowsingContext> CanonicalNavigable::obtain_a_browsing_co
 
     // 10. Let newBrowsingContext be the first return value of creating a new top-level browsing context and document.
     // NB: The navigation response's document replaces that document before any process creates it.
-    auto new_browsing_context = CanonicalBrowsingContext::create_a_new_top_level_browsing_context_and_document(URL::Origin::create_opaque(), {});
+    auto new_browsing_context = CanonicalBrowsingContext::create_a_new_top_level_browsing_context_and_document(URL::Origin::create_opaque(), {}).browsing_context;
 
     // 11. Let navigationCOOP be navigationParams's cross-origin opener policy.
     // FIXME: 12. If navigationCOOP's value is "same-origin-plus-COEP", then set newBrowsingContext's group's
@@ -79,6 +87,68 @@ NonnullRefPtr<CanonicalBrowsingContext> CanonicalNavigable::obtain_a_browsing_co
 
     // 15. Return newBrowsingContext.
     return new_browsing_context;
+}
+
+// NB: Only a top-level browsing context has a group. Where the specification asks for the group of a child navigable's
+//     browsing context, it is its top-level browsing context's group, the one of the traversable's active browsing
+//     context.
+static CanonicalBrowsingContextGroup& group_of(CanonicalNavigable const& navigable, CanonicalBrowsingContext const& browsing_context)
+{
+    auto group = browsing_context.group();
+    if (!group)
+        group = navigable.top_level_traversable().active_browsing_context().group();
+    VERIFY(group);
+    return *group;
+}
+
+// https://html.spec.whatwg.org/multipage/document-lifecycle.html#initialise-the-document-object
+// NB: The steps choosing the browsing context, the Window and the agent that the Document for a navigation response is
+//     created with. The process hosting that agent creates the Document and runs the other steps.
+NonnullRefPtr<CanonicalDocument> CanonicalNavigable::create_and_initialize_a_document(NavigationLoader::ResponseDocument const& navigation_params)
+{
+    // 1. Let browsingContext be the result of obtaining a browsing context to use for a navigation response given navigationParams.
+    auto browsing_context = obtain_a_browsing_context_to_use_for_a_navigation_response(navigation_params.coop_enforcement_result);
+
+    // 5. Let window be null.
+    RefPtr<CanonicalWindow> window;
+
+    // 6. If browsingContext's active document's is initial about:blank is true, and browsingContext's active document's
+    //    origin is same origin-domain with navigationParams's origin, then set window to browsingContext's active window.
+    // NB: A browsing context created by a browsing context group switch is created with an initial about:blank that
+    //     nothing here holds, whose opaque origin is not same origin-domain with navigationParams's origin. The
+    //     initial about:blank's document.domain is in the process hosting it: an initial about:blank that set its own
+    //     is same origin-domain with no other origin, and the origins are compared as same origin here.
+    auto browsing_context_active_document = browsing_context->active_document();
+    if (browsing_context_active_document && browsing_context_active_document->is_initial_about_blank()
+        && browsing_context_active_document->origin().is_same_origin(navigation_params.origin)) {
+        window = browsing_context->active_window();
+    }
+    // 7. Otherwise:
+    else {
+        // FIXME: 1. Let oacHeader be the result of getting a structured field value given `Origin-Agent-Cluster` and "item"
+        //           from navigationParams's response's header list.
+        // FIXME: 2. Let requestsOAC be true if oacHeader is not null and oacHeader[0] is the boolean true; otherwise false.
+        // FIXME: 3. If navigationParams's reserved environment is a non-secure context, then set requestsOAC to false.
+        auto requests_oac = false;
+
+        // 4. Let agent be the result of obtaining a similar-origin window agent given navigationParams's origin,
+        //    browsingContext's group, and requestsOAC.
+        auto agent = group_of(*this, browsing_context).obtain_similar_origin_window_agent(navigation_params.origin, requests_oac);
+
+        // 5. Let realmExecutionContext be the result of creating a new realm given agent and the following customizations:
+        //    - For the global object, create a new Window object.
+        //    - For the global this binding, use browsingContext's WindowProxy object.
+        // 6. Set window to the global object of realmExecutionContext's Realm component.
+        // NB: The realm is in the process hosting agent, which runs steps 7 to 12.
+        window = CanonicalWindow::create(agent);
+    }
+
+    // 9. Let document be a new Document, with
+    //    origin: navigationParams's origin
+    //    browsing context: browsingContext
+    // NB: The process hosting window's agent creates the document, with its other fields, and runs the remaining steps.
+    // 22. Return document.
+    return CanonicalDocument::create(navigation_params.origin, browsing_context, window.release_nonnull(), CanonicalDocument::IsInitialAboutBlank::No);
 }
 
 CanonicalNavigable::~CanonicalNavigable()
@@ -457,7 +527,7 @@ bool CanonicalNavigable::active_document_is(Web::HTML::SessionHistoryEntryDescri
         && m_active_session_history_entry_identity->document_state_id == entry.document_state.id;
 }
 
-void CanonicalNavigable::did_commit_navigation(Web::HTML::ReplicatedNavigableState replicated_state, Optional<Utf16String> const& navigation_id, DidPopulateDocument did_populate_document, RefPtr<CanonicalBrowsingContext> destination_browsing_context)
+void CanonicalNavigable::did_commit_navigation(Web::HTML::ReplicatedNavigableState replicated_state, Optional<Utf16String> const& navigation_id, DidPopulateDocument did_populate_document, RefPtr<CanonicalDocument> document)
 {
     auto commits_ongoing_navigation = !m_ongoing_navigation.has_value()
         || !navigation_id.has_value()
@@ -466,22 +536,28 @@ void CanonicalNavigable::did_commit_navigation(Web::HTML::ReplicatedNavigableSta
     auto previous_active_document_state_id = m_active_session_history_entry_identity.has_value()
         ? Optional<Web::HTML::CrossProcessId> { m_active_session_history_entry_identity->document_state_id }
         : Optional<Web::HTML::CrossProcessId> {};
+    auto active_document_changed = !previous_active_document_state_id.has_value()
+        || replicated_state.active_session_history_entry_identity.document_state_id != *previous_active_document_state_id;
 
-    if (!destination_browsing_context && navigation_id.has_value() && commits_ongoing_navigation && m_ongoing_navigation.has_value())
-        destination_browsing_context = m_ongoing_navigation->destination_browsing_context;
-    if (destination_browsing_context)
-        set_active_browsing_context(destination_browsing_context.release_nonnull());
+    if (!document && navigation_id.has_value() && commits_ongoing_navigation && m_ongoing_navigation.has_value())
+        document = m_ongoing_navigation->document;
+    // NB: The process hosting the navigable created a document the UI process did not, as for a javascript: URL,
+    //     with the agent obtained for its origin in the navigable's browsing context group.
+    if (!document && active_document_changed) {
+        auto& browsing_context = active_browsing_context();
+        // FIXME: Pass the document's requestsOAC value once Origin-Agent-Cluster is implemented.
+        auto window = CanonicalWindow::create(group_of(*this, browsing_context).obtain_similar_origin_window_agent(replicated_state.active_document_origin, false));
+        document = CanonicalDocument::create(replicated_state.active_document_origin, browsing_context, move(window), CanonicalDocument::IsInitialAboutBlank::No);
+    }
+    if (document) {
+        set_active_document(*document);
+        document->make_active();
+    }
     update_replicated_state(move(replicated_state));
 
     auto& traversable = top_level_traversable();
-    auto endpoint = traversable.page_hosting(*this);
-    if (endpoint) {
-        // FIXME: Pass the document's requestsOAC value once Origin-Agent-Cluster is implemented.
-        auto browsing_context_group = traversable.active_browsing_context().group();
-        VERIFY(browsing_context_group);
-        auto agent = browsing_context_group->obtain_similar_origin_window_agent(m_replicated_state->active_document_origin, false);
-        agent->set_hosting_process_if_unset(endpoint->client());
-    }
+    if (auto endpoint = traversable.page_hosting(*this))
+        active_document().relevant_global_object().agent().set_hosting_process_if_unset(endpoint->client());
 
     // A navigation can commit while a newer navigation is already in flight. In that case update the replicated
     // state for the committed document without changing the newer navigation's transaction.
@@ -490,9 +566,6 @@ void CanonicalNavigable::did_commit_navigation(Web::HTML::ReplicatedNavigableSta
 
     // The activated document's load becomes the navigable's tracked load. Reloads can reuse the document state,
     // while a same-document activation leaves the active document's load in place.
-    auto active_document_changed = !previous_active_document_state_id.has_value()
-        || !m_active_session_history_entry_identity.has_value()
-        || m_active_session_history_entry_identity->document_state_id != *previous_active_document_state_id;
     if (active_document_changed || did_populate_document == DidPopulateDocument::Yes) {
         m_active_document_load = ActiveDocumentLoad {
             .navigation_id = m_ongoing_navigation.has_value() ? m_ongoing_navigation->navigation_id : Optional<Utf16String> {},
