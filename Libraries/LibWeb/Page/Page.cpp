@@ -991,6 +991,13 @@ void Page::set_browsing_context_group(Badge<HTML::BrowsingContextGroup>, GC::Ref
     m_browsing_context_group = group;
 }
 
+// A page representing a tab another process hosts knows the tab's group by a page holding another tab of it.
+void Page::join_browsing_context_group_of(Page& page)
+{
+    VERIFY(!m_browsing_context_group || m_browsing_context_group->browsing_context_set().is_empty());
+    m_browsing_context_group = page.browsing_context_group();
+}
+
 HTML::HistoryExecutor& Page::history_executor()
 {
     return *m_history_executor;

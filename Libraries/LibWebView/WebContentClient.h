@@ -115,8 +115,8 @@ public:
     void unregister_embedded_page(Compositing::PageId page_id);
     void keep_view_page_for_displaced_document(Compositing::PageId page_id, CanonicalTraversable&);
     Optional<Compositing::PageId> page_id_for_traversable(CanonicalTraversable const&) const;
-    bool holds_part_of_a_tab_opened_by(CanonicalTraversable const&);
-    void release_unneeded_opener_pages();
+    bool holds_part_of_a_tab_related_to(CanonicalTraversable const&);
+    void release_unneeded_representing_pages();
 
     WebContentPage* page(Compositing::PageId page_id) const;
     bool is_page_open(Compositing::PageId page_id) const { return !m_process_lost && page(page_id); }

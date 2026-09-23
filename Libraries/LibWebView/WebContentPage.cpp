@@ -2077,6 +2077,7 @@ Messages::WebContentClient::DidRequestNewWebViewResponse WebContentPage::did_req
     auto initial_history_entry = Web::HTML::create_initial_session_history_entry_descriptor(
         Application::the().allocate_ui_process_cross_process_id(), move(opener_origin), move(opener_base_url), move(target_name));
     new_view.traversable().create_a_new_top_level_traversable(opener, initial_history_entry, client());
+    new_view.traversable().represent_in_processes_holding_related_tabs();
     new_view.update_navigation_action_state();
 
     return { new_page_id, root_navigable_id, move(initial_history_entry), new_view.traversable().system_visibility_state(), move(window_handle) };

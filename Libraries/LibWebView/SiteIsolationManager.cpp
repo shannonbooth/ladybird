@@ -63,7 +63,7 @@ void SiteIsolationManager::remove_page(WebContentPage& page)
 
     if (traversable.is_displaced_document_host(page))
         traversable.forget_displaced_document_host({});
-    traversable.forget_opener_page(page);
+    traversable.forget_representing_page(page);
 
     Vector<Web::HTML::CrossProcessId> reported_by_page;
     Vector<Web::HTML::CrossProcessId> hosted_by_page;
@@ -216,14 +216,14 @@ ErrorOr<NonnullRefPtr<WebContentPage>> SiteIsolationManager::obtain_child_docume
         page_id = Application::the().allocate_page_id();
         host->async_create_embedded_page(page_id, traversable.remote_navigable_graph(), navigable.id(), *current_entry, traversable.system_visibility_state());
         host->register_embedded_page(page_id, traversable);
-        traversable.represent_openers_in(*host);
+        traversable.represent_related_tabs_in(*host);
     } else {
         auto process = TRY(Application::the().launch_child_frame_web_content_process(navigable.reporting_page()->client().is_private(), traversable.remote_navigable_graph(), navigable.id(), *current_entry));
         host = move(process.client);
         page_id = process.page_id;
         agent.set_hosting_process_if_unset(*host);
         host->register_embedded_page(page_id, traversable);
-        traversable.represent_openers_in(*host);
+        traversable.represent_related_tabs_in(*host);
     }
 
     host->async_update_visibility_state(page_id, navigable.id(), traversable.system_visibility_state());

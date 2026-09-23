@@ -104,18 +104,22 @@ public:
 
     void for_each_hosting_page(Function<void(WebContentPage&)> const&) const;
     void for_each_opener_traversable(Function<void(CanonicalTraversable&)> const&) const;
-    void represent_openers_in(WebContentClient&);
-    bool is_opener_page(WebContentPage const& page) const
+    void for_each_related_traversable(Function<void(CanonicalTraversable&)> const&) const;
+    void represent_related_tabs_in(WebContentClient&);
+    WebContentPage& create_representing_page_in(WebContentClient&, Optional<Compositing::PageId> browsing_context_group_page_id);
+    void represent_in_processes_holding_related_tabs();
+    bool is_representing_page(WebContentPage const& page) const
     {
-        return any_of(m_opener_pages, [&](auto const& opener_page) { return opener_page.ptr() == &page; });
+        return any_of(m_representing_pages, [&](auto const& representing_page) { return representing_page.ptr() == &page; });
     }
-    void forget_opener_page(WebContentPage&);
-    void discard_opener_pages();
+    void forget_representing_page(WebContentPage&);
+    void discard_representing_pages();
     void for_each_page_representing(CanonicalNavigable const&, Function<void(WebContentPage&)> const&) const;
     bool hosts(CanonicalNavigable const&, WebContentPage const&) const;
     bool represents(CanonicalNavigable const&, WebContentPage const&) const;
     bool page_hosts_any(WebContentPage const&) const;
     void stop_hosting_in_page(CanonicalNavigable&, NonnullRefPtr<WebContentPage>);
+    void represent_in_page_or_release_it(CanonicalNavigable&, NonnullRefPtr<WebContentPage>);
     void release_page_if_unused(NonnullRefPtr<WebContentPage>);
 
     Optional<ViewImplementation&> view() const;
@@ -292,8 +296,8 @@ private:
 
     RefPtr<WebContentPage> m_displaced_document_host;
 
-    // Pages that hold this tab, and host none of it, in a process holding part of a tab this tab opened.
-    Vector<NonnullRefPtr<WebContentPage>> m_opener_pages;
+    // Pages that hold this tab, and host none of it, in a process holding part of a related tab.
+    Vector<NonnullRefPtr<WebContentPage>> m_representing_pages;
 
     struct BeforeunloadGroup {
         NonnullRefPtr<WebContentPage> endpoint;

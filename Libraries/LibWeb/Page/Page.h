@@ -150,6 +150,7 @@ public:
     // it holds of this tab and of the tabs the tab opened, or none of them when other processes hold them all.
     HTML::BrowsingContextGroup& browsing_context_group();
     void set_browsing_context_group(Badge<HTML::BrowsingContextGroup>, GC::Ref<HTML::BrowsingContextGroup>);
+    void join_browsing_context_group_of(Page&);
 
     HTML::HistoryExecutor& history_executor();
 

@@ -414,7 +414,7 @@ void CanonicalNavigable::update_replicated_state(Web::HTML::ReplicatedNavigableS
     // Every process holding part of the tab holds the tab of a new opener before it hears of it.
     if (m_replicated_state->opener_navigable_id.has_value()) {
         for (auto& client : clients)
-            traversable.represent_openers_in(client);
+            traversable.represent_related_tabs_in(client);
     }
 
     traversable.for_each_page_representing(*this, [&](WebContentPage& page) {
@@ -423,7 +423,7 @@ void CanonicalNavigable::update_replicated_state(Web::HTML::ReplicatedNavigableS
 
     // A process can stop needing the tab of the previous opener.
     for (auto& client : clients)
-        client->release_unneeded_opener_pages();
+        client->release_unneeded_representing_pages();
 }
 
 void CanonicalNavigable::active_document_completely_finished_loading()

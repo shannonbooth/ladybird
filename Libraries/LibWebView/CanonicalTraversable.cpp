@@ -199,7 +199,7 @@ void CanonicalTraversable::for_each_hosting_page(Function<void(WebContentPage&)>
             visit(navigable.pending_host());
         return IterationDecision::Continue;
     });
-    for (auto const& page : m_opener_pages)
+    for (auto const& page : m_representing_pages)
         visit(page);
 }
 
@@ -228,29 +228,81 @@ void CanonicalTraversable::for_each_opener_traversable(Function<void(CanonicalTr
     });
 }
 
-// A process holding part of this tab holds the tabs of its openers too, in pages hosting none of them, so that a
-// document here reaches an opener's WindowProxy.
-void CanonicalTraversable::represent_openers_in(WebContentClient& client)
+static bool is_in_the_browsing_context_group_of(CanonicalTraversable const& traversable, CanonicalTraversable const& other)
 {
+    if (!traversable.has_active_browsing_context() || !other.has_active_browsing_context())
+        return false;
+    auto group = traversable.active_browsing_context().group();
+    return group && group == other.active_browsing_context().group();
+}
+
+// The other tabs whose documents a document of this tab can reach: those of its browsing context group, and those
+// holding its opener browsing contexts, which a browsing context keeps after a browsing context group switch of theirs.
+void CanonicalTraversable::for_each_related_traversable(Function<void(CanonicalTraversable&)> const& callback) const
+{
+    Vector<CanonicalTraversable*> related;
+    ViewImplementation::for_each_view([&](ViewImplementation& view) {
+        if (&view.traversable() != this && is_in_the_browsing_context_group_of(view.traversable(), *this))
+            related.append(&view.traversable());
+        return IterationDecision::Continue;
+    });
     for_each_opener_traversable([&](CanonicalTraversable& opener_traversable) {
-        if (client.page_id_for_traversable(opener_traversable).has_value())
+        if (!related.contains_slow(&opener_traversable))
+            related.append(&opener_traversable);
+    });
+    for (auto* traversable : related)
+        callback(*traversable);
+}
+
+// A process holding part of this tab holds the related tabs too, in pages hosting none of them, so that a document
+// here reaches their WindowProxies and finds their navigables by name.
+void CanonicalTraversable::represent_related_tabs_in(WebContentClient& client)
+{
+    for_each_related_traversable([&](CanonicalTraversable& related_traversable) {
+        if (client.page_id_for_traversable(related_traversable).has_value())
             return;
-        auto page_id = Application::the().allocate_page_id();
-        client.async_create_representing_page(page_id, opener_traversable.remote_navigable_graph());
-        client.register_embedded_page(page_id, opener_traversable);
-        opener_traversable.m_opener_pages.append(*client.page(page_id));
-        opener_traversable.represent_openers_in(client);
+        Optional<Compositing::PageId> group_page_id;
+        if (is_in_the_browsing_context_group_of(related_traversable, *this))
+            group_page_id = client.page_id_for_traversable(*this);
+        related_traversable.create_representing_page_in(client, group_page_id);
+        related_traversable.represent_related_tabs_in(client);
     });
 }
 
-void CanonicalTraversable::forget_opener_page(WebContentPage& page)
+WebContentPage& CanonicalTraversable::create_representing_page_in(WebContentClient& client, Optional<Compositing::PageId> browsing_context_group_page_id)
 {
-    m_opener_pages.remove_all_matching([&](auto const& opener_page) { return opener_page.ptr() == &page; });
+    VERIFY(!client.page_id_for_traversable(*this).has_value());
+    auto page_id = Application::the().allocate_page_id();
+    client.async_create_representing_page(page_id, remote_navigable_graph(), browsing_context_group_page_id);
+    client.register_embedded_page(page_id, *this);
+    auto& page = *client.page(page_id);
+    m_representing_pages.append(page);
+    return page;
 }
 
-void CanonicalTraversable::discard_opener_pages()
+// A tab joining a browsing context group is held by every process holding part of a tab of the group.
+void CanonicalTraversable::represent_in_processes_holding_related_tabs()
 {
-    for (auto& page : exchange(m_opener_pages, {})) {
+    for_each_related_traversable([&](CanonicalTraversable& related_traversable) {
+        Vector<NonnullRefPtr<WebContentClient>> clients;
+        related_traversable.for_each_hosting_page([&](WebContentPage& page) {
+            if (related_traversable.is_representing_page(page) || any_of(clients, [&](auto const& client) { return client.ptr() == &page.client(); }))
+                return;
+            clients.append(page.client());
+        });
+        for (auto& client : clients)
+            related_traversable.represent_related_tabs_in(client);
+    });
+}
+
+void CanonicalTraversable::forget_representing_page(WebContentPage& page)
+{
+    m_representing_pages.remove_all_matching([&](auto const& representing_page) { return representing_page.ptr() == &page; });
+}
+
+void CanonicalTraversable::discard_representing_pages()
+{
+    for (auto& page : exchange(m_representing_pages, {})) {
         if (page->is_open())
             page->discard();
     }
@@ -316,10 +368,22 @@ void CanonicalTraversable::stop_hosting_in_page(CanonicalNavigable& navigable, N
     // navigable's next document activated with.
     VERIFY(navigable.replicated_state().has_value());
     page->async_stop_hosting_navigable(navigable.id(), *navigable.replicated_state());
+    represent_in_page_or_release_it(navigable, move(page));
+}
 
-    if (!page_hosts_any(page)) {
-        release_page_if_unused(move(page));
+// A page that stopped hosting the navigable represents it from now on, unless it holds nothing of the tab and its
+// process holds no related tab.
+void CanonicalTraversable::represent_in_page_or_release_it(CanonicalNavigable& navigable, NonnullRefPtr<WebContentPage> page)
+{
+    if (!page->is_open())
         return;
+    if (!page_hosts_any(page)) {
+        if (!page->client().holds_part_of_a_tab_related_to(*this)) {
+            release_page_if_unused(move(page));
+            return;
+        }
+        if (!is_representing_page(page))
+            m_representing_pages.append(page);
     }
 
     // The page represents the navigable's subtree from now on, which its next document's host reported while the
@@ -335,13 +399,16 @@ void CanonicalTraversable::stop_hosting_in_page(CanonicalNavigable& navigable, N
 
 void CanonicalTraversable::release_page_if_unused(NonnullRefPtr<WebContentPage> page)
 {
+    // A page that was closed holds nothing of the tab.
+    if (!page->is_open())
+        return;
     // The view's page displays the tab whatever it hosts of it.
     if (page->displays_tab() || page_hosts_any(page))
         return;
-    if (is_opener_page(page)) {
-        if (page->client().holds_part_of_a_tab_opened_by(*this))
+    if (is_representing_page(page)) {
+        if (page->client().holds_part_of_a_tab_related_to(*this))
             return;
-        forget_opener_page(page);
+        forget_representing_page(page);
     }
     page->discard();
     did_lose_page(page, WebContentProcessLost::No);
@@ -427,8 +494,8 @@ void CanonicalTraversable::release_displaced_document_host()
 }
 
 // The page retired the navigable that displayed the traversable's document when it unloaded it, and is told the
-// state the next document activated with. The frames of the unloaded document go with it, and the page is
-// discarded once it hosts nothing else of the tab.
+// state the next document activated with. The frames of the unloaded document go with it, and the page represents
+// the tab from now on, or is discarded.
 void CanonicalTraversable::release_displaced_document_host_after_unload()
 {
     if (!m_displaced_document_host)
@@ -440,7 +507,7 @@ void CanonicalTraversable::release_displaced_document_host_after_unload()
     VERIFY(replicated_state().has_value());
     host->async_stop_hosting_navigable(id(), *replicated_state());
     SiteIsolationManager::the().remove_page(host);
-    release_page_if_unused(move(host));
+    represent_in_page_or_release_it(*this, move(host));
 }
 
 void CanonicalTraversable::discard_displaced_document_host()
