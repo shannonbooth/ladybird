@@ -520,14 +520,17 @@ void WebContentPage::did_request_window_focus_of_navigable(Web::HTML::CrossProce
 
 void WebContentPage::did_request_set_opener_of_navigable(Web::HTML::CrossProcessId navigable_id, Web::HTML::CrossProcessId opener_navigable_id)
 {
-    // window.open() on a navigable another process hosts sets the opener of its active browsing context there, to that
-    // of a navigable the requesting page hosts.
-    if (!hosted_navigable(opener_navigable_id).has_value())
+    // window.open() on a navigable another process hosts sets the opener of its active browsing context to that of a
+    // navigable the requesting page hosts, here and in the process hosting it.
+    auto opener = hosted_navigable(opener_navigable_id);
+    if (!opener.has_value())
         return;
 
     auto endpoint = endpoint_hosting_navigable_represented_by(navigable_id);
     if (!endpoint)
         return;
+    if (auto target = traversable().find(navigable_id); target.has_value() && target->has_active_document())
+        target->active_browsing_context().set_opener_browsing_context(opener->active_browsing_context());
     endpoint->async_set_opener_of_navigable(navigable_id, opener_navigable_id);
 }
 

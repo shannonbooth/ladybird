@@ -85,12 +85,15 @@ CanonicalBrowsingContext::BrowsingContextAndDocument CanonicalBrowsingContext::c
     // 4. Let browsingContext and document be the result of creating a new browsing context and document with opener's active document, null, and group.
     auto browsing_context_and_document = create_a_new_browsing_context_and_document(*group, document_origin, document_page);
 
-    // FIXME: 5. Set browsingContext's is auxiliary to true.
+    // 5. Set browsingContext's is auxiliary to true.
+    browsing_context_and_document.browsing_context->m_is_auxiliary = true;
 
     // 6. Append browsingContext to group.
     group->append(*browsing_context_and_document.browsing_context);
 
-    // FIXME: 7. Set browsingContext's opener browsing context to opener.
+    // 7. Set browsingContext's opener browsing context to opener.
+    browsing_context_and_document.browsing_context->set_opener_browsing_context(opener.active_browsing_context());
+
     // FIXME: 8. Set browsingContext's virtual browsing context group ID to openerTopLevelBrowsingContext's virtual browsing context group ID.
     // FIXME: 9. Set browsingContext's opener origin at creation to opener's active document's origin.
 
@@ -127,6 +130,11 @@ RefPtr<CanonicalBrowsingContextGroup> CanonicalBrowsingContext::group() const
 void CanonicalBrowsingContext::set_group(Badge<CanonicalBrowsingContextGroup>, CanonicalBrowsingContextGroup* group)
 {
     m_group = group;
+}
+
+void CanonicalBrowsingContext::set_opener_browsing_context(RefPtr<CanonicalBrowsingContext> opener)
+{
+    m_opener_browsing_context = opener ? opener->make_weak_ptr<CanonicalBrowsingContext>() : WeakPtr<CanonicalBrowsingContext> {};
 }
 
 }

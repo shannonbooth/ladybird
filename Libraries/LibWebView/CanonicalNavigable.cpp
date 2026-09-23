@@ -607,33 +607,38 @@ void CanonicalNavigable::update_container_state(Web::HTML::ReplicatedContainerSt
         remote_host().async_update_local_root_container_state(id(), move(state));
 }
 
+// The navigable with the given id in this navigable's tab or a tab of its browsing context group.
+static Optional<CanonicalNavigable&> navigable_in_group(CanonicalTraversable& traversable, Web::HTML::CrossProcessId navigable_id)
+{
+    if (auto navigable = traversable.find(navigable_id); navigable.has_value())
+        return navigable;
+    Optional<CanonicalNavigable&> found;
+    traversable.for_each_related_traversable([&](CanonicalTraversable& related_traversable) {
+        if (!found.has_value())
+            found = related_traversable.find(navigable_id);
+    });
+    return found;
+}
+
 void CanonicalNavigable::update_replicated_state(Web::HTML::ReplicatedNavigableState state)
 {
     auto opener_changed = !m_replicated_state.has_value() || m_replicated_state->opener_navigable_id != state.opener_navigable_id;
     set_replicated_state(move(state));
 
     auto& traversable = top_level_traversable();
-    Vector<NonnullRefPtr<WebContentClient>> clients;
-    if (opener_changed) {
-        traversable.for_each_hosting_page([&](WebContentPage& page) {
-            if (!any_of(clients, [&](auto const& client) { return client.ptr() == &page.client(); }))
-                clients.append(page.client());
-        });
-    }
-
-    // Every process holding part of the tab holds the tab of a new opener before it hears of it.
-    if (m_replicated_state->opener_navigable_id.has_value()) {
-        for (auto& client : clients)
-            traversable.represent_related_tabs_in(client);
+    // The process hosting the document set or disowned its browsing context's opener browsing context.
+    if (opener_changed && has_active_document()) {
+        RefPtr<CanonicalBrowsingContext> opener;
+        if (m_replicated_state->opener_navigable_id.has_value()) {
+            if (auto opener_navigable = navigable_in_group(traversable, *m_replicated_state->opener_navigable_id); opener_navigable.has_value() && opener_navigable->has_active_document())
+                opener = opener_navigable->active_browsing_context();
+        }
+        active_browsing_context().set_opener_browsing_context(move(opener));
     }
 
     traversable.for_each_page_representing(*this, [&](WebContentPage& page) {
         page.async_update_remote_navigable(id(), *m_replicated_state);
     });
-
-    // A process can stop needing the tab of the previous opener.
-    for (auto& client : clients)
-        client->release_unneeded_representing_pages();
 }
 
 void CanonicalNavigable::active_document_completely_finished_loading()

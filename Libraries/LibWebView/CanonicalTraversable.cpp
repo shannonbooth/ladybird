@@ -627,6 +627,19 @@ void CanonicalTraversable::prepare_for_reload()
     session_history_changed();
 }
 
+// The navigable the browsing context's opener browsing context is active in, which a process replicating the browsing
+// context's state stands its opener in by.
+static Optional<Web::HTML::CrossProcessId> opener_navigable_id_of(CanonicalBrowsingContext const& browsing_context)
+{
+    auto opener = browsing_context.opener_browsing_context();
+    if (!opener)
+        return {};
+    auto document = opener->active_document();
+    if (!document || !document->node_navigable())
+        return {};
+    return document->node_navigable()->id();
+}
+
 // https://html.spec.whatwg.org/multipage/document-sequences.html#creating-a-new-top-level-traversable
 void CanonicalTraversable::create_a_new_top_level_traversable(Optional<CanonicalNavigable&> opener, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, WebContentPage& page)
 {
@@ -661,11 +674,11 @@ void CanonicalTraversable::create_a_new_top_level_traversable(Optional<Canonical
         .top_level_origin = document_origin,
         .has_cross_site_ancestor = false,
         .opener_policy = {},
-        .active_browsing_context_is_auxiliary = opener.has_value(),
+        .active_browsing_context_is_auxiliary = active_browsing_context().is_auxiliary(),
         .active_browsing_context_is_popup = false,
         .active_browsing_context_popup_sandboxing_flag_set = {},
-        .active_browsing_context_has_opener = opener.has_value(),
-        .opener_navigable_id = opener.has_value() ? Optional<Web::HTML::CrossProcessId> { opener->id() } : Optional<Web::HTML::CrossProcessId> {},
+        .active_browsing_context_has_opener = active_browsing_context().opener_browsing_context() != nullptr,
+        .opener_navigable_id = opener_navigable_id_of(active_browsing_context()),
         .active_document_is_completely_loaded = false,
         .is_closing = false,
         .container = {},
