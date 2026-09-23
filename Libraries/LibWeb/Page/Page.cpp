@@ -868,6 +868,10 @@ void Page::stop_hosting(HTML::LocalNavigable& local_navigable, HTML::ReplicatedN
     } else {
         VERIFY(m_top_level_traversable.ptr() == &local_navigable);
         m_top_level_traversable = remote_navigable;
+        // The browsing context is where its next document is. The group as this page knows it holds the tab through
+        // the RemoteNavigable.
+        if (auto browsing_context = local_navigable.active_browsing_context())
+            browsing_context->remove();
     }
     local_navigable.set_has_been_destroyed();
     local_navigable.remove_from_all_local_navigables();

@@ -1988,20 +1988,13 @@ GC::Ptr<Navigable> LocalNavigable::find_a_navigable_by_target_name(Utf16View nam
 
     // 6. Let group be currentTopLevelBrowsingContext's group.
     // NB: The group as this page knows it, whether or not currentTopLevelBrowsingContext is here: the top-level
-    //     browsing contexts this process holds. Those other processes hold are not searched.
+    //     browsing contexts this process holds, and those of the tabs it holds in pages of the group while other
+    //     processes host them.
     auto& group = page().browsing_context_group();
 
-    // 7. For each topLevelBrowsingContext of group's browsing context set, in an implementation-defined order (the user agent should pick a consistent ordering, such as the most recently opened, most recently focused, or more closely related):
-    for (auto const& top_level_browsing_context : group.browsing_context_set()) {
-        // 1. If currentTopLevelBrowsingContext is topLevelBrowsingContext, then continue.
-        if (current_top_level_browsing_context.ptr() == top_level_browsing_context.ptr())
-            continue;
-
-        // 2. Let documentToSearch be topLevelBrowsingContext's active document.
-        auto* document_to_search = top_level_browsing_context->active_document();
-
+    auto find_in_descendant_navigables = [&](Vector<GC::Root<Navigable>> const& navigables) -> GC::Ptr<Navigable> {
         // 3. For each navigable of the inclusive descendant navigables of documentToSearch:
-        for (auto const& navigable : document_to_search->inclusive_descendant_navigables()) {
+        for (auto const& navigable : navigables) {
             // 1. If currentNavigable's active browsing context is not familiar with navigable's active browsing context, then continue.
             if (!is_familiar_with(*navigable))
                 continue;
@@ -2015,6 +2008,30 @@ GC::Ptr<Navigable> LocalNavigable::find_a_navigable_by_target_name(Utf16View nam
             if (target_name.utf16_view() == name)
                 return *navigable;
         }
+        return nullptr;
+    };
+
+    // 7. For each topLevelBrowsingContext of group's browsing context set, in an implementation-defined order (the user agent should pick a consistent ordering, such as the most recently opened, most recently focused, or more closely related):
+    for (auto const& top_level_browsing_context : group.browsing_context_set()) {
+        // 1. If currentTopLevelBrowsingContext is topLevelBrowsingContext, then continue.
+        if (current_top_level_browsing_context.ptr() == top_level_browsing_context.ptr())
+            continue;
+
+        // 2. Let documentToSearch be topLevelBrowsingContext's active document.
+        auto* document_to_search = top_level_browsing_context->active_document();
+
+        if (auto navigable = find_in_descendant_navigables(document_to_search->inclusive_descendant_navigables()))
+            return navigable;
+    }
+
+    // NB: The documents of a top-level browsing context another process hosts are there. The traversable of the page
+    //     holding its tab here stands for them, with the navigables they contain.
+    for (auto remote_navigable : all_remote_navigables()) {
+        auto& remote_page = remote_navigable->page();
+        if (&remote_page == &page() || remote_page.top_level_traversable().ptr() != remote_navigable.ptr() || &remote_page.browsing_context_group() != &group)
+            continue;
+        if (auto navigable = find_in_descendant_navigables(remote_navigable->active_document_inclusive_descendant_navigables()))
+            return navigable;
     }
 
     // 8. Return null.
