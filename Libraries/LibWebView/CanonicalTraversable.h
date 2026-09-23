@@ -203,9 +203,11 @@ private:
         No,
         Yes,
     };
-    void unload_a_document_and_its_descendants(Optional<Web::HTML::CrossProcessId> operation_id, CanonicalDocument&, Web::HTML::CrossProcessId navigable_id, RefPtr<WebContentPage> continuing_endpoint, Web::HTML::ChildNavigableDestruction, Function<void(UnloadedInItsHost)> queue_document_unload_task);
-    void unload_document_in_its_host(Optional<Web::HTML::CrossProcessId> operation_id, NonnullRefPtr<WebContentPage>, Web::HTML::CrossProcessId navigable_id, Web::HTML::ChildNavigableDestruction, Function<void()> after_unload);
-    void discard_pending_host_at(Web::HTML::CrossProcessId navigable_id, WebContentPage&, RefPtr<CanonicalDocument>);
+    void unload_a_document_and_its_descendants(CanonicalDocument&, Web::HTML::CrossProcessId navigable_id, RefPtr<WebContentPage> continuing_endpoint, Web::HTML::ChildNavigableDestruction, Function<void(UnloadedInItsHost)> queue_document_unload_task);
+    void unload_document_in_its_host(NonnullRefPtr<WebContentPage>, Web::HTML::CrossProcessId navigable_id, Web::HTML::ChildNavigableDestruction, Function<void()> after_unload);
+    void discard_pending_host_at(Web::HTML::CrossProcessId navigable_id, RefPtr<CanonicalDocument>);
+    RefPtr<WebContentPage> changing_job_endpoint(HistoryOperation const&, Web::HTML::CrossProcessId navigable_id) const;
+    RefPtr<WebContentPage> changing_job_endpoint(HistoryOperation const&, Web::HTML::CrossProcessId navigable_id, RefPtr<CanonicalDocument> const& populated_document) const;
     void dispatch_next_beforeunload_group(HistoryOperation&);
     void complete_unload_cancelation(HistoryOperation&, Web::HTML::HistoryStepResult);
     void dispatch_descendant_unload_task(Web::HTML::CrossProcessId unload_id, Web::HTML::CrossProcessId navigable_id);
@@ -290,10 +292,6 @@ private:
         };
         HashMap<Web::HTML::CrossProcessId, Node> nodes;
         size_t remaining_root_children { 0 };
-        // The page hosting the document being unloaded, which unloads it whatever the operation's jobs left it.
-        RefPtr<WebContentPage> document_host;
-        // The history operation whose displaced-endpoint list gates dispatches, when the unload is part of one.
-        Optional<Web::HTML::CrossProcessId> operation_id;
         Function<void()> queue_document_unload_task;
     };
     HashMap<Web::HTML::CrossProcessId, PendingUnload> m_pending_unloads;
