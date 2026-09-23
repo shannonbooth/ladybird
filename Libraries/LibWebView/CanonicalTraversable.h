@@ -104,7 +104,7 @@ public:
     Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigable_graph() const;
 
     void for_each_hosting_page(Function<void(WebContentPage&)> const&) const;
-    void for_each_opener_traversable(Function<void(CanonicalTraversable&)> const&) const;
+    bool is_related_to(CanonicalTraversable const&) const;
     void for_each_related_traversable(Function<void(CanonicalTraversable&)> const&) const;
     void represent_related_tabs_in(WebContentClient&);
     WebContentPage& create_representing_page_in(WebContentClient&, Optional<Compositing::PageId> browsing_context_group_page_id);

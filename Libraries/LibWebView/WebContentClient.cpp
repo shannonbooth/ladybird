@@ -353,33 +353,19 @@ void WebContentClient::unregister_embedded_page(Compositing::PageId page_id)
     close_server_if_unused();
 }
 
-// Whether a page of this process holds part of a tab related to the traversable's, directly or through the openers
-// of the tabs it holds.
+// Whether a page of this process holds part of the traversable's tab or of a tab of its browsing context group.
 bool WebContentClient::holds_part_of_a_tab_related_to(CanonicalTraversable const& traversable)
 {
-    Vector<CanonicalTraversable const*> reached;
-    Vector<CanonicalTraversable const*> to_visit;
-    auto reach = [&](CanonicalTraversable const& reached_traversable) {
-        if (reached.contains_slow(&reached_traversable))
-            return;
-        reached.append(&reached_traversable);
-        to_visit.append(&reached_traversable);
-    };
-
     for (auto const& [page_id, page] : m_pages) {
         if (!page->is_open())
             continue;
         auto const& held_traversable = page->traversable();
-        if (page->displays_tab() || held_traversable.page_hosts_any(*page))
-            reach(held_traversable);
+        if (!page->displays_tab() && !held_traversable.page_hosts_any(*page))
+            continue;
+        if (&held_traversable == &traversable || held_traversable.is_related_to(traversable))
+            return true;
     }
-
-    while (!to_visit.is_empty()) {
-        to_visit.take_last()->for_each_related_traversable([&](CanonicalTraversable& related_traversable) {
-            reach(related_traversable);
-        });
-    }
-    return reached.contains_slow(&traversable);
+    return false;
 }
 
 void WebContentClient::release_unneeded_representing_pages()

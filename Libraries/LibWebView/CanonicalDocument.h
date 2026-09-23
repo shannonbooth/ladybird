@@ -6,9 +6,11 @@
 
 #pragma once
 
+#include <AK/Badge.h>
 #include <AK/NonnullRefPtr.h>
 #include <AK/RefCounted.h>
 #include <AK/RefPtr.h>
+#include <AK/WeakPtr.h>
 #include <AK/Weakable.h>
 #include <LibURL/Origin.h>
 #include <LibWebView/Export.h>
@@ -46,6 +48,10 @@ public:
 
     void make_active();
 
+    // https://html.spec.whatwg.org/multipage/document-sequences.html#node-navigable
+    CanonicalNavigable* node_navigable() const;
+    void set_node_navigable(Badge<CanonicalNavigable>, CanonicalNavigable&);
+
     RefPtr<WebContentPage> const& page_created_in() const { return m_page_created_in; }
     RefPtr<WebContentPage> host() const;
     void set_host(WebContentPage&);
@@ -61,6 +67,7 @@ private:
     NonnullRefPtr<CanonicalBrowsingContext> m_browsing_context;
     NonnullRefPtr<CanonicalWindow> m_relevant_global_object;
     IsInitialAboutBlank m_is_initial_about_blank { IsInitialAboutBlank::No };
+    WeakPtr<CanonicalNavigable> m_node_navigable;
     RefPtr<WebContentPage> m_page_created_in;
     bool m_unload_started { false };
     bool m_is_unloaded { false };

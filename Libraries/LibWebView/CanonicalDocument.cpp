@@ -7,6 +7,7 @@
 #include <LibWebView/CanonicalBrowsingContext.h>
 #include <LibWebView/CanonicalBrowsingContextGroup.h>
 #include <LibWebView/CanonicalDocument.h>
+#include <LibWebView/CanonicalNavigable.h>
 #include <LibWebView/CanonicalWindow.h>
 #include <LibWebView/WebContentClient.h>
 
@@ -26,6 +27,19 @@ CanonicalDocument::CanonicalDocument(URL::Origin origin, NonnullRefPtr<Canonical
 }
 
 CanonicalDocument::~CanonicalDocument() = default;
+
+// The navigable the document is active in, while it is.
+CanonicalNavigable* CanonicalDocument::node_navigable() const
+{
+    if (m_is_unloaded)
+        return nullptr;
+    return m_node_navigable.ptr();
+}
+
+void CanonicalDocument::set_node_navigable(Badge<CanonicalNavigable>, CanonicalNavigable& navigable)
+{
+    m_node_navigable = navigable.make_weak_ptr<CanonicalNavigable>();
+}
 
 // The page whose process the Document is created in, until it is unloaded, or discarded before it activated.
 RefPtr<WebContentPage> CanonicalDocument::host() const

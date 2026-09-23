@@ -49,6 +49,7 @@ void CanonicalNavigable::set_active_document(NonnullRefPtr<CanonicalDocument> do
     if (m_active_document && m_active_document != document)
         m_active_document->set_unloaded();
     m_active_document = move(document);
+    m_active_document->set_node_navigable({}, *this);
 }
 
 // The document the navigable's ongoing navigation or the history step being applied populates, until it activates.

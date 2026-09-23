@@ -210,53 +210,35 @@ void CanonicalTraversable::for_each_hosting_page(Function<void(WebContentPage&)>
         visit(page);
 }
 
-static CanonicalTraversable* traversable_containing(Web::HTML::CrossProcessId navigable_id)
+// Whether the traversables are in one browsing context group.
+bool CanonicalTraversable::is_related_to(CanonicalTraversable const& other) const
 {
-    CanonicalTraversable* traversable = nullptr;
-    ViewImplementation::for_each_view([&](ViewImplementation& view) {
-        if (!view.traversable().find(navigable_id).has_value())
-            return IterationDecision::Continue;
-        traversable = &view.traversable();
-        return IterationDecision::Break;
-    });
-    return traversable;
-}
-
-// The other tabs holding the navigables the opener browsing contexts of this tab's browsing contexts are active in.
-void CanonicalTraversable::for_each_opener_traversable(Function<void(CanonicalTraversable&)> const& callback) const
-{
-    for_each_in_inclusive_subtree([&](CanonicalNavigable const& navigable) {
-        auto const& state = navigable.replicated_state();
-        if (!state.has_value() || !state->opener_navigable_id.has_value())
-            return IterationDecision::Continue;
-        if (auto* opener_traversable = traversable_containing(*state->opener_navigable_id); opener_traversable && opener_traversable != this)
-            callback(*opener_traversable);
-        return IterationDecision::Continue;
-    });
-}
-
-static bool is_in_the_browsing_context_group_of(CanonicalTraversable const& traversable, CanonicalTraversable const& other)
-{
-    if (!traversable.has_active_document() || !other.has_active_document())
+    if (!has_active_document() || !other.has_active_document())
         return false;
-    auto group = traversable.active_browsing_context().group();
+    auto group = active_browsing_context().group();
     return group && group == other.active_browsing_context().group();
 }
 
-// The other tabs whose documents a document of this tab can reach: those of its browsing context group, and those
-// holding its opener browsing contexts, which a browsing context keeps after a browsing context group switch of theirs.
+// The other tabs whose documents a document of this tab can reach: those of the browsing context group's browsing
+// context set.
 void CanonicalTraversable::for_each_related_traversable(Function<void(CanonicalTraversable&)> const& callback) const
 {
+    if (!has_active_document())
+        return;
+    auto group = active_browsing_context().group();
+    if (!group)
+        return;
     Vector<CanonicalTraversable*> related;
-    ViewImplementation::for_each_view([&](ViewImplementation& view) {
-        if (&view.traversable() != this && is_in_the_browsing_context_group_of(view.traversable(), *this))
-            related.append(&view.traversable());
-        return IterationDecision::Continue;
-    });
-    for_each_opener_traversable([&](CanonicalTraversable& opener_traversable) {
-        if (!related.contains_slow(&opener_traversable))
-            related.append(&opener_traversable);
-    });
+    for (auto* browsing_context : group->browsing_context_set()) {
+        auto document = browsing_context->active_document();
+        if (!document)
+            continue;
+        auto* navigable = document->node_navigable();
+        if (!navigable || navigable == this)
+            continue;
+        VERIFY(navigable->is_top_level_traversable());
+        related.append(static_cast<CanonicalTraversable*>(navigable));
+    }
     for (auto* traversable : related)
         callback(*traversable);
 }
@@ -268,10 +250,7 @@ void CanonicalTraversable::represent_related_tabs_in(WebContentClient& client)
     for_each_related_traversable([&](CanonicalTraversable& related_traversable) {
         if (client.page_id_for_traversable(related_traversable).has_value())
             return;
-        Optional<Compositing::PageId> group_page_id;
-        if (is_in_the_browsing_context_group_of(related_traversable, *this))
-            group_page_id = client.page_id_for_traversable(*this);
-        related_traversable.create_representing_page_in(client, group_page_id);
+        related_traversable.create_representing_page_in(client, client.page_id_for_traversable(*this));
         related_traversable.represent_related_tabs_in(client);
     });
 }
@@ -316,7 +295,7 @@ RefPtr<WebContentPage> CanonicalTraversable::page_to_display_document_in(WebCont
     }
     Optional<Compositing::PageId> group_page_id;
     for_each_related_traversable([&](CanonicalTraversable& related_traversable) {
-        if (!group_page_id.has_value() && is_in_the_browsing_context_group_of(related_traversable, *this))
+        if (!group_page_id.has_value())
             group_page_id = process.page_id_for_traversable(related_traversable);
     });
     return create_representing_page_in(process, group_page_id);
