@@ -1021,7 +1021,7 @@ void Application::open_bookmark_in_new_window(String const& bookmark_id, IsPriva
         open_url_in_new_window(bookmark->bookmark().url, is_private);
 }
 
-ErrorOr<NonnullRefPtr<WebContentClient>> Application::create_web_content_client(Optional<ViewImplementation&> view, IsPrivate is_private, Compositing::PageId initial_page_id, Optional<Web::HTML::CrossProcessId> navigable_to_adopt, Optional<Web::HTML::CrossProcessId> initial_document_state_id, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables, Optional<Web::HTML::SessionHistoryEntryDescriptor> canonical_initial_history_entry)
+ErrorOr<NonnullRefPtr<WebContentClient>> Application::create_web_content_client(Optional<ViewImplementation&> view, IsPrivate is_private, Compositing::PageId initial_page_id, Optional<Web::HTML::CrossProcessId> navigable_to_adopt, Optional<Web::HTML::CrossProcessId> initial_document_state_id, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables, Optional<Web::HTML::CrossProcessId> navigable_to_host, Optional<Web::HTML::SessionHistoryEntryDescriptor> canonical_initial_history_entry)
 {
     // The client's WebContentClient picks up this same session when it is created.
     auto request_server_handle = TRY(connect_new_request_server_client(session_for_new_view(is_private)));
@@ -1049,7 +1049,7 @@ ErrorOr<NonnullRefPtr<WebContentClient>> Application::create_web_content_client(
     auto initial_history_entry = canonical_initial_history_entry.has_value()
         ? canonical_initial_history_entry.release_value()
         : Web::HTML::create_initial_session_history_entry_descriptor(*initial_document_state_id, {}, {}, {});
-    client->async_initialize(initial_page_id, move(remote_navigables), root_navigable_id, cross_process_id_allocator, initial_history_entry, system_visibility_state);
+    client->async_initialize(initial_page_id, move(remote_navigables), navigable_to_host, root_navigable_id, cross_process_id_allocator, initial_history_entry, system_visibility_state);
 
     if (!navigable_to_adopt.has_value())
         client->set_initial_top_level_history_entry({}, move(initial_history_entry));
@@ -1451,11 +1451,21 @@ ErrorOr<NonnullRefPtr<WebContentClient>> Application::launch_web_content_process
     return create_web_content_client(view, IsPrivate::No, allocate_page_id());
 }
 
+// A process to display a tab in holds the tab, hosting none of it until it begins hosting the traversable.
+ErrorOr<NonnullRefPtr<WebContentClient>> Application::launch_web_content_process_holding_traversable(ViewImplementation& view)
+{
+    auto const& traversable = view.traversable();
+    VERIFY(traversable.replicated_state().has_value());
+    Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables;
+    remote_navigables.append({ .id = traversable.id(), .parent_id = {}, .replicated_state = *traversable.replicated_state() });
+    return create_web_content_client(view, view.is_private(), allocate_page_id(), traversable.id(), {}, move(remote_navigables));
+}
+
 ErrorOr<Application::ChildFrameWebContentProcess> Application::launch_child_frame_web_content_process(IsPrivate is_private, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables, Web::HTML::CrossProcessId root_navigable_id, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry)
 {
     auto page_id = allocate_page_id();
     auto initial_document_state_id = initial_history_entry.document_state.id;
-    auto client = TRY(create_web_content_client({}, is_private, page_id, root_navigable_id, initial_document_state_id, move(remote_navigables), move(initial_history_entry)));
+    auto client = TRY(create_web_content_client({}, is_private, page_id, root_navigable_id, initial_document_state_id, move(remote_navigables), root_navigable_id, move(initial_history_entry)));
     return ChildFrameWebContentProcess {
         .client = move(client),
         .page_id = page_id,

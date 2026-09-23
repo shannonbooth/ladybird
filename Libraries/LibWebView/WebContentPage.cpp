@@ -246,7 +246,7 @@ bool WebContentPage::continue_navigation_population_in_selected_process(Web::HTM
         }
         if (browsing_context_group_switch)
             ongoing_navigation->destination_browsing_context = move(browsing_context);
-        return view().create_new_process_for_cross_site_navigation(navigation_id);
+        return view().switch_process_for_navigation(navigation_id, browsing_context_group_switch ? ViewImplementation::KeepsBrowsingContext::No : ViewImplementation::KeepsBrowsingContext::Yes);
     }
 
     // A child navigable's document is created in the process hosting the agent cluster of the document's origin

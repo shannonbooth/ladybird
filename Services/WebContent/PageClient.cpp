@@ -208,7 +208,7 @@ void PageClient::set_has_focus(bool has_focus)
 
 void PageClient::set_window_handle(Utf16String window_handle)
 {
-    as<Web::HTML::LocalTraversableNavigable>(*page().top_level_traversable()).set_window_handle(move(window_handle));
+    as<Web::HTML::LocalTraversableNavigable>(*page().local_traversable()).set_window_handle(move(window_handle));
 }
 
 void PageClient::setup_palette()

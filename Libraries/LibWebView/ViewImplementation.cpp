@@ -184,7 +184,7 @@ void ViewImplementation::set_favicon(Badge<WebContentPage>, Optional<Gfx::Bitmap
         on_favicon_change(favicon);
 }
 
-bool ViewImplementation::create_new_process_for_cross_site_navigation(Utf16String const& navigation_id)
+bool ViewImplementation::switch_process_for_navigation(Utf16String const& navigation_id, KeepsBrowsingContext keeps_browsing_context, RefPtr<WebContentPage> page_of_another_process)
 {
     auto& ongoing_navigation = m_top_level_traversable.ongoing_navigation();
     if (!ongoing_navigation.has_value()
@@ -232,7 +232,7 @@ bool ViewImplementation::create_new_process_for_cross_site_navigation(Utf16Strin
     Optional<Web::HTML::CrossProcessId> initial_document_state_id;
     if (auto const* current_entry = m_top_level_traversable.session_history().current_entry())
         initial_document_state_id = current_entry->document_state.id;
-    initialize_client(CreateNewClient::Yes, initial_document_state_id);
+    display_page_populating_next_document(keeps_browsing_context, move(page_of_another_process), initial_document_state_id);
     VERIFY(m_client_state.page);
 
     if (on_web_content_process_change_for_cross_site_navigation)
@@ -272,7 +272,7 @@ bool ViewImplementation::create_new_process_for_cross_site_navigation(Utf16Strin
     return true;
 }
 
-void ViewImplementation::replace_web_content_process_for_history_traversal(Web::HTML::CrossProcessId target_document_state_id)
+void ViewImplementation::switch_process_for_history_traversal(Web::HTML::CrossProcessId target_document_state_id, KeepsBrowsingContext keeps_browsing_context, RefPtr<WebContentPage> page_of_another_process)
 {
     auto pending_webdriver_commands = move(m_pending_webdriver_commands);
     auto pending_webdriver_crash_commands = move(m_pending_webdriver_crash_commands);
@@ -294,7 +294,7 @@ void ViewImplementation::replace_web_content_process_for_history_traversal(Web::
     reset_page_media_state();
     // NB: Preserve the in-flight traversal operations so crash recovery can redispatch them to the
     //     replacement process.
-    initialize_client(CreateNewClient::Yes, target_document_state_id);
+    display_page_populating_next_document(keeps_browsing_context, move(page_of_another_process), target_document_state_id);
     VERIFY(m_client_state.page);
 
     if (on_web_content_process_change_for_cross_site_navigation)
@@ -2297,29 +2297,80 @@ void ViewImplementation::handle_resize()
     }
 }
 
-void ViewImplementation::initialize_client(CreateNewClient create_new_client, Optional<Web::HTML::CrossProcessId> initial_document_state_id)
+void ViewImplementation::prepare_to_replace_client()
 {
-    if (create_new_client == CreateNewClient::Yes) {
-        fail_pending_debugger_requests();
-        // NB: The replacement process has no hovered link and cannot clear the outgoing page's status label.
-        if (on_link_unhover)
-            on_link_unhover();
-    }
+    fail_pending_debugger_requests();
+    // NB: The replacement process has no hovered link and cannot clear the outgoing page's status label.
+    if (on_link_unhover)
+        on_link_unhover();
+    resume_debugger_for_initialization();
+
+    reject_pending_selection_requests();
+
+    // A queued session-history reset awaiting the previous process's reply can never complete.
+    if (auto queue_promise = move(m_pending_session_history_reset_queue_promise))
+        queue_promise->resolve({});
+
+    cancel_all_native_geolocation_requests();
+}
+
+void ViewImplementation::resume_debugger_for_initialization()
+{
     if (m_debugger_paused) {
         set_debugger_paused(false);
         if (on_debugger_resumed)
             on_debugger_resumed();
     }
     m_debugger_overlay_pointer_state.cancel();
+}
 
+// The view displays the page populating the traversable's next document from the start of the navigation that
+// populates it. A navigation that keeps the traversable's browsing context populates the document in a traversable
+// standing in for the one the displaced page hosts, in a page of another process holding part of the tab or of a new
+// one. Otherwise a new process creates the traversable's new browsing context.
+void ViewImplementation::display_page_populating_next_document(KeepsBrowsingContext keeps_browsing_context, RefPtr<WebContentPage> page_of_another_process, Optional<Web::HTML::CrossProcessId> initial_document_state_id)
+{
+    if (keeps_browsing_context == KeepsBrowsingContext::No) {
+        VERIFY(!page_of_another_process);
+        initialize_client(CreateNewClient::Yes, initial_document_state_id);
+        return;
+    }
+
+    prepare_to_replace_client();
+    auto client_handle = m_client_state.client_handle;
+    m_client_state = {};
+    m_client_state.client_handle = move(client_handle);
+
+    if (!initial_document_state_id.has_value())
+        initial_document_state_id = Application::the().allocate_ui_process_cross_process_id();
+    auto stand_in_history_entry = Web::HTML::create_initial_session_history_entry_descriptor(*initial_document_state_id, {}, {}, {});
+
+    if (page_of_another_process) {
+        page_of_another_process->client().display_page_of_this_process({}, *page_of_another_process);
+        m_client_state.page = page_of_another_process;
+        m_top_level_traversable.forget_representing_page(*page_of_another_process);
+    } else {
+        // FIXME: Fail to open the tab, rather than crashing the whole application if this fails.
+        auto client_or_error = Application::the().launch_web_content_process_holding_traversable(*this);
+        if (client_or_error.is_error())
+            warnln("Failed to launch WebContent during process swap: {}", client_or_error.error());
+        // Launching the process assigns this view the process's initial page.
+        VERIFY(m_client_state.page);
+    }
+
+    m_top_level_traversable.set_replacement_display_page(page());
+    // The page holds the related tabs before it begins hosting the traversable, whose browsing context reaches them.
+    m_top_level_traversable.represent_related_tabs_in(client());
+    // NB: The stand-in's document is not the displayed one. Keep it hidden so it cannot paint over the outgoing page;
+    //     activation supplies the destination's actual visibility state.
+    client().async_begin_hosting_navigable(page_id(), m_top_level_traversable.id(), stand_in_history_entry, Web::HTML::VisibilityState::Hidden);
+    initialize_client(CreateNewClient::No);
+}
+
+void ViewImplementation::initialize_client(CreateNewClient create_new_client, Optional<Web::HTML::CrossProcessId> initial_document_state_id)
+{
     if (create_new_client == CreateNewClient::Yes) {
-        reject_pending_selection_requests();
-
-        // A queued session-history reset awaiting the previous process's reply can never complete.
-        if (auto queue_promise = move(m_pending_session_history_reset_queue_promise))
-            queue_promise->resolve({});
-
-        cancel_all_native_geolocation_requests();
+        prepare_to_replace_client();
 
         // Only a view's first process creates its traversable. A process replacing another adopts it
         auto navigable_to_adopt = m_top_level_traversable.has_active_browsing_context()
@@ -2339,7 +2390,9 @@ void ViewImplementation::initialize_client(CreateNewClient create_new_client, Op
         if (replaces_existing_client)
             m_top_level_traversable.set_replacement_display_page(page());
     } else {
-        // The view was given a page of its parent's process before it asked to be initialized.
+        resume_debugger_for_initialization();
+        // The view was given a page of its parent's process before it asked to be initialized, or a page to display
+        // the traversable's next document in.
         VERIFY(m_client_state.page);
     }
 

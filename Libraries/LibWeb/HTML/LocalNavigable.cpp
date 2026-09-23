@@ -1164,7 +1164,7 @@ void LocalNavigable::activate_history_entry(RefPtr<SessionHistoryEntry> entry, G
     //         so that the document is the content navigable's active document, and the WindowProxy's [[Window]], from
     //         its activation.
     if (is_provisional())
-        page().adopt_hosted(*this);
+        page().adopt_hosted(*this, document);
 
     // 1. Save persisted state to the navigable's active session history entry.
     save_persisted_state_to_active_session_history_entry();
@@ -4642,26 +4642,33 @@ GC::Ref<LocalNavigable> LocalNavigable::local_root()
     return navigable;
 }
 
-// AD-HOC: Steps 3 and 6 to 8 of creating a new child navigable, run by the process chosen to host a navigable's next
-//         document, for a navigable the UI process created long ago: a document to stand in until that document is
-//         populated, a document state carrying the canonical entry's id, and a navigable initialized under the
-//         navigable's parent, sharing the WindowProxy scripts hold for the navigable. The parent's document is here
-//         when the parent is local, and in another process otherwise, in which case the browsing context is created
-//         without a creator or embedder.
+// AD-HOC: Steps 3 and 6 to 8 of creating a new child navigable, or their counterparts in creating a new top-level
+//         traversable, run by the process chosen to host a navigable's next document, for a navigable the UI process
+//         created long ago: a document to stand in until that document is populated, a document state carrying the
+//         canonical entry's id, and a navigable initialized under the navigable's parent, if any, sharing the
+//         WindowProxy scripts hold for the navigable. The parent's document is here when the parent is local, and in
+//         another process otherwise, in which case the browsing context is created without a creator or embedder.
 // FIXME: A remote parent's document is the creator document. The UI process holds the canonical browsing context.
 GC::Ref<LocalNavigable> LocalNavigable::create_stand_in(Badge<Page> badge, RemoteNavigable& remote_navigable, SessionHistoryEntryDescriptor const& initial_history_entry, VisibilityState system_visibility_state)
 {
     auto parent_navigable = remote_navigable.parent();
-    VERIFY(parent_navigable);
     auto& page = remote_navigable.page();
     auto container = remote_navigable.container();
-    auto* local_parent = as_if<LocalNavigable>(*parent_navigable);
+    auto* local_parent = parent_navigable ? as_if<LocalNavigable>(*parent_navigable) : nullptr;
     VERIFY(!local_parent == !container);
 
     // 3. Let browsingContext and document be the result of creating a new browsing context and document given element's node document, element, and group.
     // NB: group is not resolved, as in NavigableContainer::create_new_child_navigable(). An element in another process
     //     is covered above.
     auto [browsing_context, document] = BrowsingContext::create_a_new_browsing_context_and_document(page, container ? GC::Ptr<DOM::Document> { container->document() } : nullptr, container, remote_navigable.window_proxy());
+
+    // NB: A traversable's browsing context is the one active in it, which the navigation replacing its document keeps.
+    //     The page holds the tabs that browsing context relates to, and a WindowProxy for its opener is created in the
+    //     realm of the stand-in's document.
+    if (!parent_navigable) {
+        TemporaryExecutionContext execution_context { relevant_realm(*document) };
+        browsing_context->continue_top_level_browsing_context_of(remote_navigable);
+    }
 
     // 6. Let documentState be a new document state, with
     //  - document: document
@@ -4682,7 +4689,9 @@ GC::Ref<LocalNavigable> LocalNavigable::create_stand_in(Badge<Page> badge, Remot
         page.ensure_compositor_host();
 
     // 7. Let navigable be a new navigable.
-    GC::Ref<LocalNavigable> navigable = *GC::Heap::the().allocate<LocalNavigable>(page, page.client().is_svg_page_client());
+    GC::Ref<LocalNavigable> navigable = parent_navigable
+        ? GC::Ref<LocalNavigable> { *GC::Heap::the().allocate<LocalNavigable>(page, page.client().is_svg_page_client()) }
+        : GC::Ref<LocalNavigable> { *GC::Heap::the().allocate<LocalTraversableNavigable>(page) };
 
     // 8. Initialize the navigable navigable given documentState and parentNavigable.
     navigable->initialize_navigable(document_state, parent_navigable, *document, local_parent ? local_parent->active_document()->visibility_state() : system_visibility_state);
@@ -4695,7 +4704,7 @@ GC::Ref<LocalNavigable> LocalNavigable::create_stand_in(Badge<Page> badge, Remot
         // The navigable's container is this element although it is not the content navigable yet: its document is
         // fully active from its activation, and its navigations read the container's facts here.
         navigable->set_container(badge, container);
-    } else {
+    } else if (parent_navigable) {
         navigable->m_root_container_state = remote_navigable.replicated_state().container;
         navigable->set_parent_compositor_context(as<RemoteNavigable>(*parent_navigable).compositor_context_id());
     }

@@ -78,6 +78,7 @@ public:
     GC::Ptr<WindowProxy> opener_browsing_context_window_proxy() const { return m_opener_browsing_context_window_proxy; }
     void set_opener_browsing_context(GC::Ptr<BrowsingContext>);
     void set_opener_browsing_context(RemoteNavigable&);
+    void continue_top_level_browsing_context_of(RemoteNavigable&);
 
     void set_is_popup(TokenizedFeature::Popup is_popup) { m_is_popup = is_popup; }
     [[nodiscard]] TokenizedFeature::Popup is_popup() const { return m_is_popup; }

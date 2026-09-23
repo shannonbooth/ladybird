@@ -1701,7 +1701,7 @@ void CanonicalTraversable::continue_history_navigation_population(Web::HTML::Cro
                     return;
                 operation->unavailable_job_endpoints.append(*endpoint);
                 operation->changing_job_endpoints.remove(navigable_id);
-                view->replace_web_content_process_for_history_traversal(pending_job.value()->job.target_entry.document_state.id);
+                view->switch_process_for_history_traversal(pending_job.value()->job.target_entry.document_state.id, group_switch ? ViewImplementation::KeepsBrowsingContext::No : ViewImplementation::KeepsBrowsingContext::Yes);
                 operation = find_history_operation(operation_id);
                 if (!operation)
                     return;

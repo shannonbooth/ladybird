@@ -671,14 +671,25 @@ GC::Ref<HTML::Navigable> Page::top_level_traversable() const
     return *m_top_level_traversable;
 }
 
+// The traversable of the tab as this page displays it: the top-level traversable when it is local, or the one
+// populating the document that replaces the one another process displays in it.
+GC::Ptr<HTML::LocalNavigable> Page::local_traversable_if_any() const
+{
+    if (!m_top_level_traversable)
+        return nullptr;
+    if (auto* local_navigable = as_if<HTML::LocalNavigable>(*m_top_level_traversable))
+        return local_navigable;
+    return as<HTML::RemoteNavigable>(*m_top_level_traversable).provisional_navigable();
+}
+
 bool Page::has_local_traversable() const
 {
-    return m_top_level_traversable && is<HTML::LocalNavigable>(*m_top_level_traversable);
+    return local_traversable_if_any() != nullptr;
 }
 
 GC::Ref<HTML::LocalNavigable> Page::local_traversable() const
 {
-    return as<HTML::LocalNavigable>(*m_top_level_traversable);
+    return *local_traversable_if_any();
 }
 
 Vector<GC::Ref<HTML::LocalNavigable>> Page::local_roots() const
@@ -805,15 +816,27 @@ GC::Ref<HTML::LocalNavigable> Page::begin_hosting(HTML::CrossProcessId id, HTML:
     return HTML::LocalNavigable::create_stand_in({}, *navigable, current_history_entry, system_visibility_state);
 }
 
-void Page::adopt_hosted(HTML::LocalNavigable& navigable)
+void Page::adopt_hosted(HTML::LocalNavigable& navigable, DOM::Document& activated_document)
 {
     auto remote_navigable = navigable.provisional_for();
     VERIFY(remote_navigable && remote_navigable->provisional_navigable().ptr() == &navigable);
 
-    if (auto container = remote_navigable->container())
+    if (auto container = remote_navigable->container()) {
         container->swap_content_navigable_to_local({}, navigable);
-    else
-        as<HTML::RemoteNavigable>(*remote_navigable->parent()).replace_child(*remote_navigable, navigable);
+    } else if (auto parent = remote_navigable->parent()) {
+        as<HTML::RemoteNavigable>(*parent).replace_child(*remote_navigable, navigable);
+    } else {
+        VERIFY(m_top_level_traversable.ptr() == remote_navigable.ptr());
+        // The frames of the document another process displayed in the traversable were removed with that document,
+        // before the one replacing it activated.
+        VERIFY(remote_navigable->children().is_empty());
+        auto& traversable = as<HTML::LocalTraversableNavigable>(navigable);
+        m_top_level_traversable = traversable;
+        // The browsing context joins the group as this page knows it, holding the other tabs of the group, with the
+        // document it is active in.
+        browsing_context_group().append(*activated_document.browsing_context());
+        update_needs_beforeunload_check();
+    }
 
     navigable.clear_provisional_for();
     remote_navigable->set_provisional_navigable(nullptr);
@@ -978,7 +1001,8 @@ void Page::host_navigable(HTML::CrossProcessId id, HTML::SessionHistoryEntryDesc
     auto navigable = navigable_with_id(id);
     if (!navigable || is<HTML::LocalNavigable>(*navigable))
         return;
-    adopt_hosted(begin_hosting(id, current_history_entry, system_visibility_state));
+    auto provisional_navigable = begin_hosting(id, current_history_entry, system_visibility_state);
+    adopt_hosted(provisional_navigable, *provisional_navigable->active_document());
 }
 
 HTML::BrowsingContextGroup& Page::browsing_context_group()

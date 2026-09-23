@@ -192,9 +192,9 @@ void ConnectionFromClient::set_font_catalog(IPC::File file, u64 size, u64 genera
     Web::Platform::FontPlugin::install(*new Web::Platform::FontPlugin(m_enable_test_mode, m_font_provider));
 }
 
-void ConnectionFromClient::initialize(Compositing::PageId initial_page_id, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables, Web::HTML::CrossProcessId root_navigable_id, Web::HTML::CrossProcessIdAllocator cross_process_id_allocator, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::VisibilityState system_visibility_state)
+void ConnectionFromClient::initialize(Compositing::PageId initial_page_id, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables, Optional<Web::HTML::CrossProcessId> navigable_to_host, Web::HTML::CrossProcessId root_navigable_id, Web::HTML::CrossProcessIdAllocator cross_process_id_allocator, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::VisibilityState system_visibility_state)
 {
-    m_page_host->initialize(initial_page_id, move(remote_navigables), root_navigable_id, cross_process_id_allocator, move(initial_history_entry), system_visibility_state);
+    m_page_host->initialize(initial_page_id, move(remote_navigables), navigable_to_host, root_navigable_id, cross_process_id_allocator, move(initial_history_entry), system_visibility_state);
 }
 
 void ConnectionFromClient::create_representing_page(Compositing::PageId page_id, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables, Optional<Compositing::PageId> browsing_context_group_page_id)
@@ -397,7 +397,7 @@ void ConnectionFromClient::close_server()
 Messages::WebContentServer::GetWindowHandleResponse ConnectionFromClient::get_window_handle(Compositing::PageId page_id)
 {
     if (auto page = this->page(page_id); page.has_value())
-        return as<Web::HTML::LocalTraversableNavigable>(*page->page().top_level_traversable()).window_handle().to_utf8();
+        return as<Web::HTML::LocalTraversableNavigable>(*page->page().local_traversable()).window_handle().to_utf8();
     return String {};
 }
 
@@ -880,7 +880,7 @@ void ConnectionFromClient::complete_history_operation(Compositing::PageId page_i
     if (!page.has_value())
         return;
 
-    if (auto* traversable = as_if<Web::HTML::LocalTraversableNavigable>(*page->page().top_level_traversable()))
+    if (auto* traversable = as_if<Web::HTML::LocalTraversableNavigable>(page->page().local_traversable_if_any().ptr()))
         traversable->set_session_history_entry_count(session_history_entry_count);
     page->page().history_executor().complete_ui_history_operation(operation_id, result, committed_step);
 }
@@ -3137,13 +3137,13 @@ void ConnectionFromClient::request_close(Compositing::PageId page_id)
     // Browser user agents should offer users the ability to arbitrarily close any top-level traversable in their top-level traversable set.
     // For example, by clicking a "close tab" button.
     if (auto page = this->page(page_id); page.has_value())
-        as<Web::HTML::LocalTraversableNavigable>(*page->page().top_level_traversable()).close_top_level_traversable();
+        as<Web::HTML::LocalTraversableNavigable>(*page->page().local_traversable()).close_top_level_traversable();
 }
 
 void ConnectionFromClient::force_close(Compositing::PageId page_id)
 {
     if (auto page = this->page(page_id); page.has_value())
-        as<Web::HTML::LocalTraversableNavigable>(*page->page().top_level_traversable()).close_top_level_traversable(Web::HTML::LocalTraversableNavigable::PromptToUnload::No);
+        as<Web::HTML::LocalTraversableNavigable>(*page->page().local_traversable()).close_top_level_traversable(Web::HTML::LocalTraversableNavigable::PromptToUnload::No);
 }
 
 void ConnectionFromClient::exit_fullscreen(Compositing::PageId page_id)

@@ -120,6 +120,7 @@ public:
 
     GC::Ref<HTML::LocalNavigable> local_traversable() const;
     bool has_local_traversable() const;
+    GC::Ptr<HTML::LocalNavigable> local_traversable_if_any() const;
     Vector<GC::Ref<HTML::LocalNavigable>> local_roots() const;
     Vector<GC::Root<HTML::LocalNavigable>> hosted_navigables() const;
     GC::Ptr<HTML::Navigable> navigable_with_id(HTML::CrossProcessId) const;
@@ -131,7 +132,7 @@ public:
     void content_navigable_completely_finished_loading(HTML::CrossProcessId);
 
     GC::Ref<HTML::LocalNavigable> begin_hosting(HTML::CrossProcessId, HTML::SessionHistoryEntryDescriptor const& current_history_entry, HTML::VisibilityState system_visibility_state);
-    void adopt_hosted(HTML::LocalNavigable&);
+    void adopt_hosted(HTML::LocalNavigable&, DOM::Document& activated_document);
     void discard_provisional_navigable(HTML::CrossProcessId);
     void stop_hosting(HTML::CrossProcessId, HTML::ReplicatedNavigableState);
     void stop_hosting(HTML::LocalNavigable&, HTML::ReplicatedNavigableState);

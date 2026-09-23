@@ -183,6 +183,7 @@ public:
     void stop_watching_geolocation_position(Core::GeolocationProvider::WatchId);
 
     ErrorOr<NonnullRefPtr<WebContentClient>> launch_web_content_process(ViewImplementation&, Optional<Web::HTML::CrossProcessId> navigable_to_adopt = {}, Optional<Web::HTML::CrossProcessId> initial_document_state_id = {});
+    ErrorOr<NonnullRefPtr<WebContentClient>> launch_web_content_process_holding_traversable(ViewImplementation&);
     struct ChildFrameWebContentProcess {
         NonnullRefPtr<WebContentClient> client;
         Compositing::PageId page_id { 0 };
@@ -382,7 +383,7 @@ protected:
     bool has_spare_web_content_process() const { return m_spare_web_content_process; }
 
 private:
-    ErrorOr<NonnullRefPtr<WebContentClient>> create_web_content_client(Optional<ViewImplementation&>, IsPrivate, Compositing::PageId initial_page_id, Optional<Web::HTML::CrossProcessId> navigable_to_adopt = {}, Optional<Web::HTML::CrossProcessId> initial_document_state_id = {}, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables = {}, Optional<Web::HTML::SessionHistoryEntryDescriptor> canonical_initial_history_entry = {});
+    ErrorOr<NonnullRefPtr<WebContentClient>> create_web_content_client(Optional<ViewImplementation&>, IsPrivate, Compositing::PageId initial_page_id, Optional<Web::HTML::CrossProcessId> navigable_to_adopt = {}, Optional<Web::HTML::CrossProcessId> initial_document_state_id = {}, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables = {}, Optional<Web::HTML::CrossProcessId> navigable_to_host = {}, Optional<Web::HTML::SessionHistoryEntryDescriptor> canonical_initial_history_entry = {});
     ErrorOr<void> launch_services();
     void launch_spare_web_content_process();
     ErrorOr<void> launch_compositor_process();

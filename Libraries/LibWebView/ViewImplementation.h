@@ -120,8 +120,12 @@ public:
 
     String const& handle() const { return m_client_state.client_handle; }
 
-    bool create_new_process_for_cross_site_navigation(Utf16String const& navigation_id);
-    void replace_web_content_process_for_history_traversal(Web::HTML::CrossProcessId target_document_state_id);
+    enum class KeepsBrowsingContext : bool {
+        No,
+        Yes,
+    };
+    bool switch_process_for_navigation(Utf16String const& navigation_id, KeepsBrowsingContext, RefPtr<WebContentPage> page_of_another_process = {});
+    void switch_process_for_history_traversal(Web::HTML::CrossProcessId target_document_state_id, KeepsBrowsingContext, RefPtr<WebContentPage> page_of_another_process = {});
 
     void server_did_paint(Badge<WebContentPage>, i32 bitmap_id, Gfx::IntSize size, Gfx::IntRect damage_rect);
 
@@ -592,6 +596,9 @@ protected:
         Yes,
     };
     virtual void initialize_client(CreateNewClient = CreateNewClient::Yes, Optional<Web::HTML::CrossProcessId> initial_document_state_id = {});
+    void prepare_to_replace_client();
+    void resume_debugger_for_initialization();
+    void display_page_populating_next_document(KeepsBrowsingContext, RefPtr<WebContentPage> page_of_another_process, Optional<Web::HTML::CrossProcessId> initial_document_state_id);
     void cancel_all_native_geolocation_requests();
     void send_geolocation_emulated_position(WebContentPage&);
     WebContentPage& focused_navigable_host() const;

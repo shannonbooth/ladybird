@@ -262,6 +262,15 @@ void WebContentClient::register_view(Compositing::PageId page_id, ViewImplementa
     view.m_client_state.page = open_page(page_id, view.traversable());
 }
 
+// A page of this process that held part of the tab displays it from now on.
+void WebContentClient::display_page_of_this_process(Badge<ViewImplementation>, WebContentPage& page)
+{
+    VERIFY(page.is_open() && &page.client() == this);
+    if (m_detached_page_close_timer)
+        m_detached_page_close_timer->stop();
+    Application::process_manager().cancel_forced_exit(pid());
+}
+
 void WebContentClient::keep_view_page_for_displaced_document(Compositing::PageId page_id, CanonicalTraversable& traversable)
 {
     auto* page = find_page(page_id);

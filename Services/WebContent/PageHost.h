@@ -40,7 +40,7 @@ public:
     static NonnullOwnPtr<PageHost> create(ConnectionFromClient& client) { return adopt_own(*new PageHost(client)); }
     virtual ~PageHost();
 
-    void initialize(Compositing::PageId initial_page_id, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables, Web::HTML::CrossProcessId root_navigable_id, Web::HTML::CrossProcessIdAllocator, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::VisibilityState system_visibility_state);
+    void initialize(Compositing::PageId initial_page_id, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables, Optional<Web::HTML::CrossProcessId> navigable_to_host, Web::HTML::CrossProcessId root_navigable_id, Web::HTML::CrossProcessIdAllocator, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::VisibilityState system_visibility_state);
     Optional<PageClient&> page(Compositing::PageId page_id);
     PageClient& create_page(Compositing::PageId page_id, Optional<Web::HTML::CrossProcessId> pending_root_navigable_id = {});
     void remove_page(Badge<PageClient>, Compositing::PageId page_id);

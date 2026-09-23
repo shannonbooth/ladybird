@@ -344,6 +344,17 @@ void BrowsingContext::set_opener_browsing_context(RemoteNavigable& navigable)
     m_opener_browsing_context_window_proxy = navigable.active_window_proxy();
 }
 
+// The browsing context active in a top-level traversable another process hosts, which this one continues here: the
+// document this process populates in the traversable replaces that process's without a browsing context group switch.
+void BrowsingContext::continue_top_level_browsing_context_of(RemoteNavigable& navigable)
+{
+    auto const& state = navigable.replicated_state();
+    m_is_auxiliary = state.active_browsing_context_is_auxiliary;
+    m_is_popup = state.active_browsing_context_is_popup ? TokenizedFeature::Popup::Yes : TokenizedFeature::Popup::No;
+    m_popup_sandboxing_flag_set = state.active_browsing_context_popup_sandboxing_flag_set;
+    m_opener_browsing_context_window_proxy = navigable.active_browsing_context_opener_window_proxy();
+}
+
 void BrowsingContext::visit_edges(Cell::Visitor& visitor)
 {
     Base::visit_edges(visitor);

@@ -102,6 +102,7 @@ public:
     void assign_view(Badge<Application>, ViewImplementation&);
     void set_initial_top_level_history_entry(Badge<Application>, Web::HTML::SessionHistoryEntryDescriptor entry) { m_initial_top_level_history_entry = move(entry); }
     void register_view(Compositing::PageId page_id, ViewImplementation&);
+    void display_page_of_this_process(Badge<ViewImplementation>, WebContentPage&);
     void unregister_view(Compositing::PageId page_id);
 
     void set_compositor_connection_id(Badge<Application>, i32);

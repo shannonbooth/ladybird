@@ -370,9 +370,10 @@ void LocalTraversableNavigable::destroy_top_level_traversable()
         active_document()->destroy_a_document_and_its_descendants();
 
     // 3. Remove browsingContext.
+    // NB: A provisional traversable's browsing context joins the group when the document it populates activates.
     if (!browsing_context) {
         dbgln("LocalTraversableNavigable::destroy_top_level_traversable: No browsing context?");
-    } else {
+    } else if (!is_provisional()) {
         browsing_context->remove();
     }
 
