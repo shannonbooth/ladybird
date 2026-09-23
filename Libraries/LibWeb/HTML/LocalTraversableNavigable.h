@@ -27,7 +27,7 @@ class WEB_API LocalTraversableNavigable final : public LocalNavigable {
     GC_DECLARE_ALLOCATOR(LocalTraversableNavigable);
 
 public:
-    static GC::Ref<LocalTraversableNavigable> create_a_new_top_level_traversable(GC::Ref<Page>, GC::Ptr<BrowsingContext> opener, Optional<SessionHistoryEntryDescriptor> initial_history_entry = {}, VisibilityState system_visibility_state = VisibilityState::Hidden);
+    static GC::Ref<LocalTraversableNavigable> create_a_new_top_level_traversable(GC::Ref<Page>, GC::Ptr<BrowsingContext> opener, SessionHistoryEntryDescriptor initial_history_entry_from_owner, VisibilityState system_visibility_state);
     static GC::Ref<LocalTraversableNavigable> create_a_fresh_top_level_traversable(GC::Ref<Page>, URL::URL const& initial_navigation_url, DocumentResource, SessionHistoryEntryDescriptor initial_history_entry, VisibilityState system_visibility_state);
 
     virtual ~LocalTraversableNavigable() override;

@@ -990,7 +990,9 @@ TEST_CASE(relevant_global_main_world_wrapper_ignores_preferred_realm)
     auto page = Web::Page::create(client);
     client->m_page = page.ptr();
 
-    auto traversable = Web::HTML::LocalTraversableNavigable::create_a_new_top_level_traversable(page, nullptr, {});
+    auto initial_history_entry = Web::HTML::create_initial_session_history_entry_descriptor(page->client().allocate_cross_process_id(), {}, {}, {});
+
+    auto traversable = Web::HTML::LocalTraversableNavigable::create_a_new_top_level_traversable(page, nullptr, move(initial_history_entry), Web::HTML::VisibilityState::Hidden);
     page->set_top_level_traversable(traversable);
     auto window = GC::Ref { *traversable->active_document()->window() };
 
@@ -1029,7 +1031,8 @@ TEST_CASE(resize_observer_releases_activity_root_when_registration_document_is_c
         auto client = vm.heap().allocate<TestPageClient>();
         auto page = Web::Page::create(client);
         client->m_page = page.ptr();
-        auto traversable = Web::HTML::LocalTraversableNavigable::create_a_new_top_level_traversable(page, nullptr, {});
+        auto initial_history_entry = Web::HTML::create_initial_session_history_entry_descriptor(page->client().allocate_cross_process_id(), {}, {}, {});
+        auto traversable = Web::HTML::LocalTraversableNavigable::create_a_new_top_level_traversable(page, nullptr, move(initial_history_entry), Web::HTML::VisibilityState::Hidden);
         page->set_top_level_traversable(traversable);
         return GC::Ref { *traversable->active_document() };
     };

@@ -54,17 +54,10 @@ BrowsingContextAndDocument create_a_new_top_level_browsing_context_and_document(
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#creating-a-new-top-level-traversable
-GC::Ref<LocalTraversableNavigable> LocalTraversableNavigable::create_a_new_top_level_traversable(GC::Ref<Page> page, GC::Ptr<HTML::BrowsingContext> opener, Optional<SessionHistoryEntryDescriptor> initial_history_entry_from_owner, VisibilityState system_visibility_state)
+GC::Ref<LocalTraversableNavigable> LocalTraversableNavigable::create_a_new_top_level_traversable(GC::Ref<Page> page, GC::Ptr<HTML::BrowsingContext> opener, SessionHistoryEntryDescriptor initial_history_entry_from_owner, VisibilityState system_visibility_state)
 {
     auto& vm = Bindings::main_thread_vm();
     page->ensure_compositor_host();
-
-    // NB: A traversable with no owning process, such as an SVG image's, mints its own entry
-    auto initial_entry = initial_history_entry_from_owner.has_value()
-        ? initial_history_entry_from_owner.release_value()
-        : create_initial_session_history_entry_descriptor(page->client().allocate_cross_process_id(),
-              opener ? Optional<URL::Origin> { opener->active_document()->origin() } : Optional<URL::Origin> {},
-              opener ? Optional<URL::URL> { opener->active_document()->base_url() } : Optional<URL::URL> {}, {});
 
     // 1. Let document be null.
     GC::Ptr<DOM::Document> document = nullptr;
@@ -80,7 +73,7 @@ GC::Ref<LocalTraversableNavigable> LocalTraversableNavigable::create_a_new_top_l
     }
 
     // 4. Let documentState be a new document state, with
-    auto document_state = DocumentState::create(initial_entry.document_state.id);
+    auto document_state = DocumentState::create(initial_history_entry_from_owner.document_state.id);
 
     // document: document (now owned by LocalNavigable::m_active_document, not DocumentState)
 
@@ -91,7 +84,7 @@ GC::Ref<LocalTraversableNavigable> LocalTraversableNavigable::create_a_new_top_l
     document_state->set_origin(document->origin());
 
     // navigable target name: targetName
-    document_state->set_navigable_target_name(initial_entry.document_state.navigable_target_name);
+    document_state->set_navigable_target_name(initial_history_entry_from_owner.document_state.navigable_target_name);
 
     // about base URL: document's about base URL
     document_state->set_about_base_url(document->about_base_url());
@@ -110,8 +103,8 @@ GC::Ref<LocalTraversableNavigable> LocalTraversableNavigable::create_a_new_top_l
     initial_history_entry->set_step(0);
 
     // NB: The owner's copy of this entry and this one must be the same entry, so take its identity
-    initial_history_entry->set_navigation_api_key(initial_entry.navigation_api_key);
-    initial_history_entry->set_navigation_api_id(initial_entry.navigation_api_id);
+    initial_history_entry->set_navigation_api_key(initial_history_entry_from_owner.navigation_api_key);
+    initial_history_entry->set_navigation_api_id(initial_history_entry_from_owner.navigation_api_id);
 
     // 9. Append initialHistoryEntry to traversable's session history entries.
     // NB: A traversable's owner keeps the canonical session history; this entry is the owner's initial entry.

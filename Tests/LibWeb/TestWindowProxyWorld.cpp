@@ -80,7 +80,9 @@ TEST_CASE(per_world_windowproxy_and_window_wrapper)
     auto page = Web::Page::create(client);
     client->m_page = page.ptr();
 
-    auto traversable = Web::HTML::LocalTraversableNavigable::create_a_new_top_level_traversable(page, nullptr, {});
+    auto initial_history_entry = Web::HTML::create_initial_session_history_entry_descriptor(page->client().allocate_cross_process_id(), {}, {}, {});
+
+    auto traversable = Web::HTML::LocalTraversableNavigable::create_a_new_top_level_traversable(page, nullptr, move(initial_history_entry), Web::HTML::VisibilityState::Hidden);
     page->set_top_level_traversable(traversable);
     auto document = GC::Ref { *traversable->active_document() };
     auto browsing_context = GC::Ref { *document->browsing_context() };

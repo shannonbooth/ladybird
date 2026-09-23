@@ -93,7 +93,8 @@ ErrorOr<GC::Ref<SVGDecodedImageData>> SVGDecodedImageData::create(GC::Ref<Page> 
     auto page = Page::create(*page_client);
     page->set_is_scripting_enabled(false);
     page_client->m_svg_page = page.ptr();
-    page->set_top_level_traversable(HTML::LocalTraversableNavigable::create_a_new_top_level_traversable(page, nullptr, {}));
+    auto initial_history_entry = HTML::create_initial_session_history_entry_descriptor(page->client().allocate_cross_process_id(), {}, {}, {});
+    page->set_top_level_traversable(HTML::LocalTraversableNavigable::create_a_new_top_level_traversable(page, nullptr, move(initial_history_entry), HTML::VisibilityState::Hidden));
     auto navigable = page->local_traversable();
     auto response = Fetch::Infrastructure::Response::create();
     response->url_list().append(url);

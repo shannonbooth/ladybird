@@ -240,7 +240,8 @@ OwnPtr<LoadedPage> load_page(DocumentShape shape)
 
     page->set_is_scripting_enabled(false);
     page->set_window_size(viewport_size);
-    auto traversable = Web::HTML::LocalTraversableNavigable::create_a_new_top_level_traversable(page, nullptr, {});
+    auto initial_history_entry = Web::HTML::create_initial_session_history_entry_descriptor(page->client().allocate_cross_process_id(), {}, {}, {});
+    auto traversable = Web::HTML::LocalTraversableNavigable::create_a_new_top_level_traversable(page, nullptr, move(initial_history_entry), Web::HTML::VisibilityState::Hidden);
     page->set_top_level_traversable(traversable);
     traversable->set_viewport_size(css_viewport_size, Web::InvalidateDisplayList::PaintCommandsAndHitTestList);
 
