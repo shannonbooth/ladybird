@@ -744,10 +744,12 @@ void Page::create_remote_navigable_graph(Vector<HTML::RemoteNavigableDescriptor>
             VERIFY(parent);
         }
         auto navigable = HTML::RemoteNavigable::create(*this, descriptor.id, parent, move(descriptor.replicated_state));
-        if (parent)
+        if (parent) {
             as<HTML::RemoteNavigable>(*parent).append_child(navigable);
-        else
+        } else {
             set_top_level_traversable(navigable);
+            HTML::BrowsingContext::create_for_remote_traversable(*this, navigable);
+        }
     }
     VERIFY(m_top_level_traversable);
 }
@@ -802,8 +804,12 @@ void Page::discard_provisional_navigable_of(HTML::RemoteNavigable& remote_naviga
     navigable->clear_provisional_for();
     navigable->set_container({}, nullptr);
     navigable->set_has_been_destroyed();
-    if (auto document = navigable->active_document())
+    if (auto document = navigable->active_document()) {
         document->destroy_a_document_and_its_descendants();
+        // The traversable's browsing context stays, with its active document in the process hosting it.
+        if (auto browsing_context = remote_navigable.active_browsing_context(); browsing_context && browsing_context->active_document() == document.ptr())
+            browsing_context->set_active_document(nullptr);
+    }
     navigable->remove_from_all_local_navigables();
 }
 
@@ -832,9 +838,8 @@ void Page::adopt_hosted(HTML::LocalNavigable& navigable, DOM::Document& activate
         VERIFY(remote_navigable->children().is_empty());
         auto& traversable = as<HTML::LocalTraversableNavigable>(navigable);
         m_top_level_traversable = traversable;
-        // The browsing context joins the group as this page knows it, holding the other tabs of the group, with the
-        // document it is active in.
-        browsing_context_group().append(*activated_document.browsing_context());
+        VERIFY(activated_document.browsing_context() == remote_navigable->active_browsing_context());
+        activated_document.browsing_context()->take_over_from_remote_navigable();
         update_needs_beforeunload_check();
     }
 
@@ -874,6 +879,10 @@ void Page::stop_hosting(HTML::LocalNavigable& local_navigable, HTML::ReplicatedN
     // A local root: the RemoteNavigable takes its place among the children of its parent, whose document another
     // process hosts, or as the traversable of a page displaying the tab no longer.
     auto parent = local_navigable.parent();
+    // The document is unloaded already when the page stops hosting after its own unload task.
+    auto browsing_context = local_navigable.active_browsing_context();
+    if (!browsing_context)
+        browsing_context = local_navigable.browsing_context_after_unload();
     auto remote_navigable = HTML::RemoteNavigable::create(*this, local_navigable.id(), parent, move(state));
     // The container's page can destroy the navigable while its document activates here, after the UI process's walk
     // unloaded the document it displayed before: the document is unloaded now, as that walk would have.
@@ -891,10 +900,12 @@ void Page::stop_hosting(HTML::LocalNavigable& local_navigable, HTML::ReplicatedN
     } else {
         VERIFY(m_top_level_traversable.ptr() == &local_navigable);
         m_top_level_traversable = remote_navigable;
-        // The browsing context is where its next document is. The group as this page knows it holds the tab through
-        // the RemoteNavigable.
-        if (auto browsing_context = local_navigable.active_browsing_context())
-            browsing_context->remove();
+        // The browsing context stays in the group as this page knows it, with its active document where the tab is
+        // displayed from now on.
+        if (browsing_context)
+            browsing_context->set_remote_navigable(*remote_navigable);
+        else
+            HTML::BrowsingContext::create_for_remote_traversable(*this, *remote_navigable);
     }
     local_navigable.set_has_been_destroyed();
     local_navigable.remove_from_all_local_navigables();
@@ -984,6 +995,15 @@ void Page::unfullscreen_descendant_documents(Vector<GC::Root<HTML::Navigable>> c
 
 void Page::discard()
 {
+    // The tab's top-level browsing context leaves the group as this page knows it.
+    GC::Ptr<HTML::BrowsingContext> top_level_browsing_context;
+    if (auto* remote_traversable = m_top_level_traversable ? as_if<HTML::RemoteNavigable>(*m_top_level_traversable) : nullptr)
+        top_level_browsing_context = remote_traversable->active_browsing_context();
+    else if (auto* local_traversable = m_top_level_traversable ? as_if<HTML::LocalNavigable>(*m_top_level_traversable) : nullptr)
+        top_level_browsing_context = local_traversable->active_browsing_context();
+    if (top_level_browsing_context && top_level_browsing_context->group())
+        top_level_browsing_context->remove();
+
     // A tab closed while this page still displayed a document of it: the document goes without the unload the UI
     // process runs otherwise, as the documents of a top-level traversable being destroyed do.
     for (auto const& navigable : local_roots()) {
@@ -1007,8 +1027,7 @@ void Page::host_navigable(HTML::CrossProcessId id, HTML::SessionHistoryEntryDesc
 
 HTML::BrowsingContextGroup& Page::browsing_context_group()
 {
-    // NB: Created with the tab's top-level browsing context when this process holds it, and empty until then in a
-    //     process holding only parts of the tab under parents hosted elsewhere.
+    // NB: Created with the tab's top-level browsing context, whichever process hosts its active document.
     if (!m_browsing_context_group)
         m_browsing_context_group = GC::Heap::the().allocate<HTML::BrowsingContextGroup>(*this);
     return *m_browsing_context_group;

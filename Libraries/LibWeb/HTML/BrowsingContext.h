@@ -29,7 +29,9 @@ public:
     };
 
     static BrowsingContextAndDocument create_a_new_browsing_context_and_document(GC::Ref<Page> page, GC::Ptr<DOM::Document> creator, GC::Ptr<DOM::Element> embedder, GC::Ptr<WindowProxy> existing_window_proxy = {});
+    static BrowsingContextAndDocument initialize_a_new_browsing_context_and_document(GC::Ref<BrowsingContext>, GC::Ref<Page>, GC::Ptr<DOM::Document> creator, GC::Ptr<DOM::Element> embedder);
     static BrowsingContextAndDocument create_a_new_auxiliary_browsing_context_and_document(GC::Ref<Page> page, GC::Ref<HTML::BrowsingContext> opener);
+    static GC::Ref<BrowsingContext> create_for_remote_traversable(GC::Ref<Page>, RemoteNavigable&);
 
     virtual ~BrowsingContext() override;
 
@@ -75,10 +77,14 @@ public:
 
     bool has_navigable_been_destroyed() const;
 
-    GC::Ptr<WindowProxy> opener_browsing_context_window_proxy() const { return m_opener_browsing_context_window_proxy; }
+    GC::Ptr<WindowProxy> opener_browsing_context_window_proxy() const;
     void set_opener_browsing_context(GC::Ptr<BrowsingContext>);
     void set_opener_browsing_context(RemoteNavigable&);
-    void continue_top_level_browsing_context_of(RemoteNavigable&);
+
+    GC::Ptr<RemoteNavigable> remote_navigable() const { return m_remote_navigable; }
+    void set_remote_navigable(RemoteNavigable&);
+    void update_state_from_remote_navigable();
+    void take_over_from_remote_navigable();
 
     void set_is_popup(TokenizedFeature::Popup is_popup) { m_is_popup = is_popup; }
     [[nodiscard]] TokenizedFeature::Popup is_popup() const { return m_is_popup; }
@@ -127,6 +133,9 @@ private:
 
     // https://html.spec.whatwg.org/multipage/browsers.html#tlbc-group
     GC::Ptr<BrowsingContextGroup> m_group;
+
+    // The navigable another process hosts that the browsing context is active in, while one does.
+    GC::Ptr<RemoteNavigable> m_remote_navigable;
 };
 
 URL::Origin determine_the_origin(Optional<URL::URL const&>, SandboxingFlagSet, Optional<URL::Origin> source_origin);

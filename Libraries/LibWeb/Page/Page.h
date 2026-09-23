@@ -147,8 +147,8 @@ public:
     void discard();
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#browsing-context-group
-    // The group of the tab's top-level browsing context, as this process knows it: the top-level browsing contexts
-    // it holds of this tab and of the tabs the tab opened, or none of them when other processes hold them all.
+    // The group of the tab's top-level browsing context, as this process knows it: the top-level browsing contexts of
+    // this tab and of the tabs of its group the process holds, whichever processes host their active documents.
     HTML::BrowsingContextGroup& browsing_context_group();
     void set_browsing_context_group(Badge<HTML::BrowsingContextGroup>, GC::Ref<HTML::BrowsingContextGroup>);
     void join_browsing_context_group_of(Page&);

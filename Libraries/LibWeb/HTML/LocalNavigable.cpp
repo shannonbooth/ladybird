@@ -739,6 +739,7 @@ void LocalNavigable::visit_edges(Cell::Visitor& visitor)
     Base::visit_edges(visitor);
     visitor.visit(m_active_document);
     visitor.visit(m_window_proxy_after_unload);
+    visitor.visit(m_browsing_context_after_unload);
     visitor.visit(m_provisional_for);
     visitor.visit(m_input_method_composition_node);
     m_event_handler.visit_edges(visitor);
@@ -1294,9 +1295,12 @@ void LocalNavigable::run_ui_descendant_unload_task(ChildNavigableDestruction chi
     queue_a_task(Task::Source::NavigationAndTraversal, nullptr, nullptr,
         GC::create_function(heap(), [navigable = GC::Ref { *this }, stop_hosting_after_unload, on_complete] {
             if (auto active_document = navigable->active_document()) {
-                // The browsing context's WindowProxy outlives the document, since scripts hold it for the navigable.
-                if (auto browsing_context = active_document->browsing_context())
+                // The browsing context and its WindowProxy outlive the document: scripts hold the proxy for the
+                // navigable, and the browsing context stays the traversable's.
+                if (auto browsing_context = active_document->browsing_context()) {
                     navigable->m_window_proxy_after_unload = browsing_context->window_proxy();
+                    navigable->m_browsing_context_after_unload = browsing_context;
+                }
                 auto replicated_state = navigable->replicated_state();
                 active_document->unload();
 
@@ -2018,19 +2022,19 @@ GC::Ptr<Navigable> LocalNavigable::find_a_navigable_by_target_name(Utf16View nam
             continue;
 
         // 2. Let documentToSearch be topLevelBrowsingContext's active document.
+        // NB: The active document of a browsing context another process hosts is there. The navigable it is active in
+        //     stands for it here, with the navigables it contains. currentTopLevelBrowsingContext is null when it is
+        //     the one of this page's tab, so that one is skipped by its page.
+        if (auto remote_navigable = top_level_browsing_context->remote_navigable()) {
+            if (&remote_navigable->page() == &page())
+                continue;
+            if (auto navigable = find_in_descendant_navigables(remote_navigable->active_document_inclusive_descendant_navigables()))
+                return navigable;
+            continue;
+        }
         auto* document_to_search = top_level_browsing_context->active_document();
 
         if (auto navigable = find_in_descendant_navigables(document_to_search->inclusive_descendant_navigables()))
-            return navigable;
-    }
-
-    // NB: The documents of a top-level browsing context another process hosts are there. The traversable of the page
-    //     holding its tab here stands for them, with the navigables they contain.
-    for (auto remote_navigable : all_remote_navigables()) {
-        auto& remote_page = remote_navigable->page();
-        if (&remote_page == &page() || remote_page.top_level_traversable().ptr() != remote_navigable.ptr() || &remote_page.browsing_context_group() != &group)
-            continue;
-        if (auto navigable = find_in_descendant_navigables(remote_navigable->active_document_inclusive_descendant_navigables()))
             return navigable;
     }
 
@@ -4659,16 +4663,13 @@ GC::Ref<LocalNavigable> LocalNavigable::create_stand_in(Badge<Page> badge, Remot
 
     // 3. Let browsingContext and document be the result of creating a new browsing context and document given element's node document, element, and group.
     // NB: group is not resolved, as in NavigableContainer::create_new_child_navigable(). An element in another process
-    //     is covered above.
-    auto [browsing_context, document] = BrowsingContext::create_a_new_browsing_context_and_document(page, container ? GC::Ptr<DOM::Document> { container->document() } : nullptr, container, remote_navigable.window_proxy());
-
-    // NB: A traversable's browsing context is the one active in it, which the navigation replacing its document keeps.
-    //     The page holds the tabs that browsing context relates to, and a WindowProxy for its opener is created in the
-    //     realm of the stand-in's document.
-    if (!parent_navigable) {
-        TemporaryExecutionContext execution_context { relevant_realm(*document) };
-        browsing_context->continue_top_level_browsing_context_of(remote_navigable);
-    }
+    //     is covered above. A traversable's browsing context is the one active in it, which the navigation replacing
+    //     its document keeps, and which this page holds already.
+    auto browsing_context_and_document = parent_navigable
+        ? BrowsingContext::create_a_new_browsing_context_and_document(page, container ? GC::Ptr<DOM::Document> { container->document() } : nullptr, container, remote_navigable.window_proxy())
+        : BrowsingContext::initialize_a_new_browsing_context_and_document(*remote_navigable.active_browsing_context(), page, nullptr, nullptr);
+    auto browsing_context = browsing_context_and_document.browsing_context;
+    auto document = browsing_context_and_document.document;
 
     // 6. Let documentState be a new document state, with
     //  - document: document

@@ -8,6 +8,7 @@
 #include <LibGC/Heap.h>
 #include <LibWeb/Bindings/MainThreadVM.h>
 #include <LibWeb/DOM/Document.h>
+#include <LibWeb/HTML/BrowsingContext.h>
 #include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/NavigableContainer.h>
 #include <LibWeb/HTML/PreparedNavigationDescriptor.h>
@@ -70,6 +71,7 @@ void RemoteNavigable::visit_edges(Cell::Visitor& visitor)
     Base::visit_edges(visitor);
     visitor.visit(m_children);
     visitor.visit(m_window_proxy);
+    visitor.visit(m_active_browsing_context);
     visitor.visit(m_active_window);
     visitor.visit(m_active_browsing_context_opener_window_proxy);
     visitor.visit(m_provisional_navigable);
@@ -96,23 +98,42 @@ void RemoteNavigable::replace_child(Navigable& child, GC::Ref<Navigable> replace
     m_children[*index] = replacement;
 }
 
+// A top-level traversable's WindowProxy is its browsing context's, which the page holds; a child's is the navigable's.
+GC::Ptr<WindowProxy> RemoteNavigable::window_proxy() const
+{
+    if (m_active_browsing_context)
+        return m_active_browsing_context->window_proxy();
+    return m_window_proxy;
+}
+
+void RemoteNavigable::set_window_proxy(GC::Ref<WindowProxy> window_proxy)
+{
+    if (m_active_browsing_context) {
+        m_active_browsing_context->set_window_proxy(window_proxy);
+        return;
+    }
+    m_window_proxy = window_proxy;
+}
+
 GC::Ptr<WindowProxy> RemoteNavigable::active_window_proxy()
 {
     // The WindowProxy of a navigable hosted by another process answers every access on the cross-origin path. It lives
     // in the realm of a document this page hosts, or in the realm of the script asking for it when the page only
     // represents an opener's tab and hosts no document.
-    if (!m_window_proxy) {
+    auto window_proxy = this->window_proxy();
+    if (!window_proxy) {
         auto local_roots = page().local_roots();
         if (local_roots.is_empty()) {
-            m_window_proxy = WindowProxy::create(*Bindings::main_thread_vm().current_realm());
+            window_proxy = WindowProxy::create(*Bindings::main_thread_vm().current_realm());
         } else {
             auto window = local_roots.first()->active_window();
             VERIFY(window);
-            m_window_proxy = WindowProxy::create(relevant_realm(*window));
+            window_proxy = WindowProxy::create(relevant_realm(*window));
         }
-        m_window_proxy->set_window(active_window());
+        window_proxy->set_window(active_window());
+        set_window_proxy(*window_proxy);
     }
-    return m_window_proxy;
+    return window_proxy;
 }
 
 GC::Ptr<WindowProxy> RemoteNavigable::active_browsing_context_opener_window_proxy() const
@@ -173,6 +194,8 @@ void RemoteNavigable::set_replicated_state(ReplicatedNavigableState state)
     if (!state.active_browsing_context_has_opener || (state.opener_navigable_id.has_value() && state.opener_navigable_id != m_replicated_state.opener_navigable_id))
         m_active_browsing_context_opener_window_proxy = nullptr;
     m_replicated_state = move(state);
+    if (m_active_browsing_context)
+        m_active_browsing_context->update_state_from_remote_navigable();
 
     // The documents of the navigable's children hosted here composite into the context its document is painted
     // through, wherever that document is hosted.

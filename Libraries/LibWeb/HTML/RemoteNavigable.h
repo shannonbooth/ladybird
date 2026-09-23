@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <AK/Badge.h>
 #include <AK/HashTable.h>
 #include <AK/Vector.h>
 #include <LibCompositing/Types.h>
@@ -45,8 +46,12 @@ public:
     Optional<Compositing::CompositorContextId> compositor_context_id() const { return m_replicated_state.compositor_context_id; }
 
     // The WindowProxy standing for the navigable, which the page keeps across changes of the hosting process.
-    GC::Ptr<WindowProxy> window_proxy() const { return m_window_proxy; }
-    void set_window_proxy(GC::Ref<WindowProxy> window_proxy) { m_window_proxy = window_proxy; }
+    GC::Ptr<WindowProxy> window_proxy() const;
+    void set_window_proxy(GC::Ref<WindowProxy>);
+
+    // The browsing context active in a top-level traversable, which this page holds in the group of the tabs it holds.
+    GC::Ptr<BrowsingContext> active_browsing_context() const { return m_active_browsing_context; }
+    void set_active_browsing_context(Badge<BrowsingContext>, BrowsingContext& browsing_context) { m_active_browsing_context = browsing_context; }
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#is-closing
     bool is_closing() const { return m_replicated_state.is_closing; }
@@ -94,6 +99,7 @@ private:
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-wp
     GC::Ptr<WindowProxy> m_window_proxy;
+    GC::Ptr<BrowsingContext> m_active_browsing_context;
     GC::Ptr<RemoteWindow> m_active_window;
 
     mutable GC::Ptr<WindowProxy> m_active_browsing_context_opener_window_proxy;

@@ -21,6 +21,7 @@
 #include <LibWeb/HTML/LocalTraversableNavigable.h>
 #include <LibWeb/HTML/RemoteNavigable.h>
 #include <LibWeb/HTML/SandboxingFlagSet.h>
+#include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
 #include <LibWeb/HTML/Scripting/WindowEnvironmentSettingsObject.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HTML/WindowProxy.h>
@@ -153,6 +154,18 @@ BrowsingContext::BrowsingContextAndDocument BrowsingContext::create_a_new_browsi
     // 1. Let browsingContext be a new browsing context.
     GC::Ref<BrowsingContext> browsing_context = *GC::Heap::the().allocate<BrowsingContext>(page);
 
+    // NB: A container whose content navigable's document comes back from another process keeps the WindowProxy
+    //     scripts hold for it.
+    if (existing_window_proxy)
+        browsing_context->set_window_proxy(existing_window_proxy);
+
+    return initialize_a_new_browsing_context_and_document(browsing_context, page, creator, embedder);
+}
+
+// Steps 2 to 25 of creating a new browsing context and document, for a browsing context this page holds already: the
+// one active in a traversable another process displays, in which this page populates the traversable's next document.
+BrowsingContext::BrowsingContextAndDocument BrowsingContext::initialize_a_new_browsing_context_and_document(GC::Ref<BrowsingContext> browsing_context, GC::Ref<Page> page, GC::Ptr<DOM::Document> creator, GC::Ptr<DOM::Element> embedder)
+{
     // 2. Let unsafeContextCreationTime be the unsafe shared current time.
     [[maybe_unused]] auto unsafe_context_creation_time = HighResolutionTime::unsafe_shared_current_time();
 
@@ -194,9 +207,8 @@ BrowsingContext::BrowsingContextAndDocument BrowsingContext::create_a_new_browsi
     auto realm_execution_context = Bindings::create_a_new_javascript_realm(
         Bindings::main_thread_vm(),
         [&](JS::Realm& realm) -> GC::Ref<JS::Object> {
-            // NB: A container whose content navigable's document comes back from another process keeps the WindowProxy
-            //     scripts hold for it.
-            auto window_proxy = existing_window_proxy ? GC::Ref { *existing_window_proxy } : WindowProxy::create(realm);
+            // NB: A browsing context this page held before has the WindowProxy scripts hold for it.
+            auto window_proxy = browsing_context->window_proxy() ? GC::Ref { *browsing_context->window_proxy() } : WindowProxy::create(realm);
             browsing_context->set_window_proxy(window_proxy);
 
             // - For the global object, create a new Window object.
@@ -344,15 +356,55 @@ void BrowsingContext::set_opener_browsing_context(RemoteNavigable& navigable)
     m_opener_browsing_context_window_proxy = navigable.active_window_proxy();
 }
 
-// The browsing context active in a top-level traversable another process hosts, which this one continues here: the
-// document this process populates in the traversable replaces that process's without a browsing context group switch.
-void BrowsingContext::continue_top_level_browsing_context_of(RemoteNavigable& navigable)
+// The browsing context active in a top-level traversable another process hosts, held here in the group of the tabs
+// this page holds, with the WindowProxy scripts hold for it and no active document.
+GC::Ref<BrowsingContext> BrowsingContext::create_for_remote_traversable(GC::Ref<Page> page, RemoteNavigable& navigable)
 {
-    auto const& state = navigable.replicated_state();
+    GC::Ref<BrowsingContext> browsing_context = *GC::Heap::the().allocate<BrowsingContext>(page);
+    browsing_context->set_remote_navigable(navigable);
+    page->browsing_context_group().append(browsing_context);
+    return browsing_context;
+}
+
+// The browsing context's active document is in the process hosting navigable, which replicates the browsing context's
+// state with the navigable's.
+void BrowsingContext::set_remote_navigable(RemoteNavigable& navigable)
+{
+    m_remote_navigable = navigable;
+    m_active_document = nullptr;
+    update_state_from_remote_navigable();
+    navigable.set_active_browsing_context({}, *this);
+}
+
+void BrowsingContext::update_state_from_remote_navigable()
+{
+    auto const& state = m_remote_navigable->replicated_state();
     m_is_auxiliary = state.active_browsing_context_is_auxiliary;
     m_is_popup = state.active_browsing_context_is_popup ? TokenizedFeature::Popup::Yes : TokenizedFeature::Popup::No;
     m_popup_sandboxing_flag_set = state.active_browsing_context_popup_sandboxing_flag_set;
-    m_opener_browsing_context_window_proxy = navigable.active_browsing_context_opener_window_proxy();
+}
+
+// A document this page populated activated in the browsing context: its opener, which the navigable resolved while
+// another process hosted the active document, is the browsing context's own from now on.
+void BrowsingContext::take_over_from_remote_navigable()
+{
+    if (!m_remote_navigable)
+        return;
+    m_opener_browsing_context_window_proxy = opener_browsing_context_window_proxy();
+    m_remote_navigable = nullptr;
+}
+
+GC::Ptr<WindowProxy> BrowsingContext::opener_browsing_context_window_proxy() const
+{
+    if (!m_remote_navigable)
+        return m_opener_browsing_context_window_proxy;
+    // The navigable resolves the opener to a WindowProxy of this page, created in the realm of the document populated
+    // here when the opener's tab has no document in this page.
+    if (auto const* document = active_document()) {
+        TemporaryExecutionContext execution_context { relevant_realm(const_cast<DOM::Document&>(*document)) };
+        return m_remote_navigable->active_browsing_context_opener_window_proxy();
+    }
+    return m_remote_navigable->active_browsing_context_opener_window_proxy();
 }
 
 void BrowsingContext::visit_edges(Cell::Visitor& visitor)
@@ -364,12 +416,16 @@ void BrowsingContext::visit_edges(Cell::Visitor& visitor)
     visitor.visit(m_active_document);
     visitor.visit(m_group);
     visitor.visit(m_opener_browsing_context_window_proxy);
+    visitor.visit(m_remote_navigable);
 }
 
 // https://html.spec.whatwg.org/multipage/browsers.html#top-level-browsing-context
 bool BrowsingContext::is_top_level() const
 {
     // A top-level browsing context is a browsing context whose active document's node navigable is a traversable navigable.
+    // NB: The navigable of a browsing context another process hosts the active document of is a traversable.
+    if (m_remote_navigable)
+        return true;
     return active_document() != nullptr && active_document()->navigable() != nullptr && active_document()->navigable()->is_traversable();
 }
 

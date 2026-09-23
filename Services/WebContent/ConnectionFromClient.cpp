@@ -200,11 +200,12 @@ void ConnectionFromClient::initialize(Compositing::PageId initial_page_id, Vecto
 void ConnectionFromClient::create_representing_page(Compositing::PageId page_id, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables, Optional<Compositing::PageId> browsing_context_group_page_id)
 {
     auto& page = m_page_host->create_page(page_id);
-    page.page().create_remote_navigable_graph(move(remote_navigables));
+    // The tab's top-level browsing context joins the group as the page holding the related tab knows it.
     if (browsing_context_group_page_id.has_value()) {
         if (auto group_page = m_page_host->page(*browsing_context_group_page_id); group_page.has_value())
             page.page().join_browsing_context_group_of(group_page->page());
     }
+    page.page().create_remote_navigable_graph(move(remote_navigables));
 }
 
 void ConnectionFromClient::create_embedded_page(Compositing::PageId page_id, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables, Web::HTML::CrossProcessId root_navigable_id, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::VisibilityState system_visibility_state)
