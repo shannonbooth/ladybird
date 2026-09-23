@@ -132,7 +132,7 @@ public:
     RefPtr<WebContentPage> displaced_document_host() const;
     bool is_displaced_document_host(WebContentPage const& page) const { return displaced_document_host() == &page; }
     RefPtr<WebContentPage> page_displaying_displaced_document() const;
-    void release_displaced_document_host();
+    void return_to_displaced_document();
     void release_displaced_document_host_after_unload();
     void discard_displaced_document_host();
     RefPtr<CanonicalDocument> document_of_pending_history_job(CanonicalNavigable const&) const;
@@ -203,7 +203,7 @@ private:
         No,
         Yes,
     };
-    void unload_a_document_and_its_descendants(Optional<Web::HTML::CrossProcessId> operation_id, Web::HTML::CrossProcessId navigable_id, RefPtr<WebContentPage> continuing_endpoint, Web::HTML::ChildNavigableDestruction, Function<void(UnloadedInItsHost)> queue_document_unload_task);
+    void unload_a_document_and_its_descendants(Optional<Web::HTML::CrossProcessId> operation_id, CanonicalDocument&, Web::HTML::CrossProcessId navigable_id, RefPtr<WebContentPage> continuing_endpoint, Web::HTML::ChildNavigableDestruction, Function<void(UnloadedInItsHost)> queue_document_unload_task);
     void unload_document_in_its_host(Optional<Web::HTML::CrossProcessId> operation_id, NonnullRefPtr<WebContentPage>, Web::HTML::CrossProcessId navigable_id, Web::HTML::ChildNavigableDestruction, Function<void()> after_unload);
     void discard_pending_host_at(Web::HTML::CrossProcessId navigable_id, WebContentPage&, RefPtr<CanonicalDocument>);
     void dispatch_next_beforeunload_group(HistoryOperation&);
@@ -290,6 +290,8 @@ private:
         };
         HashMap<Web::HTML::CrossProcessId, Node> nodes;
         size_t remaining_root_children { 0 };
+        // The page hosting the document being unloaded, which unloads it whatever the operation's jobs left it.
+        RefPtr<WebContentPage> document_host;
         // The history operation whose displaced-endpoint list gates dispatches, when the unload is part of one.
         Optional<Web::HTML::CrossProcessId> operation_id;
         Function<void()> queue_document_unload_task;

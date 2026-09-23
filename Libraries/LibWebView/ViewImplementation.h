@@ -126,7 +126,7 @@ public:
     };
     bool switch_process_for_navigation(Utf16String const& navigation_id, KeepsBrowsingContext, RefPtr<WebContentPage> page_of_another_process = {});
     void switch_process_for_history_traversal(Web::HTML::CrossProcessId target_document_state_id, KeepsBrowsingContext, RefPtr<WebContentPage> page_of_another_process = {});
-    void cancel_process_switch();
+    void redisplay_displaced_document();
 
     void server_did_paint(Badge<WebContentPage>, i32 bitmap_id, Gfx::IntSize size, Gfx::IntRect damage_rect);
 

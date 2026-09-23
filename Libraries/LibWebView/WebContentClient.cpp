@@ -581,6 +581,9 @@ void WebContentClient::notify_all_views_of_crash()
             auto view = ViewImplementation::find_view_by_id(view_id);
             if (!view.has_value())
                 return;
+            // The process was populating the tab's next document, and the view returned to the page displaying it.
+            if (view->m_client_state.page && view->m_client_state.page->is_live())
+                return;
             view->handle_web_content_process_crash();
             if (view->on_web_content_crashed)
                 view->on_web_content_crashed(crash_reason);

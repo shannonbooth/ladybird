@@ -101,6 +101,8 @@ ViewImplementation::ViewImplementation(IsPrivate is_private)
 ViewImplementation::~ViewImplementation()
 {
     TabPerformanceMonitor::forget_view(view_id());
+    // The document another page displays goes with the view, so ending its navigation does not return to it.
+    m_top_level_traversable.discard_displaced_document_host();
     m_top_level_traversable.clear_ongoing_navigation();
     if (auto stand_in = m_top_level_traversable.pending_host())
         m_top_level_traversable.discard_stand_in(*stand_in);
@@ -111,7 +113,6 @@ ViewImplementation::~ViewImplementation()
 
     all_views().remove(m_view_id);
 
-    m_top_level_traversable.discard_displaced_document_host();
     m_top_level_traversable.discard_representing_pages();
     if (m_client_state.page)
         client().unregister_view(page_id());
@@ -308,10 +309,9 @@ void ViewImplementation::switch_process_for_history_traversal(Web::HTML::CrossPr
     complete_webdriver_content_commands_after_process_replacement(pending_webdriver_crash_commands);
 }
 
-// A document created in the process still displaying the traversable's document, while another process populates the
-// document displacing it, returns the tab to that process: its page displays the tab again, and the page that was to
-// display the displacing document is let go of.
-void ViewImplementation::cancel_process_switch()
+// The view returns to the page still displaying the traversable's document, because a document of that process
+// replaces it or because nothing does. The page that was to display the next document is let go of.
+void ViewImplementation::redisplay_displaced_document()
 {
     auto page = m_top_level_traversable.page_displaying_displaced_document();
     VERIFY(page);
@@ -604,10 +604,9 @@ void ViewImplementation::traverse_the_history_by_delta(
 
 bool ViewImplementation::cancel_uncommitted_top_level_navigation_for_browser_traversal()
 {
-    auto process_hosts_committed_entry = !m_top_level_traversable.has_pending_host();
     auto canceled = cancel_uncommitted_top_level_navigation("traverse-canceled-pending-navigation"sv, true, ReconstructCanceledNavigation::No);
     VERIFY(canceled);
-    return !process_hosts_committed_entry;
+    return m_top_level_traversable.has_pending_host();
 }
 
 void ViewImplementation::traverse_the_history_to_step(
@@ -2706,8 +2705,9 @@ bool ViewImplementation::cancel_uncommitted_top_level_navigation(StringView reas
     if (!m_top_level_traversable.has_uncommitted_navigation())
         return false;
 
-    auto process_hosts_committed_entry = !m_top_level_traversable.has_pending_host();
+    // Ending the navigation can return the view to the page displaying the committed entry's document.
     m_top_level_traversable.clear_ongoing_navigation();
+    auto process_hosts_committed_entry = !m_top_level_traversable.has_pending_host();
     set_loading_state(false);
     if (stop_loading)
         client().async_stop_loading(page_id());

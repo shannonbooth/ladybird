@@ -244,7 +244,7 @@ bool WebContentPage::continue_navigation_population_in_selected_process(Web::HTM
         // A document created in the process still displaying the traversable's document, while another process
         // populates the document displacing it, returns the tab to that process.
         if (auto displaced_page = traversable.page_displaying_displaced_document(); process && displaced_page && process == &displaced_page->client())
-            view().cancel_process_switch();
+            view().redisplay_displaced_document();
         if (process && process == &traversable.display_page()->client())
             return populate_in(*traversable.display_page());
         if (!displays_tab()) {
