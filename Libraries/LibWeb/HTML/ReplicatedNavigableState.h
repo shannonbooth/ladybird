@@ -52,6 +52,8 @@ struct ReplicatedNavigableState {
 
     OpenerPolicy opener_policy;
     bool active_browsing_context_is_auxiliary { false };
+    bool active_browsing_context_is_popup { false };
+    SandboxingFlagSet active_browsing_context_popup_sandboxing_flag_set {};
     bool active_browsing_context_has_opener { false };
     Optional<CrossProcessId> opener_navigable_id {};
 

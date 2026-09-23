@@ -1517,6 +1517,8 @@ ReplicatedNavigableState LocalNavigable::replicated_state() const
         .has_cross_site_ancestor = active_document_has_cross_site_ancestor(),
         .opener_policy = m_active_document->opener_policy(),
         .active_browsing_context_is_auxiliary = active_browsing_context_is_auxiliary(),
+        .active_browsing_context_is_popup = active_browsing_context_is_popup(),
+        .active_browsing_context_popup_sandboxing_flag_set = active_browsing_context_popup_sandboxing_flag_set(),
         .active_browsing_context_has_opener = active_browsing_context_opener_window_proxy() != nullptr,
         .opener_navigable_id = navigable_id_of(active_browsing_context_opener_window_proxy()),
         .active_document_is_completely_loaded = m_active_document->is_completely_loaded(),
@@ -1531,6 +1533,18 @@ ReplicatedNavigableState LocalNavigable::replicated_state() const
 bool LocalNavigable::active_browsing_context_is_auxiliary() const
 {
     return m_active_document && m_active_document->browsing_context() && m_active_document->browsing_context()->is_auxiliary();
+}
+
+bool LocalNavigable::active_browsing_context_is_popup() const
+{
+    return m_active_document && m_active_document->browsing_context() && m_active_document->browsing_context()->is_popup() == TokenizedFeature::Popup::Yes;
+}
+
+SandboxingFlagSet LocalNavigable::active_browsing_context_popup_sandboxing_flag_set() const
+{
+    if (!m_active_document || !m_active_document->browsing_context())
+        return {};
+    return m_active_document->browsing_context()->popup_sandboxing_flag_set();
 }
 
 GC::Ptr<WindowProxy> LocalNavigable::active_browsing_context_opener_window_proxy() const

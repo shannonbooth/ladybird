@@ -575,6 +575,8 @@ void CanonicalTraversable::create_a_new_top_level_traversable(Optional<Canonical
         .has_cross_site_ancestor = false,
         .opener_policy = {},
         .active_browsing_context_is_auxiliary = opener.has_value(),
+        .active_browsing_context_is_popup = false,
+        .active_browsing_context_popup_sandboxing_flag_set = {},
         .active_browsing_context_has_opener = opener.has_value(),
         .opener_navigable_id = opener.has_value() ? Optional<Web::HTML::CrossProcessId> { opener->id() } : Optional<Web::HTML::CrossProcessId> {},
         .active_document_is_completely_loaded = false,
