@@ -230,13 +230,14 @@ RefPtr<WebContentClient> CanonicalNavigable::obtain_process_to_host(CanonicalDoc
         return process_hosting_active_document();
     }
 
-    // A process displaying a tab's initial about:blank that no document created, and hosting no other agent, is not
-    // yet used for any site. A child navigable's initial about:blank is in the process hosting its container's
+    // A process displaying a tab's initial about:blank that no document created, and hosting no other agent cluster,
+    // is not yet used for any site. A child navigable's initial about:blank is in the process hosting its container's
     // document instead.
     auto& active_document = this->active_document();
     if (!parent() && active_document.is_initial_about_blank() && active_document.origin().is_opaque()) {
         auto& process = process_hosting_active_document();
-        if (process.hosts_only_agent(active_document.relevant_global_object().agent()))
+        auto agent_cluster = active_document.relevant_global_object().agent().agent_cluster();
+        if (agent_cluster && process.hosts_only_agent_cluster(*agent_cluster))
             return process;
     }
     return nullptr;

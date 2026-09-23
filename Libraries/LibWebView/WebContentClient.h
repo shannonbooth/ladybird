@@ -118,9 +118,9 @@ public:
     Optional<Compositing::PageId> page_id_for_traversable(CanonicalTraversable const&) const;
     bool holds_part_of_a_tab_related_to(CanonicalTraversable const&);
 
-    void host_agent(CanonicalSimilarOriginWindowAgent&);
-    bool hosts_agent(CanonicalSimilarOriginWindowAgent const&) const;
-    bool hosts_only_agent(CanonicalSimilarOriginWindowAgent const&) const;
+    void host_agent_cluster(CanonicalAgentCluster&);
+    bool hosts_agent_cluster(CanonicalAgentCluster const&) const;
+    bool hosts_only_agent_cluster(CanonicalAgentCluster const&) const;
     void release_unneeded_representing_pages();
 
     WebContentPage* page(Compositing::PageId page_id) const;
@@ -186,8 +186,8 @@ private:
     RefPtr<WebContentTestClient> m_test_connection;
 
     IsPrivate m_is_private { IsPrivate::No };
-    // The agents whose documents the process creates, of any browsing context group.
-    Vector<NonnullRefPtr<CanonicalSimilarOriginWindowAgent>> m_hosted_agents;
+    // The agent clusters whose documents the process creates, of any browsing context group.
+    Vector<NonnullRefPtr<CanonicalAgentCluster>> m_hosted_agent_clusters;
     RefPtr<BrowsingSession> m_session;
     bool m_process_lost { false };
     bool m_rejected_ipc { false };

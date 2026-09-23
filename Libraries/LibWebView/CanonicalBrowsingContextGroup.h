@@ -12,6 +12,8 @@
 #include <AK/RefCounted.h>
 #include <AK/RefPtr.h>
 #include <AK/Variant.h>
+#include <AK/WeakPtr.h>
+#include <AK/Weakable.h>
 #include <LibURL/Origin.h>
 #include <LibURL/Site.h>
 #include <LibWebView/Export.h>
@@ -22,13 +24,33 @@ namespace WebView {
 // https://html.spec.whatwg.org/multipage/webappapis.html#similar-origin-window-agent
 class WEBVIEW_API CanonicalSimilarOriginWindowAgent final : public RefCounted<CanonicalSimilarOriginWindowAgent> {
 public:
-    static NonnullRefPtr<CanonicalSimilarOriginWindowAgent> create();
+    static NonnullRefPtr<CanonicalSimilarOriginWindowAgent> create(CanonicalAgentCluster&);
 
-    // NB: Which process hosts an agent is implementation-defined. It hosts every realm of the agent.
+    RefPtr<CanonicalAgentCluster> agent_cluster() const { return m_agent_cluster.strong_ref(); }
     RefPtr<WebContentClient> hosting_process() const;
 
 private:
-    CanonicalSimilarOriginWindowAgent() = default;
+    explicit CanonicalSimilarOriginWindowAgent(CanonicalAgentCluster&);
+
+    WeakPtr<CanonicalAgentCluster> m_agent_cluster;
+};
+
+// https://html.spec.whatwg.org/multipage/webappapis.html#integration-with-the-javascript-agent-cluster-formalism
+class WEBVIEW_API CanonicalAgentCluster final
+    : public RefCounted<CanonicalAgentCluster>
+    , public Weakable<CanonicalAgentCluster> {
+public:
+    static NonnullRefPtr<CanonicalAgentCluster> create();
+
+    CanonicalSimilarOriginWindowAgent& similar_origin_window_agent() const { return m_similar_origin_window_agent; }
+
+    // NB: Which process hosts an agent cluster is implementation-defined. It hosts every agent of the cluster.
+    RefPtr<WebContentClient> hosting_process() const;
+
+private:
+    CanonicalAgentCluster();
+
+    NonnullRefPtr<CanonicalSimilarOriginWindowAgent> m_similar_origin_window_agent;
 };
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#browsing-context-group
@@ -63,16 +85,12 @@ private:
         static constexpr bool may_have_slow_equality_check() { return true; }
     };
 
-    struct AgentCluster {
-        NonnullRefPtr<CanonicalSimilarOriginWindowAgent> similar_origin_window_agent;
-    };
-
     // Browsing contexts own their group, so this inverse membership relation must remain non-owning.
     OrderedHashTable<CanonicalBrowsingContext*> m_browsing_context_set;
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#agent-cluster-map
     // FIXME: Make this weak once canonical agent clusters have a lifetime independent of the browsing context group.
-    HashMap<AgentClusterKey, AgentCluster, AgentClusterKeyTraits> m_agent_cluster_map;
+    HashMap<AgentClusterKey, NonnullRefPtr<CanonicalAgentCluster>, AgentClusterKeyTraits> m_agent_cluster_map;
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#historical-agent-cluster-key-map
     HashMap<URL::Origin, AgentClusterKey> m_historical_agent_cluster_key_map;

@@ -262,21 +262,21 @@ void WebContentClient::register_view(Compositing::PageId page_id, ViewImplementa
     view.m_client_state.page = open_page(page_id, view.traversable());
 }
 
-// A process hosting an agent keeps hosting it.
-void WebContentClient::host_agent(CanonicalSimilarOriginWindowAgent& agent)
+// A process hosting an agent cluster keeps hosting it.
+void WebContentClient::host_agent_cluster(CanonicalAgentCluster& agent_cluster)
 {
-    if (!hosts_agent(agent))
-        m_hosted_agents.append(agent);
+    if (!hosts_agent_cluster(agent_cluster))
+        m_hosted_agent_clusters.append(agent_cluster);
 }
 
-bool WebContentClient::hosts_agent(CanonicalSimilarOriginWindowAgent const& agent) const
+bool WebContentClient::hosts_agent_cluster(CanonicalAgentCluster const& agent_cluster) const
 {
-    return any_of(m_hosted_agents, [&](auto const& hosted_agent) { return hosted_agent.ptr() == &agent; });
+    return any_of(m_hosted_agent_clusters, [&](auto const& hosted_agent_cluster) { return hosted_agent_cluster.ptr() == &agent_cluster; });
 }
 
-bool WebContentClient::hosts_only_agent(CanonicalSimilarOriginWindowAgent const& agent) const
+bool WebContentClient::hosts_only_agent_cluster(CanonicalAgentCluster const& agent_cluster) const
 {
-    return m_hosted_agents.size() == 1 && m_hosted_agents[0].ptr() == &agent;
+    return m_hosted_agent_clusters.size() == 1 && m_hosted_agent_clusters[0].ptr() == &agent_cluster;
 }
 
 // A page of this process that held part of the tab displays it from now on.

@@ -10,17 +10,43 @@
 
 namespace WebView {
 
-NonnullRefPtr<CanonicalSimilarOriginWindowAgent> CanonicalSimilarOriginWindowAgent::create()
+NonnullRefPtr<CanonicalSimilarOriginWindowAgent> CanonicalSimilarOriginWindowAgent::create(CanonicalAgentCluster& agent_cluster)
 {
-    return adopt_ref(*new CanonicalSimilarOriginWindowAgent);
+    return adopt_ref(*new CanonicalSimilarOriginWindowAgent(agent_cluster));
 }
 
-// The process the agent's documents are created in. A process that has exited hosts nothing.
+CanonicalSimilarOriginWindowAgent::CanonicalSimilarOriginWindowAgent(CanonicalAgentCluster& agent_cluster)
+    : m_agent_cluster(agent_cluster.make_weak_ptr<CanonicalAgentCluster>())
+{
+}
+
 RefPtr<WebContentClient> CanonicalSimilarOriginWindowAgent::hosting_process() const
+{
+    auto agent_cluster = this->agent_cluster();
+    if (!agent_cluster)
+        return nullptr;
+    return agent_cluster->hosting_process();
+}
+
+NonnullRefPtr<CanonicalAgentCluster> CanonicalAgentCluster::create()
+{
+    return adopt_ref(*new CanonicalAgentCluster);
+}
+
+// 1. Let agentCluster be a new agent cluster.
+// 2. Let agent be a new similar-origin window agent.
+// 3. Set agentCluster's agents to « agent ».
+CanonicalAgentCluster::CanonicalAgentCluster()
+    : m_similar_origin_window_agent(CanonicalSimilarOriginWindowAgent::create(*this))
+{
+}
+
+// The process the agent cluster's documents are created in. A process that has exited hosts nothing.
+RefPtr<WebContentClient> CanonicalAgentCluster::hosting_process() const
 {
     RefPtr<WebContentClient> hosting_process;
     WebContentClient::for_each_client([&](WebContentClient& process) {
-        if (!process.is_open() || !process.hosts_agent(*this))
+        if (!process.is_open() || !process.hosts_agent_cluster(*this))
             return IterationDecision::Continue;
         hosting_process = process;
         return IterationDecision::Break;
@@ -106,14 +132,12 @@ NonnullRefPtr<CanonicalSimilarOriginWindowAgent> CanonicalBrowsingContextGroup::
         // 1. Let agentCluster be a new agent cluster.
         // 2. Let agent be a new similar-origin window agent.
         // 3. Set agentCluster's agents to « agent ».
-        AgentCluster agent_cluster { CanonicalSimilarOriginWindowAgent::create() };
-
         // 4. Set group's agent cluster map[key] to agentCluster.
-        m_agent_cluster_map.set(key, move(agent_cluster));
+        m_agent_cluster_map.set(key, CanonicalAgentCluster::create());
     }
 
     // 7. Return the single similar-origin window agent contained in group's agent cluster map[key].
-    return m_agent_cluster_map.get(key)->similar_origin_window_agent;
+    return (*m_agent_cluster_map.get(key))->similar_origin_window_agent();
 }
 
 }

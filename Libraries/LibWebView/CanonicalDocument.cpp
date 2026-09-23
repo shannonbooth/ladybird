@@ -5,6 +5,7 @@
  */
 
 #include <LibWebView/CanonicalBrowsingContext.h>
+#include <LibWebView/CanonicalBrowsingContextGroup.h>
 #include <LibWebView/CanonicalDocument.h>
 #include <LibWebView/CanonicalWindow.h>
 #include <LibWebView/WebContentClient.h>
@@ -34,12 +35,13 @@ RefPtr<WebContentPage> CanonicalDocument::host() const
     return m_page_created_in;
 }
 
-// NB: The Document is created in page's process, which hosts its agent from then on.
+// NB: The Document is created in page's process, which hosts its agent cluster from then on.
 void CanonicalDocument::set_host(WebContentPage& page)
 {
     VERIFY(!m_page_created_in || m_page_created_in == &page);
     m_page_created_in = page;
-    page.client().host_agent(relevant_global_object().agent());
+    if (auto agent_cluster = relevant_global_object().agent().agent_cluster())
+        page.client().host_agent_cluster(*agent_cluster);
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#make-active

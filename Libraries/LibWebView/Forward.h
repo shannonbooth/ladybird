@@ -23,6 +23,7 @@ class CanonicalBrowsingContext;
 class CanonicalBrowsingContextGroup;
 class CanonicalDocument;
 class CanonicalNavigable;
+class CanonicalAgentCluster;
 class CanonicalSimilarOriginWindowAgent;
 class CanonicalTraversable;
 class CanonicalWindow;
