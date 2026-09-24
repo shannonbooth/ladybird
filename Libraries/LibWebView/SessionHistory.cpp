@@ -418,7 +418,8 @@ bool TraversableSessionHistory::append_or_replace_entry_for_navigable(CanonicalN
     auto target_entries = get_session_history_entries(navigable);
     if (!target_entries.has_value())
         return false;
-    if (!append_or_replace_entry(*target_entries, move(entry), entry_to_replace))
+    // NB: targetEntries is a list of this session history.
+    if (!append_or_replace_entry(const_cast<Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>>&>(*target_entries), move(entry), entry_to_replace))
         return false;
 
     m_used_steps = get_all_used_history_steps(m_entries);
@@ -539,14 +540,6 @@ Optional<TraversableSessionHistory::TraversalTarget> TraversableSessionHistory::
         .target_step_is_top_level_entry = entry_for_step(step) != nullptr,
         .changes_top_level_entry = target_top_level_entry != current_top_level_entry,
     };
-}
-
-Optional<Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>>&> TraversableSessionHistory::get_session_history_entries(CanonicalNavigable const& navigable)
-{
-    auto entries = const_cast<TraversableSessionHistory const&>(*this).get_session_history_entries(navigable);
-    if (!entries.has_value())
-        return {};
-    return const_cast<Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>>&>(*entries);
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-session-history-entries
