@@ -491,6 +491,9 @@ bool TraversableSessionHistory::append_or_replace_session_history_entry(Canonica
     // A descriptor naming a document state can update it, which is undone with the rest if the entry is not added.
     auto checkpoint = this->checkpoint();
     auto document_states = this->document_states();
+    // The entry's document state is the one whose document the navigable populated for it.
+    if (auto const& populating_document_state = navigable.populating_document_state(); populating_document_state && populating_document_state->id == history_entry.document_state.id)
+        document_states.ensure(populating_document_state->id, [&] { return NonnullRefPtr { *populating_document_state }; });
     auto entry = CanonicalSessionHistoryEntry::create_from_descriptor(history_entry, document_states, update_document_state);
     if (append_or_replace_entry_for_navigable(navigable, move(entry), entry_to_replace))
         return true;

@@ -112,7 +112,7 @@ struct TestTraversable {
     TestTraversable()
     {
         traversable.set_id(root_id());
-        traversable.set_active_document_state(WebView::CanonicalDocumentState::create({}, WebView::CanonicalBrowsingContext::create_a_new_top_level_browsing_context_and_document(URL::Origin::create_opaque(), {}).document));
+        traversable.set_active_session_history_entry(WebView::CanonicalSessionHistoryEntry::create(WebView::CanonicalDocumentState::create({}, WebView::CanonicalBrowsingContext::create_a_new_top_level_browsing_context_and_document(URL::Origin::create_opaque(), {}).document)));
     }
 
     WebView::CanonicalNavigable& add_child(Web::HTML::CrossProcessId id)
@@ -219,6 +219,8 @@ struct TestTraversable {
         traversable.for_each_in_inclusive_subtree([&](WebView::CanonicalNavigable& navigable) {
             auto const* current_entry = history.get_the_target_history_entry(navigable, *step);
             VERIFY(current_entry);
+            if (auto const& previous_active_entry = navigable.active_session_history_entry())
+                current_entry->document_state->document = previous_active_entry->document_state->document;
             navigable.set_current_session_history_entry(current_entry);
             navigable.set_active_session_history_entry(current_entry);
             return IterationDecision::Continue;
