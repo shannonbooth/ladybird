@@ -113,7 +113,7 @@ void ApplyHistoryStep::apply_the_history_step()
     }
 
     m_jobs.run_unload_cancelation_job({
-                                          .target_entry = target_entry->descriptor(),
+                                          .target_entry = *target_entry,
                                           .navigables_crossing_documents = move(navigables_crossing_documents),
                                           .user_involvement = m_user_involvement,
                                       },
@@ -177,7 +177,8 @@ void ApplyHistoryStep::run_changing_navigable_jobs()
 
         ApplyHistoryStepJobs::ChangingNavigableHistoryStepJob job {
             .navigable_id = navigable_id,
-            .target_entry = target_entry->descriptor(),
+            .target_entry = *target_entry,
+            .target_entry_reload_pending = target_entry->document_state->reload_pending,
             .user_involvement = m_user_involvement,
             .navigation_type = m_navigation_type,
             .traversal_yields_to = m_traversal_yields_to.get(navigable_id).value_or(Web::HTML::TraversalYieldsTo::Nothing),
@@ -187,7 +188,7 @@ void ApplyHistoryStep::run_changing_navigable_jobs()
             changing_navigable_job_completed(navigable_id, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped);
             continue;
         }
-        m_claimed_target_entries.set(navigable_id, target_entry->descriptor());
+        m_claimed_target_entries.set(navigable_id, *target_entry);
 
         m_jobs.run_changing_navigable_history_step_job(
             move(job),
@@ -331,23 +332,23 @@ void ApplyHistoryStep::process_changing_navigable_continuations()
         //         Blink NavigationControllerImpl::RendererDidNavigateToNewEntry.
         // NB: navigable's own sync navigations wait from step 8 on. So, none of them can change the entry after this.
         auto const* target_entry = navigable ? m_session_history.get_the_target_history_entry(*navigable, m_target_step) : nullptr;
-        Optional<Web::HTML::SessionHistoryEntryDescriptor> updated_target_entry;
+        RefPtr<CanonicalSessionHistoryEntry const> updated_target_entry;
         if (auto claimed_target_entry = m_claimed_target_entries.get(navigable_id); target_entry && claimed_target_entry.has_value()) {
-            auto is_in_claimed_slot = target_entry->document_state->id == claimed_target_entry->document_state.id
-                && target_entry->navigation_api_key == claimed_target_entry->navigation_api_key;
+            auto is_in_claimed_slot = target_entry->document_state == claimed_target_entry.value()->document_state
+                && target_entry->navigation_api_key == claimed_target_entry.value()->navigation_api_key;
             if (is_in_claimed_slot) {
-                if (target_entry->navigation_api_id != claimed_target_entry->navigation_api_id)
-                    updated_target_entry = target_entry->descriptor();
+                if (target_entry->navigation_api_id != claimed_target_entry.value()->navigation_api_id)
+                    updated_target_entry = target_entry;
             } else if (m_navigation_type == Web::Bindings::NavigationType::Traverse) {
                 return_result(Web::HTML::HistoryStepResult::Applied);
                 return;
             } else if (m_navigation_type == Web::Bindings::NavigationType::Push) {
-                target_entry = append_the_claimed_target_entry_again(*navigable, *claimed_target_entry);
+                target_entry = append_the_claimed_target_entry_again(*navigable, *claimed_target_entry.value());
                 if (!target_entry) {
                     return_result(Web::HTML::HistoryStepResult::NoMatchingEntry);
                     return;
                 }
-                updated_target_entry = target_entry->descriptor();
+                updated_target_entry = target_entry;
             }
         }
 
@@ -398,8 +399,9 @@ void ApplyHistoryStep::process_changing_navigable_continuations()
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-cross-document-navigation
 // A pushState that jumped the queue cleared the entry a navigation appended, as forward history, and took its step. So,
 // we re-run the appending steps of finalizing a cross-doc navigation, against the session history as the push left it.
-CanonicalSessionHistoryEntry const* ApplyHistoryStep::append_the_claimed_target_entry_again(CanonicalNavigable& navigable, Web::HTML::SessionHistoryEntryDescriptor history_entry)
+CanonicalSessionHistoryEntry const* ApplyHistoryStep::append_the_claimed_target_entry_again(CanonicalNavigable& navigable, CanonicalSessionHistoryEntry const& claimed_target_entry)
 {
+    auto history_entry = claimed_target_entry.descriptor();
     auto current_step = m_session_history.current_step();
     if (!current_step.has_value())
         return nullptr;
@@ -495,6 +497,13 @@ void ApplyHistoryStep::return_result(Web::HTML::HistoryStepResult result)
     clear_all_ongoing_navigation_traversals();
     if (m_on_complete)
         m_on_complete(result);
+}
+
+Web::HTML::SessionHistoryEntryDescriptor ApplyHistoryStepJobs::ChangingNavigableHistoryStepJob::target_entry_descriptor() const
+{
+    auto descriptor = target_entry->descriptor();
+    descriptor.document_state.reload_pending = target_entry_reload_pending;
+    return descriptor;
 }
 
 void ApplyHistoryStep::set_ongoing_navigation_to_traversal(CanonicalNavigable& navigable, CanonicalSessionHistoryEntry const& target_entry)
