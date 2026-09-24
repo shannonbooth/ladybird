@@ -936,7 +936,11 @@ struct CanonicalTraversable::HistoryOperation {
     bool was_initiated_by(WebContentPage const& page) const { return initiating_page.ptr() == &page; }
 };
 
-CanonicalTraversable::~CanonicalTraversable() = default;
+CanonicalTraversable::~CanonicalTraversable()
+{
+    // The traversable's pending host is the page the view installed, which the view releases.
+    clear_pending_document_state();
+}
 
 // A page holds the document of a navigable that it hosts, or the document of the navigable's next activation that it
 // populates while another page hosts the active document.
@@ -1662,7 +1666,7 @@ void CanonicalTraversable::continue_history_navigation_population(Web::HTML::Cro
         }
     }
     if (document)
-        document->set_host(endpoint);
+        navigable->place_pending_document(*endpoint);
     add_history_operation_completion_endpoint(*operation, *endpoint);
     auto& job = *pending_job.value();
     endpoint->async_continue_history_navigation_population(operation_id, job.job.target_entry, job.job.navigation_type,
@@ -1680,8 +1684,6 @@ void CanonicalTraversable::dispatch_changing_navigable_history_step_job(HistoryO
     if (pending_job.value()->population_loader)
         pending_job.value()->population_loader->reclaim_response_body_after_failed_handoff();
     pending_job.value()->population_loader = nullptr;
-    if (auto navigable = find(navigable_id); navigable.has_value())
-        navigable->clear_pending_document_state();
     auto target_entry = pending_job.value()->job.target_entry;
     endpoint->async_run_changing_navigable_history_job(
         operation.operation_id, navigable_id,
