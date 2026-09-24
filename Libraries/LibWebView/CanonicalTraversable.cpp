@@ -3041,7 +3041,7 @@ void CanonicalTraversable::finish_history_operation(Web::HTML::CrossProcessId op
         auto navigable = find(navigable_id);
         if (!navigable.has_value())
             continue;
-        if (auto const& document_state = navigable->populating_document_state(); document_state && document_state->id == pending_job->job.target_entry->document_state->id)
+        if (navigable->populating_document_state() == pending_job->job.target_entry->document_state)
             navigable->abandon_pending_document();
     }
     if (taken_operation.changing_job_endpoints.contains(id()))

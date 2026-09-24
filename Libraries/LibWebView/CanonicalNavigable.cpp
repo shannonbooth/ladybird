@@ -498,12 +498,12 @@ void CanonicalNavigable::active_document_completely_finished_loading()
 
 bool CanonicalNavigable::current_session_history_entry_is(CanonicalSessionHistoryEntry const& entry) const
 {
-    return m_current_session_history_entry && m_current_session_history_entry->identity() == entry.identity();
+    return m_current_session_history_entry == &entry;
 }
 
 bool CanonicalNavigable::active_document_is(CanonicalSessionHistoryEntry const& entry) const
 {
-    return m_active_session_history_entry && m_active_session_history_entry->document_state->id == entry.document_state->id;
+    return m_active_session_history_entry && entry.document_state->document == &active_document();
 }
 
 void CanonicalNavigable::did_commit_navigation(CanonicalSessionHistoryEntry& entry, Web::HTML::ReplicatedNavigableState replicated_state, Optional<Utf16String> const& navigation_id, DidPopulateDocument did_populate_document, RefPtr<WebContentPage> host)
@@ -516,7 +516,7 @@ void CanonicalNavigable::did_commit_navigation(CanonicalSessionHistoryEntry& ent
     NonnullRefPtr previous_document = active_document();
 
     RefPtr<CanonicalDocument> document;
-    if (m_populated_document.has_value() && m_populated_document->document_state->id == entry.document_state->id)
+    if (m_populated_document.has_value() && m_populated_document->document_state == entry.document_state)
         document = m_populated_document.release_value().document;
     // NB: The process hosting the navigable created a document the UI process did not, as for a javascript: URL,
     //     with the agent obtained for its origin in the navigable's browsing context group.
@@ -530,7 +530,7 @@ void CanonicalNavigable::did_commit_navigation(CanonicalSessionHistoryEntry& ent
         document = previous_document;
 
     // A document state holds its document while its entry is active.
-    if (m_active_session_history_entry->document_state->id != entry.document_state->id)
+    if (m_active_session_history_entry->document_state != entry.document_state)
         m_active_session_history_entry->document_state->document = nullptr;
     entry.document_state->document = document;
     m_active_session_history_entry = entry;
