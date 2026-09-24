@@ -61,7 +61,7 @@ void SiteIsolationManager::remove_page(WebContentPage& page)
         return;
     auto& traversable = page.traversable();
 
-    if (traversable.has_active_document() && traversable.active_document().host() == &page)
+    if (traversable.active_document().host() == &page)
         traversable.active_document().set_host(nullptr);
     traversable.forget_opener_page(page);
 
