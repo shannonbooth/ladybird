@@ -132,9 +132,6 @@ NonnullRefPtr<CanonicalDocument> CanonicalNavigable::create_and_initialize_a_doc
 
 CanonicalNavigable::~CanonicalNavigable()
 {
-    clear_ongoing_navigation();
-    abandon_pending_document();
-
     // The document state of the navigable's active entry no longer holds the document the navigable displayed.
     if (m_active_session_history_entry)
         m_active_session_history_entry->document_state->document = nullptr;

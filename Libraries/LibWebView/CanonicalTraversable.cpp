@@ -467,7 +467,10 @@ Optional<CanonicalNavigable const&> CanonicalTraversable::find(Web::HTML::CrossP
 void CanonicalTraversable::remove(CanonicalNavigable& navigable)
 {
     VERIFY(&navigable != this);
-    navigable.clear_ongoing_navigation();
+    navigable.for_each_in_inclusive_subtree([](CanonicalNavigable& navigable) {
+        navigable.clear_ongoing_navigation();
+        return IterationDecision::Continue;
+    });
     // The page holding the navigable's container drops it on its own: it reported the destruction, or the navigable is
     // a child of a host on its way out.
     for_each_page_representing(navigable, [&](WebContentPage& page) {
@@ -938,11 +941,7 @@ struct CanonicalTraversable::HistoryOperation {
     bool was_initiated_by(WebContentPage const& page) const { return initiating_page.ptr() == &page; }
 };
 
-CanonicalTraversable::~CanonicalTraversable()
-{
-    // The traversable's pending host is the page the view installed, which the view releases.
-    abandon_pending_document();
-}
+CanonicalTraversable::~CanonicalTraversable() = default;
 
 // A page holds the document of a navigable that it hosts, or the document of the navigable's next activation that it
 // populates while another page hosts the active document.
