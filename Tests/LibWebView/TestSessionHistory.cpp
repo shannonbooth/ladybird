@@ -286,7 +286,7 @@ static HistoryOperationResult run_canonical_history_operation(WebView::Canonical
     Optional<HistoryOperationResult> result;
     auto queue_promise = Core::Promise<Empty>::construct();
     traversable.run_history_operation_at_queue_position(
-        operation_id, move(request), {}, {}, {},
+        operation_id, move(request), {}, {},
         [&](auto operation_result, auto committed_step) {
             result = HistoryOperationResult { operation_result, committed_step };
         },

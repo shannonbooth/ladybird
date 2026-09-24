@@ -551,7 +551,7 @@ void WebContentPage::did_completely_finish_loading(Web::HTML::CrossProcessId nav
     navigable->active_document_completely_finished_loading();
 }
 
-void WebContentPage::did_create_child_frame(Web::HTML::CrossProcessId parent_frame_id, Web::HTML::CrossProcessId frame_id, Web::HTML::ReplicatedNavigableState replicated_state)
+void WebContentPage::did_create_child_frame(Web::HTML::CrossProcessId parent_frame_id, Web::HTML::CrossProcessId frame_id, Web::HTML::ReplicatedNavigableState replicated_state, Web::HTML::PendingSessionHistoryEntryDescriptor initial_history_entry)
 {
     auto& traversable = this->traversable();
 
@@ -566,7 +566,7 @@ void WebContentPage::did_create_child_frame(Web::HTML::CrossProcessId parent_fra
     // A process materializing a frame that exists re-hosts its document. The canonical navigable's active document
     // stays as it is.
     if (auto existing_navigable = traversable.find(frame_id); existing_navigable.has_value()) {
-        traversable.insert(*this, parent_navigable, container_document, frame_id, move(replicated_state), existing_navigable->active_document());
+        traversable.insert(*this, parent_navigable, container_document, frame_id, move(replicated_state), *existing_navigable->active_session_history_entry(), existing_navigable->active_document());
         return;
     }
 
@@ -588,7 +588,9 @@ void WebContentPage::did_create_child_frame(Web::HTML::CrossProcessId parent_fra
     //     state.
     // 7. Let navigable be a new navigable.
     // 8. Initialize the navigable navigable given documentState and parentNavigable.
-    traversable.insert(*this, parent_navigable, container_document, frame_id, move(replicated_state), move(document));
+    // NB: The process creating the navigable reports the entry that initializing it created.
+    auto initial_entry = CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::create_session_history_entry_descriptor(move(initial_history_entry), 0));
+    traversable.insert(*this, parent_navigable, container_document, frame_id, move(replicated_state), move(initial_entry), move(document));
 }
 
 void WebContentPage::did_set_browser_zoom(double factor)

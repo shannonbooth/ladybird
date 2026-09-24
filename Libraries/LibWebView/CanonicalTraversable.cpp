@@ -138,32 +138,19 @@ Compositing::DevicePixelPoint CanonicalTraversable::local_root_offset(CanonicalN
     return offset;
 }
 
-CanonicalNavigable& CanonicalTraversable::insert(NonnullRefPtr<WebContentPage> reporting_page, CanonicalNavigable& parent, CanonicalDocument& container_document, Web::HTML::CrossProcessId frame_id, Web::HTML::ReplicatedNavigableState replicated_state, NonnullRefPtr<CanonicalDocument> document)
+CanonicalNavigable& CanonicalTraversable::insert(NonnullRefPtr<WebContentPage> reporting_page, CanonicalNavigable& parent, CanonicalDocument& container_document, Web::HTML::CrossProcessId frame_id, Web::HTML::ReplicatedNavigableState replicated_state, NonnullRefPtr<CanonicalSessionHistoryEntry> active_session_history_entry, NonnullRefPtr<CanonicalDocument> document)
 {
-    RefPtr<CanonicalSessionHistoryEntry> current_session_history_entry;
-    RefPtr<CanonicalSessionHistoryEntry> active_session_history_entry;
+    RefPtr<CanonicalSessionHistoryEntry> current_session_history_entry = active_session_history_entry;
     Vector<CanonicalNavigable::PendingSameDocumentSessionHistoryEntry> pending_same_document_session_history_entries;
     auto existing_navigable = find(frame_id);
     if (existing_navigable.has_value()) {
         current_session_history_entry = existing_navigable->current_session_history_entry();
-        active_session_history_entry = existing_navigable->active_session_history_entry();
         pending_same_document_session_history_entries = existing_navigable->take_pending_same_document_session_history_entries();
         remove(*existing_navigable);
     }
 
     document->set_host(reporting_page);
-    if (active_session_history_entry) {
-        // The navigable goes on displaying its document.
-        active_session_history_entry->document_state->document = move(document);
-    } else {
-        // https://html.spec.whatwg.org/multipage/document-sequences.html#initialize-the-navigable
-        // NB: The process creating the navigable reports the rest of this entry with the creation's traversal steps.
-        auto const& entry_identity = replicated_state.active_session_history_entry_identity;
-        auto entry = CanonicalSessionHistoryEntry::create(CanonicalDocumentState::create(entry_identity.document_state_id, move(document)));
-        entry->navigation_api_id = entry_identity.navigation_api_id;
-        current_session_history_entry = entry;
-        active_session_history_entry = move(entry);
-    }
+    active_session_history_entry->document_state->document = move(document);
     auto navigable = make<CanonicalNavigable>(frame_id, RefPtr<WebContentPage> { move(reporting_page) });
     navigable->set_container_document({}, container_document);
     navigable->set_current_session_history_entry(move(current_session_history_entry));
@@ -562,18 +549,15 @@ CanonicalTraversable& CanonicalTraversable::create_a_new_top_level_traversable(W
     //    origin: document's origin
     //    navigable target name: targetName
     //    about base URL: document's about base URL
-    // NB: initialHistoryEntry's document state ID identifies documentState.
-    auto document_state = CanonicalDocumentState::create(initial_history_entry.document_state.id, *document);
+    // NB: The process hosting the traversable reports documentState's other fields with initialHistoryEntry, which
+    //     holds those of the entry that initializing the navigable creates.
+    auto history_entry = CanonicalSessionHistoryEntry::create_from_descriptor(initial_history_entry);
+    history_entry->document_state->document = document.release_nonnull();
 
     // 5. Let traversable be a new traversable navigable.
     auto traversable = make<CanonicalTraversable>(id);
 
     // 6. Initialize the navigable traversable given documentState.
-    // NB: initialHistoryEntry holds documentState's other fields and those of the entry that initializing the
-    //     navigable creates.
-    CanonicalSessionHistoryEntry::DocumentStates document_states;
-    document_states.set(document_state->id, document_state);
-    auto history_entry = CanonicalSessionHistoryEntry::create_from_descriptor(initial_history_entry, document_states, CanonicalSessionHistoryEntry::UpdateDocumentState::Yes);
     traversable->set_current_session_history_entry(history_entry);
     traversable->set_active_session_history_entry(history_entry);
     // NB: The initial document is active from the traversable's creation, so replicate its state from initialHistoryEntry.
@@ -703,14 +687,19 @@ bool CanonicalTraversable::set_session_history_entry_document_state_reload_pendi
     return true;
 }
 
-Optional<i32> CanonicalTraversable::append_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId child_navigable_id, NonnullRefPtr<CanonicalSessionHistoryEntry> history_entry)
+Optional<i32> CanonicalTraversable::append_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId child_navigable_id)
 {
     VERIFY(&parent_navigable.top_level_traversable() == this);
 
     auto child_navigable = find(child_navigable_id);
     if (!child_navigable.has_value() || child_navigable->parent() != &parent_navigable)
         return {};
-    auto target_step = m_session_history.append_nested_history(parent_navigable, parent_document_state_id, child_navigable_id, move(history_entry));
+    // https://html.spec.whatwg.org/multipage/document-sequences.html#create-a-new-child-navigable
+    // 10. Let historyEntry be navigable's active session history entry.
+    // NB: Read at the steps' queue position rather than when the navigable was created: the traversal queue is held
+    //     while the creating process runs the steps' first part, so the entry that initializing the navigable created
+    //     is still its active entry.
+    auto target_step = m_session_history.append_nested_history(parent_navigable, parent_document_state_id, child_navigable_id, *child_navigable->active_session_history_entry());
     if (!target_step.has_value())
         return {};
 
@@ -823,8 +812,7 @@ void CanonicalTraversable::reset_session_history_for_testing(
 {
     abandon_history_operations();
     m_session_history.clear();
-    CanonicalSessionHistoryEntry::DocumentStates document_states;
-    auto entry = CanonicalSessionHistoryEntry::create_from_descriptor(active_entry, document_states);
+    auto entry = CanonicalSessionHistoryEntry::create_from_descriptor(active_entry);
     entry->document_state->document = active_document();
     set_current_session_history_entry(entry);
     set_active_session_history_entry(entry);
@@ -861,10 +849,9 @@ StringView CanonicalTraversable::browser_history_traversal_stage_to_string(Brows
 struct CanonicalTraversable::HistoryOperation {
     AK_ALLOC_WITH_KMALLOC;
 
-    HistoryOperation(Web::HTML::CrossProcessId operation_id, Web::HistoryOperationParameters parameters, RefPtr<CanonicalSessionHistoryEntry> created_navigable_history_entry, RefPtr<WebContentPage> initiating_page, u64 sequence_number, OnHistoryOperationComplete on_complete)
+    HistoryOperation(Web::HTML::CrossProcessId operation_id, Web::HistoryOperationParameters parameters, RefPtr<WebContentPage> initiating_page, u64 sequence_number, OnHistoryOperationComplete on_complete)
         : operation_id(operation_id)
         , parameters(move(parameters))
-        , created_navigable_history_entry(move(created_navigable_history_entry))
         , on_complete(move(on_complete))
         , initiating_page(move(initiating_page))
         , sequence_number(sequence_number)
@@ -873,9 +860,6 @@ struct CanonicalTraversable::HistoryOperation {
 
     Web::HTML::CrossProcessId operation_id;
     Web::HistoryOperationParameters parameters;
-    // https://html.spec.whatwg.org/multipage/document-sequences.html#create-a-new-child-navigable
-    // historyEntry, the created navigable's active session history entry.
-    RefPtr<CanonicalSessionHistoryEntry> created_navigable_history_entry;
     OnHistoryOperationComplete on_complete;
     // Jobs resolve their endpoints at dispatch. This endpoint owns the process-local operation state.
     RefPtr<WebContentPage> initiating_page;
@@ -2282,7 +2266,7 @@ ApplyHistoryStepJobs CanonicalTraversable::create_apply_history_step_jobs(Web::H
     };
 }
 
-void CanonicalTraversable::run_history_operation_at_queue_position(Web::HTML::CrossProcessId operation_id, Web::HistoryOperationParameters request, RefPtr<CanonicalSessionHistoryEntry> created_navigable_history_entry, RefPtr<WebContentPage> requesting_page, u64 sequence_number, OnHistoryOperationComplete on_complete, NonnullRefPtr<Core::Promise<Empty>> promise)
+void CanonicalTraversable::run_history_operation_at_queue_position(Web::HTML::CrossProcessId operation_id, Web::HistoryOperationParameters request, RefPtr<WebContentPage> requesting_page, u64 sequence_number, OnHistoryOperationComplete on_complete, NonnullRefPtr<Core::Promise<Empty>> promise)
 {
     // The traversal queue can outlive an embedded page which appended work to it. Such a page cannot run the
     // preparation step or receive completion, so discard its queued operation instead of waiting forever.
@@ -2302,7 +2286,7 @@ void CanonicalTraversable::run_history_operation_at_queue_position(Web::HTML::Cr
         promise->resolve({});
         return;
     }
-    m_history_operations.set(operation_id, make<HistoryOperation>(operation_id, move(request), move(created_navigable_history_entry), move(requesting_page), sequence_number, move(on_complete)));
+    m_history_operations.set(operation_id, make<HistoryOperation>(operation_id, move(request), move(requesting_page), sequence_number, move(on_complete)));
     auto* operation = find_history_operation(operation_id);
     VERIFY(operation);
     operation->queue_promise = promise;
@@ -2312,7 +2296,7 @@ void CanonicalTraversable::run_history_operation_at_queue_position(Web::HTML::Cr
 void CanonicalTraversable::run_browser_history_traversal_at_queue_position(Web::TraverseToStepHistoryOperationParameters parameters, bool check_for_cancelation, u64 sequence_number, Function<void()> on_ready, OnHistoryOperationComplete on_complete, NonnullRefPtr<Core::Promise<Empty>> promise)
 {
     auto operation_id = Application::the().allocate_ui_process_cross_process_id();
-    auto owned_operation = make<HistoryOperation>(operation_id, Web::HistoryOperationParameters { move(parameters) }, nullptr, RefPtr<WebContentPage> {}, sequence_number, move(on_complete));
+    auto owned_operation = make<HistoryOperation>(operation_id, Web::HistoryOperationParameters { move(parameters) }, RefPtr<WebContentPage> {}, sequence_number, move(on_complete));
     owned_operation->was_initiated_by_browser = true;
     owned_operation->check_for_cancelation = check_for_cancelation;
     owned_operation->on_browser_traversal_ready = move(on_ready);
@@ -2385,32 +2369,8 @@ void CanonicalTraversable::enqueue_history_operation(Web::HTML::CrossProcessId o
         }
     }
 
-    // https://html.spec.whatwg.org/multipage/document-sequences.html#create-a-new-child-navigable
-    // 8. Initialize the navigable navigable given documentState and parentNavigable.
-    // 10. Let historyEntry be navigable's active session history entry.
-    // NB: The process creating the navigable reports historyEntry with the request whose steps append it.
-    RefPtr<CanonicalSessionHistoryEntry> created_navigable_history_entry;
-    if (request.has<Web::NavigableCreationHistoryOperationParameters>()) {
-        auto const& parameters = request.get<Web::NavigableCreationHistoryOperationParameters>();
-        auto navigable = find(parameters.navigable_id);
-        RefPtr<CanonicalSessionHistoryEntry> initial_entry = navigable.has_value() ? navigable->active_session_history_entry() : nullptr;
-        // A navigable that exists already, as one materialized in another process, keeps its entries.
-        if (initial_entry && initial_entry->document_state->id != parameters.initial_history_entry.document_state.id)
-            initial_entry = nullptr;
-
-        CanonicalSessionHistoryEntry::DocumentStates document_states;
-        if (initial_entry)
-            document_states.set(initial_entry->document_state->id, initial_entry->document_state);
-        created_navigable_history_entry = CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::create_session_history_entry_descriptor(parameters.initial_history_entry, 0), document_states, CanonicalSessionHistoryEntry::UpdateDocumentState::Yes);
-        if (initial_entry) {
-            if (navigable->current_session_history_entry() == initial_entry)
-                navigable->set_current_session_history_entry(created_navigable_history_entry);
-            navigable->set_active_session_history_entry(created_navigable_history_entry);
-        }
-    }
-
-    auto steps = [this, operation_id, request = move(request), created_navigable_history_entry = move(created_navigable_history_entry), requesting_page = move(requesting_page), sequence_number, on_complete = move(on_complete)](NonnullRefPtr<Core::Promise<Empty>> promise) mutable {
-        run_history_operation_at_queue_position(operation_id, move(request), move(created_navigable_history_entry), move(requesting_page), sequence_number, move(on_complete), move(promise));
+    auto steps = [this, operation_id, request = move(request), requesting_page = move(requesting_page), sequence_number, on_complete = move(on_complete)](NonnullRefPtr<Core::Promise<Empty>> promise) mutable {
+        run_history_operation_at_queue_position(operation_id, move(request), move(requesting_page), sequence_number, move(on_complete), move(promise));
     };
 
     if (synchronous_navigation_target.has_value())
@@ -3052,8 +3012,7 @@ void CanonicalTraversable::did_receive_history_operation_ready(WebContentPage& s
             auto parent_document_state_id = result.get<Web::HTML::CrossProcessId>();
             auto parent_navigable = find(parameters.parent_navigable_id);
             if (!parent_navigable.has_value()
-                || !operation->created_navigable_history_entry
-                || !append_nested_history(*parent_navigable, parent_document_state_id, parameters.navigable_id, *operation->created_navigable_history_entry).has_value()) {
+                || !append_nested_history(*parent_navigable, parent_document_state_id, parameters.navigable_id).has_value()) {
                 finish_history_operation(operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
                 return;
             }

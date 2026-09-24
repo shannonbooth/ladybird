@@ -106,6 +106,12 @@ static NonnullRefPtr<CanonicalDocumentState> document_state_from_descriptor(Web:
     return document_state;
 }
 
+NonnullRefPtr<CanonicalSessionHistoryEntry> CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::SessionHistoryEntryDescriptor const& descriptor)
+{
+    DocumentStates document_states;
+    return create_from_descriptor(descriptor, document_states);
+}
+
 NonnullRefPtr<CanonicalSessionHistoryEntry> CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::SessionHistoryEntryDescriptor const& descriptor, DocumentStates& document_states, UpdateDocumentState update_document_state)
 {
     Vector<Web::HTML::CrossProcessId> ancestor_ids;
