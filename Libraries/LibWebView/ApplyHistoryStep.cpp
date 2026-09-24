@@ -106,7 +106,7 @@ void ApplyHistoryStep::apply_the_history_step()
         return;
     }
 
-    auto const* target_entry = m_session_history.get_the_target_history_entry(m_traversable_navigable, m_target_step);
+    auto* target_entry = m_session_history.get_the_target_history_entry(m_traversable_navigable, m_target_step);
     if (!target_entry) {
         return_result(Web::HTML::HistoryStepResult::CanceledByMissingPage);
         return;
@@ -143,7 +143,7 @@ void ApplyHistoryStep::get_changing_and_nonchanging_navigables()
         auto* navigable = find_navigable(navigable_id);
 
         // 1. Let targetEntry be the result of getting the target history entry given navigable and targetStep.
-        auto const* target_entry = navigable ? m_session_history.get_the_target_history_entry(*navigable, m_target_step) : nullptr;
+        auto* target_entry = navigable ? m_session_history.get_the_target_history_entry(*navigable, m_target_step) : nullptr;
         if (!target_entry)
             continue;
 
@@ -167,7 +167,7 @@ void ApplyHistoryStep::run_changing_navigable_jobs()
     // 12. For each navigable of changingNavigables, queue a global task on the navigation and traversal task source.
     for (auto navigable_id : m_changing_navigables) {
         auto const* navigable = find_navigable(navigable_id);
-        auto const* target_entry = navigable ? m_session_history.get_the_target_history_entry(*navigable, m_target_step) : nullptr;
+        auto* target_entry = navigable ? m_session_history.get_the_target_history_entry(*navigable, m_target_step) : nullptr;
         if (!target_entry) {
             // AD-HOC: The canonical mirror can briefly disagree with the live navigable tree while a created or
             //         removed child navigable is reconciled; complete the job as skipped instead of dispatching it.
@@ -331,8 +331,8 @@ void ApplyHistoryStep::process_changing_navigable_continuations()
         //         CanonicalBrowsingContext::SessionHistoryCommit, WebKit HistoryController::updateForStandardLoad,
         //         Blink NavigationControllerImpl::RendererDidNavigateToNewEntry.
         // NB: navigable's own sync navigations wait from step 8 on. So, none of them can change the entry after this.
-        auto const* target_entry = navigable ? m_session_history.get_the_target_history_entry(*navigable, m_target_step) : nullptr;
-        RefPtr<CanonicalSessionHistoryEntry const> updated_target_entry;
+        auto* target_entry = navigable ? m_session_history.get_the_target_history_entry(*navigable, m_target_step) : nullptr;
+        RefPtr<CanonicalSessionHistoryEntry> updated_target_entry;
         if (auto claimed_target_entry = m_claimed_target_entries.get(navigable_id); target_entry && claimed_target_entry.has_value()) {
             auto is_in_claimed_slot = target_entry->document_state == claimed_target_entry.value()->document_state
                 && target_entry->navigation_api_key == claimed_target_entry.value()->navigation_api_key;
@@ -399,7 +399,7 @@ void ApplyHistoryStep::process_changing_navigable_continuations()
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-cross-document-navigation
 // A pushState that jumped the queue cleared the entry a navigation appended, as forward history, and took its step. So,
 // we re-run the appending steps of finalizing a cross-doc navigation, against the session history as the push left it.
-CanonicalSessionHistoryEntry const* ApplyHistoryStep::append_the_claimed_target_entry_again(CanonicalNavigable& navigable, CanonicalSessionHistoryEntry const& claimed_target_entry)
+CanonicalSessionHistoryEntry* ApplyHistoryStep::append_the_claimed_target_entry_again(CanonicalNavigable& navigable, CanonicalSessionHistoryEntry& claimed_target_entry)
 {
     auto history_entry = claimed_target_entry.descriptor();
     auto current_step = m_session_history.current_step();
@@ -417,7 +417,7 @@ CanonicalSessionHistoryEntry const* ApplyHistoryStep::append_the_claimed_target_
     history_entry.step = *current_step + 1;
 
     // 9.4. Append historyEntry to targetEntries.
-    auto const* appended_entry = m_session_history.append_or_replace_session_history_entry(navigable, history_entry, {}, CanonicalSessionHistoryEntry::UpdateDocumentState::No)
+    auto* appended_entry = m_session_history.append_or_replace_session_history_entry(navigable, history_entry, {}, CanonicalSessionHistoryEntry::UpdateDocumentState::No)
         ? m_session_history.get_the_target_history_entry(navigable, history_entry.step)
         : nullptr;
     if (!appended_entry) {

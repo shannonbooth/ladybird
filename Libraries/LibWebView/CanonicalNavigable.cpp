@@ -506,7 +506,7 @@ bool CanonicalNavigable::active_document_is(CanonicalSessionHistoryEntry const& 
     return m_active_session_history_entry && m_active_session_history_entry->document_state->id == entry.document_state->id;
 }
 
-void CanonicalNavigable::did_commit_navigation(CanonicalSessionHistoryEntry const& entry, Web::HTML::ReplicatedNavigableState replicated_state, Optional<Utf16String> const& navigation_id, DidPopulateDocument did_populate_document, RefPtr<WebContentPage> host)
+void CanonicalNavigable::did_commit_navigation(CanonicalSessionHistoryEntry& entry, Web::HTML::ReplicatedNavigableState replicated_state, Optional<Utf16String> const& navigation_id, DidPopulateDocument did_populate_document, RefPtr<WebContentPage> host)
 {
     auto commits_ongoing_navigation = !m_ongoing_navigation.has_value()
         || !navigation_id.has_value()

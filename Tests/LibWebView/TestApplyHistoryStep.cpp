@@ -68,7 +68,7 @@ public:
     using ApplyChangingNavigableHistoryStepContinuation = WebView::ApplyHistoryStepJobs::ApplyChangingNavigableHistoryStepContinuation;
 
     struct UnloadCancelationJob {
-        NonnullRefPtr<WebView::CanonicalSessionHistoryEntry const> target_entry;
+        NonnullRefPtr<WebView::CanonicalSessionHistoryEntry> target_entry;
         Vector<Web::HTML::CrossProcessId> navigables_crossing_documents;
         Function<void(Web::HTML::HistoryStepResult)> on_complete;
     };
@@ -217,7 +217,7 @@ struct TestTraversable {
         auto step = current_step();
         VERIFY(step.has_value());
         traversable.for_each_in_inclusive_subtree([&](WebView::CanonicalNavigable& navigable) {
-            auto const* current_entry = history.get_the_target_history_entry(navigable, *step);
+            auto* current_entry = history.get_the_target_history_entry(navigable, *step);
             VERIFY(current_entry);
             if (auto const& previous_active_entry = navigable.active_session_history_entry())
                 current_entry->document_state->document = previous_active_entry->document_state->document;
@@ -277,7 +277,7 @@ TEST_CASE(traversal_runs_the_changing_root_job_and_commits_the_target_step)
     EXPECT_EQ(test.runner.selected_changing_job_endpoints.size(), 1uz);
     EXPECT_EQ(test.runner.selected_changing_job_endpoints[0], root_id());
     EXPECT_EQ(test.runner.changing_jobs.size(), 1uz);
-    auto const* target_entry = test.history.get_the_target_history_entry(test.traversable, 0);
+    auto* target_entry = test.history.get_the_target_history_entry(test.traversable, 0);
     VERIFY(target_entry);
     EXPECT(test.traversable.current_session_history_entry_is(*target_entry));
     EXPECT(!test.traversable.active_document_is(*target_entry));
@@ -378,7 +378,7 @@ TEST_CASE(canceled_unloading_returns_before_any_changing_jobs)
 
     test.traverse_to_step(0, true);
     EXPECT_EQ(test.runner.unload_cancelation_jobs.size(), 1uz);
-    auto const* target_entry = test.history.get_the_target_history_entry(test.traversable, 0);
+    auto* target_entry = test.history.get_the_target_history_entry(test.traversable, 0);
     VERIFY(target_entry);
     EXPECT(!test.traversable.current_session_history_entry_is(*target_entry));
     auto& job = test.runner.unload_cancelation_jobs[0];
@@ -496,7 +496,7 @@ TEST_CASE(skipped_changing_job_still_applies_the_history_step)
     test.traverse_to_step(0);
     EXPECT_EQ(test.runner.changing_jobs.size(), 1uz);
     auto& child = *test.traversable.children().first();
-    auto const* target_entry = test.history.get_the_target_history_entry(child, 0);
+    auto* target_entry = test.history.get_the_target_history_entry(child, 0);
     VERIFY(target_entry);
     EXPECT(child.current_session_history_entry_is(*target_entry));
     EXPECT(!child.active_document_is(*target_entry));

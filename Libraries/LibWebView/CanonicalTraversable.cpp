@@ -140,8 +140,8 @@ Compositing::DevicePixelPoint CanonicalTraversable::local_root_offset(CanonicalN
 
 CanonicalNavigable& CanonicalTraversable::insert(NonnullRefPtr<WebContentPage> reporting_page, CanonicalNavigable& parent, CanonicalDocument& container_document, Web::HTML::CrossProcessId frame_id, Web::HTML::ReplicatedNavigableState replicated_state, NonnullRefPtr<CanonicalDocument> document)
 {
-    RefPtr<CanonicalSessionHistoryEntry const> current_session_history_entry;
-    RefPtr<CanonicalSessionHistoryEntry const> active_session_history_entry;
+    RefPtr<CanonicalSessionHistoryEntry> current_session_history_entry;
+    RefPtr<CanonicalSessionHistoryEntry> active_session_history_entry;
     Vector<CanonicalNavigable::PendingSameDocumentSessionHistoryEntry> pending_same_document_session_history_entries;
     auto existing_navigable = find(frame_id);
     if (existing_navigable.has_value()) {
@@ -786,7 +786,7 @@ ErrorOr<URL::URL> CanonicalTraversable::restore_session_history_from_ui_snapshot
     TRY(m_session_history.restore_from_ui_snapshot(move(snapshot.entries), move(snapshot.used_steps), snapshot.current_used_step_index, [] { return Application::the().allocate_ui_process_cross_process_id(); }));
     session_history_changed();
 
-    auto const* current_entry = m_session_history.current_entry();
+    auto* current_entry = m_session_history.current_entry();
     VERIFY(current_entry);
     return current_entry->url;
 }
@@ -837,7 +837,7 @@ bool CanonicalTraversable::initialize_session_history_for_testing(Vector<Web::HT
     abandon_history_operations();
     if (!m_session_history.initialize_for_testing(move(entries), move(used_steps), current_used_step_index))
         return false;
-    auto const* active_entry = m_session_history.current_entry();
+    auto* active_entry = m_session_history.current_entry();
     VERIFY(active_entry);
     if (auto const& previous_active_entry = active_session_history_entry())
         active_entry->document_state->document = previous_active_entry->document_state->document;
@@ -1832,7 +1832,7 @@ void CanonicalTraversable::unload_displayed_document_for_cross_document_navigati
 
 // The process running a changing navigable's job activated targetEntry's document and applied the continuation's
 // remaining steps. The document's host takes the container over before the canonical navigable records the commit.
-void CanonicalTraversable::did_activate_history_entry(HistoryOperation& operation, Web::HTML::CrossProcessId navigable_id, NonnullRefPtr<WebContentPage> source_page, CanonicalSessionHistoryEntry const& target_entry, CanonicalNavigable::DidPopulateDocument did_populate_document, Web::HTML::ReplicatedNavigableState activated_navigable_state)
+void CanonicalTraversable::did_activate_history_entry(HistoryOperation& operation, Web::HTML::CrossProcessId navigable_id, NonnullRefPtr<WebContentPage> source_page, CanonicalSessionHistoryEntry& target_entry, CanonicalNavigable::DidPopulateDocument did_populate_document, Web::HTML::ReplicatedNavigableState activated_navigable_state)
 {
     auto navigable = find(navigable_id);
     if (!navigable.has_value())
@@ -2081,7 +2081,7 @@ void CanonicalTraversable::did_receive_child_navigable_unload_request(WebContent
 void CanonicalTraversable::dispatch_crash_recovery_changing_job(HistoryOperation& operation, NonnullRefPtr<WebContentPage> endpoint, Web::HTML::HistoryObjectLengthAndIndex history_object_length_and_index, Function<void()> on_complete)
 {
     auto const& parameters = operation.parameters.get<Web::TraverseToStepHistoryOperationParameters>();
-    auto const* target_entry = m_session_history.get_the_target_history_entry(*this, parameters.target_step);
+    auto* target_entry = m_session_history.get_the_target_history_entry(*this, parameters.target_step);
     auto entries_for_navigation_api = m_session_history.get_session_history_entries_for_the_navigation_api(*this, parameters.target_step);
     VERIFY(target_entry);
     VERIFY(entries_for_navigation_api.has_value());
@@ -2393,7 +2393,7 @@ void CanonicalTraversable::enqueue_history_operation(Web::HTML::CrossProcessId o
     if (request.has<Web::NavigableCreationHistoryOperationParameters>()) {
         auto const& parameters = request.get<Web::NavigableCreationHistoryOperationParameters>();
         auto navigable = find(parameters.navigable_id);
-        RefPtr<CanonicalSessionHistoryEntry const> initial_entry = navigable.has_value() ? navigable->active_session_history_entry() : nullptr;
+        RefPtr<CanonicalSessionHistoryEntry> initial_entry = navigable.has_value() ? navigable->active_session_history_entry() : nullptr;
         // A navigable that exists already, as one materialized in another process, keeps its entries.
         if (initial_entry && initial_entry->document_state->id != parameters.initial_history_entry.document_state.id)
             initial_entry = nullptr;
@@ -2720,7 +2720,7 @@ void CanonicalTraversable::run_direct_history_operation(HistoryOperation& operat
         [&](Web::ReloadHistoryOperationParameters const& parameters) {
             auto current_step = m_session_history.current_step();
             auto navigable = find(parameters.navigable_id);
-            auto const* target_entry = current_step.has_value() && navigable.has_value()
+            auto* target_entry = current_step.has_value() && navigable.has_value()
                 ? m_session_history.get_the_target_history_entry(*navigable, *current_step)
                 : nullptr;
             if (!target_entry) {
@@ -2815,7 +2815,7 @@ void CanonicalTraversable::start_history_operation(HistoryOperation& operation, 
         auto child_navigable = find(parameters.navigable_id);
         auto current_step = m_session_history.current_step();
         if (child_navigable.has_value() && current_step.has_value()) {
-            if (auto const* target_entry = m_session_history.get_the_target_history_entry(*child_navigable, *current_step)) {
+            if (auto* target_entry = m_session_history.get_the_target_history_entry(*child_navigable, *current_step)) {
                 auto uuid = Web::Crypto::generate_random_uuid();
                 auto navigation_id = Utf16String::from_ascii_without_validation(uuid.bytes());
                 auto ongoing_navigation = CanonicalNavigable::OngoingNavigation {
@@ -2895,7 +2895,7 @@ void CanonicalTraversable::finalize_a_cross_document_navigation(HistoryOperation
     }
 
     // 5. Let entryToReplace be navigable's active session history entry if historyHandling is "replace", otherwise null.
-    RefPtr<CanonicalSessionHistoryEntry const> entry_to_replace;
+    RefPtr<CanonicalSessionHistoryEntry> entry_to_replace;
     if (parameters.history_handling == Web::HTML::HistoryHandlingBehavior::Replace) {
         entry_to_replace = navigable->active_session_history_entry();
 
@@ -3110,7 +3110,7 @@ void CanonicalTraversable::finish_history_operation(Web::HTML::CrossProcessId op
 
     if (committed_step.has_value()) {
         if (auto view = this->view(); view.has_value()) {
-            if (auto const* current_entry = m_session_history.current_entry())
+            if (auto* current_entry = m_session_history.current_entry())
                 view->set_url(current_entry->url);
         }
     }

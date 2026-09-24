@@ -120,9 +120,9 @@ static bool nesting_depth_is_valid(Vector<Web::HTML::SessionHistoryEntryDescript
     return true;
 }
 
-static CanonicalSessionHistoryEntry const* entry_for_step_in_entry_list(Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>> const& entries, i32 step)
+static CanonicalSessionHistoryEntry* entry_for_step_in_entry_list(Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>> const& entries, i32 step)
 {
-    CanonicalSessionHistoryEntry const* result = nullptr;
+    CanonicalSessionHistoryEntry* result = nullptr;
     for (auto const& entry : entries) {
         if (entry->step > step)
             break;
@@ -672,21 +672,21 @@ Optional<i32> TraversableSessionHistory::step_at(size_t index) const
     return m_used_steps[index];
 }
 
-CanonicalSessionHistoryEntry const* TraversableSessionHistory::current_entry() const
+CanonicalSessionHistoryEntry* TraversableSessionHistory::current_entry() const
 {
     if (!m_current_used_step_index.has_value())
         return nullptr;
     return top_level_entry_for_step(m_used_steps[*m_current_used_step_index]);
 }
 
-CanonicalSessionHistoryEntry const* TraversableSessionHistory::entry_at(size_t index) const
+CanonicalSessionHistoryEntry* TraversableSessionHistory::entry_at(size_t index) const
 {
     if (index >= m_entries.size())
         return nullptr;
     return m_entries[index].ptr();
 }
 
-CanonicalSessionHistoryEntry const* TraversableSessionHistory::entry_for_step(i32 step) const
+CanonicalSessionHistoryEntry* TraversableSessionHistory::entry_for_step(i32 step) const
 {
     for (auto const& entry : m_entries) {
         if (entry->step == step)
@@ -695,7 +695,7 @@ CanonicalSessionHistoryEntry const* TraversableSessionHistory::entry_for_step(i3
     return nullptr;
 }
 
-CanonicalSessionHistoryEntry const* TraversableSessionHistory::top_level_entry_for_step(i32 step) const
+CanonicalSessionHistoryEntry* TraversableSessionHistory::top_level_entry_for_step(i32 step) const
 {
     auto index = top_level_entry_index_for_step(m_entries, step);
     if (!index.has_value())
@@ -723,7 +723,7 @@ Optional<i32> TraversableSessionHistory::get_the_used_step(i32 step) const
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-the-target-history-entry
-CanonicalSessionHistoryEntry const* TraversableSessionHistory::get_the_target_history_entry(CanonicalNavigable const& navigable, i32 step) const
+CanonicalSessionHistoryEntry* TraversableSessionHistory::get_the_target_history_entry(CanonicalNavigable const& navigable, i32 step) const
 {
     // 1. Let entries be the result of getting session history entries for navigable.
     auto entries = get_session_history_entries(navigable);
@@ -731,7 +731,7 @@ CanonicalSessionHistoryEntry const* TraversableSessionHistory::get_the_target_hi
         return nullptr;
 
     // 2. Return the item in entries that has the greatest step less than or equal to step.
-    CanonicalSessionHistoryEntry const* target_entry = nullptr;
+    CanonicalSessionHistoryEntry* target_entry = nullptr;
     for (auto const& entry : *entries) {
         if (entry->step <= step && (!target_entry || entry->step > target_entry->step))
             target_entry = entry.ptr();

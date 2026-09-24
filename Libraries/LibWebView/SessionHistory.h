@@ -92,7 +92,7 @@ public:
     [[nodiscard]] Optional<Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>>&> get_session_history_entries(CanonicalNavigable const&);
     [[nodiscard]] Optional<Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>> const&> get_session_history_entries(CanonicalNavigable const&) const;
     [[nodiscard]] Optional<i32> get_the_used_step(i32 step) const;
-    [[nodiscard]] CanonicalSessionHistoryEntry const* get_the_target_history_entry(CanonicalNavigable const&, i32 step) const;
+    [[nodiscard]] CanonicalSessionHistoryEntry* get_the_target_history_entry(CanonicalNavigable const&, i32 step) const;
     [[nodiscard]] Optional<Web::HTML::HistoryObjectLengthAndIndex> get_the_history_object_length_and_index(i32 step) const;
     [[nodiscard]] Optional<Vector<Web::HTML::SessionHistoryEntryDescriptor>> get_session_history_entries_for_the_navigation_api(CanonicalNavigable const&, i32 target_step) const;
     [[nodiscard]] Vector<Web::HTML::CrossProcessId> get_all_navigables_whose_current_session_history_entry_will_change_or_reload(CanonicalNavigable const& traversable, i32 target_step) const;
@@ -106,10 +106,10 @@ public:
     }
     [[nodiscard]] Optional<size_t> target_step_index_for_delta(int delta) const;
     [[nodiscard]] Optional<i32> step_at(size_t index) const;
-    [[nodiscard]] CanonicalSessionHistoryEntry const* current_entry() const;
-    [[nodiscard]] CanonicalSessionHistoryEntry const* entry_at(size_t index) const;
-    [[nodiscard]] CanonicalSessionHistoryEntry const* entry_for_step(i32 step) const;
-    [[nodiscard]] CanonicalSessionHistoryEntry const* top_level_entry_for_step(i32 step) const;
+    [[nodiscard]] CanonicalSessionHistoryEntry* current_entry() const;
+    [[nodiscard]] CanonicalSessionHistoryEntry* entry_at(size_t index) const;
+    [[nodiscard]] CanonicalSessionHistoryEntry* entry_for_step(i32 step) const;
+    [[nodiscard]] CanonicalSessionHistoryEntry* top_level_entry_for_step(i32 step) const;
 
     void traverse_to(size_t index);
 
