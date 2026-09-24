@@ -38,26 +38,9 @@ public:
         bool changes_top_level_entry { false };
     };
 
-    // The session history's entry lists and steps, which rolling back restores in place, so that its entries and
-    // document states remain the objects navigables and history jobs refer to.
-    struct Checkpoint {
-        struct DocumentStateValues {
-            NonnullRefPtr<CanonicalDocumentState> document_state;
-            NonnullRefPtr<CanonicalDocumentState> values;
-        };
-
-        Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>> entries;
-        Vector<i32> used_steps;
-        Optional<size_t> current_used_step_index;
-        Vector<DocumentStateValues> document_states;
-    };
-
     TraversableSessionHistory() = default;
     TraversableSessionHistory(TraversableSessionHistory&&) = default;
     TraversableSessionHistory& operator=(TraversableSessionHistory&&) = default;
-
-    Checkpoint checkpoint() const;
-    void roll_back_to(Checkpoint);
 
     bool is_empty() const { return m_entries.is_empty(); }
     size_t size() const { return m_entries.size(); }
@@ -79,8 +62,11 @@ public:
     Optional<i32> append_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId child_navigable_id, NonnullRefPtr<CanonicalSessionHistoryEntry> history_entry);
     bool remove_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId child_navigable_id);
     [[nodiscard]] bool clear_the_forward_session_history();
-    bool append_or_replace_session_history_entry(CanonicalNavigable const&, Web::HTML::SessionHistoryEntryDescriptor const&, Optional<Web::HTML::SessionHistoryEntryIdentity> const& entry_to_replace, CanonicalSessionHistoryEntry::UpdateDocumentState);
-    bool append_or_replace_session_history_entry(CanonicalNavigable const&, NonnullRefPtr<CanonicalSessionHistoryEntry>, Optional<Web::HTML::SessionHistoryEntryIdentity> const& entry_to_replace);
+    // Clears the forward session history, then appends entry to navigable's session history entries at the step after
+    // the current one, which it returns. Changes nothing if entry cannot be appended.
+    Optional<i32> push_session_history_entry(CanonicalNavigable const&, NonnullRefPtr<CanonicalSessionHistoryEntry>);
+    // Replaces entry_to_replace in navigable's session history entries with entry, at its step.
+    bool replace_session_history_entry(CanonicalNavigable const&, CanonicalSessionHistoryEntry const& entry_to_replace, NonnullRefPtr<CanonicalSessionHistoryEntry>);
     Vector<Web::HTML::SessionHistoryEntryDescriptor> entries() const;
     Vector<i32> used_steps() const;
 
@@ -114,8 +100,23 @@ public:
     void traverse_to(size_t index);
 
 private:
-    bool append_or_replace_entry_for_navigable(CanonicalNavigable const&, NonnullRefPtr<CanonicalSessionHistoryEntry>, Optional<Web::HTML::SessionHistoryEntryIdentity> const& entry_to_replace);
-    CanonicalSessionHistoryEntry::DocumentStates document_states() const;
+    bool append_or_replace_entry_for_navigable(CanonicalNavigable const&, NonnullRefPtr<CanonicalSessionHistoryEntry>, CanonicalSessionHistoryEntry const* entry_to_replace);
+
+    // The session history's entry lists, steps and document state values, which rolling back restores in place, so
+    // that its entries and document states remain the objects navigables and history jobs refer to.
+    struct Checkpoint {
+        struct DocumentStateValues {
+            NonnullRefPtr<CanonicalDocumentState> document_state;
+            NonnullRefPtr<CanonicalDocumentState> values;
+        };
+
+        Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>> entries;
+        Vector<i32> used_steps;
+        Optional<size_t> current_used_step_index;
+        Vector<DocumentStateValues> document_states;
+    };
+    Checkpoint checkpoint() const;
+    void roll_back_to(Checkpoint);
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#tn-session-history-entries
     Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>> m_entries;

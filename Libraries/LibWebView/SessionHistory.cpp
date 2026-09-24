@@ -236,23 +236,6 @@ void TraversableSessionHistory::roll_back_to(Checkpoint checkpoint)
     m_current_used_step_index = checkpoint.current_used_step_index;
 }
 
-static void collect_document_states(Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>> const& entries, CanonicalSessionHistoryEntry::DocumentStates& document_states)
-{
-    for (auto const& entry : entries) {
-        if (document_states.set(entry->document_state->id, entry->document_state, AK::HashSetExistingEntryBehavior::Keep) != HashSetResult::InsertedNewEntry)
-            continue;
-        for (auto const& nested_history : entry->document_state->nested_histories)
-            collect_document_states(nested_history.entries, document_states);
-    }
-}
-
-CanonicalSessionHistoryEntry::DocumentStates TraversableSessionHistory::document_states() const
-{
-    CanonicalSessionHistoryEntry::DocumentStates document_states;
-    collect_document_states(m_entries, document_states);
-    return document_states;
-}
-
 void TraversableSessionHistory::clear()
 {
     m_entries.clear();
@@ -421,16 +404,14 @@ bool TraversableSessionHistory::remove_nested_history(CanonicalNavigable const& 
     return true;
 }
 
-static bool append_or_replace_entry(Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>>& entries, NonnullRefPtr<CanonicalSessionHistoryEntry> entry, Optional<Web::HTML::SessionHistoryEntryIdentity> const& entry_to_replace)
+static bool append_or_replace_entry(Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>>& entries, NonnullRefPtr<CanonicalSessionHistoryEntry> entry, CanonicalSessionHistoryEntry const* entry_to_replace)
 {
-    if (!entry_to_replace.has_value()) {
+    if (!entry_to_replace) {
         entries.append(move(entry));
         return true;
     }
 
-    auto existing_entry = entries.find_if([&](auto const& entry) {
-        return entry->identity() == *entry_to_replace;
-    });
+    auto existing_entry = entries.find_if([&](auto const& entry) { return entry.ptr() == entry_to_replace; });
     if (existing_entry == entries.end())
         return false;
 
@@ -445,19 +426,14 @@ bool TraversableSessionHistory::clear_the_forward_session_history()
     if (!current_step.has_value())
         return false;
 
-    auto checkpoint = this->checkpoint();
     clear_forward_session_history_entries(m_entries, *current_step);
 
     m_used_steps = get_all_used_history_steps(m_entries);
     m_current_used_step_index = m_used_steps.find_first_index(*current_step);
-    if (!m_current_used_step_index.has_value()) {
-        roll_back_to(move(checkpoint));
-        return false;
-    }
-    return true;
+    return m_current_used_step_index.has_value();
 }
 
-bool TraversableSessionHistory::append_or_replace_entry_for_navigable(CanonicalNavigable const& navigable, NonnullRefPtr<CanonicalSessionHistoryEntry> entry, Optional<Web::HTML::SessionHistoryEntryIdentity> const& entry_to_replace)
+bool TraversableSessionHistory::append_or_replace_entry_for_navigable(CanonicalNavigable const& navigable, NonnullRefPtr<CanonicalSessionHistoryEntry> entry, CanonicalSessionHistoryEntry const* entry_to_replace)
 {
     auto current_step = this->current_step();
     if (!current_step.has_value())
@@ -476,26 +452,27 @@ bool TraversableSessionHistory::append_or_replace_entry_for_navigable(CanonicalN
     return m_current_used_step_index.has_value();
 }
 
-bool TraversableSessionHistory::append_or_replace_session_history_entry(CanonicalNavigable const& navigable, NonnullRefPtr<CanonicalSessionHistoryEntry> entry, Optional<Web::HTML::SessionHistoryEntryIdentity> const& entry_to_replace)
+Optional<i32> TraversableSessionHistory::push_session_history_entry(CanonicalNavigable const& navigable, NonnullRefPtr<CanonicalSessionHistoryEntry> entry)
 {
-    // The entry lists and the used-step bookkeeping are updated together, or not at all.
+    auto current_step = this->current_step();
+    if (!current_step.has_value())
+        return {};
+    VERIFY(*current_step < NumericLimits<i32>::max());
+    auto target_step = *current_step + 1;
+
     auto checkpoint = this->checkpoint();
-    if (append_or_replace_entry_for_navigable(navigable, move(entry), entry_to_replace))
-        return true;
-    roll_back_to(move(checkpoint));
-    return false;
+    entry->step = target_step;
+    if (!clear_the_forward_session_history() || !append_or_replace_entry_for_navigable(navigable, move(entry), nullptr)) {
+        roll_back_to(move(checkpoint));
+        return {};
+    }
+    return target_step;
 }
 
-bool TraversableSessionHistory::append_or_replace_session_history_entry(CanonicalNavigable const& navigable, Web::HTML::SessionHistoryEntryDescriptor const& history_entry, Optional<Web::HTML::SessionHistoryEntryIdentity> const& entry_to_replace, CanonicalSessionHistoryEntry::UpdateDocumentState update_document_state)
+bool TraversableSessionHistory::replace_session_history_entry(CanonicalNavigable const& navigable, CanonicalSessionHistoryEntry const& entry_to_replace, NonnullRefPtr<CanonicalSessionHistoryEntry> entry)
 {
-    // A descriptor naming a document state can update it, which is undone with the rest if the entry is not added.
     auto checkpoint = this->checkpoint();
-    auto document_states = this->document_states();
-    // The entry's document state is the one whose document the navigable populated for it.
-    if (auto const& populating_document_state = navigable.populating_document_state(); populating_document_state && populating_document_state->id == history_entry.document_state.id)
-        document_states.ensure(populating_document_state->id, [&] { return NonnullRefPtr { *populating_document_state }; });
-    auto entry = CanonicalSessionHistoryEntry::create_from_descriptor(history_entry, document_states, update_document_state);
-    if (append_or_replace_entry_for_navigable(navigable, move(entry), entry_to_replace))
+    if (append_or_replace_entry_for_navigable(navigable, move(entry), &entry_to_replace))
         return true;
     roll_back_to(move(checkpoint));
     return false;

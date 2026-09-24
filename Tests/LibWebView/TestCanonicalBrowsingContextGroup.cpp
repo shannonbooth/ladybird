@@ -113,8 +113,9 @@ TEST_CASE(response_browsing_context_is_activated_only_at_commit)
     EXPECT(initial_group->browsing_context_set().contains(initial_context));
 
     traversable.ensure_ongoing_navigation().navigation_id = navigation_id;
-    traversable.populate_document(WebView::CanonicalDocumentState::create({}), destination_document);
-    auto committed_entry = WebView::CanonicalSessionHistoryEntry::create(WebView::CanonicalDocumentState::create({}));
+    auto destination_document_state = WebView::CanonicalDocumentState::create({});
+    traversable.populate_document(destination_document_state, destination_document);
+    auto committed_entry = WebView::CanonicalSessionHistoryEntry::create(destination_document_state);
     Web::HTML::ReplicatedNavigableState committed_state {
         .target_name = {},
         .active_document_url = destination_url,

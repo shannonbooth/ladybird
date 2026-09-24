@@ -401,38 +401,22 @@ void ApplyHistoryStep::process_changing_navigable_continuations()
 // we re-run the appending steps of finalizing a cross-doc navigation, against the session history as the push left it.
 CanonicalSessionHistoryEntry* ApplyHistoryStep::append_the_claimed_target_entry_again(CanonicalNavigable& navigable, CanonicalSessionHistoryEntry& claimed_target_entry)
 {
-    auto history_entry = claimed_target_entry.descriptor();
-    auto current_step = m_session_history.current_step();
-    if (!current_step.has_value())
-        return nullptr;
-    auto session_history_checkpoint = m_session_history.checkpoint();
-
     // 9.1. Clear the forward session history of traversable.
-    if (!m_session_history.clear_the_forward_session_history())
-        return nullptr;
-
     // 9.2. Set targetStep to traversable's current session history step + 1.
     // 9.3. Set historyEntry's step to targetStep.
-    VERIFY(*current_step < NumericLimits<i32>::max());
-    history_entry.step = *current_step + 1;
-
     // 9.4. Append historyEntry to targetEntries.
-    auto* appended_entry = m_session_history.append_or_replace_session_history_entry(navigable, history_entry, {}, CanonicalSessionHistoryEntry::UpdateDocumentState::No)
-        ? m_session_history.get_the_target_history_entry(navigable, history_entry.step)
-        : nullptr;
-    if (!appended_entry) {
-        m_session_history.roll_back_to(move(session_history_checkpoint));
+    auto target_step = m_session_history.push_session_history_entry(navigable, claimed_target_entry);
+    if (!target_step.has_value())
         return nullptr;
-    }
 
     // NB: The run now targets a step past the push-committed one. So it's the newest run again and may commit its step.
-    m_step = history_entry.step;
-    m_target_step = history_entry.step;
+    m_step = *target_step;
+    m_target_step = *target_step;
     m_generation = ++m_traversable_state.generation_counter;
 
     // The push also took the navigable's current session history entry over.
-    navigable.set_current_session_history_entry(appended_entry);
-    return appended_entry;
+    navigable.set_current_session_history_entry(claimed_target_entry);
+    return &claimed_target_entry;
 }
 
 void ApplyHistoryStep::update_nonchanging_navigables()
