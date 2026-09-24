@@ -2321,15 +2321,14 @@ void CanonicalTraversable::append_history_queue_steps(SessionHistoryTraversalSte
     m_history_traversal_queue.append_session_history_traversal_steps(move(steps));
 }
 
-// A same-document navigation's entry shares the document state of the entries of its document.
+// https://html.spec.whatwg.org/multipage/browsing-the-web.html#url-and-history-update-steps
+// 3. Let newEntry be a new session history entry, with
+//      document state: activeEntry's document state
+// NB: Navigating to a fragment does the same. The process hosting the navigable's active document reports the entry's
+//     other fields.
 NonnullRefPtr<CanonicalSessionHistoryEntry> CanonicalTraversable::session_history_entry_for(CanonicalNavigable const& navigable, Web::HTML::SameDocumentNavigationEntry const& same_document_entry) const
 {
-    RefPtr<CanonicalDocumentState> document_state;
-    if (auto entries = m_session_history.get_session_history_entries(navigable); entries.has_value()) {
-        if (auto entry = entries->find_if([&](auto const& entry) { return entry->document_state->id == same_document_entry.document_state_id; }); entry != entries->end())
-            document_state = (*entry)->document_state;
-    }
-    auto entry = CanonicalSessionHistoryEntry::create(document_state ? document_state.release_nonnull() : CanonicalDocumentState::create(same_document_entry.document_state_id));
+    auto entry = CanonicalSessionHistoryEntry::create(navigable.active_session_history_entry()->document_state);
     entry->url = same_document_entry.url;
     entry->classic_history_api_state = same_document_entry.classic_history_api_state;
     entry->navigation_api_state = same_document_entry.navigation_api_state;
@@ -2569,6 +2568,10 @@ void CanonicalTraversable::finalize_a_same_document_navigation(HistoryOperation&
     VERIFY(!operation.queue_promise->is_resolved() && !operation.queue_promise->is_rejected());
     VERIFY(&target_navigable->top_level_traversable() == this);
 
+    // AD-HOC: Admission staged targetEntry so entry-addressed updates made before this queue position are retained.
+    auto target_entry = target_navigable->take_pending_same_document_session_history_entry(
+        operation.operation_id, Web::HTML::session_history_entry_identity(request.target_entry));
+
     // 2. If targetNavigable's active session history entry is not targetEntry, then return.
     // AD-HOC: WebContent performs this object-identity check synchronously before enqueueing. Repeating
     // it against the later canonical active entry would incorrectly discard back-to-back synchronous pushState()
@@ -2580,16 +2583,7 @@ void CanonicalTraversable::finalize_a_same_document_navigation(HistoryOperation&
     //         during the commit). Such a stale finalization must not be applied. Its target entry belongs to a
     //         document that is no longer active, so applying it would traverse across documents and populate the
     //         unloaded document again, replacing the one that just committed.
-    if (auto const& active_entry = target_navigable->active_session_history_entry();
-        active_entry && active_entry->document_state->id != request.target_entry.document_state_id) {
-        finish_history_operation(operation.operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
-        return;
-    }
-
-    // AD-HOC: Admission staged targetEntry so entry-addressed updates made before this queue position are retained.
-    auto target_entry = target_navigable->take_pending_same_document_session_history_entry(
-        operation.operation_id, Web::HTML::session_history_entry_identity(request.target_entry));
-    if (!target_entry) {
+    if (!target_entry || target_entry->document_state != target_navigable->active_session_history_entry()->document_state) {
         finish_history_operation(operation.operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
         return;
     }
@@ -2604,15 +2598,12 @@ void CanonicalTraversable::finalize_a_same_document_navigation(HistoryOperation&
         return;
     }
 
-    // NB: targetEntry shares the document state of the entries of its document in targetEntries.
-    auto target_document_state = target_entries->find_if([&](auto const& entry) {
-        return entry->document_state->id == target_entry->document_state->id;
-    });
-    if (target_document_state == target_entries->end()) {
+    // AD-HOC: The active entry of a navigable whose history is being reconstructed, which is that of its initial
+    //         about:blank, is not among its session history entries.
+    if (!any_of(*target_entries, [&](auto const& entry) { return entry->document_state == target_entry->document_state; })) {
         finish_history_operation(operation.operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
         return;
     }
-    target_entry->document_state = (*target_document_state)->document_state;
 
     auto current_step = m_session_history.current_step();
     if (!current_step.has_value()) {
