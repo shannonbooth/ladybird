@@ -60,6 +60,7 @@ public:
     void roll_back_to(Checkpoint);
 
     bool is_empty() const { return m_entries.is_empty(); }
+    RefPtr<CanonicalDocumentState> find_document_state(Web::HTML::CrossProcessId) const;
     size_t size() const { return m_entries.size(); }
     size_t used_step_count() const { return m_used_steps.size(); }
     Optional<size_t> current_used_step_index() const { return m_current_used_step_index; }
@@ -85,6 +86,7 @@ public:
     bool remove_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId child_navigable_id);
     [[nodiscard]] bool clear_the_forward_session_history();
     bool append_or_replace_session_history_entry(CanonicalNavigable const&, Web::HTML::SessionHistoryEntryDescriptor const&, Optional<Web::HTML::SessionHistoryEntryIdentity> const& entry_to_replace, CanonicalSessionHistoryEntry::UpdateDocumentState);
+    bool append_or_replace_session_history_entry(CanonicalNavigable const&, NonnullRefPtr<CanonicalSessionHistoryEntry>, Optional<Web::HTML::SessionHistoryEntryIdentity> const& entry_to_replace);
     Vector<Web::HTML::SessionHistoryEntryDescriptor> entries() const;
     Vector<i32> used_steps() const;
 
@@ -117,7 +119,7 @@ public:
     void traverse_to(size_t index);
 
 private:
-    RefPtr<CanonicalDocumentState> find_document_state(Web::HTML::CrossProcessId) const;
+    bool append_or_replace_entry_for_navigable(CanonicalNavigable const&, NonnullRefPtr<CanonicalSessionHistoryEntry>, Optional<Web::HTML::SessionHistoryEntryIdentity> const& entry_to_replace);
     Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>>* nested_session_history_entries_for_navigable(Web::HTML::CrossProcessId navigable_id);
     CanonicalSessionHistoryEntry::DocumentStates document_states() const;
 

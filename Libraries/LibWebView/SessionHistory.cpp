@@ -554,41 +554,49 @@ bool TraversableSessionHistory::clear_the_forward_session_history()
     return true;
 }
 
-bool TraversableSessionHistory::append_or_replace_session_history_entry(CanonicalNavigable const& navigable, Web::HTML::SessionHistoryEntryDescriptor const& history_entry, Optional<Web::HTML::SessionHistoryEntryIdentity> const& entry_to_replace, CanonicalSessionHistoryEntry::UpdateDocumentState update_document_state)
+bool TraversableSessionHistory::append_or_replace_entry_for_navigable(CanonicalNavigable const& navigable, NonnullRefPtr<CanonicalSessionHistoryEntry> entry, Optional<Web::HTML::SessionHistoryEntryIdentity> const& entry_to_replace)
 {
     auto current_step = this->current_step();
     if (!current_step.has_value())
         return false;
 
     auto nested_history_id = navigable.is_top_level_traversable() ? Optional<Web::HTML::CrossProcessId> {} : navigable.id();
-
-    // The entry lists and the used-step bookkeeping are updated together, or not at all.
-    auto checkpoint = this->checkpoint();
     auto entry_lists = entry_lists_for(m_entries, nested_history_id);
     if (entry_lists.is_empty())
         return false;
 
-    auto document_states = this->document_states();
     for (auto* entries : entry_lists) {
-        auto entry = CanonicalSessionHistoryEntry::create_from_descriptor(history_entry, document_states, update_document_state);
-        if (!append_or_replace_entry(*entries, move(entry), entry_to_replace)) {
-            roll_back_to(move(checkpoint));
+        if (!append_or_replace_entry(*entries, entry, entry_to_replace))
             return false;
-        }
     }
-
-    if (has_document_state_cycle(m_entries)) {
-        roll_back_to(move(checkpoint));
+    if (has_document_state_cycle(m_entries))
         return false;
-    }
 
     m_used_steps = get_all_used_history_steps(m_entries);
     m_current_used_step_index = m_used_steps.find_first_index(*current_step);
-    if (!m_current_used_step_index.has_value()) {
-        roll_back_to(move(checkpoint));
-        return false;
-    }
-    return true;
+    return m_current_used_step_index.has_value();
+}
+
+bool TraversableSessionHistory::append_or_replace_session_history_entry(CanonicalNavigable const& navigable, NonnullRefPtr<CanonicalSessionHistoryEntry> entry, Optional<Web::HTML::SessionHistoryEntryIdentity> const& entry_to_replace)
+{
+    // The entry lists and the used-step bookkeeping are updated together, or not at all.
+    auto checkpoint = this->checkpoint();
+    if (append_or_replace_entry_for_navigable(navigable, move(entry), entry_to_replace))
+        return true;
+    roll_back_to(move(checkpoint));
+    return false;
+}
+
+bool TraversableSessionHistory::append_or_replace_session_history_entry(CanonicalNavigable const& navigable, Web::HTML::SessionHistoryEntryDescriptor const& history_entry, Optional<Web::HTML::SessionHistoryEntryIdentity> const& entry_to_replace, CanonicalSessionHistoryEntry::UpdateDocumentState update_document_state)
+{
+    // A descriptor naming a document state can update it, which is undone with the rest if the entry is not added.
+    auto checkpoint = this->checkpoint();
+    auto document_states = this->document_states();
+    auto entry = CanonicalSessionHistoryEntry::create_from_descriptor(history_entry, document_states, update_document_state);
+    if (append_or_replace_entry_for_navigable(navigable, move(entry), entry_to_replace))
+        return true;
+    roll_back_to(move(checkpoint));
+    return false;
 }
 
 Optional<size_t> TraversableSessionHistory::current_top_level_entry_index() const
