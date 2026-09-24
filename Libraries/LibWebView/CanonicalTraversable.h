@@ -130,7 +130,7 @@ public:
     void did_lose_page(WebContentPage&, WebContentProcessLost);
 
     TraversableSessionHistory const& session_history() const { return m_session_history; }
-    NonnullRefPtr<CanonicalSessionHistoryEntry> session_history_entry_for(Web::HTML::SameDocumentNavigationEntry const&) const;
+    NonnullRefPtr<CanonicalSessionHistoryEntry> session_history_entry_for(CanonicalNavigable const&, Web::HTML::SameDocumentNavigationEntry const&) const;
     Optional<size_t> effective_current_session_history_step_index() const;
 
     StorageJar& session_storage() { return *m_session_storage; }
@@ -248,7 +248,8 @@ private:
     void run_pending_browser_history_traversal(TraversableSessionHistory::TraversalTarget, NonnullRefPtr<Core::Promise<Empty>>);
     Function<void()> take_pending_browser_history_traversal_on_ready();
 
-    Optional<Web::HTML::CrossProcessId> nested_history_id_for(CanonicalNavigable const&) const;
+    RefPtr<CanonicalSessionHistoryEntry> session_history_entry_named(CanonicalNavigable const&, Function<bool(CanonicalSessionHistoryEntry const&)> const& matches);
+    RefPtr<CanonicalSessionHistoryEntry> session_history_entry_named(CanonicalNavigable const&, Web::HTML::SessionHistoryEntryIdentity const&);
     void traverse_the_history(TraversableSessionHistory::TraversalTarget const&, CheckForCancelation, Function<void()> on_ready, NonnullRefPtr<Core::Promise<Empty>>);
     void remove_from_index(CanonicalNavigable&);
 

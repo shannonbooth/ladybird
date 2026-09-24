@@ -616,93 +616,79 @@ void CanonicalTraversable::remove_from_user_agent_top_level_traversable_set(Cano
     user_agent_top_level_traversable_set().remove_first_matching([&](auto const& entry) { return entry.ptr() == &traversable; });
 }
 
-Optional<Web::HTML::CrossProcessId> CanonicalTraversable::nested_history_id_for(CanonicalNavigable const& navigable) const
+// The entry of navigable's session history entries that the process hosting navigable's active document names, or a
+// same-document entry it created whose finalization is still queued.
+RefPtr<CanonicalSessionHistoryEntry> CanonicalTraversable::session_history_entry_named(CanonicalNavigable const& navigable, Function<bool(CanonicalSessionHistoryEntry const&)> const& matches)
 {
-    if (&navigable == this)
-        return {};
-    return navigable.id();
+    VERIFY(&navigable.top_level_traversable() == this);
+
+    for (auto const& pending_entry : navigable.pending_same_document_session_history_entries()) {
+        if (matches(*pending_entry.entry))
+            return pending_entry.entry;
+    }
+    auto entries = m_session_history.get_session_history_entries(navigable);
+    if (!entries.has_value())
+        return nullptr;
+    for (auto const& entry : *entries) {
+        if (matches(*entry))
+            return entry;
+    }
+    return nullptr;
+}
+
+RefPtr<CanonicalSessionHistoryEntry> CanonicalTraversable::session_history_entry_named(CanonicalNavigable const& navigable, Web::HTML::SessionHistoryEntryIdentity const& entry_identity)
+{
+    return session_history_entry_named(navigable, [&](auto const& entry) { return entry.identity() == entry_identity; });
 }
 
 bool CanonicalTraversable::update_session_history_entry_navigation_api_state(CanonicalNavigable& navigable, Web::HTML::SessionHistoryEntryIdentity const& entry_identity, Web::HTML::StorageSerializationRecord navigation_api_state)
 {
-    VERIFY(&navigable.top_level_traversable() == this);
-
-    auto updated = navigable.update_pending_same_document_session_history_entry(entry_identity, [&](auto& entry) {
-        entry.navigation_api_state = navigation_api_state;
-    });
-    if (!updated) {
-        updated = m_session_history.update_entry(nested_history_id_for(navigable), entry_identity, [&](auto& entry) {
-            entry.navigation_api_state = navigation_api_state;
-        });
-    }
-    if (updated)
-        session_history_changed();
-    return updated;
+    auto entry = session_history_entry_named(navigable, entry_identity);
+    if (!entry)
+        return false;
+    entry->navigation_api_state = move(navigation_api_state);
+    session_history_changed();
+    return true;
 }
 
 bool CanonicalTraversable::update_session_history_entry_scroll_restoration_mode(CanonicalNavigable& navigable, Web::HTML::SessionHistoryEntryIdentity const& entry_identity, Web::HTML::ScrollRestorationMode scroll_restoration_mode)
 {
-    VERIFY(&navigable.top_level_traversable() == this);
-
-    auto updated = navigable.update_pending_same_document_session_history_entry(entry_identity, [&](auto& entry) {
-        entry.scroll_restoration_mode = scroll_restoration_mode;
-    });
-    if (!updated) {
-        updated = m_session_history.update_entry(nested_history_id_for(navigable), entry_identity, [&](auto& entry) {
-            entry.scroll_restoration_mode = scroll_restoration_mode;
-        });
-    }
-    if (updated)
-        session_history_changed();
-    return updated;
+    auto entry = session_history_entry_named(navigable, entry_identity);
+    if (!entry)
+        return false;
+    entry->scroll_restoration_mode = scroll_restoration_mode;
+    session_history_changed();
+    return true;
 }
 
 bool CanonicalTraversable::update_session_history_entry_persisted_state(CanonicalNavigable& navigable, Web::HTML::SessionHistoryEntryPersistedState const& persisted_state)
 {
-    VERIFY(&navigable.top_level_traversable() == this);
-
-    auto updated = navigable.update_pending_same_document_session_history_entry(persisted_state.entry_identity, [&](auto& entry) {
-        entry.scroll_position_data = persisted_state.scroll_position_data;
-    });
-    if (!updated)
-        updated = m_session_history.update_entry_persisted_state(nested_history_id_for(navigable), persisted_state);
-    if (updated)
-        session_history_changed();
-    return updated;
+    auto entry = session_history_entry_named(navigable, persisted_state.entry_identity);
+    if (!entry)
+        return false;
+    entry->scroll_position_data = persisted_state.scroll_position_data;
+    session_history_changed();
+    return true;
 }
 
 bool CanonicalTraversable::update_session_history_entry_document_state_navigable_target_name(CanonicalNavigable& navigable, Web::HTML::SessionHistoryEntryIdentity const& entry_identity, Utf16String navigable_target_name)
 {
-    VERIFY(&navigable.top_level_traversable() == this);
-
-    auto entry_is_addressable = navigable.has_pending_same_document_session_history_entry(entry_identity);
-    if (!entry_is_addressable) {
-        auto entries = m_session_history.get_session_history_entries(navigable);
-        entry_is_addressable = entries.has_value() && entries->find_if([&](auto const& entry) {
-            return entry->identity() == entry_identity;
-        }) != entries->end();
-    }
-    if (!entry_is_addressable)
+    auto entry = session_history_entry_named(navigable, entry_identity);
+    if (!entry)
         return false;
-
-    auto updated = m_session_history.update_document_state(entry_identity.document_state_id, [&](auto& document_state) {
-        document_state.navigable_target_name = navigable_target_name;
-    });
-    if (updated)
-        session_history_changed();
-    return updated;
+    entry->document_state->navigable_target_name = move(navigable_target_name);
+    session_history_changed();
+    return true;
 }
 
 bool CanonicalTraversable::set_session_history_entry_document_state_reload_pending(CanonicalNavigable const& navigable, Utf16String const& navigation_api_key, bool reload_pending)
 {
-    VERIFY(&navigable.top_level_traversable() == this);
-
-    auto updated = m_session_history.update_document_state(nested_history_id_for(navigable), navigation_api_key, [&](auto& document_state) {
-        document_state.reload_pending = reload_pending;
-    });
-    if (updated)
-        session_history_changed();
-    return updated;
+    auto entry = session_history_entry_named(navigable, [&](auto const& entry) { return entry.navigation_api_key == navigation_api_key; });
+    if (!entry)
+        return false;
+    entry->document_state->reload_pending = reload_pending;
+    session_history_changed();
+    return true;
 }
 
 Optional<i32> CanonicalTraversable::append_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId child_navigable_id, NonnullRefPtr<CanonicalSessionHistoryEntry> history_entry)
@@ -2332,9 +2318,13 @@ void CanonicalTraversable::append_history_queue_steps(SessionHistoryTraversalSte
 }
 
 // A same-document navigation's entry shares the document state of the entries of its document.
-NonnullRefPtr<CanonicalSessionHistoryEntry> CanonicalTraversable::session_history_entry_for(Web::HTML::SameDocumentNavigationEntry const& same_document_entry) const
+NonnullRefPtr<CanonicalSessionHistoryEntry> CanonicalTraversable::session_history_entry_for(CanonicalNavigable const& navigable, Web::HTML::SameDocumentNavigationEntry const& same_document_entry) const
 {
-    auto document_state = m_session_history.find_document_state(same_document_entry.document_state_id);
+    RefPtr<CanonicalDocumentState> document_state;
+    if (auto entries = m_session_history.get_session_history_entries(navigable); entries.has_value()) {
+        if (auto entry = entries->find_if([&](auto const& entry) { return entry->document_state->id == same_document_entry.document_state_id; }); entry != entries->end())
+            document_state = (*entry)->document_state;
+    }
     auto entry = CanonicalSessionHistoryEntry::create(document_state ? document_state.release_nonnull() : CanonicalDocumentState::create(same_document_entry.document_state_id));
     entry->url = same_document_entry.url;
     entry->classic_history_api_state = same_document_entry.classic_history_api_state;
@@ -2370,7 +2360,7 @@ void CanonicalTraversable::enqueue_history_operation(Web::HTML::CrossProcessId o
         if (target_navigable.has_value() && &target_navigable->top_level_traversable() == this) {
             if (parameters.previous_entry_persisted_state.has_value())
                 update_session_history_entry_persisted_state(*target_navigable, *parameters.previous_entry_persisted_state);
-            target_navigable->stage_same_document_session_history_entry(operation_id, session_history_entry_for(parameters.target_entry));
+            target_navigable->stage_same_document_session_history_entry(operation_id, session_history_entry_for(*target_navigable, parameters.target_entry));
             session_history_changed();
         }
     }
@@ -2706,12 +2696,12 @@ void CanonicalTraversable::run_direct_history_operation(HistoryOperation& operat
             auto const* target_entry = current_step.has_value() && navigable.has_value()
                 ? m_session_history.get_the_target_history_entry(*navigable, *current_step)
                 : nullptr;
-            if (!target_entry
-                || !set_session_history_entry_document_state_reload_pending(
-                    *navigable, target_entry->navigation_api_key, true)) {
+            if (!target_entry) {
                 finish_history_operation(operation.operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
                 return;
             }
+            target_entry->document_state->reload_pending = true;
+            session_history_changed();
             apply_the_reload_history_step(operation, parameters.user_involvement);
         },
         [&](Web::TraverseByDeltaHistoryOperationParameters const& request) {
