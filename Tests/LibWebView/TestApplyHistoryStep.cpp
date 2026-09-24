@@ -219,8 +219,8 @@ struct TestTraversable {
         traversable.for_each_in_inclusive_subtree([&](WebView::CanonicalNavigable& navigable) {
             auto const* current_entry = history.get_the_target_history_entry(navigable, *step);
             VERIFY(current_entry);
-            navigable.set_current_session_history_entry(*current_entry);
-            navigable.set_active_session_history_entry(*current_entry);
+            navigable.set_current_session_history_entry(current_entry);
+            navigable.set_active_session_history_entry(current_entry);
             return IterationDecision::Continue;
         });
     }

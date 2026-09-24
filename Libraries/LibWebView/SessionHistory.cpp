@@ -279,10 +279,9 @@ bool TraversableSessionHistory::initialize_for_testing(Vector<Web::HTML::Session
     return true;
 }
 
-void TraversableSessionHistory::initialize_with_initial_history_entry(Web::HTML::SessionHistoryEntryDescriptor const& initial_history_entry)
+void TraversableSessionHistory::initialize_with_initial_history_entry(NonnullRefPtr<CanonicalSessionHistoryEntry> initial_history_entry)
 {
-    CanonicalSessionHistoryEntry::DocumentStates document_states;
-    m_entries.append(CanonicalSessionHistoryEntry::create_from_descriptor(initial_history_entry, document_states));
+    m_entries.append(move(initial_history_entry));
     m_used_steps.append(0);
     m_current_used_step_index = 0;
 }
@@ -435,7 +434,7 @@ bool TraversableSessionHistory::update_document_state(Web::HTML::CrossProcessId 
     return true;
 }
 
-Optional<i32> TraversableSessionHistory::append_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId child_navigable_id, Web::HTML::PendingSessionHistoryEntryDescriptor initial_history_entry)
+Optional<i32> TraversableSessionHistory::append_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId child_navigable_id, NonnullRefPtr<CanonicalSessionHistoryEntry> history_entry)
 {
     if (!m_current_used_step_index.has_value())
         return {};
@@ -465,9 +464,8 @@ Optional<i32> TraversableSessionHistory::append_nested_history(CanonicalNavigabl
         return existing_nested_history.id == child_navigable_id;
     });
     if (existing_nested_history == parent_document_state.nested_histories.end()) {
-        auto document_states = this->document_states();
-        auto entry = CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::create_session_history_entry_descriptor(move(initial_history_entry), target_step), document_states, CanonicalSessionHistoryEntry::UpdateDocumentState::Yes);
-        parent_document_state.nested_histories.append({ .id = child_navigable_id, .entries = { move(entry) } });
+        history_entry->step = target_step;
+        parent_document_state.nested_histories.append({ .id = child_navigable_id, .entries = { move(history_entry) } });
         if (has_document_state_cycle(m_entries)) {
             parent_document_state.nested_histories.take_last();
             return {};
