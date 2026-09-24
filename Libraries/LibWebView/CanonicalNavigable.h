@@ -112,6 +112,7 @@ public:
     RefPtr<CanonicalDocument> pending_document() const;
     void populate_document(NonnullRefPtr<CanonicalDocumentState>, NonnullRefPtr<CanonicalDocument>);
     void abandon_pending_document();
+    void abandon_document_populated_for(CanonicalDocumentState const&);
     void place_pending_document(WebContentPage&);
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-bc

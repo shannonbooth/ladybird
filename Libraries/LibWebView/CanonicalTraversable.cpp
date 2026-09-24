@@ -3005,15 +3005,10 @@ void CanonicalTraversable::finish_history_operation(Web::HTML::CrossProcessId op
     auto& taken_operation = **operation;
     (void)discard_pending_same_document_session_history_entries_for_operation(operation_id, taken_operation.parameters);
 
-    // A changing job still pending when its operation finishes never activates its document.
-    for (auto const& endpoint : taken_operation.changing_job_endpoints)
-        discard_pending_host_at(endpoint.key, endpoint.value);
+    // A changing job still pending when its operation finishes never activates the document it populated.
     for (auto const& [navigable_id, pending_job] : taken_operation.pending_changing_jobs) {
-        auto navigable = find(navigable_id);
-        if (!navigable.has_value())
-            continue;
-        if (navigable->populating_document_state() == pending_job->job.target_entry->document_state)
-            navigable->abandon_pending_document();
+        if (auto navigable = find(navigable_id); navigable.has_value())
+            navigable->abandon_document_populated_for(*pending_job->job.target_entry->document_state);
     }
     if (taken_operation.changing_job_endpoints.contains(id()))
         release_displaced_document_host();

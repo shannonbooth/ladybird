@@ -380,6 +380,14 @@ void CanonicalNavigable::abandon_pending_document()
     m_populated_document.clear();
 }
 
+void CanonicalNavigable::abandon_document_populated_for(CanonicalDocumentState const& document_state)
+{
+    if (populating_document_state() != &document_state)
+        return;
+    discard_pending_host();
+    abandon_pending_document();
+}
+
 void CanonicalNavigable::place_pending_document(WebContentPage& page)
 {
     auto document = pending_document();
