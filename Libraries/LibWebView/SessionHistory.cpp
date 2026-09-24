@@ -65,13 +65,13 @@ static Optional<size_t> top_level_entry_index_for_step(Vector<NonnullRefPtr<Cano
     return result;
 }
 
-static Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>> entries_from_descriptors(Vector<Web::HTML::SessionHistoryEntryDescriptor> const& descriptors)
+static ErrorOr<Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>>> entries_from_descriptors(Vector<Web::HTML::SessionHistoryEntryDescriptor> const& descriptors)
 {
     CanonicalSessionHistoryEntry::DocumentStates document_states;
     Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>> entries;
     entries.ensure_capacity(descriptors.size());
     for (auto const& descriptor : descriptors)
-        entries.unchecked_append(CanonicalSessionHistoryEntry::create_from_descriptor(descriptor, document_states));
+        entries.unchecked_append(TRY(CanonicalSessionHistoryEntry::create_from_descriptor(descriptor, document_states)));
     return entries;
 }
 
@@ -149,7 +149,10 @@ ErrorOr<void> validate_snapshot_is_restorable(Vector<Web::HTML::SessionHistoryEn
     if (descriptors.is_empty() || used_steps.is_empty() || current_used_step_index >= used_steps.size() || !nesting_depth_is_valid(descriptors))
         return Error::from_string_literal("Session history snapshot is structurally invalid");
 
-    auto entries = entries_from_descriptors(descriptors);
+    auto entries_or_error = entries_from_descriptors(descriptors);
+    if (entries_or_error.is_error())
+        return Error::from_string_literal("Session history snapshot is structurally invalid");
+    auto entries = entries_or_error.release_value();
     if (!entries_are_valid(entries) || !steps_are_valid(used_steps) || get_all_used_history_steps(entries) != used_steps)
         return Error::from_string_literal("Session history snapshot is structurally invalid");
 
@@ -248,10 +251,10 @@ bool TraversableSessionHistory::initialize_for_testing(Vector<Web::HTML::Session
     if (entries.is_empty() || current_used_step_index >= used_steps.size())
         return false;
     auto canonical_entries = entries_from_descriptors(entries);
-    if (get_all_used_history_steps(canonical_entries) != used_steps)
+    if (canonical_entries.is_error() || get_all_used_history_steps(canonical_entries.value()) != used_steps)
         return false;
 
-    m_entries = move(canonical_entries);
+    m_entries = canonical_entries.release_value();
     m_used_steps = move(used_steps);
     m_current_used_step_index = current_used_step_index;
     return true;
@@ -281,7 +284,7 @@ ErrorOr<void> TraversableSessionHistory::restore_from_ui_snapshot(Vector<Web::HT
 
     HashMap<Web::HTML::CrossProcessId, Web::HTML::CrossProcessId> assigned_ids;
     assign_fresh_ids_to_restored_entries(entries, allocate_cross_process_id, assigned_ids);
-    m_entries = entries_from_descriptors(entries);
+    m_entries = TRY(entries_from_descriptors(entries));
     m_used_steps = move(used_steps);
     m_current_used_step_index = current_used_step_index;
     return {};
@@ -297,29 +300,6 @@ void TraversableSessionHistory::mark_current_entry_reload_pending()
     // Set navigable's active session history entry's document state's reload
     // pending to true.
     m_entries[*current_top_level_entry_index]->document_state->reload_pending = true;
-}
-
-// Whether a document state is among its own nested histories' entries, which an entry naming one can make it.
-static bool has_document_state_cycle(Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>> const& entries, Vector<CanonicalDocumentState const*>& ancestors)
-{
-    for (auto const& entry : entries) {
-        auto const& document_state = *entry->document_state;
-        if (ancestors.contains_slow(&document_state))
-            return true;
-        ancestors.append(&document_state);
-        for (auto const& nested_history : document_state.nested_histories) {
-            if (has_document_state_cycle(nested_history.entries, ancestors))
-                return true;
-        }
-        ancestors.take_last();
-    }
-    return false;
-}
-
-static bool has_document_state_cycle(Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>> const& entries)
-{
-    Vector<CanonicalDocumentState const*> ancestors;
-    return has_document_state_cycle(entries, ancestors);
 }
 
 Optional<i32> TraversableSessionHistory::append_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId child_navigable_id, NonnullRefPtr<CanonicalSessionHistoryEntry> history_entry)
@@ -356,10 +336,6 @@ Optional<i32> TraversableSessionHistory::append_nested_history(CanonicalNavigabl
     if (existing_nested_history == parent_document_state.nested_histories.end()) {
         history_entry->step = target_step;
         parent_document_state.nested_histories.append({ .id = child_navigable_id, .entries = { move(history_entry) } });
-        if (has_document_state_cycle(m_entries)) {
-            parent_document_state.nested_histories.take_last();
-            return {};
-        }
     }
 
     m_used_steps = get_all_used_history_steps(m_entries);
@@ -443,8 +419,6 @@ bool TraversableSessionHistory::append_or_replace_entry_for_navigable(CanonicalN
     if (!target_entries.has_value())
         return false;
     if (!append_or_replace_entry(*target_entries, move(entry), entry_to_replace))
-        return false;
-    if (has_document_state_cycle(m_entries))
         return false;
 
     m_used_steps = get_all_used_history_steps(m_entries);

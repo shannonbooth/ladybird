@@ -573,6 +573,13 @@ void WebContentPage::did_create_child_frame(Web::HTML::CrossProcessId parent_fra
     }
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#create-a-new-child-navigable
+    // NB: The process creating the navigable reports the entry that initializing it, in step 8, created.
+    auto initial_entry = CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::create_session_history_entry_descriptor(move(initial_history_entry), 0));
+    if (initial_entry.is_error()) {
+        client().did_misbehave("did_create_child_frame"sv, "invalid initial session history entry"sv);
+        return;
+    }
+
     // 2. Let group be element's node document's browsing context's top-level browsing context's group.
     auto& embedder_browsing_context = container_document.browsing_context();
     auto group = embedder_browsing_context.top_level_browsing_context().group();
@@ -590,9 +597,7 @@ void WebContentPage::did_create_child_frame(Web::HTML::CrossProcessId parent_fra
     //     state.
     // 7. Let navigable be a new navigable.
     // 8. Initialize the navigable navigable given documentState and parentNavigable.
-    // NB: The process creating the navigable reports the entry that initializing it created.
-    auto initial_entry = CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::create_session_history_entry_descriptor(move(initial_history_entry), 0));
-    traversable.insert(*this, parent_navigable, container_document, frame_id, move(replicated_state), move(initial_entry), move(document));
+    traversable.insert(*this, parent_navigable, container_document, frame_id, move(replicated_state), initial_entry.release_value(), move(document));
 }
 
 void WebContentPage::did_set_browser_zoom(double factor)

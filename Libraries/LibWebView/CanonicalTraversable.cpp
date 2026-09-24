@@ -551,7 +551,7 @@ CanonicalTraversable& CanonicalTraversable::create_a_new_top_level_traversable(W
     //    about base URL: document's about base URL
     // NB: The process hosting the traversable reports documentState's other fields with initialHistoryEntry, which
     //     holds those of the entry that initializing the navigable creates.
-    auto history_entry = CanonicalSessionHistoryEntry::create_from_descriptor(initial_history_entry);
+    auto history_entry = MUST(CanonicalSessionHistoryEntry::create_from_descriptor(initial_history_entry));
     history_entry->document_state->document = document.release_nonnull();
 
     // 5. Let traversable be a new traversable navigable.
@@ -812,7 +812,7 @@ void CanonicalTraversable::reset_session_history_for_testing(
 {
     abandon_history_operations();
     m_session_history.clear();
-    auto entry = CanonicalSessionHistoryEntry::create_from_descriptor(active_entry);
+    auto entry = MUST(CanonicalSessionHistoryEntry::create_from_descriptor(active_entry));
     entry->document_state->document = active_document();
     set_current_session_history_entry(entry);
     set_active_session_history_entry(entry);
@@ -2874,7 +2874,12 @@ void CanonicalTraversable::finalize_a_cross_document_navigation(HistoryOperation
     CanonicalSessionHistoryEntry::DocumentStates document_states;
     if (auto document_state = navigable->populating_document_state(); document_state && document_state->id == pending_history_entry.document_state.id)
         document_states.set(document_state->id, document_state.release_nonnull());
-    auto history_entry = CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::create_session_history_entry_descriptor(move(pending_history_entry), 0), document_states, CanonicalSessionHistoryEntry::UpdateDocumentState::Yes);
+    auto history_entry_or_error = CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::create_session_history_entry_descriptor(move(pending_history_entry), 0), document_states, CanonicalSessionHistoryEntry::UpdateDocumentState::Yes);
+    if (history_entry_or_error.is_error()) {
+        finish_history_operation(operation.operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
+        return;
+    }
+    auto history_entry = history_entry_or_error.release_value();
 
     // 9. If entryToReplace is null:
     if (!entry_to_replace) {

@@ -80,8 +80,8 @@ public:
     };
 
     static NonnullRefPtr<CanonicalSessionHistoryEntry> create(NonnullRefPtr<CanonicalDocumentState>);
-    static NonnullRefPtr<CanonicalSessionHistoryEntry> create_from_descriptor(Web::HTML::SessionHistoryEntryDescriptor const&);
-    static NonnullRefPtr<CanonicalSessionHistoryEntry> create_from_descriptor(Web::HTML::SessionHistoryEntryDescriptor const&, DocumentStates&, UpdateDocumentState = UpdateDocumentState::No);
+    static ErrorOr<NonnullRefPtr<CanonicalSessionHistoryEntry>> create_from_descriptor(Web::HTML::SessionHistoryEntryDescriptor const&);
+    static ErrorOr<NonnullRefPtr<CanonicalSessionHistoryEntry>> create_from_descriptor(Web::HTML::SessionHistoryEntryDescriptor const&, DocumentStates&, UpdateDocumentState = UpdateDocumentState::No);
 
     ~CanonicalSessionHistoryEntry();
 

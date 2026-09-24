@@ -134,7 +134,7 @@ static Web::HTML::SessionHistoryEntryDescriptor entry_with_step(Web::HTML::Pendi
 
 static NonnullRefPtr<WebView::CanonicalSessionHistoryEntry> canonical_entry(Web::HTML::SessionHistoryEntryDescriptor const& descriptor)
 {
-    return WebView::CanonicalSessionHistoryEntry::create_from_descriptor(descriptor);
+    return MUST(WebView::CanonicalSessionHistoryEntry::create_from_descriptor(descriptor));
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-cross-document-navigation
@@ -465,6 +465,12 @@ TEST_CASE(pending_same_document_entries_are_addressed_and_consumed_by_exact_iden
 
     traversable.remove_pending_same_document_session_history_entries(first_operation_id);
     EXPECT(traversable.pending_same_document_session_history_entries().is_empty());
+}
+
+TEST_CASE(entry_among_its_own_nested_histories_is_rejected)
+{
+    auto parent_entry = entry(0, "https://parent.example/"sv, 10, "main"sv, { nested_history("frame"sv, { entry(0, "https://child.example/"sv, 10, ""sv) }) });
+    EXPECT(WebView::CanonicalSessionHistoryEntry::create_from_descriptor(parent_entry).is_error());
 }
 
 TEST_CASE(failed_push_keeps_entries_and_document_states)

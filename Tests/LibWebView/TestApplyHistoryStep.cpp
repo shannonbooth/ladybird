@@ -182,7 +182,7 @@ struct TestTraversable {
 
         auto* current_entry = history.current_entry();
         VERIFY(current_entry);
-        VERIFY(history.replace_session_history_entry(traversable, *current_entry, WebView::CanonicalSessionHistoryEntry::create_from_descriptor(entry(0, "https://b.example/"sv))));
+        VERIFY(history.replace_session_history_entry(traversable, *current_entry, MUST(WebView::CanonicalSessionHistoryEntry::create_from_descriptor(entry(0, "https://b.example/"sv)))));
     }
 
     WebView::ApplyHistoryStep& apply_step(i32 step, Optional<Web::Bindings::NavigationType> navigation_type, bool check_for_cancelation = false, Optional<Web::HTML::CrossProcessId> initiator_to_check = {}, Optional<Web::InitiatorSourceSnapshot> initiator_source_snapshot = {})
@@ -669,7 +669,7 @@ TEST_CASE(a_paused_run_commits_after_a_newer_run_recommits_the_current_step)
     test.with_two_top_level_entries();
 
     // A push whose finalization appended its entry at step 2.
-    VERIFY(test.history.push_session_history_entry(test.traversable, WebView::CanonicalSessionHistoryEntry::create_from_descriptor(entry(2, "https://c.example/"sv))) == 2);
+    VERIFY(test.history.push_session_history_entry(test.traversable, MUST(WebView::CanonicalSessionHistoryEntry::create_from_descriptor(entry(2, "https://c.example/"sv)))) == 2);
 
     // A synchronous replace from the page the push is unloading is queued behind the push and jumps the queue while the
     // push waits on its changing job. It re-commits the current step, moving nothing.
@@ -766,7 +766,7 @@ TEST_CASE(a_paused_push_appends_its_entry_again_once_a_jumping_push_clears_it)
 
     // A cross-document navigation from the page at step 1 has been finalized: Its entry took the place of the forward
     // history, and its push waits on its changing job.
-    auto navigation_entry = WebView::CanonicalSessionHistoryEntry::create_from_descriptor(entry(2, "https://d.example/"sv));
+    auto navigation_entry = MUST(WebView::CanonicalSessionHistoryEntry::create_from_descriptor(entry(2, "https://d.example/"sv)));
     VERIFY(test.history.push_session_history_entry(test.traversable, navigation_entry) == 2);
 
     // A same-document push from the page being navigated away from is queued behind the navigation, and jumps the queue

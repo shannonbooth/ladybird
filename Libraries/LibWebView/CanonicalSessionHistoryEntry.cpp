@@ -70,20 +70,16 @@ void CanonicalDocumentState::copy_values_from(CanonicalDocumentState const& othe
     nested_histories = other.nested_histories;
 }
 
-static NonnullRefPtr<CanonicalSessionHistoryEntry> create_entry_from_descriptor(Web::HTML::SessionHistoryEntryDescriptor const&, CanonicalSessionHistoryEntry::DocumentStates&, CanonicalSessionHistoryEntry::UpdateDocumentState, Vector<Web::HTML::CrossProcessId>& ancestor_ids);
+static NonnullRefPtr<CanonicalSessionHistoryEntry> create_entry_from_descriptor(Web::HTML::SessionHistoryEntryDescriptor const&, CanonicalSessionHistoryEntry::DocumentStates&, CanonicalSessionHistoryEntry::UpdateDocumentState);
 
-static NonnullRefPtr<CanonicalDocumentState> document_state_from_descriptor(Web::HTML::SessionHistoryDocumentStateDescriptor const& descriptor, CanonicalSessionHistoryEntry::DocumentStates& document_states, CanonicalSessionHistoryEntry::UpdateDocumentState update_document_state, Vector<Web::HTML::CrossProcessId>& ancestor_ids)
+static NonnullRefPtr<CanonicalDocumentState> document_state_from_descriptor(Web::HTML::SessionHistoryDocumentStateDescriptor const& descriptor, CanonicalSessionHistoryEntry::DocumentStates& document_states, CanonicalSessionHistoryEntry::UpdateDocumentState update_document_state)
 {
-    // A document state cannot be among its own nested histories' entries. A descriptor naming an ancestor's document
-    // state names another one.
-    auto names_ancestor = ancestor_ids.contains_slow(descriptor.id);
-    RefPtr<CanonicalDocumentState> existing = names_ancestor ? nullptr : document_states.get(descriptor.id).value_or(nullptr);
+    RefPtr<CanonicalDocumentState> existing = document_states.get(descriptor.id).value_or(nullptr);
     if (existing && update_document_state == CanonicalSessionHistoryEntry::UpdateDocumentState::No)
         return existing.release_nonnull();
 
     auto document_state = existing ? existing.release_nonnull() : CanonicalDocumentState::create(descriptor.id);
-    if (!names_ancestor)
-        document_states.set(descriptor.id, document_state);
+    document_states.set(descriptor.id, document_state);
     document_state->history_policy_container = descriptor.history_policy_container;
     document_state->request_referrer = descriptor.request_referrer;
     document_state->request_referrer_policy = descriptor.request_referrer_policy;
@@ -95,32 +91,18 @@ static NonnullRefPtr<CanonicalDocumentState> document_state_from_descriptor(Web:
     document_state->ever_populated = descriptor.ever_populated;
     document_state->navigable_target_name = descriptor.navigable_target_name;
     document_state->nested_histories.clear();
-    ancestor_ids.append(descriptor.id);
     for (auto const& nested_history : descriptor.nested_histories) {
         CanonicalNestedHistory canonical_nested_history { .id = nested_history.id, .entries = {} };
         for (auto const& entry : nested_history.entries)
-            canonical_nested_history.entries.append(create_entry_from_descriptor(entry, document_states, update_document_state, ancestor_ids));
+            canonical_nested_history.entries.append(create_entry_from_descriptor(entry, document_states, update_document_state));
         document_state->nested_histories.append(move(canonical_nested_history));
     }
-    ancestor_ids.take_last();
     return document_state;
 }
 
-NonnullRefPtr<CanonicalSessionHistoryEntry> CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::SessionHistoryEntryDescriptor const& descriptor)
+static NonnullRefPtr<CanonicalSessionHistoryEntry> create_entry_from_descriptor(Web::HTML::SessionHistoryEntryDescriptor const& descriptor, CanonicalSessionHistoryEntry::DocumentStates& document_states, CanonicalSessionHistoryEntry::UpdateDocumentState update_document_state)
 {
-    DocumentStates document_states;
-    return create_from_descriptor(descriptor, document_states);
-}
-
-NonnullRefPtr<CanonicalSessionHistoryEntry> CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::SessionHistoryEntryDescriptor const& descriptor, DocumentStates& document_states, UpdateDocumentState update_document_state)
-{
-    Vector<Web::HTML::CrossProcessId> ancestor_ids;
-    return create_entry_from_descriptor(descriptor, document_states, update_document_state, ancestor_ids);
-}
-
-static NonnullRefPtr<CanonicalSessionHistoryEntry> create_entry_from_descriptor(Web::HTML::SessionHistoryEntryDescriptor const& descriptor, CanonicalSessionHistoryEntry::DocumentStates& document_states, CanonicalSessionHistoryEntry::UpdateDocumentState update_document_state, Vector<Web::HTML::CrossProcessId>& ancestor_ids)
-{
-    auto entry = CanonicalSessionHistoryEntry::create(document_state_from_descriptor(descriptor.document_state, document_states, update_document_state, ancestor_ids));
+    auto entry = CanonicalSessionHistoryEntry::create(document_state_from_descriptor(descriptor.document_state, document_states, update_document_state));
     entry->step = descriptor.step;
     entry->url = descriptor.url;
     entry->classic_history_api_state = descriptor.classic_history_api_state;
@@ -129,6 +111,42 @@ static NonnullRefPtr<CanonicalSessionHistoryEntry> create_entry_from_descriptor(
     entry->navigation_api_id = descriptor.navigation_api_id;
     entry->scroll_restoration_mode = descriptor.scroll_restoration_mode;
     entry->scroll_position_data = descriptor.scroll_position_data;
+    return entry;
+}
+
+// Whether a document state is among the entries of its own nested histories, which descriptors naming one another's
+// document states can make it.
+static bool has_document_state_cycle(CanonicalDocumentState const& document_state, Vector<CanonicalDocumentState const*>& ancestors)
+{
+    if (ancestors.contains_slow(&document_state))
+        return true;
+    ancestors.append(&document_state);
+    for (auto const& nested_history : document_state.nested_histories) {
+        for (auto const& entry : nested_history.entries) {
+            if (has_document_state_cycle(*entry->document_state, ancestors))
+                return true;
+        }
+    }
+    ancestors.take_last();
+    return false;
+}
+
+ErrorOr<NonnullRefPtr<CanonicalSessionHistoryEntry>> CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::SessionHistoryEntryDescriptor const& descriptor)
+{
+    DocumentStates document_states;
+    return create_from_descriptor(descriptor, document_states);
+}
+
+ErrorOr<NonnullRefPtr<CanonicalSessionHistoryEntry>> CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::SessionHistoryEntryDescriptor const& descriptor, DocumentStates& document_states, UpdateDocumentState update_document_state)
+{
+    auto entry = create_entry_from_descriptor(descriptor, document_states, update_document_state);
+    Vector<CanonicalDocumentState const*> ancestors;
+    if (has_document_state_cycle(*entry->document_state, ancestors)) {
+        // NB: Breaks the cycle, so that the entries are freed.
+        for (auto& [id, document_state] : document_states)
+            document_state->nested_histories.clear();
+        return Error::from_string_literal("A session history entry's document state is among its nested histories' entries");
+    }
     return entry;
 }
 
