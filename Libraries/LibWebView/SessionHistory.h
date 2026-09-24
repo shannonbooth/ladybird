@@ -14,6 +14,7 @@
 #include <LibWeb/HTML/HistoryHandlingBehavior.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/UserNavigationInvolvement.h>
+#include <LibWebView/CanonicalSessionHistoryEntry.h>
 #include <LibWebView/Export.h>
 #include <LibWebView/Forward.h>
 
@@ -21,24 +22,42 @@ namespace WebView {
 
 inline constexpr size_t MAX_NESTED_HISTORY_DEPTH = 16;
 
-// AD-HOC: The HTML Standard stores a traversable navigable's session history entries on the traversable. Ladybird
-//         keeps an IPC-serializable mirror in the UI process so browser history survives WebContent process swaps
-//         and crash recovery. The mirror still uses the spec's session history entry and all used history steps model.
+// NB: The UI process holds the traversable's session history, so that it survives WebContent process swaps and crash
+//     recovery. Entries cross to WebContent and to session storage as descriptors.
 //
 // https://html.spec.whatwg.org/multipage/document-sequences.html#tn-session-history-entries
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-all-used-history-steps
 class WEBVIEW_API TraversableSessionHistory {
 public:
-    using Entry = Web::HTML::SessionHistoryEntryDescriptor;
-
     struct TraversalTarget {
         size_t target_step_index { 0 };
         i32 target_step { 0 };
         size_t target_top_level_entry_index { 0 };
-        Entry const* target_top_level_entry { nullptr };
+        CanonicalSessionHistoryEntry const* target_top_level_entry { nullptr };
         bool target_step_is_top_level_entry { false };
         bool changes_top_level_entry { false };
     };
+
+    // The session history's entry lists and steps, which rolling back restores in place, so that its entries and
+    // document states remain the objects navigables and history jobs refer to.
+    struct Checkpoint {
+        struct DocumentStateValues {
+            NonnullRefPtr<CanonicalDocumentState> document_state;
+            NonnullRefPtr<CanonicalDocumentState> values;
+        };
+
+        Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>> entries;
+        Vector<i32> used_steps;
+        Optional<size_t> current_used_step_index;
+        Vector<DocumentStateValues> document_states;
+    };
+
+    TraversableSessionHistory() = default;
+    TraversableSessionHistory(TraversableSessionHistory&&) = default;
+    TraversableSessionHistory& operator=(TraversableSessionHistory&&) = default;
+
+    Checkpoint checkpoint() const;
+    void roll_back_to(Checkpoint);
 
     bool is_empty() const { return m_entries.is_empty(); }
     size_t size() const { return m_entries.size(); }
@@ -53,20 +72,20 @@ public:
     Optional<size_t> current_top_level_entry_index() const;
 
     void clear();
-    bool initialize_for_testing(Vector<Entry>, Vector<i32> used_steps, size_t current_used_step_index);
-    void initialize_with_initial_history_entry(Entry initial_history_entry);
-    [[nodiscard]] ErrorOr<void> restore_from_ui_snapshot(Vector<Entry> entries, Vector<i32> used_steps, size_t current_used_step_index, Function<Web::HTML::CrossProcessId()> allocate_cross_process_id);
+    bool initialize_for_testing(Vector<Web::HTML::SessionHistoryEntryDescriptor>, Vector<i32> used_steps, size_t current_used_step_index);
+    void initialize_with_initial_history_entry(Web::HTML::SessionHistoryEntryDescriptor const& initial_history_entry);
+    [[nodiscard]] ErrorOr<void> restore_from_ui_snapshot(Vector<Web::HTML::SessionHistoryEntryDescriptor> entries, Vector<i32> used_steps, size_t current_used_step_index, Function<Web::HTML::CrossProcessId()> allocate_cross_process_id);
     void mark_current_entry_reload_pending();
-    bool update_entry(Optional<Web::HTML::CrossProcessId> nested_history_id, Utf16String const& navigation_api_key, Function<void(Entry&)> const& update_entry);
-    bool update_entry(Optional<Web::HTML::CrossProcessId> nested_history_id, Web::HTML::SessionHistoryEntryIdentity const&, Function<void(Entry&)> const& update_entry);
+    bool update_entry(Optional<Web::HTML::CrossProcessId> nested_history_id, Utf16String const& navigation_api_key, Function<void(CanonicalSessionHistoryEntry&)> const& update_entry);
+    bool update_entry(Optional<Web::HTML::CrossProcessId> nested_history_id, Web::HTML::SessionHistoryEntryIdentity const&, Function<void(CanonicalSessionHistoryEntry&)> const& update_entry);
     bool update_entry_persisted_state(Optional<Web::HTML::CrossProcessId> nested_history_id, Web::HTML::SessionHistoryEntryPersistedState const&);
-    bool update_document_state(Optional<Web::HTML::CrossProcessId> nested_history_id, Utf16String const& navigation_api_key, Function<void(Web::HTML::SessionHistoryDocumentStateDescriptor&)> const& update_document_state);
-    bool update_document_state(Web::HTML::CrossProcessId document_state_id, Function<void(Web::HTML::SessionHistoryDocumentStateDescriptor&)> const& update_document_state);
+    bool update_document_state(Optional<Web::HTML::CrossProcessId> nested_history_id, Utf16String const& navigation_api_key, Function<void(CanonicalDocumentState&)> const& update_document_state);
+    bool update_document_state(Web::HTML::CrossProcessId document_state_id, Function<void(CanonicalDocumentState&)> const& update_document_state);
     Optional<i32> append_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId child_navigable_id, Web::HTML::PendingSessionHistoryEntryDescriptor);
     bool remove_nested_history(CanonicalNavigable const& parent_navigable, Web::HTML::CrossProcessId parent_document_state_id, Web::HTML::CrossProcessId child_navigable_id);
     [[nodiscard]] bool clear_the_forward_session_history();
-    bool append_or_replace_session_history_entry(CanonicalNavigable const&, Entry const&, Optional<Web::HTML::SessionHistoryEntryIdentity> const& entry_to_replace);
-    Vector<Entry> entries() const;
+    bool append_or_replace_session_history_entry(CanonicalNavigable const&, Web::HTML::SessionHistoryEntryDescriptor const&, Optional<Web::HTML::SessionHistoryEntryIdentity> const& entry_to_replace, CanonicalSessionHistoryEntry::UpdateDocumentState);
+    Vector<Web::HTML::SessionHistoryEntryDescriptor> entries() const;
     Vector<i32> used_steps() const;
 
     [[nodiscard]] bool can_go_back() const;
@@ -74,11 +93,11 @@ public:
     [[nodiscard]] bool has_only_top_level_used_steps() const;
     [[nodiscard]] Optional<TraversalTarget> traversal_target_for_delta(int delta) const;
     [[nodiscard]] Optional<TraversalTarget> traversal_target_for_step(i32 step) const;
-    [[nodiscard]] Optional<Vector<Entry> const&> get_session_history_entries(CanonicalNavigable const&) const;
+    [[nodiscard]] Optional<Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>> const&> get_session_history_entries(CanonicalNavigable const&) const;
     [[nodiscard]] Optional<i32> get_the_used_step(i32 step) const;
-    [[nodiscard]] Entry const* get_the_target_history_entry(CanonicalNavigable const&, i32 step) const;
+    [[nodiscard]] CanonicalSessionHistoryEntry const* get_the_target_history_entry(CanonicalNavigable const&, i32 step) const;
     [[nodiscard]] Optional<Web::HTML::HistoryObjectLengthAndIndex> get_the_history_object_length_and_index(i32 step) const;
-    [[nodiscard]] Optional<Vector<Entry>> get_session_history_entries_for_the_navigation_api(CanonicalNavigable const&, i32 target_step) const;
+    [[nodiscard]] Optional<Vector<Web::HTML::SessionHistoryEntryDescriptor>> get_session_history_entries_for_the_navigation_api(CanonicalNavigable const&, i32 target_step) const;
     [[nodiscard]] Vector<Web::HTML::CrossProcessId> get_all_navigables_whose_current_session_history_entry_will_change_or_reload(CanonicalNavigable const& traversable, i32 target_step) const;
     [[nodiscard]] Vector<Web::HTML::CrossProcessId> get_all_navigables_that_might_experience_a_cross_document_traversal(CanonicalNavigable const& traversable, i32 target_step) const;
     [[nodiscard]] Vector<Web::HTML::CrossProcessId> get_all_navigables_that_only_need_history_object_length_index_update(CanonicalNavigable const& traversable, i32 target_step) const;
@@ -90,16 +109,20 @@ public:
     }
     [[nodiscard]] Optional<size_t> target_step_index_for_delta(int delta) const;
     [[nodiscard]] Optional<i32> step_at(size_t index) const;
-    [[nodiscard]] Entry const* current_entry() const;
-    [[nodiscard]] Entry const* entry_at(size_t index) const;
-    [[nodiscard]] Entry const* entry_for_step(i32 step) const;
-    [[nodiscard]] Entry const* top_level_entry_for_step(i32 step) const;
+    [[nodiscard]] CanonicalSessionHistoryEntry const* current_entry() const;
+    [[nodiscard]] CanonicalSessionHistoryEntry const* entry_at(size_t index) const;
+    [[nodiscard]] CanonicalSessionHistoryEntry const* entry_for_step(i32 step) const;
+    [[nodiscard]] CanonicalSessionHistoryEntry const* top_level_entry_for_step(i32 step) const;
 
     void traverse_to(size_t index);
 
 private:
+    RefPtr<CanonicalDocumentState> find_document_state(Web::HTML::CrossProcessId) const;
+    Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>>* nested_session_history_entries_for_navigable(Web::HTML::CrossProcessId navigable_id);
+    CanonicalSessionHistoryEntry::DocumentStates document_states() const;
+
     // https://html.spec.whatwg.org/multipage/document-sequences.html#tn-session-history-entries
-    Vector<Entry> m_entries;
+    Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>> m_entries;
 
     // https://html.spec.whatwg.org/multipage/browsing-the-web.html#getting-all-used-history-steps
     Vector<i32> m_used_steps;
@@ -110,11 +133,11 @@ private:
 };
 
 struct SessionHistorySnapshot {
-    Vector<TraversableSessionHistory::Entry> entries;
+    Vector<Web::HTML::SessionHistoryEntryDescriptor> entries;
     Vector<i32> used_steps;
     size_t current_used_step_index { 0 };
 };
 
-WEBVIEW_API ErrorOr<void> validate_snapshot_is_restorable(Vector<TraversableSessionHistory::Entry> const& entries, Vector<i32> const& used_steps, size_t current_used_step_index);
+WEBVIEW_API ErrorOr<void> validate_snapshot_is_restorable(Vector<Web::HTML::SessionHistoryEntryDescriptor> const& entries, Vector<i32> const& used_steps, size_t current_used_step_index);
 
 }

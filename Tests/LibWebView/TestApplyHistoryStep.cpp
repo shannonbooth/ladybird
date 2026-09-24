@@ -5,6 +5,7 @@
  */
 
 #include <AK/OwnPtr.h>
+#include <AK/StringHash.h>
 #include <LibCore/EventLoop.h>
 #include <LibTest/TestCase.h>
 #include <LibURL/Parser.h>
@@ -27,6 +28,9 @@ static URL::URL parse_url(StringView url)
     return parsed_url.release_value();
 }
 
+// Each test entry has a document state of its own, unless a test gives it one.
+static u64 s_next_test_document_state_local_id = 1000000;
+
 static Web::HTML::SessionHistoryEntryDescriptor entry(i32 step, StringView url)
 {
     auto parsed_url = parse_url(url);
@@ -34,7 +38,7 @@ static Web::HTML::SessionHistoryEntryDescriptor entry(i32 step, StringView url)
         .step = step,
         .url = parsed_url,
         .document_state = {
-            .id = { 3, 1000 + static_cast<u64>(step) },
+            .id = { 3, s_next_test_document_state_local_id++ },
             .history_policy_container = Web::HTML::DocumentState::Client::Tag,
             .request_referrer = Web::Fetch::Infrastructure::Request::Referrer::Client,
             .request_referrer_policy = Web::ReferrerPolicy::DEFAULT_REFERRER_POLICY,
@@ -108,7 +112,7 @@ struct TestTraversable {
     TestTraversable()
     {
         traversable.set_id(root_id());
-        traversable.set_active_document_state({ {}, WebView::CanonicalBrowsingContext::create_a_new_top_level_browsing_context_and_document(URL::Origin::create_opaque(), {}).document });
+        traversable.set_active_document_state(WebView::CanonicalDocumentState::create({}, WebView::CanonicalBrowsingContext::create_a_new_top_level_browsing_context_and_document(URL::Origin::create_opaque(), {}).document));
     }
 
     WebView::CanonicalNavigable& add_child(Web::HTML::CrossProcessId id)
@@ -179,11 +183,11 @@ struct TestTraversable {
         auto current_entry = history.current_entry();
         VERIFY(current_entry);
         auto entry_to_replace = Web::HTML::SessionHistoryEntryIdentity {
-            .document_state_id = current_entry->document_state.id,
+            .document_state_id = current_entry->document_state->id,
             .navigation_api_id = current_entry->navigation_api_id,
         };
         replacement_entry.step = current_entry->step;
-        VERIFY(history.append_or_replace_session_history_entry(traversable, replacement_entry, entry_to_replace));
+        VERIFY(history.append_or_replace_session_history_entry(traversable, replacement_entry, entry_to_replace, WebView::CanonicalSessionHistoryEntry::UpdateDocumentState::Yes));
     }
 
     WebView::ApplyHistoryStep& apply_step(i32 step, Optional<Web::Bindings::NavigationType> navigation_type, bool check_for_cancelation = false, Optional<Web::HTML::CrossProcessId> initiator_to_check = {}, Optional<Web::InitiatorSourceSnapshot> initiator_source_snapshot = {})
@@ -668,7 +672,7 @@ TEST_CASE(a_paused_run_commits_after_a_newer_run_recommits_the_current_step)
     test.with_two_top_level_entries();
 
     // A push whose finalization appended its entry at step 2.
-    VERIFY(test.history.append_or_replace_session_history_entry(test.traversable, entry(2, "https://c.example/"sv), {}));
+    VERIFY(test.history.append_or_replace_session_history_entry(test.traversable, entry(2, "https://c.example/"sv), {}, WebView::CanonicalSessionHistoryEntry::UpdateDocumentState::Yes));
 
     // A synchronous replace from the page the push is unloading is queued behind the push and jumps the queue while the
     // push waits on its changing job. It re-commits the current step, moving nothing.
@@ -723,7 +727,7 @@ TEST_CASE(a_paused_traversal_is_abandoned_once_a_jumping_push_removes_its_target
         VERIFY(test.history.clear_the_forward_session_history());
         auto pushed_entry = entry(2, "https://b.example/pushed"sv);
         pushed_entry.document_state.id = entry(1, "https://b.example/"sv).document_state.id;
-        VERIFY(test.history.append_or_replace_session_history_entry(test.traversable, pushed_entry, {}));
+        VERIFY(test.history.append_or_replace_session_history_entry(test.traversable, pushed_entry, {}, WebView::CanonicalSessionHistoryEntry::UpdateDocumentState::No));
         nested_operation = make<WebView::ApplyHistoryStep>(test.history, test.traversable, test.queue, test.state, test.runner.jobs(), third_operation_id(), 3, 2,
             false, Optional<Web::HTML::CrossProcessId> {}, Optional<Web::InitiatorSourceSnapshot> {}, Web::HTML::UserNavigationInvolvement::None, Web::Bindings::NavigationType::Push,
             [&, signal](Web::HTML::HistoryStepResult result) {
@@ -769,7 +773,7 @@ TEST_CASE(a_paused_push_appends_its_entry_again_once_a_jumping_push_clears_it)
     VERIFY(test.history.clear_the_forward_session_history());
     auto navigation_entry = entry(2, "https://d.example/"sv);
     navigation_entry.document_state.id = { 3, 2000 };
-    VERIFY(test.history.append_or_replace_session_history_entry(test.traversable, navigation_entry, {}));
+    VERIFY(test.history.append_or_replace_session_history_entry(test.traversable, navigation_entry, {}, WebView::CanonicalSessionHistoryEntry::UpdateDocumentState::Yes));
 
     // A same-document push from the page being navigated away from is queued behind the navigation, and jumps the queue
     // while the navigation waits. It clears the navigation's entry as forward history, and takes its step.
@@ -779,7 +783,7 @@ TEST_CASE(a_paused_push_appends_its_entry_again_once_a_jumping_push_clears_it)
         VERIFY(test.history.clear_the_forward_session_history());
         auto pushed_entry = entry(2, "https://b.example/pushed"sv);
         pushed_entry.document_state.id = entry(1, "https://b.example/"sv).document_state.id;
-        VERIFY(test.history.append_or_replace_session_history_entry(test.traversable, pushed_entry, {}));
+        VERIFY(test.history.append_or_replace_session_history_entry(test.traversable, pushed_entry, {}, WebView::CanonicalSessionHistoryEntry::UpdateDocumentState::No));
         nested_operation = make<WebView::ApplyHistoryStep>(test.history, test.traversable, test.queue, test.state, test.runner.jobs(), third_operation_id(), 3, 2,
             false, Optional<Web::HTML::CrossProcessId> {}, Optional<Web::InitiatorSourceSnapshot> {}, Web::HTML::UserNavigationInvolvement::None, Web::Bindings::NavigationType::Push,
             [&, signal](Web::HTML::HistoryStepResult result) {
@@ -821,7 +825,7 @@ TEST_CASE(a_paused_push_appends_its_entry_again_once_a_jumping_push_clears_it)
     auto entries = test.history.get_session_history_entries(test.traversable);
     VERIFY(entries.has_value());
     EXPECT_EQ(entries->size(), 4u);
-    EXPECT_EQ(entries->at(2).url, parse_url("https://b.example/pushed"sv));
+    EXPECT_EQ(entries->at(2)->url, parse_url("https://b.example/pushed"sv));
 }
 
 TEST_CASE(a_paused_reload_continues_with_the_entry_that_a_jumping_replace_put_in_its_targets_slot)
@@ -834,7 +838,7 @@ TEST_CASE(a_paused_reload_continues_with_the_entry_that_a_jumping_replace_put_in
     // A same-document replace from the page being reloaded is queued behind the reload, and jumps the queue while the
     // reload waits on its changing job. It replaces the entry that the reload has claimed, keeping its navigation API
     // key and its document state.
-    auto reloading_entry = *test.history.current_entry();
+    auto reloading_entry = test.history.current_entry()->descriptor();
     auto replacement_entry = reloading_entry;
     replacement_entry.url = parse_url("https://b.example/?replaced"sv);
     replacement_entry.navigation_api_id = "https://b.example/?replaced"_utf16;
@@ -846,7 +850,7 @@ TEST_CASE(a_paused_reload_continues_with_the_entry_that_a_jumping_replace_put_in
             .document_state_id = reloading_entry.document_state.id,
             .navigation_api_id = reloading_entry.navigation_api_id,
         };
-        VERIFY(test.history.append_or_replace_session_history_entry(test.traversable, replacement_entry, entry_to_replace));
+        VERIFY(test.history.append_or_replace_session_history_entry(test.traversable, replacement_entry, entry_to_replace, WebView::CanonicalSessionHistoryEntry::UpdateDocumentState::No));
         nested_operation = make<WebView::ApplyHistoryStep>(test.history, test.traversable, test.queue, test.state, test.runner.jobs(), third_operation_id(), 3, 1,
             false, Optional<Web::HTML::CrossProcessId> {}, Optional<Web::InitiatorSourceSnapshot> {}, Web::HTML::UserNavigationInvolvement::None, Web::Bindings::NavigationType::Replace,
             [&, signal](Web::HTML::HistoryStepResult result) {

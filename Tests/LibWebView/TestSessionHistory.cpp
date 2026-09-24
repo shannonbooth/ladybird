@@ -5,6 +5,7 @@
  */
 
 #include <AK/NumericLimits.h>
+#include <AK/StringHash.h>
 #include <LibCore/EventLoop.h>
 #include <LibTest/TestCase.h>
 #include <LibURL/Parser.h>
@@ -61,13 +62,16 @@ static Web::HTML::StorageSerializationRecord state_record(u8 byte)
     return Web::HTML::StorageSerializationRecord { MUST(ByteBuffer::copy({ &byte, 1 })) };
 }
 
+// Each test entry has a document state of its own, unless a test gives it one.
+static u64 s_next_test_document_state_local_id = 1000000;
+
 static Web::HTML::SessionHistoryEntryDescriptor create_test_entry(i32 step, URL::URL url)
 {
     return {
         .step = step,
         .url = move(url),
         .document_state = {
-            .id = test_document_state_id(1000 + static_cast<u64>(step)),
+            .id = test_document_state_id(s_next_test_document_state_local_id++),
             .history_policy_container = Web::HTML::DocumentState::Client::Tag,
             .request_referrer = Web::Fetch::Infrastructure::Request::Referrer::Client,
             .request_referrer_policy = Web::ReferrerPolicy::DEFAULT_REFERRER_POLICY,
@@ -140,33 +144,33 @@ static Optional<i32> finalize_cross_document_navigation_for_testing(WebView::Tra
         return {};
 
     if (!entry_to_replace.has_value()) {
-        auto history_before_append = history;
+        auto checkpoint = history.checkpoint();
         if (!history.clear_the_forward_session_history())
             return {};
         VERIFY(*current_step < NumericLimits<i32>::max());
         auto target_step = *current_step + 1;
         auto history_entry = entry_with_step(move(pending_history_entry), target_step);
-        if (!history.append_or_replace_session_history_entry(navigable, history_entry, {})) {
-            history = move(history_before_append);
+        if (!history.append_or_replace_session_history_entry(navigable, history_entry, {}, WebView::CanonicalSessionHistoryEntry::UpdateDocumentState::Yes)) {
+            history.roll_back_to(move(checkpoint));
             return {};
         }
         return target_step;
     }
 
     auto canonical_entry_to_replace = target_entries->find_if([&](auto const& entry) {
-        return entry.document_state.id == entry_to_replace->document_state_id
-            && entry.navigation_api_id == entry_to_replace->navigation_api_id;
+        return entry->identity() == *entry_to_replace;
     });
     if (canonical_entry_to_replace == target_entries->end())
         return {};
 
-    auto history_entry = entry_with_step(move(pending_history_entry), canonical_entry_to_replace->step);
+    auto const& canonical_entry = **canonical_entry_to_replace;
+    auto history_entry = entry_with_step(move(pending_history_entry), canonical_entry.step);
     if (history_entry.document_state.origin.has_value()
-        && canonical_entry_to_replace->document_state.origin.has_value()
-        && history_entry.document_state.origin->is_same_origin(*canonical_entry_to_replace->document_state.origin)) {
-        history_entry.navigation_api_key = canonical_entry_to_replace->navigation_api_key;
+        && canonical_entry.document_state->origin.has_value()
+        && history_entry.document_state.origin->is_same_origin(*canonical_entry.document_state->origin)) {
+        history_entry.navigation_api_key = canonical_entry.navigation_api_key;
     }
-    if (!history.append_or_replace_session_history_entry(navigable, history_entry, entry_to_replace))
+    if (!history.append_or_replace_session_history_entry(navigable, history_entry, entry_to_replace, WebView::CanonicalSessionHistoryEntry::UpdateDocumentState::Yes))
         return {};
     return *current_step;
 }
@@ -354,6 +358,18 @@ static void expect_nested_entry(Web::HTML::SessionHistoryNestedHistoryDescriptor
     EXPECT_EQ(nested_history.entries[index].url, parse_url(expected_url));
 }
 
+static void expect_nested_history(WebView::CanonicalSessionHistoryEntry const& entry, size_t index, StringView expected_id, size_t expected_size)
+{
+    expect_nested_history(entry.descriptor(), index, expected_id, expected_size);
+}
+
+static void expect_nested_entry(WebView::CanonicalNestedHistory const& nested_history, size_t index, i32 expected_step, StringView expected_url)
+{
+    VERIFY(index < nested_history.entries.size());
+    EXPECT_EQ(nested_history.entries[index]->step, expected_step);
+    EXPECT_EQ(nested_history.entries[index]->url, parse_url(expected_url));
+}
+
 TEST_CASE(targeted_entry_updates_find_nested_history_entries_by_navigation_api_key)
 {
     WebView::TraversableSessionHistory history;
@@ -471,7 +487,7 @@ TEST_CASE(pending_same_document_entries_are_addressed_and_consumed_by_exact_iden
     EXPECT_EQ(pending_entries[1].entry.scroll_restoration_mode, Web::HTML::ScrollRestorationMode::Manual);
     auto const* updated_current_entry = traversable.session_history().current_entry();
     VERIFY(updated_current_entry);
-    EXPECT_EQ(updated_current_entry->document_state.navigable_target_name, Utf16String::from_utf8("updated-name"sv));
+    EXPECT_EQ(updated_current_entry->document_state->navigable_target_name, Utf16String::from_utf8("updated-name"sv));
 
     EXPECT(!traversable.take_pending_same_document_session_history_entry(first_operation_id, replacement_identity).has_value());
     auto promoted_entry = traversable.take_pending_same_document_session_history_entry(replacement_operation_id, replacement_identity);
@@ -481,6 +497,30 @@ TEST_CASE(pending_same_document_entries_are_addressed_and_consumed_by_exact_iden
 
     traversable.remove_pending_same_document_session_history_entries(first_operation_id);
     EXPECT(traversable.pending_same_document_session_history_entries().is_empty());
+}
+
+TEST_CASE(failed_append_keeps_entries_and_document_states)
+{
+    WebView::CanonicalTraversable traversable;
+    traversable.set_id({ 9, 1 });
+    auto& child = traversable.append_child(make<WebView::CanonicalNavigable>(navigable_id("frame"sv), RefPtr<WebView::WebContentPage> {}));
+
+    WebView::TraversableSessionHistory history;
+    EXPECT(history.initialize_for_testing({ entry(0, "https://parent.example/"sv, 10, "main"sv, { nested_history("frame"sv, { entry(0, "https://child.example/"sv) }) }) }, { 0 }, 0));
+    auto const* parent_entry = history.current_entry();
+    VERIFY(parent_entry);
+    auto const* parent_document_state = parent_entry->document_state.ptr();
+    auto const* child_entry = parent_document_state->nested_histories[0].entries[0].ptr();
+
+    // An entry naming its parent's document state would be among its own nested histories' entries.
+    EXPECT(!history.append_or_replace_session_history_entry(child, entry(1, "https://child.example/cycle"sv, 10, ""sv), {}, WebView::CanonicalSessionHistoryEntry::UpdateDocumentState::No));
+
+    EXPECT_EQ(history.current_entry(), parent_entry);
+    EXPECT_EQ(history.current_entry()->document_state.ptr(), parent_document_state);
+    VERIFY(parent_document_state->nested_histories.size() == 1);
+    VERIFY(parent_document_state->nested_histories[0].entries.size() == 1);
+    EXPECT_EQ(parent_document_state->nested_histories[0].entries[0].ptr(), child_entry);
+    EXPECT_EQ(history.current_step(), 0);
 }
 
 TEST_CASE(child_history_mutations_use_the_reported_parent_document_state)
@@ -505,21 +545,21 @@ TEST_CASE(child_history_mutations_use_the_reported_parent_document_state)
     auto* earlier_entry = history.entry_at(0);
     VERIFY(earlier_entry);
     expect_nested_history(*earlier_entry, 0, "frame"sv, 1);
-    expect_nested_entry(earlier_entry->document_state.nested_histories[0], 0, 0, "https://child.example/earlier"sv);
+    expect_nested_entry(earlier_entry->document_state->nested_histories[0], 0, 0, "https://child.example/earlier"sv);
 
     auto* current_entry = history.entry_at(1);
     VERIFY(current_entry);
     expect_nested_history(*current_entry, 0, "frame"sv, 1);
-    expect_nested_entry(current_entry->document_state.nested_histories[0], 0, 1, "https://child.example/current"sv);
+    expect_nested_entry(current_entry->document_state->nested_histories[0], 0, 1, "https://child.example/current"sv);
 
     EXPECT(history.remove_nested_history(traversable, test_document_state_id(10), navigable_id("frame"sv)));
     earlier_entry = history.entry_at(0);
     VERIFY(earlier_entry);
-    EXPECT(earlier_entry->document_state.nested_histories.is_empty());
+    EXPECT(earlier_entry->document_state->nested_histories.is_empty());
     current_entry = history.entry_at(1);
     VERIFY(current_entry);
     expect_nested_history(*current_entry, 0, "frame"sv, 1);
-    expect_nested_entry(current_entry->document_state.nested_histories[0], 0, 1, "https://child.example/current"sv);
+    expect_nested_entry(current_entry->document_state->nested_histories[0], 0, 1, "https://child.example/current"sv);
 }
 
 TEST_CASE(used_steps_include_nested_history_steps)
@@ -548,7 +588,7 @@ TEST_CASE(used_steps_include_nested_history_steps)
     auto* first_entry = history.entry_at(0);
     VERIFY(first_entry);
     expect_nested_history(*first_entry, 0, "frame-1"sv, 1);
-    expect_nested_entry(first_entry->document_state.nested_histories[0], 0, 1, "https://frame.example/a"sv);
+    expect_nested_entry(first_entry->document_state->nested_histories[0], 0, 1, "https://frame.example/a"sv);
 
     auto target_step_index = history.target_step_index_for_delta(-1);
     VERIFY(target_step_index.has_value());
@@ -706,8 +746,8 @@ TEST_CASE(clear_forward_session_history_rebuilds_traversal_state)
     auto* current_entry = history.current_entry();
     VERIFY(current_entry);
     expect_nested_history(*current_entry, 0, "frame-1"sv, 2);
-    expect_nested_entry(current_entry->document_state.nested_histories[0], 0, 0, "https://frame.example/a"sv);
-    expect_nested_entry(current_entry->document_state.nested_histories[0], 1, 1, "https://frame.example/b"sv);
+    expect_nested_entry(current_entry->document_state->nested_histories[0], 0, 0, "https://frame.example/a"sv);
+    expect_nested_entry(current_entry->document_state->nested_histories[0], 1, 1, "https://frame.example/b"sv);
 }
 
 TEST_CASE(cross_document_push_clears_forward_history_at_finalization)
@@ -749,17 +789,19 @@ TEST_CASE(cross_document_push_clears_forward_history_at_finalization)
     auto* first_entry = history.entry_at(0);
     VERIFY(first_entry);
     expect_nested_history(*first_entry, 0, "frame-1"sv, 2);
-    expect_nested_entry(first_entry->document_state.nested_histories[0], 0, 0, "https://frame.example/a"sv);
-    expect_nested_entry(first_entry->document_state.nested_histories[0], 1, 1, "https://frame.example/b"sv);
+    expect_nested_entry(first_entry->document_state->nested_histories[0], 0, 0, "https://frame.example/a"sv);
+    expect_nested_entry(first_entry->document_state->nested_histories[0], 1, 1, "https://frame.example/b"sv);
 }
 
 TEST_CASE(history_log_entries_marks_current_entries_steps_and_reload_pending)
 {
     WebView::TraversableSessionHistory history;
+    auto post_entry = entry_with_post_resource(1, "https://b.example/"sv);
+    post_entry.document_state.id = test_document_state_id(1001);
 
     auto update_result = history.initialize_for_testing({
                                                             entry(0, "https://a.example/"sv),
-                                                            entry_with_post_resource(1, "https://b.example/"sv),
+                                                            move(post_entry),
                                                             entry_with_reload_pending(2, "https://c.example/"sv, 7, "main"sv, {
                                                                                                                                   nested_history("frame"sv, {
                                                                                                                                                                 entry(3, "https://frame.example/"sv),
@@ -777,12 +819,12 @@ TEST_CASE(history_log_entries_marks_current_entries_steps_and_reload_pending)
 
     auto current_entry = history.current_entry();
     VERIFY(current_entry);
-    auto serialized_entry = WebView::history_json_entry(*current_entry, true);
+    auto serialized_entry = WebView::history_json_entry(current_entry->descriptor(), true);
     EXPECT_EQ(serialized_entry.get_string("resource"sv), "post"sv);
 
     auto* reload_pending_entry = history.entry_at(2);
     VERIFY(reload_pending_entry);
-    auto serialized_reload_pending_entry = WebView::history_json_entry(*reload_pending_entry, false);
+    auto serialized_reload_pending_entry = WebView::history_json_entry(reload_pending_entry->descriptor(), false);
     EXPECT_EQ(serialized_reload_pending_entry.get_bool("reloadPending"sv), true);
     EXPECT_EQ(serialized_reload_pending_entry.get_string("resource"sv), "none"sv);
 }
@@ -821,13 +863,13 @@ TEST_CASE(mark_current_entry_reload_pending)
 
     auto current_entry = history.current_entry();
     VERIFY(current_entry);
-    EXPECT(!current_entry->document_state.reload_pending);
+    EXPECT(!current_entry->document_state->reload_pending);
 
     history.mark_current_entry_reload_pending();
 
     current_entry = history.current_entry();
     VERIFY(current_entry);
-    EXPECT(current_entry->document_state.reload_pending);
+    EXPECT(current_entry->document_state->reload_pending);
 }
 
 TEST_CASE(cross_document_push_preserves_document_resource)
@@ -848,7 +890,7 @@ TEST_CASE(cross_document_push_preserves_document_resource)
 
     auto current_entry = history.current_entry();
     VERIFY(current_entry);
-    expect_entry_resource(*current_entry, "post"sv);
+    expect_entry_resource(current_entry->descriptor(), "post"sv);
 }
 
 TEST_CASE(cross_document_replacement_preserves_forward_history)
@@ -887,11 +929,11 @@ TEST_CASE(cross_document_replacement_preserves_forward_history)
 
     auto* current_entry = history.current_entry();
     VERIFY(current_entry);
-    EXPECT(current_entry->document_state.id.namespace_id > 0);
-    EXPECT(current_entry->document_state.id.local_id > 0);
-    EXPECT(current_entry->document_state.navigable_target_name.is_empty());
-    EXPECT(current_entry->document_state.nested_histories.is_empty());
-    expect_entry_resource(*current_entry, "post"sv);
+    EXPECT(current_entry->document_state->id.namespace_id > 0);
+    EXPECT(current_entry->document_state->id.local_id > 0);
+    EXPECT(current_entry->document_state->navigable_target_name.is_empty());
+    EXPECT(current_entry->document_state->nested_histories.is_empty());
+    expect_entry_resource(current_entry->descriptor(), "post"sv);
 }
 
 TEST_CASE(nested_cross_document_push_updates_copied_session_histories)
@@ -1184,10 +1226,10 @@ TEST_CASE(restore_from_ui_snapshot_installs_a_valid_snapshot)
     EXPECT(!history.can_go_forward());
     expect_entry(history, 0, 0, "https://a.example/"sv);
     expect_current_entry(history, 1, "https://b.example/"sv);
-    EXPECT_EQ(history.entry_at(0)->document_state.id.namespace_id, 4u);
-    EXPECT(history.entry_at(0)->document_state.id != test_document_state_id(1));
-    EXPECT_EQ(history.entry_at(1)->document_state.id.namespace_id, 4u);
-    EXPECT(history.entry_at(1)->document_state.id != test_document_state_id(2));
+    EXPECT_EQ(history.entry_at(0)->document_state->id.namespace_id, 4u);
+    EXPECT(history.entry_at(0)->document_state->id != test_document_state_id(1));
+    EXPECT_EQ(history.entry_at(1)->document_state->id.namespace_id, 4u);
+    EXPECT(history.entry_at(1)->document_state->id != test_document_state_id(2));
 }
 
 TEST_CASE(restore_from_ui_snapshot_installs_a_valid_nested_snapshot)
@@ -1205,7 +1247,7 @@ TEST_CASE(restore_from_ui_snapshot_installs_a_valid_nested_snapshot)
     EXPECT(!result.is_error());
     EXPECT_EQ(history.size(), 2uz);
     expect_current_entry(history, 2, "https://b.example/"sv);
-    auto const& restored_nested_history = history.entry_at(0)->document_state.nested_histories[0];
+    auto const& restored_nested_history = history.entry_at(0)->document_state->nested_histories[0];
     EXPECT_EQ(restored_nested_history.id.namespace_id, 4u);
     EXPECT(restored_nested_history.id != navigable_id("frame"sv));
 }
@@ -1222,8 +1264,8 @@ TEST_CASE(restore_from_ui_snapshot_preserves_shared_document_state_identity)
         { 0, 1 }, 1, allocate_test_ui_process_document_state_id);
 
     EXPECT(!result.is_error());
-    auto first_id = history.entry_at(0)->document_state.id;
-    auto second_id = history.entry_at(1)->document_state.id;
+    auto first_id = history.entry_at(0)->document_state->id;
+    auto second_id = history.entry_at(1)->document_state->id;
     EXPECT_EQ(first_id.namespace_id, 4u);
     EXPECT(first_id != original_id);
     EXPECT_EQ(first_id, second_id);
