@@ -293,7 +293,7 @@ void ViewImplementation::load(URL::URL const& url, Web::Bindings::NavigationHist
     prepare_for_navigation_after_crash(url);
     set_loading_state(true);
     auto navigation_id = generate_navigation_id();
-    traversable().set_ongoing_navigation(CanonicalNavigable::OngoingNavigation {
+    traversable().set_ongoing_navigation(CanonicalNavigation {
         .url = url,
         .navigation_id = navigation_id,
         .sequence_number = traversable().next_sequence_number(),
@@ -382,7 +382,7 @@ void ViewImplementation::load_html(StringView html)
     prepare_for_navigation_after_crash();
     set_loading_state(true);
     auto navigation_id = generate_navigation_id();
-    traversable().set_ongoing_navigation(CanonicalNavigable::OngoingNavigation {
+    traversable().set_ongoing_navigation(CanonicalNavigation {
         .url = URL::about_srcdoc(),
         .navigation_id = navigation_id,
         .sequence_number = traversable().next_sequence_number(),
@@ -429,7 +429,7 @@ void ViewImplementation::reload()
         ongoing_url = move(traversable().ongoing_navigation()->url);
     else if (current_entry)
         ongoing_url = current_entry->url;
-    traversable().set_ongoing_navigation(CanonicalNavigable::OngoingNavigation {
+    traversable().set_ongoing_navigation(CanonicalNavigation {
         .url = move(ongoing_url),
         .sequence_number = traversable().next_sequence_number(),
     });
@@ -2795,7 +2795,7 @@ void ViewImplementation::load_for_webdriver_navigation(URL::URL const& url)
 {
     prepare_for_navigation_after_crash(url);
     auto navigation_id = generate_navigation_id();
-    traversable().set_ongoing_navigation(CanonicalNavigable::OngoingNavigation {
+    traversable().set_ongoing_navigation(CanonicalNavigation {
         .url = url,
         .navigation_id = navigation_id,
         .sequence_number = traversable().next_sequence_number(),
