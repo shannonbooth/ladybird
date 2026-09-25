@@ -87,6 +87,7 @@ public:
     GC::Ref<LocalNavigable> local_root();
     GC::Ptr<WindowProxy> window_proxy_after_unload() const { return m_window_proxy_after_unload; }
     bool is_provisional() const { return m_provisional_for != nullptr; }
+    void set_stands_in_for_lost_document(Badge<Page>) { m_stands_in_for_lost_document = true; }
     GC::Ptr<RemoteNavigable> provisional_for() const { return m_provisional_for; }
     void clear_provisional_for() { m_provisional_for = nullptr; }
     static GC::Ref<LocalNavigable> create_stand_in(Badge<Page>, RemoteNavigable&, SessionHistoryEntryDescriptor const& current_history_entry, VisibilityState system_visibility_state);
@@ -532,6 +533,9 @@ private:
     bool m_has_been_destroyed { false };
     GC::Ptr<WindowProxy> m_window_proxy_after_unload;
     GC::Ptr<RemoteNavigable> m_provisional_for;
+    // The navigable's document was lost with the process that hosted it, and this one stands in for it until the next
+    // document activates.
+    bool m_stands_in_for_lost_document { false };
 
     ReplicatedContainerState m_root_container_state;
 

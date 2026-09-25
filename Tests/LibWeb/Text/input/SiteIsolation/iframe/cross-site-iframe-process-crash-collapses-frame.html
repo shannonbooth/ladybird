@@ -31,5 +31,24 @@
             return;
         }
         println(internals.dumpSiteIsolationProcessTree().trimEnd());
+
+        // The frame's lost document is navigated as it would be: a new entry follows its entry.
+        const nextChildUrl = new URL(
+            await httpServer.createEcho("GET", `/oop-iframe-crash-next-child-${runId}`, {
+                status: 200,
+                headers: { "Content-Type": "text/html" },
+                body: "<!DOCTYPE html>next child",
+            })
+        );
+        nextChildUrl.hostname = uniqueLocalhostHostname("oop-iframe-crash-next");
+        const historyLength = history.length;
+        iframe.src = nextChildUrl;
+
+        if (!(await waitForCondition(() => remoteFrameCount() === 1))) {
+            println("iframe did not load after its process crashed");
+            return;
+        }
+        println(internals.dumpSiteIsolationProcessTree().trimEnd());
+        println(`history grew by ${history.length - historyLength}`);
     });
 </script>

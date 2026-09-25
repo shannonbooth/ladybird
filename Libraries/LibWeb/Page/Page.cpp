@@ -999,7 +999,9 @@ void Page::host_navigable(HTML::CrossProcessId id, HTML::SessionHistoryEntryDesc
     auto navigable = navigable_with_id(id);
     if (!navigable || is<HTML::LocalNavigable>(*navigable))
         return;
-    adopt_hosted(begin_hosting(id, current_history_entry, system_visibility_state));
+    auto stand_in = begin_hosting(id, current_history_entry, system_visibility_state);
+    adopt_hosted(stand_in);
+    stand_in->set_stands_in_for_lost_document({});
 }
 
 HTML::BrowsingContextGroup& Page::browsing_context_group()

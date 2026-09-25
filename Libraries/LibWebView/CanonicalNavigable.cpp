@@ -128,7 +128,9 @@ void CanonicalNavigable::begin_navigation(Web::HTML::PreparedNavigationDescripto
     if (traversable.is_unloading_document_of(id()))
         return;
 
-    // NB: Steps 10, 11 and 15 are for a navigable's container, which a navigation from the browser's UI does not have.
+    // NB: A navigation from the browser's UI navigates a traversable, which has no container. A child's container ended
+    //     lazy loading, steps 10 and 11, when the document that was lost loaded, and the process populating its next
+    //     document runs step 15.
 
     // 12. If historyHandling is "auto", then:
     auto history_handling = navigation.history_handling;
@@ -223,6 +225,9 @@ void CanonicalNavigable::begin_navigation(Web::HTML::PreparedNavigationDescripto
         // 3. Return.
         return;
     }
+
+    // NB: Step 21 fires the navigate event at navigable's active window, which is gone with a lost document, and not
+    //     for a navigation from the browser's UI.
 
     // FIXME: 22. If sourceDocument is navigable's container document, then reserve deferred fetch quota for navigable's
     //            container given url's origin.
