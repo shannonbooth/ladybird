@@ -52,6 +52,9 @@ void CanonicalTraversable::set_system_visibility_state(Web::HTML::VisibilityStat
     if (m_system_visibility_state == visibility_state)
         return;
     m_system_visibility_state = visibility_state;
+    for_each_hosting_page([&](WebContentPage& page) {
+        page.async_set_system_visibility_state(visibility_state);
+    });
 
     // When a user agent determines that the system visibility state for
     // traversable navigable traversable has changed to newState, it must run the following steps:
@@ -62,8 +65,7 @@ void CanonicalTraversable::set_system_visibility_state(Web::HTML::VisibilityStat
         // 1. Let document be navigable's active document.
         // 2. Queue a global task on the user interaction task source given document's relevant global object
         //    to update the visibility state of document with newState.
-        // NB: The page hosting document runs the task. A document activated later hears the state then, with the
-        //     continuation that activates it.
+        // NB: The page hosting document runs the task.
         if (auto const& host = navigable.active_document().host())
             host->async_update_visibility_state(navigable.id(), visibility_state);
         return IterationDecision::Continue;
@@ -439,14 +441,14 @@ ErrorOr<NonnullRefPtr<WebContentPage>> CanonicalTraversable::obtain_page_to_host
     Compositing::PageId page_id;
     if (host && host->page_id_for_traversable(*this).has_value()) {
         page_id = *host->page_id_for_traversable(*this);
-        host->async_begin_hosting_navigable(page_id, id(), current_entry_descriptor, Web::HTML::VisibilityState::Hidden);
+        host->async_begin_hosting_navigable(page_id, id(), current_entry_descriptor, system_visibility_state());
     } else if (host) {
         page_id = Application::the().allocate_page_id();
-        host->async_create_embedded_page(page_id, remote_navigable_graph(), id(), current_entry_descriptor, Web::HTML::VisibilityState::Hidden);
+        host->async_create_embedded_page(page_id, remote_navigable_graph(), id(), current_entry_descriptor, system_visibility_state());
         host->register_embedded_page(page_id, *this);
         represent_openers_in(*host);
     } else {
-        auto process = TRY(Application::the().launch_child_frame_web_content_process(view->is_private(), remote_navigable_graph(), id(), current_entry_descriptor));
+        auto process = TRY(Application::the().launch_child_frame_web_content_process(view->is_private(), remote_navigable_graph(), id(), current_entry_descriptor, system_visibility_state()));
         host = move(process.client);
         page_id = process.page_id;
         host->register_embedded_page(page_id, *this);
@@ -569,7 +571,7 @@ void CanonicalTraversable::stand_in_for_lost_document(CanonicalNavigable& naviga
     auto const* current_entry = m_session_history.get_the_target_history_entry(navigable, *current_step);
     if (!current_entry)
         return;
-    navigable.reporting_page()->async_host_navigable(navigable.id(), current_entry->descriptor(), system_visibility_state());
+    navigable.reporting_page()->async_host_navigable(navigable.id(), current_entry->descriptor());
 }
 
 // https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document-and-its-descendants
@@ -1582,7 +1584,6 @@ void CanonicalTraversable::send_changing_navigable_continuation_task(HistoryOper
         continuation.history_object_length_and_index.script_history_length,
         continuation.history_object_length_and_index.script_history_index,
         move(continuation.entries_for_navigation_api),
-        system_visibility_state(),
         unload_displayed_document);
 }
 

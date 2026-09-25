@@ -135,7 +135,7 @@ private:
     virtual void begin_hosting_navigable(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor, Web::HTML::VisibilityState) override;
     virtual void discard_provisional_navigable(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id) override;
     virtual void stop_hosting_navigable(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::ReplicatedNavigableState) override;
-    virtual void host_navigable(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor, Web::HTML::VisibilityState) override;
+    virtual void host_navigable(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor) override;
     virtual void set_hosted_root_viewport(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Compositing::DevicePixelSize, Compositing::DevicePixelRect viewport_intersection, double device_pixel_ratio) override;
     virtual void history_operation_started(Compositing::PageId page_id, Web::HTML::CrossProcessId operation_id) override;
     virtual void reconstruct_child_navigable_history(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::ReconstructedChildNavigation navigation) override;
@@ -145,7 +145,7 @@ private:
     virtual void queue_navigation_api_state_clear_task(Compositing::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id) override;
     virtual void run_changing_navigable_history_job(Compositing::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor target_entry, Web::HTML::UserNavigationInvolvement user_involvement, Optional<Web::Bindings::NavigationType> navigation_type, Web::HTML::TraversalYieldsTo traversal_yields_to, Optional<Utf16String> canceled_navigation_id) override;
     virtual void prepare_changing_navigable_for_unload(Compositing::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id) override;
-    virtual void apply_changing_navigable_continuation(Compositing::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, u64 script_history_length, u64 script_history_index, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries_for_navigation_api, Web::HTML::VisibilityState system_visibility_state, Web::HTML::UnloadDisplayedDocument unload_displayed_document) override;
+    virtual void apply_changing_navigable_continuation(Compositing::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, u64 script_history_length, u64 script_history_index, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries_for_navigation_api, Web::HTML::UnloadDisplayedDocument unload_displayed_document) override;
     virtual void run_descendant_unload_task(Compositing::PageId page_id, Web::HTML::CrossProcessId unload_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::ChildNavigableDestruction, Web::HTML::StopHostingAfterUnload) override;
     virtual void continue_child_navigable_destruction(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id) override;
     virtual void abort_navigable_document(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id) override;
@@ -247,6 +247,7 @@ private:
     virtual void handle_file_return(Compositing::PageId page_id, i32 error, Optional<IPC::File> file, i32 request_id) override;
     virtual void blob_url_entry_removed(Utf16String url) override;
     virtual void did_delete_all_cookies(Compositing::PageId page_id, u64 request_id) override;
+    virtual void set_system_visibility_state(Compositing::PageId page_id, Web::HTML::VisibilityState) override;
     virtual void update_visibility_state(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::VisibilityState) override;
     virtual void reset_zoom(Compositing::PageId page_id) override;
 

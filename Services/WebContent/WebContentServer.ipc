@@ -104,7 +104,7 @@ endpoint WebContentServer routed by Compositing::PageId page_id
     begin_hosting_navigable(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor current_history_entry, Web::HTML::VisibilityState system_visibility_state) =|
     discard_provisional_navigable(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id) =|
     stop_hosting_navigable(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::ReplicatedNavigableState replicated_state) =|
-    host_navigable(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor current_history_entry, Web::HTML::VisibilityState system_visibility_state) =|
+    host_navigable(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor current_history_entry) =|
     set_hosted_root_viewport(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Compositing::DevicePixelSize size, Compositing::DevicePixelRect viewport_intersection, double device_pixel_ratio) =|
     history_operation_started(Compositing::PageId page_id, Web::HTML::CrossProcessId operation_id) =|
     reconstruct_child_navigable_history(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::ReconstructedChildNavigation navigation) =|
@@ -115,7 +115,7 @@ endpoint WebContentServer routed by Compositing::PageId page_id
     continue_history_navigation_population(Compositing::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::SessionHistoryEntryDescriptor target_entry, Optional<Web::Bindings::NavigationType> navigation_type, Web::HTML::HistoryNavigationPopulation population) =|
     run_changing_navigable_history_job(Compositing::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor target_entry, Web::HTML::UserNavigationInvolvement user_involvement, Optional<Web::Bindings::NavigationType> navigation_type, Web::HTML::TraversalYieldsTo traversal_yields_to, Optional<Utf16String> canceled_navigation_id) =|
     prepare_changing_navigable_for_unload(Compositing::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id) =|
-    apply_changing_navigable_continuation(Compositing::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, u64 script_history_length, u64 script_history_index, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries_for_navigation_api, Web::HTML::VisibilityState system_visibility_state, Web::HTML::UnloadDisplayedDocument unload_displayed_document) =|
+    apply_changing_navigable_continuation(Compositing::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, u64 script_history_length, u64 script_history_index, Vector<Web::HTML::SessionHistoryEntryDescriptor> entries_for_navigation_api, Web::HTML::UnloadDisplayedDocument unload_displayed_document) =|
     run_descendant_unload_task(Compositing::PageId page_id, Web::HTML::CrossProcessId unload_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::ChildNavigableDestruction child_navigable_destruction, Web::HTML::StopHostingAfterUnload stop_hosting_after_unload) =|
     continue_child_navigable_destruction(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id) =|
     abort_navigable_document(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id) =|
@@ -248,6 +248,7 @@ endpoint WebContentServer routed by Compositing::PageId page_id
     blob_url_entry_removed(Utf16String url) =|
     did_delete_all_cookies(Compositing::PageId page_id, u64 request_id) =|
 
+    set_system_visibility_state(Compositing::PageId page_id, Web::HTML::VisibilityState system_visibility_state) =|
     update_visibility_state(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::VisibilityState visibility_state) =|
 
     did_open_dialog_in_another_process(Compositing::PageId page_id, Web::Page::PendingDialog dialog, Utf16String message) =|
