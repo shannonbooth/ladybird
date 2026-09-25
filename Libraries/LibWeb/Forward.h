@@ -928,6 +928,7 @@ struct OpenerPolicy;
 struct PostedMessageDescriptor;
 struct PreparedNavigation;
 struct PreparedNavigationDescriptor;
+struct ReplicatedContainerState;
 struct OpenerPolicyEnforcementResult;
 struct PaintConfig;
 struct PolicyContainer;
