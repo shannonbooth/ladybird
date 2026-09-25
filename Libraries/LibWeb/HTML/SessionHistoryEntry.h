@@ -58,6 +58,9 @@ struct SessionHistoryDocumentStateDescriptor {
     bool reload_pending { false };
     bool ever_populated { false };
     Utf16String navigable_target_name;
+    // AD-HOC: The UI process alone holds a document state's nested histories, as the tree that session storage and
+    //         the tests keep. They do not cross to the processes hosting documents, which reconstruct nothing from
+    //         them, so the descriptor is encoded without them.
     Vector<SessionHistoryNestedHistoryDescriptor> nested_histories;
 };
 
@@ -247,11 +250,5 @@ WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::SessionHistoryDocumentStateDes
 
 template<>
 WEB_API ErrorOr<Web::HTML::SessionHistoryDocumentStateDescriptor> decode(Decoder&);
-
-template<>
-WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::SessionHistoryNestedHistoryDescriptor const&);
-
-template<>
-WEB_API ErrorOr<Web::HTML::SessionHistoryNestedHistoryDescriptor> decode(Decoder&);
 
 }
