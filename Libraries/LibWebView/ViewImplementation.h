@@ -108,6 +108,9 @@ public:
 
     CanonicalTraversable& traversable() const;
     void display_traversable(Badge<WebContentClient>, CanonicalTraversable&);
+    bool has_display_page() const;
+    virtual void prepare_page_for_tab(WebContentPage&);
+    void did_change_display_page(Badge<CanonicalNavigable>, RefPtr<WebContentPage> previous_page);
 
     void set_url(Badge<WebContentPage>, URL::URL url) { set_url(move(url)); }
     URL::URL const& url() const { return m_url; }
@@ -119,9 +122,6 @@ public:
     Optional<String> const& favicon_hash() const { return m_favicon_hash; }
 
     String const& handle() const { return m_client_state.client_handle; }
-
-    bool create_new_process_for_cross_site_navigation(Utf16String const& navigation_id);
-    void replace_web_content_process_for_history_traversal(Web::HTML::CrossProcessId target_document_state_id);
 
     void server_did_paint(Badge<WebContentPage>, i32 bitmap_id, Gfx::IntSize size, Gfx::IntRect damage_rect);
 
@@ -144,7 +144,7 @@ public:
     void reload();
     void stop_loading();
     bool is_loading() const { return m_is_loading; }
-    bool cancel_uncommitted_top_level_navigation_for_browser_traversal();
+    void cancel_uncommitted_top_level_navigation_for_browser_traversal();
 
     bool crash_overlay_active() const { return m_crash_state.has_value(); }
     static constexpr StringView crash_overlay_title() { return "Ladybird flew off-course!"sv; }
@@ -195,7 +195,7 @@ public:
     void set_preferred_contrast(Web::CSS::PreferredContrast);
     void set_preferred_motion(Web::CSS::PreferredMotion);
     // A page created to host documents of the tab in another process takes the preferences the view's page has.
-    void send_preferences_to_page(Badge<WebContentClient>, WebContentPage&);
+    void send_preferences_to_page(WebContentPage&);
 
     void notify_cookies_changed(HashTable<String> const& changed_domains, ReadonlySpan<HTTP::Cookie::Cookie> page_cookies, ReadonlySpan<HTTP::Cookie::Cookie> host_cookies);
     void listen_for_host_cookie_changes(DevTools::DevToolsDelegate::OnHostCookieChange);
@@ -374,6 +374,7 @@ public:
     Gfx::Color page_background_color() const { return m_page_background_color; }
 
     void did_allocate_backing_stores(Badge<WebContentPage>, Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores);
+    void install_backing_stores(Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores);
 
     enum class ScreenshotType {
         Visible,
@@ -568,11 +569,7 @@ protected:
     void dump_session_history(StringView reason, SessionHistoryDumpMode = SessionHistoryDumpMode::IfDebuggingEnabled) const;
     void recover_current_session_history_entry_with_history_operation();
     void reconstruct_current_session_history_entry_with_history_operation(StringView reason);
-    enum class ReconstructCanceledNavigation {
-        No,
-        Yes,
-    };
-    bool cancel_uncommitted_top_level_navigation(StringView reason, bool stop_loading, ReconstructCanceledNavigation = ReconstructCanceledNavigation::Yes);
+    bool cancel_uncommitted_top_level_navigation(StringView reason, bool stop_loading);
     NonnullRefPtr<Core::Promise<Empty>> reset_session_history_for_testing();
 
     virtual void update_zoom();
@@ -591,7 +588,8 @@ protected:
         No,
         Yes,
     };
-    virtual void initialize_client(CreateNewClient = CreateNewClient::Yes, Optional<Web::HTML::CrossProcessId> initial_document_state_id = {});
+    virtual void initialize_client(CreateNewClient = CreateNewClient::Yes);
+    void display_page_changed(RefPtr<WebContentPage> previous_page);
     void cancel_all_native_geolocation_requests();
     void send_geolocation_emulated_position(WebContentPage&);
     WebContentPage& focused_navigable_host() const;
@@ -637,7 +635,6 @@ protected:
     };
 
     struct ClientState {
-        RefPtr<WebContentPage> page;
         String client_handle;
         SharedBitmap front_bitmap;
         Vector<SharedBitmap> other_bitmaps;
