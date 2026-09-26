@@ -75,6 +75,8 @@
 #include <LibWeb/ResourceTiming/PerformanceResourceTiming.h>
 #include <LibWeb/SVG/SVGImageElement.h>
 #include <LibWeb/ServiceWorker/CacheStorage.h>
+#include <LibWeb/TrustedTypes/RequireTrustedTypesForDirective.h>
+#include <LibWeb/TrustedTypes/TrustedTypePolicy.h>
 #include <LibWeb/TrustedTypes/TrustedTypePolicyFactory.h>
 #include <LibWeb/UserTiming/PerformanceMark.h>
 #include <LibWeb/UserTiming/PerformanceMeasure.h>
@@ -634,13 +636,13 @@ void WindowOrWorkerGlobalScopeMixin::create_image_bitmap_impl(JS::Realm& realm, 
 }
 
 // https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-settimeout
-i32 WindowOrWorkerGlobalScopeMixin::set_timeout(TimerHandler handler, i32 timeout, GC::RootVector<JS::Value> arguments)
+WebIDL::ExceptionOr<i32> WindowOrWorkerGlobalScopeMixin::set_timeout(TimerHandler handler, i32 timeout, GC::RootVector<JS::Value> arguments)
 {
     return run_timer_initialization_steps(move(handler), timeout, move(arguments), Repeat::No);
 }
 
 // https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-setinterval
-i32 WindowOrWorkerGlobalScopeMixin::set_interval(TimerHandler handler, i32 timeout, GC::RootVector<JS::Value> arguments)
+WebIDL::ExceptionOr<i32> WindowOrWorkerGlobalScopeMixin::set_interval(TimerHandler handler, i32 timeout, GC::RootVector<JS::Value> arguments)
 {
     return run_timer_initialization_steps(move(handler), timeout, move(arguments), Repeat::Yes);
 }
@@ -670,8 +672,30 @@ void WindowOrWorkerGlobalScopeMixin::clear_map_of_active_timers()
 
 // https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timer-initialisation-steps
 // With no active script fix from https://github.com/whatwg/html/pull/9712
-i32 WindowOrWorkerGlobalScopeMixin::run_timer_initialization_steps(TimerHandler handler, i32 timeout, GC::RootVector<JS::Value> arguments, Repeat repeat, Optional<i32> previous_id)
+WebIDL::ExceptionOr<i32> WindowOrWorkerGlobalScopeMixin::run_timer_initialization_steps(TimerHandler handler, i32 timeout, GC::RootVector<JS::Value> arguments, Repeat repeat, Optional<i32> previous_id)
 {
+    // AD-HOC: The spec gets a Trusted Types compliant string for a string handler inside the task below, where an
+    //         exception has nowhere to go. Like other engines, do it here, so that it throws to the caller.
+    //         See: https://github.com/whatwg/html/pull/XXXXX
+    if (!handler.has<GC::Ref<WebIDL::CallbackType>>() && !previous_id.has_value()) {
+        // 1. Let globalName be "Window" if global is a Window object; "WorkerGlobalScope" otherwise.
+        // 2. Let methodName be "setInterval" if repeat is true; "setTimeout" otherwise.
+        // 3. Let sink be a concatenation of globalName, U+0020 SPACE, and methodName.
+        auto sink = [&] {
+            if (is<Window>(this_impl()))
+                return repeat == Repeat::Yes ? TrustedTypes::InjectionSink::Window_setInterval : TrustedTypes::InjectionSink::Window_setTimeout;
+            return repeat == Repeat::Yes ? TrustedTypes::InjectionSink::WorkerGlobalScope_setInterval : TrustedTypes::InjectionSink::WorkerGlobalScope_setTimeout;
+        }();
+
+        // 4. Set handler to the result of invoking the Get Trusted Type compliant string algorithm with TrustedScript, global, handler, sink, and "script".
+        handler = TRY(TrustedTypes::get_trusted_type_compliant_string(
+            TrustedTypes::TrustedTypeName::TrustedScript,
+            relevant_global_object(*this),
+            handler.downcast<GC::Ref<TrustedTypes::TrustedScript>, Utf16String>(),
+            sink,
+            TrustedTypes::Script.view()));
+    }
+
     // 1. Let thisArg be global if that is a WorkerGlobalScope object; otherwise let thisArg be the WindowProxy that corresponds to global.
 
     // 2. If previousId was given, let id be previousId; otherwise, let id be an implementation-defined integer that is greater than zero and does not already exist in global's map of setTimeout and setInterval IDs.
@@ -714,7 +738,7 @@ i32 WindowOrWorkerGlobalScopeMixin::run_timer_initialization_steps(TimerHandler 
     // FIXME: 8. Let uniqueHandle be null.
 
     // 9. Let task be a task that runs the following substeps:
-    auto task = GC::create_function(GC::Heap::the(), Function<void()>([this, handler = move(handler), timeout, arguments = move(arguments), repeat, id, initiating_script, previous_id, &vm, &realm]() {
+    auto task = GC::create_function(GC::Heap::the(), Function<void()>([this, handler = move(handler), timeout, arguments = move(arguments), repeat, id, initiating_script, &vm, &realm]() {
         // FIXME: 1. Assert: uniqueHandle is a unique internal value, not null.
 
         // 2. If id does not exist in global's map of setTimeout and setInterval IDs, then abort these steps.
@@ -736,20 +760,12 @@ i32 WindowOrWorkerGlobalScopeMixin::run_timer_initialization_steps(TimerHandler 
                 return true;
             },
             // 6. Otherwise:
+            [](GC::Ref<TrustedTypes::TrustedScript> const&) -> bool {
+                // 2. Assert: handler is a string.
+                VERIFY_NOT_REACHED();
+            },
             [&](Utf16String const& source) {
-                // 1. If previousId was not given:
-                if (!previous_id.has_value()) {
-                    // 1. Let globalName be "Window" if global is a Window object; "WorkerGlobalScope" otherwise.
-                    auto global_name = is<Window>(this_impl()) ? "Window"sv : "WorkerGlobalScope"sv;
-
-                    // 2. Let methodName be "setInterval" if repeat is true; "setTimeout" otherwise.
-                    auto method_name = repeat == Repeat::Yes ? "setInterval"sv : "setTimeout"sv;
-
-                    // 3. Let sink be a concatenation of globalName, U+0020 SPACE, and methodName.
-                    [[maybe_unused]] auto sink = Utf16String::formatted("{} {}", global_name, method_name);
-
-                    // FIXME: 4. Set handler to the result of invoking the Get Trusted Type compliant string algorithm with TrustedScript, global, handler, sink, and "script".
-                }
+                // AD-HOC: Step 1 is done before the task is queued. See the top of this algorithm.
 
                 // 2. Assert: handler is a string.
                 // 3. Perform EnsureCSPDoesNotBlockStringCompilation(realm, « », handler, handler, timer, « », handler).
@@ -804,7 +820,7 @@ i32 WindowOrWorkerGlobalScopeMixin::run_timer_initialization_steps(TimerHandler 
         switch (repeat) {
         // 9. If repeat is true, then perform the timer initialization steps again, given global, handler, timeout, arguments, true, and id.
         case Repeat::Yes:
-            run_timer_initialization_steps(handler, timeout, move(arguments), repeat, id);
+            MUST(run_timer_initialization_steps(handler, timeout, move(arguments), repeat, id));
             break;
 
         // 10. Otherwise, remove global's map of active timers[id].
