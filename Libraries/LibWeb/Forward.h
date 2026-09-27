@@ -705,7 +705,6 @@ class BarProp;
 class BeforeUnloadEvent;
 class BroadcastChannel;
 class BrowsingContext;
-class BrowsingContextGroup;
 class CanvasRenderingContext2D;
 class RemoteCanvas2DTransport;
 class ClassicScript;

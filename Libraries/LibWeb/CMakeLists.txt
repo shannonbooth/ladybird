@@ -468,7 +468,6 @@ set(SOURCES
     HTML/BroadcastChannel.cpp
     HTML/BroadcastChannelMessage.cpp
     HTML/BrowsingContext.cpp
-    HTML/BrowsingContextGroup.cpp
     HTML/Canvas/AbstractCanvasMixin.cpp
     HTML/Canvas/Canvas2DContextBase.cpp
     HTML/Canvas/CanvasDrawImage.cpp
