@@ -35,7 +35,7 @@ struct StorageKey {
 };
 
 Optional<StorageKey> obtain_a_storage_key(HTML::Environment const&);
-StorageKey obtain_a_storage_key_for_non_storage_purposes(URL::Origin const&);
+WEB_API StorageKey obtain_a_storage_key_for_non_storage_purposes(URL::Origin const&);
 StorageKey obtain_a_storage_key_for_non_storage_purposes(HTML::Environment const&);
 
 }
