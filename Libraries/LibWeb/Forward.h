@@ -924,6 +924,7 @@ struct HistoryNavigationPopulation;
 struct NavigationPopulationRequest;
 struct NavigationPopulationResult;
 struct NavigationStartRequest;
+struct PostedBroadcastChannelMessage;
 struct NavigationParams;
 struct OpenerPolicy;
 struct PostedMessageDescriptor;
