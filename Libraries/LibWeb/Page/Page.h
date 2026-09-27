@@ -64,6 +64,7 @@
 #include <LibWeb/HTML/PreparedNavigationDescriptor.h>
 #include <LibWeb/HTML/ReplicatedNavigableState.h>
 #include <LibWeb/HTML/SameDocumentNavigationEntry.h>
+#include <LibWeb/HTML/Scripting/EnvironmentId.h>
 #include <LibWeb/HTML/Scripting/ScriptRegistry.h>
 #include <LibWeb/HTML/SelectItem.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
@@ -613,7 +614,7 @@ public:
     virtual void navigation_params_creation_finished(HTML::LocalNavigable&, HTML::NavigationPopulationRequest, HTML::NavigationPopulationResult);
     virtual void history_navigation_params_creation_finished(HTML::CrossProcessId operation_id, HTML::HistoryNavigationPopulation);
     virtual void navigation_population_failed(HTML::CrossProcessId, Utf16String const&) { }
-    virtual void page_did_create_child_frame(HTML::CrossProcessId, HTML::CrossProcessId, HTML::HostedNavigableState const&, HTML::PendingSessionHistoryEntryDescriptor const&) { }
+    virtual void page_did_create_child_frame(HTML::CrossProcessId, HTML::CrossProcessId, HTML::HostedNavigableState const&, HTML::PendingSessionHistoryEntryDescriptor const&, HTML::EnvironmentId const&) { }
     virtual void page_did_change_hosted_navigable_state([[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] HTML::HostedNavigableState const& state) { }
     virtual void page_did_set_opener_browsing_context([[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] Optional<HTML::CrossProcessId> opener_navigable_id) { }
     virtual void page_did_completely_finish_loading([[maybe_unused]] HTML::CrossProcessId navigable_id) { }
@@ -748,6 +749,7 @@ public:
         GC::Ptr<Page> page;
         String window_handle;
         Optional<HTML::SessionHistoryEntryDescriptor> initial_history_entry;
+        Optional<Web::HTML::EnvironmentId> initial_environment_id;
     };
     virtual NewWebViewResult page_did_request_new_web_view(HTML::ActivateTab, HTML::WebViewHints, [[maybe_unused]] Optional<HTML::CrossProcessId> opener_navigable_id, [[maybe_unused]] Optional<URL::URL> opener_base_url, [[maybe_unused]] Utf16String const& target_name, [[maybe_unused]] HTML::SandboxingFlagSet popup_sandboxing_flag_set) { return {}; }
     virtual void page_did_request_activate_tab() { }
