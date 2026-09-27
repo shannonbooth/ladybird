@@ -38,8 +38,11 @@ public:
         URL::URL response_url;
         Optional<URL::URL> request_current_url;
         URL::Origin origin;
+        // The id of the window environment a process created the document with before the UI process heard of it.
+        Optional<Utf16String> environment_id;
     };
     Optional<ResponseDocument> response_document() const;
+    void set_reserved_environment_id(Utf16String);
 
     void did_finish_navigation_params_creation(Web::HTML::NavigationPopulationResult);
     void acquire_response_body(Function<void(bool)> completion_steps);

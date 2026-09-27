@@ -12,6 +12,7 @@ set(SOURCES
     CanonicalBrowsingContext.cpp
     CanonicalBrowsingContextGroup.cpp
     CanonicalDocument.cpp
+    CanonicalEnvironmentSettingsObject.cpp
     CanonicalNavigable.cpp
     CanonicalSessionHistoryEntry.cpp
     CanonicalTraversable.cpp

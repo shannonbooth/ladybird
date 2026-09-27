@@ -27,6 +27,7 @@ struct FinalizeCrossDocumentNavigationHistoryOperationParameters {
     Optional<Utf16String> navigation_id;
     HTML::HistoryHandlingBehavior history_handling;
     HTML::UserNavigationInvolvement user_involvement;
+    Optional<Utf16String> environment_id;
 };
 
 struct ReconstructedChildNavigation {
