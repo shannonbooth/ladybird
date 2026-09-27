@@ -61,6 +61,9 @@ public:
     BrowsingContextGroup const* group() const;
     void set_group(BrowsingContextGroup*);
 
+    Optional<u64> browsing_context_group_id() const { return m_browsing_context_group_id; }
+    void set_browsing_context_group_id(Optional<u64> id) { m_browsing_context_group_id = id; }
+
     // https://html.spec.whatwg.org/multipage/browsers.html#bcg-remove
     void remove();
 
@@ -115,6 +118,7 @@ private:
 
     // https://html.spec.whatwg.org/multipage/browsers.html#tlbc-group
     GC::Ptr<BrowsingContextGroup> m_group;
+    Optional<u64> m_browsing_context_group_id;
 };
 
 WEB_API URL::Origin determine_the_origin(Optional<URL::URL const&>, SandboxingFlagSet, Optional<URL::Origin> source_origin);
