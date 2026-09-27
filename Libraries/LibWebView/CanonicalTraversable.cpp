@@ -1485,7 +1485,7 @@ void CanonicalTraversable::continue_history_navigation_population(Web::HTML::Cro
         pending_job.value()->did_populate_document = CanonicalNavigable::DidPopulateDocument::Yes;
         auto document = navigable->create_and_initialize_a_document(*response_document);
         loader->set_reserved_environment_id(document->relevant_global_object().relevant_settings_object().id());
-        navigable->populate_document(pending_job.value()->job.target_entry->document_state, *document);
+        navigable->populate_document(pending_job.value()->job.target_entry->document_state, *document, loader->result().inline_content_origin);
 
         // A document created for inline content stands in for the resource the process that fetched it could not
         // load; that process hosts it.

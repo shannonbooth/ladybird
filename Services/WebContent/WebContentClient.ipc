@@ -32,6 +32,7 @@
 #include <LibWeb/HTML/LocalNavigable.h>
 #include <LibWeb/HTML/NavigationSourceSnapshot.h>
 #include <LibWeb/HTML/NavigationPopulationRequest.h>
+#include <LibWeb/HTML/PopulatedDocumentOrigin.h>
 #include <LibWeb/HTML/PostedMessageDescriptor.h>
 #include <LibWeb/HTML/PreparedNavigationDescriptor.h>
 #include <LibWeb/HTML/CrossProcessId.h>
@@ -93,6 +94,7 @@ endpoint WebContentClient routed by Compositing::PageId page_id
     did_finish_history_navigation_params_creation(Compositing::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::HistoryNavigationPopulation population) =|
     did_finish_navigation_params_creation(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id, Optional<Web::HTML::NavigationPopulationResult> result) =|
     did_fail_navigation_population(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id) =|
+    did_create_populated_document_with_an_origin_of_its_own(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::PopulatedDocumentOrigin origin, Web::HTML::EnvironmentId environment_id) =|
     did_create_child_frame(Compositing::PageId page_id, Web::HTML::CrossProcessId parent_frame_id, Web::HTML::CrossProcessId frame_id, Web::HTML::HostedNavigableState hosted_state, Web::HTML::PendingSessionHistoryEntryDescriptor initial_history_entry, Web::HTML::EnvironmentId environment_id) =|
     did_change_hosted_navigable_state(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::HostedNavigableState state) =|
     did_set_opener_browsing_context(Compositing::PageId page_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::CrossProcessId> opener_navigable_id) =|
