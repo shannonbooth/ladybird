@@ -8,6 +8,7 @@
 #include <LibWeb/Bindings/Intrinsics.h>
 #include <LibWeb/Bindings/PrincipalHostDefined.h>
 #include <LibWeb/Bindings/Wrappable.h>
+#include <LibWeb/Crypto/Crypto.h>
 #include <LibWeb/DOM/Document.h>
 #include <LibWeb/HTML/BrowsingContext.h>
 #include <LibWeb/HTML/BrowsingContextGroup.h>
@@ -63,14 +64,13 @@ void WindowEnvironmentSettingsObject::setup(Page& page, URL::URL const& creation
         reserved_environment->id = Utf16String {};
     }
 
-    // 5. Otherwise, ...
+    // 5. Otherwise, set settings object's id to a new unique opaque string, settings object's target browsing context to
+    //    null, and settings object's active service worker to null.
     else {
-        // FIXME: ...set settings object's id to a new unique opaque string,
-        //        settings object's target browsing context to null,
-        //        and settings object's active service worker to null.
-        static i64 next_id = 1;
-        settings_object->id = Utf16String::number(next_id++);
+        auto uuid = Crypto::generate_random_uuid();
+        settings_object->id = Utf16String::from_ascii_without_validation(uuid.bytes());
         settings_object->target_browsing_context = nullptr;
+        // FIXME: Set settings object's active service worker to null.
     }
 
     // 6. Set settings object's creation URL to creationURL,
