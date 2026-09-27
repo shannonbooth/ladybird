@@ -176,6 +176,7 @@ static NavigationParamsDescriptor create_navigation_params_descriptor(Navigation
         .navigation_timing_type = params.navigation_timing_type,
         .about_base_url = params.about_base_url,
         .user_involvement = params.user_involvement,
+        .agent_cluster_id = params.agent_cluster_id,
     };
 }
 
@@ -386,6 +387,7 @@ ErrorOr<NavigationParamsVariant> create_navigation_params_from_descriptor(JS::Re
         move(params.about_base_url),
         params.user_involvement);
     navigation_params->fetch_timing_info = fetch_timing_info;
+    navigation_params->agent_cluster_id = params.agent_cluster_id;
     return navigation_params;
 }
 
@@ -644,6 +646,7 @@ ErrorOr<void> encode(Encoder& encoder, Web::HTML::NavigationParamsDescriptor con
     TRY(encoder.encode(params.navigation_timing_type));
     TRY(encoder.encode(params.about_base_url));
     TRY(encoder.encode(params.user_involvement));
+    TRY(encoder.encode(params.agent_cluster_id));
     return {};
 }
 
@@ -666,6 +669,7 @@ ErrorOr<Web::HTML::NavigationParamsDescriptor> decode(Decoder& decoder)
         .navigation_timing_type = TRY(decoder.decode<Web::Bindings::NavigationTimingType>()),
         .about_base_url = TRY(decoder.decode<Optional<URL::URL>>()),
         .user_involvement = TRY(decoder.decode<Web::HTML::UserNavigationInvolvement>()),
+        .agent_cluster_id = TRY(decoder.decode<Optional<u64>>()),
     };
 }
 
