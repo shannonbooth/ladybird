@@ -8,6 +8,7 @@
 
 #include <AK/Optional.h>
 #include <AK/Traits.h>
+#include <AK/Utf16String.h>
 #include <LibURL/Origin.h>
 #include <LibWeb/Forward.h>
 
@@ -19,6 +20,9 @@ struct StorageKey {
     // A storage key is a tuple consisting of an origin (an origin). [HTML]
     // NOTE: This is expected to change; see Client-Side Storage Partitioning https://privacycg.github.io/storage-partitioning/.
     URL::Origin origin;
+
+    // NB: The environment the key was obtained for, from which the browser process obtains the key itself.
+    Optional<Utf16String> environment_id;
 
     String to_string() const
     {
@@ -35,7 +39,7 @@ struct StorageKey {
 };
 
 Optional<StorageKey> obtain_a_storage_key(HTML::Environment const&);
-StorageKey obtain_a_storage_key_for_non_storage_purposes(URL::Origin const&);
+WEB_API StorageKey obtain_a_storage_key_for_non_storage_purposes(URL::Origin const&);
 StorageKey obtain_a_storage_key_for_non_storage_purposes(HTML::Environment const&);
 
 }

@@ -1371,7 +1371,7 @@ bool PageClient::page_did_is_known_hsts_host(String const& domain)
     return response->result();
 }
 
-Optional<Utf16String> PageClient::page_did_request_storage_item(Web::StorageAPI::StorageEndpointType storage_endpoint, String const& storage_key, Utf16String const& bottle_key)
+Optional<Utf16String> PageClient::page_did_request_storage_item(Web::StorageAPI::StorageEndpointType storage_endpoint, Web::StorageAPI::StorageKey const& storage_key, Utf16String const& bottle_key)
 {
     auto response = client().send_sync_but_allow_failure<Messages::WebContentClient::DidRequestStorageItem>(m_id, storage_endpoint, storage_key, bottle_key);
     if (!response) {
@@ -1381,7 +1381,7 @@ Optional<Utf16String> PageClient::page_did_request_storage_item(Web::StorageAPI:
     return response->take_value();
 }
 
-WebView::StorageSetResult PageClient::page_did_set_storage_item(Web::StorageAPI::StorageEndpointType storage_endpoint, String const& storage_key, Utf16String const& bottle_key, Utf16String const& value)
+WebView::StorageSetResult PageClient::page_did_set_storage_item(Web::StorageAPI::StorageEndpointType storage_endpoint, Web::StorageAPI::StorageKey const& storage_key, Utf16String const& bottle_key, Utf16String const& value)
 {
     auto response = client().send_sync_but_allow_failure<Messages::WebContentClient::DidSetStorageItem>(m_id, storage_endpoint, storage_key, bottle_key, value);
     if (!response) {
@@ -1391,7 +1391,7 @@ WebView::StorageSetResult PageClient::page_did_set_storage_item(Web::StorageAPI:
     return response->result();
 }
 
-void PageClient::page_did_remove_storage_item(Web::StorageAPI::StorageEndpointType storage_endpoint, String const& storage_key, Utf16String const& bottle_key)
+void PageClient::page_did_remove_storage_item(Web::StorageAPI::StorageEndpointType storage_endpoint, Web::StorageAPI::StorageKey const& storage_key, Utf16String const& bottle_key)
 {
     auto response = client().send_sync_but_allow_failure<Messages::WebContentClient::DidRemoveStorageItem>(m_id, storage_endpoint, storage_key, bottle_key);
     if (!response) {
@@ -1400,7 +1400,7 @@ void PageClient::page_did_remove_storage_item(Web::StorageAPI::StorageEndpointTy
     }
 }
 
-Vector<Utf16String> PageClient::page_did_request_storage_keys(Web::StorageAPI::StorageEndpointType storage_endpoint, String const& storage_key)
+Vector<Utf16String> PageClient::page_did_request_storage_keys(Web::StorageAPI::StorageEndpointType storage_endpoint, Web::StorageAPI::StorageKey const& storage_key)
 {
     auto response = client().send_sync_but_allow_failure<Messages::WebContentClient::DidRequestStorageKeys>(m_id, storage_endpoint, storage_key);
     if (!response) {
@@ -1410,7 +1410,7 @@ Vector<Utf16String> PageClient::page_did_request_storage_keys(Web::StorageAPI::S
     return response->take_keys();
 }
 
-u64 PageClient::page_did_request_storage_usage(String const& storage_key)
+u64 PageClient::page_did_request_storage_usage(Web::StorageAPI::StorageKey const& storage_key)
 {
     auto response = client().send_sync_but_allow_failure<Messages::WebContentClient::DidRequestStorageUsage>(m_id, storage_key);
     if (!response) {
@@ -1420,7 +1420,7 @@ u64 PageClient::page_did_request_storage_usage(String const& storage_key)
     return response->usage();
 }
 
-void PageClient::page_did_clear_storage(Web::StorageAPI::StorageEndpointType storage_endpoint, String const& storage_key)
+void PageClient::page_did_clear_storage(Web::StorageAPI::StorageEndpointType storage_endpoint, Web::StorageAPI::StorageKey const& storage_key)
 {
     auto response = client().send_sync_but_allow_failure<Messages::WebContentClient::DidClearStorage>(m_id, storage_endpoint, storage_key);
     if (!response) {

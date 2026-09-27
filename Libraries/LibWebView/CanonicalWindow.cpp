@@ -6,6 +6,7 @@
 
 #include <LibWeb/Crypto/Crypto.h>
 #include <LibWebView/CanonicalBrowsingContextGroup.h>
+#include <LibWebView/CanonicalDocument.h>
 #include <LibWebView/CanonicalEnvironmentSettingsObject.h>
 #include <LibWebView/CanonicalWindow.h>
 
@@ -49,7 +50,18 @@ void CanonicalWindow::set_up_a_window_environment_settings_object(Optional<Utf16
     }
 
     // 7. Set realm's [[HostDefined]] field to settings object.
-    m_relevant_settings_object = make<CanonicalEnvironmentSettingsObject>(id.release_value());
+    m_relevant_settings_object = make<CanonicalEnvironmentSettingsObject>(*this, id.release_value());
+}
+
+CanonicalDocument const& CanonicalWindow::associated_document() const
+{
+    VERIFY(m_associated_document);
+    return *m_associated_document;
+}
+
+void CanonicalWindow::set_associated_document(Badge<CanonicalDocument>, CanonicalDocument& document)
+{
+    m_associated_document = document;
 }
 
 }

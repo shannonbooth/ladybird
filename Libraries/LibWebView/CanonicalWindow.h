@@ -6,11 +6,13 @@
 
 #pragma once
 
+#include <AK/Badge.h>
 #include <AK/NonnullRefPtr.h>
 #include <AK/Optional.h>
 #include <AK/OwnPtr.h>
 #include <AK/RefCounted.h>
 #include <AK/Utf16String.h>
+#include <AK/WeakPtr.h>
 #include <LibWebView/Export.h>
 #include <LibWebView/Forward.h>
 
@@ -29,11 +31,15 @@ public:
     CanonicalEnvironmentSettingsObject const& relevant_settings_object() const;
     void set_up_a_window_environment_settings_object(Optional<Utf16String> id);
 
+    CanonicalDocument const& associated_document() const;
+    void set_associated_document(Badge<CanonicalDocument>, CanonicalDocument&);
+
 private:
     explicit CanonicalWindow(NonnullRefPtr<CanonicalSimilarOriginWindowAgent>);
 
     NonnullRefPtr<CanonicalSimilarOriginWindowAgent> m_agent;
     OwnPtr<CanonicalEnvironmentSettingsObject> m_relevant_settings_object;
+    WeakPtr<CanonicalDocument> m_associated_document;
 };
 
 }

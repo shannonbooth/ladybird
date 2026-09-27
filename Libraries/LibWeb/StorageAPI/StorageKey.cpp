@@ -35,7 +35,7 @@ Optional<StorageKey> obtain_a_storage_key(HTML::Environment const& environment)
 StorageKey obtain_a_storage_key_for_non_storage_purposes(URL::Origin const& origin)
 {
     // NOTE: This function exists as there are cases where we don't have the full environment object, but we still need to obtain a storage key.
-    return { origin };
+    return { origin, {} };
 }
 
 // https://storage.spec.whatwg.org/#obtain-a-storage-key-for-non-storage-purposes
@@ -49,7 +49,7 @@ StorageKey obtain_a_storage_key_for_non_storage_purposes(HTML::Environment const
     }();
 
     // 2. Return a tuple consisting of origin.
-    return { move(origin) };
+    return { move(origin), environment.id };
 }
 
 }
@@ -60,6 +60,7 @@ template<>
 ErrorOr<void> encode(Encoder& encoder, Web::StorageAPI::StorageKey const& key)
 {
     TRY(encoder.encode(key.origin));
+    TRY(encoder.encode(key.environment_id));
     return {};
 }
 
@@ -67,7 +68,8 @@ template<>
 ErrorOr<Web::StorageAPI::StorageKey> decode(Decoder& decoder)
 {
     auto origin = TRY(decoder.decode<URL::Origin>());
-    return Web::StorageAPI::StorageKey { move(origin) };
+    auto environment_id = TRY(decoder.decode<Optional<Utf16String>>());
+    return Web::StorageAPI::StorageKey { move(origin), move(environment_id) };
 }
 
 }

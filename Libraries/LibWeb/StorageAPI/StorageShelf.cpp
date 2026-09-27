@@ -35,7 +35,7 @@ StorageShelf::StorageShelf(GC::Ref<Page> page, StorageKey key, StorageType type)
 
 u64 StorageShelf::storage_usage() const
 {
-    return m_page->client().page_did_request_storage_usage(m_key.to_string());
+    return m_page->client().page_did_request_storage_usage(m_key);
 }
 
 u64 StorageShelf::storage_quota() const
