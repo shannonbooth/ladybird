@@ -15,6 +15,8 @@
 #include <LibWeb/HTML/BrowsingContext.h>
 #include <LibWeb/WebDriver/Error.h>
 #include <LibWebView/Application.h>
+#include <LibWebView/BlobURLStore.h>
+#include <LibWebView/BrowsingSession.h>
 #include <LibWebView/CanonicalBrowsingContext.h>
 #include <LibWebView/CanonicalBrowsingContextGroup.h>
 #include <LibWebView/CanonicalDocument.h>
@@ -247,6 +249,17 @@ void WebContentPage::spoof_document_origin_for_testing(Utf16String const& enviro
 {
     if (auto* document = document_with_hosted_environment(environment_id))
         document->set_origin_for_testing(move(origin));
+}
+
+// A page's opaque origins are its own, so it may give any of them for an environment whose origin is opaque.
+bool WebContentPage::hosted_environment_has_origin(Utf16String const& environment_id, URL::Origin const& origin) const
+{
+    auto const* environment = hosted_environment(environment_id);
+    if (!environment)
+        return false;
+    if (environment->origin().is_opaque())
+        return origin.is_opaque();
+    return origin.is_same_origin(environment->origin());
 }
 
 bool WebContentPage::hosted_environment_may_use_cookies_of(Utf16String const& environment_id, URL::URL const& url) const
@@ -2382,6 +2395,25 @@ Messages::WebContentTestClient::DidRequestSessionStoreTabStateForTestingResponse
     if (displays_tab())
         return { view().session_store_tab_state_for_testing({}) };
     return { "{}"_string };
+}
+
+// https://w3c.github.io/FileAPI/#add-an-entry
+Messages::WebContentClient::DidAddBlobUrlEntryResponse WebContentPage::did_add_blob_url_entry(Utf16String environment_id, Utf16String url, Web::FileAPI::SerializedBlobURLEntry entry)
+{
+    // 3. Let entry be a new blob URL entry consisting of object and the current settings object.
+    if (!hosted_environment_has_origin(environment_id, entry.origin))
+        return URL::BlobURLEntry::Token { 0 };
+
+    // 4. Set store[url] to entry.
+    return client().session().blob_url_store->add_entry(move(url), move(entry), WeakPtr<WebContentClient> { client() });
+}
+
+// https://w3c.github.io/FileAPI/#dfn-revokeObjectURL
+void WebContentPage::did_remove_blob_url_entries(Utf16String environment_id, URL::Origin environment_origin, Vector<Utf16String> urls)
+{
+    if (!hosted_environment_has_origin(environment_id, environment_origin))
+        return;
+    client().session().blob_url_store->remove_entries(urls, environment_origin, WeakPtr<WebContentClient> { client() });
 }
 
 void WebContentPage::did_set_cookie(Utf16String environment_id, URL::URL url, HTTP::Cookie::ParsedCookie cookie, HTTP::Cookie::Source source)

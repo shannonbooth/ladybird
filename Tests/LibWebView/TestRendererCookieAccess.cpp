@@ -17,7 +17,9 @@
 #include <LibHTTP/Cookie/ParsedCookie.h>
 #include <LibMain/Main.h>
 #include <LibURL/Parser.h>
+#include <LibWeb/FileAPI/SerializedBlobURLEntry.h>
 #include <LibWebView/Application.h>
+#include <LibWebView/BlobURLStore.h>
 #include <LibWebView/BrowsingSession.h>
 #include <LibWebView/CanonicalDocument.h>
 #include <LibWebView/CanonicalEnvironmentSettingsObject.h>
@@ -111,6 +113,19 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
         VERIFY(victim_cookie_value(cookie_jar, "visible"sv) == "secret"sv);
     }
 
+    // A blob URL entry has the origin of the environment that added it, and only that origin revokes it.
+    auto& blob_url_store = *view->client().session().blob_url_store;
+    auto victim_blob_url = "blob:https://victim.example/entry"_utf16;
+    auto forged_blob_url = "blob:https://victim.example/forged"_utf16;
+    Web::FileAPI::SerializedBlobURLEntry victim_entry { .object = Web::FileAPI::SerializedBlobURLEntry::MediaSource {}, .origin = victim_url.origin() };
+    blob_url_store.add_entry(victim_blob_url, victim_entry, WeakPtr<WebView::WebContentClient> {});
+    for (auto const& environment_id : { "forged"_utf16, page_environment_id }) {
+        stub.did_add_blob_url_entry(page_id, environment_id, forged_blob_url, victim_entry);
+        VERIFY(!blob_url_store.resolve(forged_blob_url, {}).has_value());
+        stub.did_remove_blob_url_entries(page_id, environment_id, victim_url.origin(), { victim_blob_url });
+        VERIFY(blob_url_store.resolve(victim_blob_url, {}).has_value());
+    }
+
     auto expect_rejected = [&](StringView what, Function<void(WebContentClientStub&, Compositing::PageId)> send) {
         auto view = create_view();
         Optional<WebView::ViewImplementation::WebContentCrashReason> crash_reason;
@@ -147,6 +162,6 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
         stub.did_update_cookie(move(cookie));
     });
 
-    outln("PASS: renderers cannot read, store or update cookies the way HTTP responses and WebDriver do, nor reach another origin's cookies");
+    outln("PASS: renderers cannot read, store or update cookies the way HTTP responses and WebDriver do, nor reach another origin's cookies or blob URL entries");
     return 0;
 }
