@@ -62,6 +62,7 @@ private:
     {
     }
 
+    void determine_the_origin_of_the_response();
     void did_acquire(bool succeeded);
     void release_response_body();
 

@@ -124,6 +124,6 @@ SandboxingFlagSet determine_the_creation_sandboxing_flags(BrowsingContext const&
 
 // FIXME: Find a better home for these
 WEB_API bool url_matches_about_blank(URL::URL const& url);
-bool url_matches_about_srcdoc(URL::URL const& url);
+WEB_API bool url_matches_about_srcdoc(URL::URL const& url);
 
 }
