@@ -2313,6 +2313,7 @@ Messages::WebContentClient::DidRequestStorageUsageResponse WebContentPage::did_r
 
 void WebContentPage::did_post_broadcast_channel_message(Web::HTML::BroadcastChannelMessage message)
 {
+    message.source_process_id = client().pid();
     auto const* settings = message.storage_key.environment_id.has_value() ? hosted_environment(*message.storage_key.environment_id) : nullptr;
     if (auto source_storage_key = source_storage_key_of_broadcast_channel_message(settings, message); source_storage_key.has_value())
         WorkerProcessManager::the().post_broadcast_channel_message(message, *source_storage_key, client().is_private());

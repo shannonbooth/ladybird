@@ -196,8 +196,7 @@ WebIDL::ExceptionOr<void> BroadcastChannel::post_message(JS::Realm& realm, JS::V
     // Steps 6-9.
     deliver_message_locally(message_to_send);
 
-    // NB: Other WebContent processes receive this via the browser-process IPC fanout.
-    //     Child worker processes are not part of that routing path, so forward to them directly here.
+    // NB: The browser process delivers the message to the other processes holding destinations.
     Bindings::principal_host_defined_page(realm).client().page_did_post_broadcast_channel_message(message_to_send);
 
     return {};
