@@ -251,21 +251,16 @@ void WebContentPage::spoof_document_origin_for_testing(Utf16String const& enviro
         document->set_origin_for_testing(move(origin));
 }
 
-// A page's opaque origins are its own, so it may give any of them for an environment whose origin is opaque.
 bool WebContentPage::hosted_environment_has_origin(Utf16String const& environment_id, URL::Origin const& origin) const
 {
     auto const* environment = hosted_environment(environment_id);
-    if (!environment)
-        return false;
-    if (environment->origin().is_opaque())
-        return origin.is_opaque();
-    return origin.is_same_origin(environment->origin());
+    return environment && environment->is_origin_given_by_its_process(origin);
 }
 
 bool WebContentPage::hosted_environment_may_use_cookies_of(Utf16String const& environment_id, URL::URL const& url) const
 {
     auto const* environment = hosted_environment(environment_id);
-    return environment && !environment->origin().is_opaque() && url.origin().is_same_origin(environment->origin());
+    return environment && environment->may_use_cookies_of(url);
 }
 
 RefPtr<WebContentPage> WebContentPage::endpoint_hosting_navigable_represented_by(Web::HTML::CrossProcessId navigable_id) const
@@ -2285,7 +2280,8 @@ void WebContentPage::request_unload_check(Web::HTML::CrossProcessId navigable_id
 Messages::WebContentClient::StartWorkerAgentResponse WebContentPage::start_worker_agent(Web::HTML::WorkerAgentStartRequest request)
 {
     // A page hosting an isolated iframe's document belongs to its tab's view as much as the view's own page does.
-    auto agent_id = WorkerProcessManager::the().start_worker_agent(client(), m_id, move(request));
+    auto const* outside_settings = hosted_environment(request.outside_settings.id);
+    auto agent_id = WorkerProcessManager::the().start_worker_agent(client(), m_id, outside_settings, move(request));
     return { agent_id };
 }
 
