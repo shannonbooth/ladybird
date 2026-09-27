@@ -262,15 +262,25 @@ void WorkerProcessManager::remove_web_worker_owner(WebWorkerClient& client)
         remove_agent(agent_id, AgentRemovalCause::OwnerSetEmptied);
 }
 
-void WorkerProcessManager::broadcast_channel_message_from_web_content(Web::HTML::BroadcastChannelMessage const& message, IsPrivate is_private)
+// https://html.spec.whatwg.org/multipage/web-messaging.html#dom-broadcastchannel-postmessage
+// NB: The processes holding the destinations of step 6 are those hosting an environment whose storage key is
+//     sourceStorageKey. Each finds the destinations among its own BroadcastChannel objects.
+void WorkerProcessManager::post_broadcast_channel_message(Web::HTML::BroadcastChannelMessage const& message, Web::StorageAPI::StorageKey const& source_storage_key, IsPrivate is_private)
 {
+    WebContentClient::for_each_client([&](auto& client) {
+        if (client.pid() == message.source_process_id || client.is_private() != is_private)
+            return IterationDecision::Continue;
+        if (client.hosts_an_environment_with_storage_key(source_storage_key))
+            client.async_broadcast_channel_message(message);
+        return IterationDecision::Continue;
+    });
+
     for (auto& entry : m_agents) {
         auto& agent = entry.value;
-        if (agent.client->pid() == message.source_process_id)
+        if (agent.client->pid() == message.source_process_id || agent.is_private != is_private)
             continue;
-        if (agent.is_private != is_private)
-            continue;
-        agent.client->async_broadcast_channel_message(message);
+        if (obtain_a_storage_key_for_non_storage_purposes(*agent.inside_settings) == source_storage_key)
+            agent.client->async_broadcast_channel_message(message);
     }
 }
 
@@ -467,34 +477,6 @@ void WorkerProcessManager::worker_did_request_file(Web::HTML::WorkerAgentId agen
         maybe_agent->value.client->async_handle_file_return(file.error().code(), {}, request_id);
     else
         maybe_agent->value.client->async_handle_file_return(0, IPC::File::adopt_file(file.release_value()), request_id);
-}
-
-void WorkerProcessManager::worker_did_post_broadcast_channel_message(Web::HTML::WorkerAgentId agent_id, Web::HTML::BroadcastChannelMessage message)
-{
-    auto source_agent = m_agents.find(agent_id);
-    if (source_agent == m_agents.end())
-        return;
-    auto source_is_private = source_agent->value.is_private;
-
-    WebContentClient::for_each_client([&](auto& client) {
-        if (client.pid() == message.source_process_id)
-            return IterationDecision::Continue;
-        if (client.is_private() != source_is_private)
-            return IterationDecision::Continue;
-        client.async_broadcast_channel_message(message);
-        return IterationDecision::Continue;
-    });
-
-    for (auto& entry : m_agents) {
-        if (entry.key == agent_id)
-            continue;
-        auto& agent = entry.value;
-        if (agent.client->pid() == message.source_process_id)
-            continue;
-        if (agent.is_private != source_is_private)
-            continue;
-        agent.client->async_broadcast_channel_message(message);
-    }
 }
 
 void WorkerProcessManager::remove_agent(Web::HTML::WorkerAgentId agent_id, AgentRemovalCause cause)

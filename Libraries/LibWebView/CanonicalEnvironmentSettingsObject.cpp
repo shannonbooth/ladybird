@@ -51,6 +51,18 @@ Web::StorageAPI::StorageKey obtain_a_storage_key_for_non_storage_purposes(Canoni
     return Web::StorageAPI::obtain_a_storage_key_for_non_storage_purposes(environment.origin());
 }
 
+// https://html.spec.whatwg.org/multipage/web-messaging.html#dom-broadcastchannel-postmessage
+// NB: The process posting the message names this's relevant settings object with the storage key it gives.
+Optional<Web::StorageAPI::StorageKey> source_storage_key_of_broadcast_channel_message(CanonicalEnvironmentSettingsObject const* settings, Web::HTML::BroadcastChannelMessage const& message)
+{
+    if (!settings || !settings->is_origin_given_by_its_process(message.source_origin) || !settings->is_origin_given_by_its_process(message.storage_key.origin))
+        return {};
+
+    // 5. Let sourceStorageKey be the result of running obtain a storage key for non-storage purposes with this's relevant
+    //    settings object.
+    return obtain_a_storage_key_for_non_storage_purposes(*settings);
+}
+
 // https://storage.spec.whatwg.org/#obtain-a-storage-key
 Optional<Web::StorageAPI::StorageKey> obtain_a_storage_key(CanonicalEnvironmentSettingsObject const& environment)
 {

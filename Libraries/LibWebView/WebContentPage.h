@@ -57,6 +57,7 @@ public:
     String dump_process_tree() const;
     Optional<CanonicalNavigable&> hosted_navigable(Web::HTML::CrossProcessId) const;
     CanonicalEnvironmentSettingsObject const* hosted_environment(Utf16String const& environment_id) const;
+    bool hosts_an_environment_with_storage_key(Web::StorageAPI::StorageKey const&) const;
     void spoof_document_origin_for_testing(Utf16String const& environment_id, URL::Origin);
     bool hosted_environment_has_origin(Utf16String const& environment_id, URL::Origin const&) const;
     bool hosted_environment_may_use_cookies_of(Utf16String const& environment_id, URL::URL const&) const;
@@ -105,6 +106,7 @@ public:
 private:
     Optional<CanonicalNavigable&> population_worker_navigable(Web::HTML::CrossProcessId navigable_id) const;
     bool continue_navigation_population_in_selected_process(Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id);
+    void for_each_hosted_document(Function<IterationDecision(CanonicalDocument&)> const&) const;
     CanonicalDocument* document_with_hosted_environment(Utf16String const& environment_id) const;
     StorageJar* storage_jar(Web::StorageAPI::StorageEndpointType) const;
     Optional<String> canonical_storage_key(Web::StorageAPI::StorageKey const&) const;

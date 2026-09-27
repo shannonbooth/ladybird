@@ -217,24 +217,42 @@ Optional<CanonicalNavigable&> WebContentPage::hosted_navigable(Web::HTML::CrossP
     return *navigable;
 }
 
-// An environment a page names is the window environment of a document it hosts, or of one populated for it to host.
+// The environments a page names are the window environments of the documents it hosts, and of those populated for it
+// to host.
+void WebContentPage::for_each_hosted_document(Function<IterationDecision(CanonicalDocument&)> const& callback) const
+{
+    traversable().for_each_in_inclusive_subtree([&](CanonicalNavigable const& navigable) {
+        auto decision = IterationDecision::Continue;
+        if (traversable().hosts(navigable, *this))
+            decision = callback(navigable.active_document());
+        navigable.for_each_populated_document([&](PopulatedDocument const& populated_document) {
+            if (decision == IterationDecision::Continue && populated_document.document->host() == this)
+                decision = callback(*populated_document.document);
+        });
+        return decision;
+    });
+}
+
 CanonicalDocument* WebContentPage::document_with_hosted_environment(Utf16String const& environment_id) const
 {
     CanonicalDocument* found_document = nullptr;
-    auto find_in = [&](CanonicalDocument& document) {
-        if (document.relevant_global_object().relevant_settings_object().id() == environment_id)
-            found_document = &document;
-    };
-    traversable().for_each_in_inclusive_subtree([&](CanonicalNavigable const& navigable) {
-        if (traversable().hosts(navigable, *this))
-            find_in(navigable.active_document());
-        navigable.for_each_populated_document([&](PopulatedDocument const& populated_document) {
-            if (populated_document.document->host() == this)
-                find_in(*populated_document.document);
-        });
-        return found_document ? IterationDecision::Break : IterationDecision::Continue;
+    for_each_hosted_document([&](CanonicalDocument& document) {
+        if (document.relevant_global_object().relevant_settings_object().id() != environment_id)
+            return IterationDecision::Continue;
+        found_document = &document;
+        return IterationDecision::Break;
     });
     return found_document;
+}
+
+bool WebContentPage::hosts_an_environment_with_storage_key(Web::StorageAPI::StorageKey const& storage_key) const
+{
+    bool hosts_one = false;
+    for_each_hosted_document([&](CanonicalDocument& document) {
+        hosts_one = obtain_a_storage_key_for_non_storage_purposes(document.relevant_global_object().relevant_settings_object()) == storage_key;
+        return hosts_one ? IterationDecision::Break : IterationDecision::Continue;
+    });
+    return hosts_one;
 }
 
 CanonicalEnvironmentSettingsObject const* WebContentPage::hosted_environment(Utf16String const& environment_id) const
@@ -2295,15 +2313,9 @@ Messages::WebContentClient::DidRequestStorageUsageResponse WebContentPage::did_r
 
 void WebContentPage::did_post_broadcast_channel_message(Web::HTML::BroadcastChannelMessage message)
 {
-    WebContentClient::for_each_client([&](auto& client) {
-        if (client.pid() == message.source_process_id)
-            return IterationDecision::Continue;
-        if (client.is_private() != this->client().is_private())
-            return IterationDecision::Continue;
-        client.async_broadcast_channel_message(message);
-        return IterationDecision::Continue;
-    });
-    WorkerProcessManager::the().broadcast_channel_message_from_web_content(message, client().is_private());
+    auto const* settings = message.storage_key.environment_id.has_value() ? hosted_environment(*message.storage_key.environment_id) : nullptr;
+    if (auto source_storage_key = source_storage_key_of_broadcast_channel_message(settings, message); source_storage_key.has_value())
+        WorkerProcessManager::the().post_broadcast_channel_message(message, *source_storage_key, client().is_private());
 }
 
 void WebContentPage::close_worker_agent(Web::HTML::WorkerAgentId agent_id, Web::HTML::WorkerAgentOwnerToken owner_token)
