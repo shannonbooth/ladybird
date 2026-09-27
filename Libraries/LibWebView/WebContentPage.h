@@ -57,6 +57,8 @@ public:
     String dump_process_tree() const;
     Optional<CanonicalNavigable&> hosted_navigable(Web::HTML::CrossProcessId) const;
     CanonicalEnvironmentSettingsObject const* hosted_environment(Utf16String const& environment_id) const;
+    void spoof_document_origin_for_testing(Utf16String const& environment_id, URL::Origin);
+    bool hosted_environment_may_use_cookies_of(Utf16String const& environment_id, URL::URL const&) const;
     // The process and page hosting the document of a navigable that a page represents. A page represents every
     // navigable of its tab whose document it does not host, so those are the ones it can ask to navigate or post to.
     RefPtr<WebContentPage> endpoint_hosting_navigable_represented_by(Web::HTML::CrossProcessId navigable_id) const;
@@ -102,6 +104,7 @@ public:
 private:
     Optional<CanonicalNavigable&> population_worker_navigable(Web::HTML::CrossProcessId navigable_id) const;
     bool continue_navigation_population_in_selected_process(Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id);
+    CanonicalDocument* document_with_hosted_environment(Utf16String const& environment_id) const;
     StorageJar* storage_jar(Web::StorageAPI::StorageEndpointType) const;
     Optional<String> canonical_storage_key(Web::StorageAPI::StorageKey const&) const;
     struct ViewPosition {
@@ -163,7 +166,8 @@ private:
     virtual void did_request_set_prompt_text(Utf16String message) override;
     virtual void did_request_accept_dialog() override;
     virtual void did_request_dismiss_dialog() override;
-    virtual void did_request_document_cookie_version_index(i64 document_id, String domain) override;
+    virtual void did_request_document_cookie_version_index(Utf16String environment_id, i64 document_id, String domain) override;
+    virtual void did_set_cookie(Utf16String environment_id, URL::URL, HTTP::Cookie::ParsedCookie, HTTP::Cookie::Source) override;
     Messages::WebContentClient::DidRequestStorageItemResponse did_request_storage_item(Web::StorageAPI::StorageEndpointType storage_endpoint, Web::StorageAPI::StorageKey storage_key, Utf16String bottle_key);
     Messages::WebContentClient::DidSetStorageItemResponse did_set_storage_item(Web::StorageAPI::StorageEndpointType storage_endpoint, Web::StorageAPI::StorageKey storage_key, Utf16String bottle_key, Utf16String value);
     virtual void did_remove_storage_item(Web::StorageAPI::StorageEndpointType storage_endpoint, Web::StorageAPI::StorageKey storage_key, Utf16String bottle_key) override;
@@ -277,7 +281,8 @@ private:
     Messages::WebContentClient::DidRequestStorageUsageResponse did_request_storage_usage(Web::StorageAPI::StorageKey storage_key);
     virtual void did_post_broadcast_channel_message(Web::HTML::BroadcastChannelMessage message) override;
     virtual void close_worker_agent(Web::HTML::WorkerAgentId agent_id, Web::HTML::WorkerAgentOwnerToken owner_token) override;
-    Messages::WebContentClient::DidRequestCookieResponse did_request_cookie(URL::URL, HTTP::Cookie::Source);
+    Messages::WebContentClient::DidRequestCookieResponse did_request_cookie(Utf16String environment_id, URL::URL, HTTP::Cookie::Source);
+    Messages::WebContentClient::DidRequestAllCookiesCookiestoreResponse did_request_all_cookies_cookiestore(Utf16String environment_id, URL::URL);
 
     // Test-only handlers, reached over the separate test transport (see WebContentTestClient).
     virtual void did_finish_test(String text) override;

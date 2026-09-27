@@ -300,7 +300,7 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
     auto new_tab_requests = app->new_tab_requests();
     stub.did_get_source(popup_page_id, URL::about_blank(), URL::about_blank(), {});
     VERIFY(app->new_tab_requests() == ++new_tab_requests);
-    VERIFY(stub.did_request_cookie(popup_page_id, cookie_url, HTTP::Cookie::Source::Http).cookie().cookie == "page-lifecycle=preserved"sv);
+    VERIFY(stub.did_request_cookie(popup_page_id, Utf16String {}, cookie_url, HTTP::Cookie::Source::Http).cookie().cookie == "page-lifecycle=preserved"sv);
     stub.did_request_delete_all_cookies(popup_page_id, 0, cookie_url);
     VERIFY(!cookie_jar.get_named_cookie(cookie_url, cookie.name).has_value());
     cookie_jar.set_cookie(cookie_url, cookie, HTTP::Cookie::Source::Http);
@@ -313,7 +313,7 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
     VERIFY(!client.may_act_for_page(0));
     stub.did_request_delete_all_cookies(popup_page_id, 0, cookie_url);
     VERIFY(cookie_jar.get_named_cookie(cookie_url, cookie.name).has_value());
-    VERIFY(stub.did_request_cookie(popup_page_id, cookie_url, HTTP::Cookie::Source::Http).cookie().cookie.is_empty());
+    VERIFY(stub.did_request_cookie(popup_page_id, Utf16String {}, cookie_url, HTTP::Cookie::Source::Http).cookie().cookie.is_empty());
     stub.did_get_source(popup_page_id, URL::about_blank(), URL::about_blank(), {});
     VERIFY(app->new_tab_requests() == new_tab_requests);
     static_cast<WebContentClientStub&>(client).did_close_browsing_context(popup_page_id);
@@ -321,7 +321,7 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
     VERIFY(!client.may_act_for_page(0));
     stub.did_request_delete_all_cookies(popup_page_id, 0, cookie_url);
     VERIFY(cookie_jar.get_named_cookie(cookie_url, cookie.name).has_value());
-    VERIFY(stub.did_request_cookie(popup_page_id, cookie_url, HTTP::Cookie::Source::Http).cookie().cookie.is_empty());
+    VERIFY(stub.did_request_cookie(popup_page_id, Utf16String {}, cookie_url, HTTP::Cookie::Source::Http).cookie().cookie.is_empty());
     stub.did_get_source(popup_page_id, URL::about_blank(), URL::about_blank(), {});
     VERIFY(app->new_tab_requests() == new_tab_requests);
 
@@ -345,7 +345,7 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
         auto initial_client = adopt_ref(*new WebView::WebContentClient(move(transport.local), client.is_private(), initial_page_id, app->allocate_ui_process_cross_process_id()));
         VERIFY(!initial_client->page(initial_page_id));
         auto& initial_stub = static_cast<WebContentClientStub&>(*initial_client);
-        VERIFY(initial_stub.did_request_cookie(initial_page_id, cookie_url, HTTP::Cookie::Source::Http).cookie().cookie == "page-lifecycle=preserved"sv);
+        VERIFY(initial_stub.did_request_cookie(initial_page_id, Utf16String {}, cookie_url, HTTP::Cookie::Source::Http).cookie().cookie == "page-lifecycle=preserved"sv);
     }
 
     // A reload from the browser's UI fires no navigate event.

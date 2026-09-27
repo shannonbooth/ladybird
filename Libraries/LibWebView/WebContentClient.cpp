@@ -601,9 +601,12 @@ Messages::WebContentClient::DidRequestAllCookiesWebdriverResponse WebContentClie
     return m_session->cookie_jar->get_all_cookies_webdriver(url);
 }
 
-Messages::WebContentClient::DidRequestAllCookiesCookiestoreResponse WebContentClient::did_request_all_cookies_cookiestore(URL::URL url)
+Messages::WebContentClient::DidRequestAllCookiesCookiestoreResponse WebContentClient::did_request_all_cookies_cookiestore(Compositing::PageId page_id, Utf16String environment_id, URL::URL url)
 {
-    return m_session->cookie_jar->get_all_cookies_cookiestore(url);
+    if (auto* page = this->page(page_id))
+        return page->did_request_all_cookies_cookiestore(move(environment_id), move(url));
+
+    return Vector<HTTP::Cookie::Cookie> {};
 }
 
 Messages::WebContentClient::DidRequestNamedCookieResponse WebContentClient::did_request_named_cookie(URL::URL url, String name)
@@ -616,7 +619,7 @@ Messages::WebContentClient::DidRequestNamedCookieResponse WebContentClient::did_
     return m_session->cookie_jar->get_named_cookie(url, name);
 }
 
-Messages::WebContentClient::DidRequestCookieResponse WebContentClient::did_request_cookie(Compositing::PageId page_id, URL::URL url, HTTP::Cookie::Source source)
+Messages::WebContentClient::DidRequestCookieResponse WebContentClient::did_request_cookie(Compositing::PageId page_id, Utf16String environment_id, URL::URL url, HTTP::Cookie::Source source)
 {
     if (source == HTTP::Cookie::Source::Http && !renderers_may_access_cookies_like_http()) {
         did_misbehave("did_request_cookie"sv, "HTTP cookie source"sv);
@@ -624,10 +627,11 @@ Messages::WebContentClient::DidRequestCookieResponse WebContentClient::did_reque
     }
 
     if (auto* page = this->page(page_id))
-        return page->did_request_cookie(move(url), source);
+        return page->did_request_cookie(move(environment_id), move(url), source);
 
-    // A spare process can request cookies for its initial page before a view adopts it.
-    if (m_unassigned_initial_page_id != page_id)
+    // A spare process can request cookies for its initial page before a view adopts it. No document of that page is
+    // known here, so only a request with the HTTP source, which names no environment, is answered.
+    if (m_unassigned_initial_page_id != page_id || source != HTTP::Cookie::Source::Http)
         return HTTP::Cookie::VersionedCookie {};
 
     HTTP::Cookie::VersionedCookie cookie;
@@ -713,16 +717,6 @@ void WebContentClient::did_close_browsing_context(Compositing::PageId page_id)
     page->set_detached_close_pending(false);
     release_unneeded_opener_pages();
     close_server_if_unused();
-}
-
-void WebContentClient::did_set_cookie(URL::URL url, HTTP::Cookie::ParsedCookie cookie, HTTP::Cookie::Source source)
-{
-    if (source == HTTP::Cookie::Source::Http && !renderers_may_access_cookies_like_http()) {
-        did_misbehave("did_set_cookie"sv, "HTTP cookie source"sv);
-        return;
-    }
-
-    m_session->cookie_jar->set_cookie(url, cookie, source);
 }
 
 void WebContentClient::did_update_cookie(HTTP::Cookie::Cookie cookie)
