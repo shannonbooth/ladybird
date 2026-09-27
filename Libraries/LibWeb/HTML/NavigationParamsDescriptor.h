@@ -26,6 +26,7 @@
 #include <LibWeb/HTML/CrossProcessId.h>
 #include <LibWeb/HTML/NavigationParams.h>
 #include <LibWeb/HTML/SandboxingFlagSet.h>
+#include <LibWeb/HTML/Scripting/EnvironmentId.h>
 #include <LibWeb/HTML/SerializedPolicyContainer.h>
 #include <LibWeb/HTML/UserNavigationInvolvement.h>
 #include <LibWeb/ReferrerPolicy/ReferrerPolicy.h>
@@ -93,7 +94,7 @@ struct NavigationFetchTimingInfoDescriptor {
 };
 
 struct NavigationEnvironmentDescriptor {
-    Utf16String id;
+    EnvironmentId id;
     URL::URL creation_url;
     Optional<URL::URL> top_level_creation_url;
     Optional<URL::Origin> top_level_origin;

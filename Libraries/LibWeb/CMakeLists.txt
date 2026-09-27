@@ -676,6 +676,7 @@ set(SOURCES
     HTML/SandboxingFlagSet.cpp
     HTML/Scripting/Agent.cpp
     HTML/Scripting/ClassicScript.cpp
+    HTML/Scripting/EnvironmentId.cpp
     HTML/Scripting/Environments.cpp
     HTML/Scripting/EnvironmentSettingsSnapshot.cpp
     HTML/Scripting/ExceptionReporter.cpp
