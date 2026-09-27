@@ -14,7 +14,6 @@
 #include <LibWeb/HTML/StructuredSerialize.h>
 #include <LibWeb/HTML/WorkerAgentForward.h>
 #include <LibWeb/HTML/WorkerTypes.h>
-#include <LibWeb/StorageAPI/StorageKey.h>
 
 namespace Web::HTML {
 
@@ -30,7 +29,6 @@ struct WEB_API WorkerAgentStartRequest {
     bool extended_lifetime { false };
     TransferDataEncoder outside_port;
     SerializedEnvironmentSettingsObject outside_settings;
-    StorageAPI::StorageKey storage_key;
     bool caller_is_secure_context { false };
     // The rendering rate of the spawning page, used to pace rendering updates in worker event
     // loops, which have no display connection of their own.
