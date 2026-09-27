@@ -18,6 +18,7 @@
 #include <LibWeb/Bindings/CookieStore.h>
 #include <LibWeb/DOM/EventTarget.h>
 #include <LibWeb/Export.h>
+#include <LibWeb/HighResolutionTime/DOMHighResTimeStamp.h>
 #include <LibWeb/WebIDL/CallbackType.h>
 #include <LibWeb/WebIDL/Promise.h>
 
@@ -61,6 +62,10 @@ public:
 private:
     CookieStore(PageClient&);
     virtual void visit_edges(Cell::Visitor&) override;
+
+    Vector<CookieListItem> query_cookies(URL::URL const&, Optional<Utf16String> const& name);
+    bool set_a_cookie(URL::URL const&, Utf16String name, Utf16String value, Optional<HighResolutionTime::DOMHighResTimeStamp> expires, Optional<Utf16String> const& domain, Utf16String path, HTTP::Cookie::SameSite, bool partitioned);
+    bool delete_a_cookie(URL::URL const&, Utf16String name, Optional<Utf16String> domain, Utf16String path, bool partitioned);
 
     GC::Ref<PageClient> m_client;
 };
