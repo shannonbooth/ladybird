@@ -59,8 +59,6 @@ public:
     CanonicalEnvironmentSettingsObject const* hosted_environment(Utf16String const& environment_id) const;
     bool hosts_an_environment_with_storage_key(Web::StorageAPI::StorageKey const&) const;
     void spoof_document_origin_for_testing(Utf16String const& environment_id, URL::Origin);
-    bool hosted_environment_has_origin(Utf16String const& environment_id, URL::Origin const&) const;
-    bool hosted_environment_may_use_cookies_of(Utf16String const& environment_id, URL::URL const&) const;
     // The process and page hosting the document of a navigable that a page represents. A page represents every
     // navigable of its tab whose document it does not host, so those are the ones it can ask to navigate or post to.
     RefPtr<WebContentPage> endpoint_hosting_navigable_represented_by(Web::HTML::CrossProcessId navigable_id) const;

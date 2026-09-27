@@ -24,7 +24,6 @@
 #include <LibWeb/HTML/WorkerGlobalScope.h>
 #include <LibWeb/HighResolutionTime/TimeOrigin.h>
 #include <LibWeb/Page/Page.h>
-#include <LibWeb/StorageAPI/StorageKey.h>
 
 namespace Web::HTML {
 

@@ -269,18 +269,6 @@ void WebContentPage::spoof_document_origin_for_testing(Utf16String const& enviro
         document->set_origin_for_testing(move(origin));
 }
 
-bool WebContentPage::hosted_environment_has_origin(Utf16String const& environment_id, URL::Origin const& origin) const
-{
-    auto const* environment = hosted_environment(environment_id);
-    return environment && environment->is_origin_given_by_its_process(origin);
-}
-
-bool WebContentPage::hosted_environment_may_use_cookies_of(Utf16String const& environment_id, URL::URL const& url) const
-{
-    auto const* environment = hosted_environment(environment_id);
-    return environment && environment->may_use_cookies_of(url);
-}
-
 RefPtr<WebContentPage> WebContentPage::endpoint_hosting_navigable_represented_by(Web::HTML::CrossProcessId navigable_id) const
 {
     auto target = traversable().find(navigable_id);
@@ -2410,7 +2398,8 @@ Messages::WebContentTestClient::DidRequestSessionStoreTabStateForTestingResponse
 Messages::WebContentClient::DidAddBlobUrlEntryResponse WebContentPage::did_add_blob_url_entry(Utf16String environment_id, Utf16String url, Web::FileAPI::SerializedBlobURLEntry entry)
 {
     // 3. Let entry be a new blob URL entry consisting of object and the current settings object.
-    if (!hosted_environment_has_origin(environment_id, entry.origin))
+    auto const* environment = hosted_environment(environment_id);
+    if (!environment || !environment->is_origin_given_by_its_process(entry.origin))
         return URL::BlobURLEntry::Token { 0 };
 
     // 4. Set store[url] to entry.
@@ -2420,7 +2409,8 @@ Messages::WebContentClient::DidAddBlobUrlEntryResponse WebContentPage::did_add_b
 // https://w3c.github.io/FileAPI/#dfn-revokeObjectURL
 void WebContentPage::did_remove_blob_url_entries(Utf16String environment_id, URL::Origin environment_origin, Vector<Utf16String> urls)
 {
-    if (!hosted_environment_has_origin(environment_id, environment_origin))
+    auto const* environment = hosted_environment(environment_id);
+    if (!environment || !environment->is_origin_given_by_its_process(environment_origin))
         return;
     client().session().blob_url_store->remove_entries(urls, environment_origin, WeakPtr<WebContentClient> { client() });
 }
@@ -2432,7 +2422,7 @@ void WebContentPage::did_set_cookie(Utf16String environment_id, URL::URL url, HT
             client().did_misbehave("did_set_cookie"sv, "HTTP cookie source"sv);
             return;
         }
-    } else if (!hosted_environment_may_use_cookies_of(environment_id, url)) {
+    } else if (auto const* environment = hosted_environment(environment_id); !environment || !environment->may_use_cookies_of(url)) {
         return;
     }
 
@@ -2441,15 +2431,19 @@ void WebContentPage::did_set_cookie(Utf16String environment_id, URL::URL url, HT
 
 Messages::WebContentClient::DidRequestAllCookiesCookiestoreResponse WebContentPage::did_request_all_cookies_cookiestore(Utf16String environment_id, URL::URL url)
 {
-    if (!hosted_environment_may_use_cookies_of(environment_id, url))
+    auto const* environment = hosted_environment(environment_id);
+    if (!environment || !environment->may_use_cookies_of(url))
         return Vector<HTTP::Cookie::Cookie> {};
     return client().session().cookie_jar->get_all_cookies_cookiestore(url);
 }
 
 Messages::WebContentClient::DidRequestCookieResponse WebContentPage::did_request_cookie(Utf16String environment_id, URL::URL url, HTTP::Cookie::Source source)
 {
-    if (source == HTTP::Cookie::Source::NonHttp && !hosted_environment_may_use_cookies_of(environment_id, url))
-        return HTTP::Cookie::VersionedCookie {};
+    if (source == HTTP::Cookie::Source::NonHttp) {
+        auto const* environment = hosted_environment(environment_id);
+        if (!environment || !environment->may_use_cookies_of(url))
+            return HTTP::Cookie::VersionedCookie {};
+    }
 
     HTTP::Cookie::VersionedCookie cookie;
     cookie.cookie = client().session().cookie_jar->get_cookie(url, source);
