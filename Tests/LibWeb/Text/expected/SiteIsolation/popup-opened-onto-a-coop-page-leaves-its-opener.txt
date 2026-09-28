@@ -1,0 +1,3 @@
+popup.closed after window.open(): false
+popup.closed once the page loaded: true
+popup.opener: null

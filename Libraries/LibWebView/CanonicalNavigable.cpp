@@ -7,6 +7,7 @@
 #include <LibWebView/CanonicalNavigable.h>
 
 #include <AK/Random.h>
+#include <LibWebCommon/HTML/CrossOrigin/OpenerPolicyEnforcement.h>
 #include <LibWebCommon/HTML/HistoryOperation.h>
 #include <LibWebCommon/HTML/SerializationRecords.h>
 #include <LibWebCommon/Page/ViewportIsFullscreen.h>
@@ -289,7 +290,20 @@ CanonicalBrowsingContext::BrowsingContextAndDocument CanonicalNavigable::obtain_
     auto const& coop_enforcement_result = navigation_params.coop_enforcement_result;
 
     // 4. Let swapGroup be coopEnforcementResult's needs a browsing context group switch.
+    // NB: The process that fetched the response enforced the opener policy of each response it received against the
+    //     documents it held. The final response's is enforced again here against the active document this process
+    //     holds, so that the fetching process cannot keep a browsing context group the response's opener policy
+    //     leaves. A document for inline content has a new opener policy enforcement result.
     auto swap_group = coop_enforcement_result.needs_a_browsing_context_group_switch;
+    if (!navigation_params.is_inline_content) {
+        auto const& active_document = this->active_document();
+        Web::HTML::OpenerPolicyEnforcementResult active_document_coop_enforcement_result {
+            .url = active_document.creation_url(),
+            .origin = active_document.origin(),
+            .opener_policy = active_document.opener_policy(),
+        };
+        swap_group |= Web::HTML::enforce_a_responses_opener_policy(active_document.is_initial_about_blank(), navigation_params.response_url, navigation_params.origin, navigation_params.opener_policy, active_document_coop_enforcement_result).needs_a_browsing_context_group_switch;
+    }
 
     // NB: Steps 5-8 only affect swapGroup through optional choices. This implementation does not take them.
 
@@ -376,11 +390,14 @@ NonnullRefPtr<CanonicalDocument> CanonicalNavigable::create_and_initialize_a_doc
     // 9. Let document be a new Document, with
     //    origin: navigationParams's origin
     //    browsing context: browsingContext
+    //    opener policy: navigationParams's cross-origin opener policy
     //    URL: creationURL
     // NB: The process hosting window's agent creates the document, with its other fields, and runs the remaining steps.
+    auto document = CanonicalDocument::create(move(creation_url), navigation_params.origin, browsing_context, window.release_nonnull(), CanonicalDocument::IsInitialAboutBlank::No);
+    document->set_opener_policy(navigation_params.opener_policy);
 
     // 22. Return document.
-    return CanonicalDocument::create(move(creation_url), navigation_params.origin, browsing_context, window.release_nonnull(), CanonicalDocument::IsInitialAboutBlank::No);
+    return document;
 }
 
 CanonicalNavigable::~CanonicalNavigable()
@@ -617,8 +634,9 @@ RefPtr<WebContentClient> CanonicalNavigable::process_to_host(CanonicalDocument c
     }
 
     // A traversable's first document takes the process its initial about:blank came with, unless that document
-    // inherited its creator's origin and shares the creator's process.
-    if (!parent() && active_document().is_initial_about_blank() && active_document().origin().is_opaque())
+    // inherited its creator's origin and shares the creator's process, or a browsing context group switch leaves the
+    // initial about:blank's group.
+    if (!parent() && active_document().is_initial_about_blank() && active_document().origin().is_opaque() && &document.browsing_context() == &active_browsing_context())
         return process_holding_navigable;
 
     return nullptr;
@@ -1064,8 +1082,10 @@ void CanonicalNavigable::did_commit_navigation(CanonicalSessionHistoryEntry& ent
             document->set_host(host);
         // NB: A browsing context group switch discarded the previous document's browsing context. It is removed from
         //     its group once the switch is committed, as the navigation can be canceled until then.
-        if (is_top_level_traversable() && &document->browsing_context() != &previous_document->browsing_context())
+        if (is_top_level_traversable() && &document->browsing_context() != &previous_document->browsing_context()) {
             previous_document->browsing_context().remove();
+            top_level_traversable().did_switch_browsing_context_group();
+        }
     }
     // The tab is displayed by the page hosting its document.
     if (is_top_level_traversable()) {
