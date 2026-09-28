@@ -15,6 +15,7 @@
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/TokenizedFeatures.h>
 #include <LibWebCommon/HTML/BrowsingContext.h>
+#include <LibWebCommon/HTML/CrossProcessId.h>
 #include <LibWebCommon/HTML/SandboxingFlagSet.h>
 
 namespace Web::HTML {
@@ -70,9 +71,12 @@ public:
 
     bool has_navigable_been_destroyed() const;
 
-    GC::Ptr<WindowProxy> opener_browsing_context_window_proxy() const { return m_opener_browsing_context_window_proxy; }
+    bool has_opener_browsing_context() const { return m_opener_browsing_context_window_proxy || m_opener_navigable_id.has_value(); }
+    GC::Ptr<WindowProxy> opener_browsing_context_window_proxy();
+    Optional<CrossProcessId> opener_navigable_id() const;
     void set_opener_browsing_context(GC::Ptr<BrowsingContext>);
-    void set_opener_browsing_context(RemoteNavigable&);
+    void set_opener_browsing_context(CrossProcessId navigable_id);
+    void set_is_auxiliary(bool is_auxiliary) { m_is_auxiliary = is_auxiliary; }
 
     void set_is_popup(TokenizedFeature::Popup is_popup) { m_is_popup = is_popup; }
     [[nodiscard]] TokenizedFeature::Popup is_popup() const { return m_is_popup; }
@@ -98,8 +102,11 @@ private:
     GC::Ptr<DOM::Document> m_active_document;
 
     // https://html.spec.whatwg.org/multipage/browsers.html#opener-browsing-context
-    // NB: Held as its WindowProxy, which also stands for a browsing context another process holds.
+    // NB: Held as its WindowProxy, which also stands for a browsing context another process holds. Such a browsing
+    //     context is named by the navigable it is active in until this process holds that navigable, as a tab's
+    //     stand-in can be created before the process represents its opener's tab.
     GC::Ptr<WindowProxy> m_opener_browsing_context_window_proxy;
+    Optional<CrossProcessId> m_opener_navigable_id;
 
     // https://html.spec.whatwg.org/multipage/browsers.html#is-popup
     TokenizedFeature::Popup m_is_popup { TokenizedFeature::Popup::No };

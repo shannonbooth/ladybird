@@ -1397,7 +1397,7 @@ GC::Ptr<WindowProxy const> Window::top() const
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-opener
-GC::Ptr<WindowProxy const> Window::opener() const
+GC::Ptr<WindowProxy const> Window::opener()
 {
     // 1. Let current be this's browsing context.
     auto current = browsing_context();

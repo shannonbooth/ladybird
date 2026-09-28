@@ -1411,20 +1411,12 @@ OpenerPolicy const& LocalNavigable::active_document_opener_policy() const
     return m_active_document->opener_policy();
 }
 
-static Optional<CrossProcessId> navigable_id_of(GC::Ptr<WindowProxy> window_proxy)
-{
-    if (!window_proxy)
-        return {};
-    if (auto navigable = window_proxy->navigable())
-        return navigable->id();
-    return {};
-}
-
 ReplicatedNavigableState LocalNavigable::replicated_state() const
 {
     VERIFY(m_active_document);
     VERIFY(m_active_session_history_entry);
     auto& settings = relevant_settings_object(*m_active_document);
+    auto const& browsing_context = *m_active_document->browsing_context();
     return {
         .target_name = target_name(),
         .active_document_url = m_active_document->url(),
@@ -1436,8 +1428,8 @@ ReplicatedNavigableState LocalNavigable::replicated_state() const
         .browsing_context_group_id = browsing_context_group_id(),
         .opener_policy = m_active_document->opener_policy(),
         .active_browsing_context_is_auxiliary = active_browsing_context_is_auxiliary(),
-        .active_browsing_context_has_opener = active_browsing_context_opener_window_proxy() != nullptr,
-        .opener_navigable_id = navigable_id_of(active_browsing_context_opener_window_proxy()),
+        .active_browsing_context_has_opener = browsing_context.has_opener_browsing_context(),
+        .opener_navigable_id = browsing_context.opener_navigable_id(),
         .active_document_is_completely_loaded = m_active_document->is_completely_loaded(),
         .is_closing = m_closing,
         .container = container_state(),
@@ -1505,7 +1497,7 @@ void LocalNavigable::report_hosted_state()
 // The opener browsing context is reported as the navigable it is active in.
 void LocalNavigable::report_opener_browsing_context()
 {
-    page().client().page_did_set_opener_browsing_context(id(), navigable_id_of(active_browsing_context_opener_window_proxy()));
+    page().client().page_did_set_opener_browsing_context(id(), active_browsing_context()->opener_navigable_id());
 }
 
 // A container in another process reads what it asks of its content navigable from the replicated state.

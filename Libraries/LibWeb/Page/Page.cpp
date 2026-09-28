@@ -814,7 +814,13 @@ GC::Ref<HTML::LocalNavigable> Page::begin_hosting(HTML::CrossProcessId id, HTML:
     // displays the tab through it until the document it populates activates, or the stand-in is discarded.
     if (!navigable->parent()) {
         auto stand_in = HTML::LocalTraversableNavigable::create_stand_in({}, *navigable, current_history_entry);
-        stand_in->active_browsing_context()->set_browsing_context_group_id(navigable->replicated_state().browsing_context_group_id);
+        // The stand-in's browsing context is the one active in the tab, whose opener another process may hold.
+        auto const& replicated_state = navigable->replicated_state();
+        auto& browsing_context = *stand_in->active_browsing_context();
+        browsing_context.set_browsing_context_group_id(replicated_state.browsing_context_group_id);
+        browsing_context.set_is_auxiliary(replicated_state.active_browsing_context_is_auxiliary);
+        if (replicated_state.opener_navigable_id.has_value())
+            browsing_context.set_opener_browsing_context(*replicated_state.opener_navigable_id);
         VERIFY(m_top_level_traversable.ptr() == navigable.ptr());
         m_top_level_traversable = stand_in;
         update_needs_beforeunload_check();

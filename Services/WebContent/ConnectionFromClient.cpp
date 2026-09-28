@@ -380,10 +380,9 @@ void ConnectionFromClient::set_opener_of_navigable(Web::PageId page_id, Web::HTM
     if (!page.has_value())
         return;
     auto* navigable = as_if<Web::HTML::LocalNavigable>(page->page().navigable_with_id(navigable_id).ptr());
-    auto* opener = as_if<Web::HTML::RemoteNavigable>(page->page().navigable_with_id(opener_navigable_id).ptr());
-    if (!navigable || !navigable->active_browsing_context() || !opener)
+    if (!navigable || !navigable->active_browsing_context())
         return;
-    navigable->active_browsing_context()->set_opener_browsing_context(*opener);
+    navigable->active_browsing_context()->set_opener_browsing_context(opener_navigable_id);
     navigable->report_opener_browsing_context();
 }
 

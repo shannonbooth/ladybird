@@ -260,15 +260,48 @@ BrowsingContext::BrowsingContext(GC::Ref<Page> page)
 
 BrowsingContext::~BrowsingContext() = default;
 
+// The WindowProxy of an opener browsing context another process holds is created in the realm of this browsing
+// context's own, as no script need be running.
+GC::Ptr<WindowProxy> BrowsingContext::opener_browsing_context_window_proxy()
+{
+    if (m_opener_navigable_id.has_value()) {
+        GC::Ptr<WindowProxy> window_proxy;
+        if (auto navigable = navigable_with_id_in_any_page(m_page, *m_opener_navigable_id)) {
+            if (auto* remote_navigable = as_if<RemoteNavigable>(*navigable))
+                window_proxy = remote_navigable->active_window_proxy_in(m_window_proxy->realm());
+            else
+                window_proxy = navigable->active_window_proxy();
+        }
+        if (!window_proxy)
+            return nullptr;
+        m_opener_browsing_context_window_proxy = window_proxy;
+        m_opener_navigable_id.clear();
+    }
+    return m_opener_browsing_context_window_proxy;
+}
+
+Optional<CrossProcessId> BrowsingContext::opener_navigable_id() const
+{
+    if (m_opener_navigable_id.has_value())
+        return m_opener_navigable_id;
+    if (m_opener_browsing_context_window_proxy) {
+        if (auto navigable = m_opener_browsing_context_window_proxy->navigable())
+            return navigable->id();
+    }
+    return {};
+}
+
 void BrowsingContext::set_opener_browsing_context(GC::Ptr<BrowsingContext> opener)
 {
     m_opener_browsing_context_window_proxy = opener ? opener->window_proxy() : nullptr;
+    m_opener_navigable_id.clear();
 }
 
-// NB: The browsing context active in a navigable another process hosts is there, and its WindowProxy stands for it.
-void BrowsingContext::set_opener_browsing_context(RemoteNavigable& navigable)
+// NB: The browsing context active in a navigable another process hosts is there, and is named by that navigable.
+void BrowsingContext::set_opener_browsing_context(CrossProcessId navigable_id)
 {
-    m_opener_browsing_context_window_proxy = navigable.active_window_proxy();
+    m_opener_browsing_context_window_proxy = nullptr;
+    m_opener_navigable_id = navigable_id;
 }
 
 void BrowsingContext::visit_edges(Cell::Visitor& visitor)
