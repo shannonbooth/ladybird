@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    // A browsing context keeps its opener browsing context once that is discarded. A popup whose opener iframe was
+    // removed moves to another process, and its opener is still a closed window there.
+    promiseTest(async () => {
+        const httpServer = httpTestServer();
+        const runId = crypto.randomUUID();
+
+        // The document the popup moves to tells whether its opener is a closed window through its number of child
+        // navigables, which this document reads as the popup's length.
+        const crossSiteUrl = new URL(await httpServer.createEcho("GET", `/closed-opener-cross-site-${runId}`, {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+            body: `<!DOCTYPE html><script>
+                const count = opener !== null && opener.closed ? 1 : 2;
+                for (let i = 0; i < count; ++i)
+                    document.documentElement.append(document.createElement("iframe"));
+            <\/script>`,
+        }));
+        crossSiteUrl.hostname = uniqueLocalhostHostname("closed-opener-cross-site");
+        const popupUrl = await httpServer.createEcho("GET", `/closed-opener-first-${runId}`, {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+            body: `<!DOCTYPE html><script>
+                addEventListener("message", () => location.href = ${JSON.stringify(crossSiteUrl.href)});
+                opener.parent.postMessage("arrived", "*");
+            <\/script>`,
+        });
+
+        const until = async condition => {
+            for (let attempt = 0; attempt < 300 && !condition(); ++attempt)
+                await new Promise(resolve => setTimeout(resolve, 10));
+            return condition();
+        };
+
+        const openerIframe = document.createElement("iframe");
+        openerIframe.srcdoc = `<script>addEventListener("message", event => open(event.data));<\/script>`;
+        await new Promise(resolve => {
+            openerIframe.onload = resolve;
+            document.body.appendChild(openerIframe);
+        });
+
+        const arrived = new Promise(resolve => addEventListener("message", event => resolve(event), { once: true }));
+        openerIframe.contentWindow.postMessage(popupUrl, "*");
+        const popup = (await arrived).source;
+        openerIframe.remove();
+        println(`popup's opener closed before it moves: ${await until(() => popup.opener && popup.opener.closed)}`);
+
+        popup.postMessage("move", "*");
+        println(`popup moved: ${await until(() => popup.length > 0)}`);
+        println(`popup's opener closed after it moves: ${popup.opener !== null && popup.opener.closed}`);
+        println(`the popup's own opener is closed after it moves: ${popup.length === 1}`);
+        popup.close();
+    });
+</script>

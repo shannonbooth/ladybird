@@ -426,9 +426,10 @@ void NavigableContainer::swap_content_navigable_to_remote(Badge<Page>, Replicate
     // The document the navigable displayed here was unloaded, after its descendants in the pages hosting them. The
     // WindowProxy scripts hold stays theirs.
     VERIFY(!local_navigable.active_document());
-    if (auto window_proxy = local_navigable.window_proxy_after_unload()) {
-        remote_navigable->set_window_proxy(*window_proxy);
-        window_proxy->set_window(remote_navigable->active_window());
+    if (auto browsing_context = local_navigable.browsing_context_after_unload(); browsing_context && browsing_context->window_proxy()) {
+        auto& window_proxy = *browsing_context->window_proxy();
+        remote_navigable->set_window_proxy(window_proxy);
+        window_proxy.set_window(remote_navigable->active_window());
     }
     m_content_navigable = remote_navigable;
     if (auto* layout_node = unsafe_layout_node())

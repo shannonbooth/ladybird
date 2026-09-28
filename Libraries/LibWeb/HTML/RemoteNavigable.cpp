@@ -43,6 +43,37 @@ GC::Ref<RemoteNavigable> RemoteNavigable::create(GC::Ref<Page> page, CrossProces
     return GC::Heap::the().allocate<RemoteNavigable>(page, id, parent, move(replicated_state));
 }
 
+// A browsing context another process discarded before this process held the navigable it was active in is stood for
+// by a navigable destroyed from the start.
+GC::Ref<RemoteNavigable> RemoteNavigable::create_for_a_discarded_browsing_context(GC::Ref<Page> page)
+{
+    auto origin = URL::Origin::create_opaque();
+    ReplicatedNavigableState replicated_state {
+        .target_name = {},
+        .active_document_url = URL::about_blank(),
+        .active_document_origin = origin,
+        .active_document_is_fully_active = false,
+        .top_level_creation_url = URL::about_blank(),
+        .top_level_origin = origin,
+        .has_cross_site_ancestor = false,
+        .browsing_context_group_id = {},
+        .opener_policy = {},
+        .active_browsing_context_is_auxiliary = false,
+        .active_browsing_context_has_opener = false,
+        .opener_navigable_id = {},
+        .active_document_is_completely_loaded = false,
+        .is_closing = true,
+        .container = {},
+        .delays_the_load_event_of_its_container = false,
+        .has_session_history_entry_and_ready_for_navigation = false,
+        .compositor_context_id = {},
+    };
+    auto navigable = create(page, page->client().allocate_cross_process_id(), nullptr, move(replicated_state));
+    navigable->set_has_been_destroyed();
+    navigable->remove_from_all_remote_navigables();
+    return navigable;
+}
+
 RemoteNavigable::RemoteNavigable(GC::Ref<Page> page, CrossProcessId id, GC::Ptr<Navigable> parent, ReplicatedNavigableState replicated_state)
     : Navigable(page)
     , m_replicated_state(move(replicated_state))

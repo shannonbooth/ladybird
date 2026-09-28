@@ -314,6 +314,14 @@ void BrowsingContext::set_opener_browsing_context(CrossProcessId navigable_id)
     m_opener_navigable_id = navigable_id;
 }
 
+// An opener browsing context discarded before this process held this browsing context is named by no navigable. Its
+// WindowProxy's window is closed.
+void BrowsingContext::set_discarded_opener_browsing_context()
+{
+    m_opener_browsing_context_window_proxy = RemoteNavigable::create_for_a_discarded_browsing_context(m_page)->active_window_proxy_in(m_window_proxy->realm());
+    m_opener_navigable_id.clear();
+}
+
 void BrowsingContext::visit_edges(Cell::Visitor& visitor)
 {
     Base::visit_edges(visitor);
