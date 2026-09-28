@@ -235,6 +235,7 @@ WebIDL::ExceptionOr<void> RemoteWindow::post_message(JS::Realm& realm, JS::Value
     PostedMessageDescriptor posted_message {
         .serialize_with_transfer_result = move(prepared.serialize_with_transfer_result),
         .target_origin = move(prepared.target_origin),
+        .source_environment_id = move(prepared.source_environment_id),
         .source_origin = move(prepared.source_origin),
         .source_navigable_id = source_navigable_id,
     };

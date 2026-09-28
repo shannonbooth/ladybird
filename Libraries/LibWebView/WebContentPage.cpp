@@ -637,6 +637,16 @@ void WebContentPage::did_request_navigation_of_navigable(Web::HTML::CrossProcess
 
 void WebContentPage::did_post_message_to_navigable(Web::HTML::CrossProcessId navigable_id, Web::HTML::PostedMessageDescriptor message)
 {
+    // The incumbent settings object is one the posting process hosts, and step 8.2 gives the message its origin, which
+    // is the one this process holds. A window whose document is gone posts with the origin its process gives, which
+    // must be that of a document the process hosts. The source is a navigable the posting process hosts.
+    if (auto source_environment = client().hosted_environment(message.source_environment_id); source_environment.has_value())
+        message.source_origin = source_environment->origin();
+    else if (!client().hosts_a_document_of_origin(message.source_origin))
+        return;
+    if (message.source_navigable_id.has_value() && !client().hosted_navigable(*message.source_navigable_id).has_value())
+        message.source_navigable_id = {};
+
     // The window post message steps queue their task on the target window in the process hosting its document.
     auto endpoint = endpoint_hosting_navigable_represented_by(navigable_id);
     if (!endpoint)

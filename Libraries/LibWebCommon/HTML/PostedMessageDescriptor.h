@@ -12,6 +12,7 @@
 #include <LibURL/Origin.h>
 #include <LibWebCommon/Export.h>
 #include <LibWebCommon/HTML/CrossProcessId.h>
+#include <LibWebCommon/HTML/Scripting/EnvironmentId.h>
 #include <LibWebCommon/HTML/SerializationRecords.h>
 
 namespace Web::HTML {
@@ -19,6 +20,7 @@ namespace Web::HTML {
 struct PostedMessageDescriptor {
     SerializedTransferRecord serialize_with_transfer_result;
     Variant<Utf16String, URL::Origin> target_origin;
+    EnvironmentId source_environment_id;
     URL::Origin source_origin;
     Optional<CrossProcessId> source_navigable_id;
 };

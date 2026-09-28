@@ -103,6 +103,8 @@ interface Internals {
 
     boolean dispatchUserActivatedEvent(EventTarget target, Event event);
     undefined spoofCurrentURL(USVString url);
+    // Gives the document the URL's origin in this process only, as a compromised process would claim it.
+    undefined spoofCurrentOriginInThisProcess(USVString url);
 
     // Loads a URL in the top-level traversable — deferred so it starts outside the calling task and can land between
     // session-history traversal-queue steps, as can one requested by ConnectionFromClient::load_url in the UI process.

@@ -225,6 +225,7 @@ public:
     struct PreparedPostMessage {
         SerializedTransferRecord serialize_with_transfer_result;
         Variant<Utf16String, URL::Origin> target_origin;
+        EnvironmentId source_environment_id;
         URL::Origin source_origin;
         GC::Ref<WindowProxy> source;
     };

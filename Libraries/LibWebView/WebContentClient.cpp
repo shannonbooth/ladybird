@@ -95,6 +95,19 @@ bool WebContentClient::hosts_an_environment_with_storage_key(Web::StorageAPI::St
     return hosts_one;
 }
 
+bool WebContentClient::hosts_a_document_of_origin(URL::Origin const& origin)
+{
+    bool hosts_one = false;
+    for_each_page([&](WebContentPage& page) {
+        page.for_each_hosted_document([&](CanonicalDocument& document) {
+            hosts_one = document.origin().is_same_origin(origin);
+            return hosts_one ? IterationDecision::Break : IterationDecision::Continue;
+        });
+        return hosts_one ? IterationDecision::Break : IterationDecision::Continue;
+    });
+    return hosts_one;
+}
+
 Optional<CanonicalEnvironmentSettingsObject const&> WebContentClient::hosted_environment(Web::HTML::EnvironmentId const& environment_id)
 {
     Optional<CanonicalEnvironmentSettingsObject const&> environment;

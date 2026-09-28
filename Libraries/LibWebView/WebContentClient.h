@@ -118,6 +118,7 @@ public:
     bool holds_part_of_a_tab_in_the_group_of(CanonicalTraversable const&);
     void release_unneeded_representing_pages();
     bool hosts_an_environment_with_storage_key(Web::StorageAPI::StorageKey const&);
+    bool hosts_a_document_of_origin(URL::Origin const&);
     Optional<CanonicalEnvironmentSettingsObject const&> hosted_environment(Web::HTML::EnvironmentId const& environment_id);
 
     WebContentPage* page(Web::PageId page_id) const;
