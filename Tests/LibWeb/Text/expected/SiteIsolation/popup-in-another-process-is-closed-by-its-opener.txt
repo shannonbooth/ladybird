@@ -1,0 +1,3 @@
+arrived
+popup.closed before close(): false
+popup.closed after close(): true
