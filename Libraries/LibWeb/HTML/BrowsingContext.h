@@ -74,6 +74,7 @@ public:
     bool has_opener_browsing_context() const { return m_opener_browsing_context_window_proxy || m_opener_navigable_id.has_value(); }
     GC::Ptr<WindowProxy> opener_browsing_context_window_proxy();
     Optional<CrossProcessId> opener_navigable_id() const;
+    GC::Ptr<Navigable> opener_navigable() const;
     void set_opener_browsing_context(GC::Ptr<BrowsingContext>);
     void set_opener_browsing_context(CrossProcessId navigable_id);
     void set_is_auxiliary(bool is_auxiliary) { m_is_auxiliary = is_auxiliary; }

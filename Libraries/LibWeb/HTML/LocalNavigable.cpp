@@ -1444,11 +1444,11 @@ bool LocalNavigable::active_browsing_context_is_auxiliary() const
     return m_active_document && m_active_document->browsing_context() && m_active_document->browsing_context()->is_auxiliary();
 }
 
-GC::Ptr<WindowProxy> LocalNavigable::active_browsing_context_opener_window_proxy() const
+GC::Ptr<Navigable> LocalNavigable::active_browsing_context_opener_navigable() const
 {
     if (!m_active_document || !m_active_document->browsing_context())
         return nullptr;
-    return m_active_document->browsing_context()->opener_browsing_context_window_proxy();
+    return m_active_document->browsing_context()->opener_navigable();
 }
 
 ReplicatedContainerState LocalNavigable::container_state() const
@@ -1970,10 +1970,8 @@ bool LocalNavigable::is_familiar_with(Navigable& other)
 
     // 3. If B is an auxiliary browsing context and A is familiar with B's opener browsing context, then return true.
     if (B.active_browsing_context_is_auxiliary()) {
-        if (auto opener = B.active_browsing_context_opener_window_proxy()) {
-            if (auto opener_navigable = opener->navigable(); opener_navigable && A.is_familiar_with(*opener_navigable))
-                return true;
-        }
+        if (auto opener_navigable = B.active_browsing_context_opener_navigable(); opener_navigable && A.is_familiar_with(*opener_navigable))
+            return true;
     }
 
     // 4. If there exists an ancestor browsing context of B whose active document has the same origin as the active document of A, then return true.

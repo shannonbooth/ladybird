@@ -291,6 +291,16 @@ Optional<CrossProcessId> BrowsingContext::opener_navigable_id() const
     return {};
 }
 
+// The navigable the opener browsing context is active in, found without making its WindowProxy.
+GC::Ptr<Navigable> BrowsingContext::opener_navigable() const
+{
+    if (m_opener_navigable_id.has_value())
+        return navigable_with_id_in_any_page(m_page, *m_opener_navigable_id);
+    if (m_opener_browsing_context_window_proxy)
+        return m_opener_browsing_context_window_proxy->navigable();
+    return nullptr;
+}
+
 void BrowsingContext::set_opener_browsing_context(GC::Ptr<BrowsingContext> opener)
 {
     m_opener_browsing_context_window_proxy = opener ? opener->window_proxy() : nullptr;
