@@ -35,6 +35,7 @@ struct OwedReply {
         BeforeunloadCheck,
         ChangingJob,
         UnloadPreparation,
+        HistoryEntryActivated,
         ContinuationApplied,
         NonchangingUpdate,
         DescendantUnload,
@@ -258,7 +259,8 @@ private:
     virtual void navigable_container_unfullscreen_complete(Web::HTML::CrossProcessId navigable_id) override;
     virtual void request_fully_exit_fullscreen() override;
     virtual void request_child_navigable_unload(Web::HTML::CrossProcessId navigable_id) override;
-    virtual void changing_navigable_continuation_applied(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::HostedNavigableState> activated_navigable_state, Optional<Web::HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state) override;
+    virtual void changing_navigable_history_entry_activated(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::HostedNavigableState activated_navigable_state) override;
+    virtual void changing_navigable_continuation_applied(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state) override;
     virtual void nonchanging_navigable_history_state_updated(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id) override;
     virtual void did_request_close_of_traversable(Web::HTML::CrossProcessId navigable_id, Web::HTML::CrossProcessId source_navigable_id) override;
     virtual void did_inspect_dom_tree(String dom_tree) override;

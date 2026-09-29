@@ -708,13 +708,18 @@ void ConnectionFromClient::apply_changing_navigable_continuation(Web::PageId pag
 {
     auto page = this->page(page_id);
     if (!page.has_value()) {
-        async_changing_navigable_continuation_applied(page_id, operation_id, navigable_id, {}, {});
+        async_changing_navigable_continuation_applied(page_id, operation_id, navigable_id, {});
         return;
     }
 
-    page->page().history_executor().apply_ui_changing_navigable_continuation(operation_id, navigable_id, { script_history_length, script_history_index }, move(entries_for_navigation_api), unload_displayed_document, GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, page_id, operation_id, navigable_id](Optional<Web::HTML::HostedNavigableState> activated_navigable_state, Optional<Web::HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state) {
-        async_changing_navigable_continuation_applied(page_id, operation_id, navigable_id, move(activated_navigable_state), move(previous_entry_persisted_state));
-    }));
+    auto& heap = Web::HTML::main_thread_event_loop().heap();
+    auto on_activated = GC::create_function(heap, [this, page_id, operation_id, navigable_id](Web::HTML::HostedNavigableState activated_navigable_state) {
+        async_changing_navigable_history_entry_activated(page_id, operation_id, navigable_id, move(activated_navigable_state));
+    });
+    auto on_complete = GC::create_function(heap, [this, page_id, operation_id, navigable_id](Optional<Web::HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state) {
+        async_changing_navigable_continuation_applied(page_id, operation_id, navigable_id, move(previous_entry_persisted_state));
+    });
+    page->page().history_executor().apply_ui_changing_navigable_continuation(operation_id, navigable_id, { script_history_length, script_history_index }, move(entries_for_navigation_api), unload_displayed_document, on_activated, on_complete);
 }
 
 void ConnectionFromClient::run_descendant_unload_task(Web::PageId page_id, Web::HTML::CrossProcessId unload_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::ChildNavigableDestruction child_navigable_destruction, Web::HTML::StopHostingAfterUnload stop_hosting_after_unload)

@@ -178,19 +178,12 @@ void CanonicalTraversable::rehost(CanonicalNavigable& navigable, NonnullRefPtr<W
 }
 
 // INTEROP: Reloading rebuilds child frames from the new document instead of restoring their previous entries.
-void CanonicalTraversable::adopt_nested_history_for_created_child(CanonicalNavigable const& parent, CanonicalDocument const& container_document, Web::HTML::CrossProcessId child_navigable_id)
+void CanonicalTraversable::adopt_nested_history_for_created_child(CanonicalNavigable const& parent, Web::HTML::CrossProcessId child_navigable_id)
 {
+    auto const& container_document = parent.active_document();
     if (container_document.is_completely_loaded())
         return;
-    RefPtr<CanonicalDocumentState> document_state;
-    parent.for_each_populated_document([&](PopulatedDocument const& populated_document) {
-        if (populated_document.document == &container_document)
-            document_state = populated_document.document_state;
-    });
-    if (!document_state && &parent.active_document() == &container_document)
-        document_state = parent.active_session_history_entry()->document_state;
-    if (!document_state)
-        return;
+    auto& document_state = parent.active_session_history_entry()->document_state;
 
     size_t position = 0;
     for (auto const& child : parent.children()) {
@@ -1043,20 +1036,6 @@ CanonicalTraversable::~CanonicalTraversable()
     });
 }
 
-// A page holds the document of a navigable that it hosts, or the document of the navigable's next activation that it
-// populates while another page hosts the active document.
-CanonicalDocument& CanonicalTraversable::document_active_in(CanonicalNavigable& navigable, WebContentPage const& page) const
-{
-    if (navigable.active_document().host() == &page)
-        return navigable.active_document();
-    RefPtr<CanonicalDocument> document;
-    navigable.for_each_populated_document([&](PopulatedDocument const& populated_document) {
-        if (populated_document.document->host() == &page)
-            document = populated_document.document;
-    });
-    return document ? *document : navigable.active_document();
-}
-
 Optional<size_t> CanonicalTraversable::effective_current_session_history_step_index() const
 {
     for (auto const& operation : m_history_operations) {
@@ -1301,6 +1280,9 @@ void CanonicalTraversable::did_not_receive_reply(OwedReply const& owed)
     }
     case OwedReply::Kind::DescendantUnload:
         complete_descendant_unload_task(owed.id, owed.navigable_id);
+        return;
+    // The continuation's reply, owed with it, ends the job.
+    case OwedReply::Kind::HistoryEntryActivated:
         return;
     case OwedReply::Kind::NonchangingUpdate: {
         auto* operation = find_history_operation(owed.id);
@@ -1552,6 +1534,7 @@ void CanonicalTraversable::send_changing_navigable_continuation_task(HistoryOper
     }
 
     auto continuation = *pending_job.value()->continuation;
+    endpoint->owe_reply({ OwedReply::Kind::HistoryEntryActivated, operation.operation_id, navigable_id });
     endpoint->owe_reply({ OwedReply::Kind::ContinuationApplied, operation.operation_id, navigable_id });
     endpoint->async_apply_changing_navigable_continuation(
         operation.operation_id, navigable_id,
@@ -1618,8 +1601,7 @@ void CanonicalTraversable::unload_displayed_document_for_cross_document_navigati
     });
 }
 
-// The process running a changing navigable's job activated targetEntry's document and applied the continuation's
-// remaining steps.
+// The process running a changing navigable's job activated targetEntry's document.
 void CanonicalTraversable::did_activate_history_entry(HistoryOperation& operation, Web::HTML::CrossProcessId navigable_id, NonnullRefPtr<WebContentPage> source_page, CanonicalSessionHistoryEntry& target_entry, CanonicalNavigable::DidPopulateDocument did_populate_document, Web::HTML::HostedNavigableState activated_navigable_state)
 {
     auto navigable = find(navigable_id);
@@ -2948,17 +2930,33 @@ void CanonicalTraversable::did_receive_changing_navigable_history_job_ready(WebC
     }
 }
 
-void CanonicalTraversable::did_receive_changing_navigable_continuation_applied(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::HostedNavigableState> activated_navigable_state, Optional<Web::HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state)
+// The process running a changing navigable's job activated targetEntry, and goes on to update the document.
+void CanonicalTraversable::did_receive_changing_navigable_history_entry_activated(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::HostedNavigableState activated_navigable_state)
+{
+    if (!source_page.take_owed_reply({ OwedReply::Kind::HistoryEntryActivated, operation_id, navigable_id }))
+        return;
+    auto* operation = find_history_operation(operation_id);
+    if (!operation)
+        return;
+    auto pending_job = operation->pending_changing_jobs.get(navigable_id);
+    if (!pending_job.has_value())
+        return;
+    did_activate_history_entry(*operation, navigable_id, source_page, *pending_job.value()->job.target_entry, pending_job.value()->did_populate_document, move(activated_navigable_state));
+}
+
+void CanonicalTraversable::did_receive_changing_navigable_continuation_applied(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state)
 {
     if (!source_page.take_owed_reply({ OwedReply::Kind::ContinuationApplied, operation_id, navigable_id }))
         return;
+    // An update-only job, or one its process gave up on, activates no entry.
+    source_page.take_owed_reply({ OwedReply::Kind::HistoryEntryActivated, operation_id, navigable_id });
     if (auto* operation = find_history_operation(operation_id)) {
         auto pending_job = operation->pending_changing_jobs.take(navigable_id);
         if (!pending_job.has_value())
             return;
-        if (activated_navigable_state.has_value())
-            did_activate_history_entry(*operation, navigable_id, source_page, *pending_job.value()->job.target_entry, pending_job.value()->did_populate_document, activated_navigable_state.release_value());
-        else if (auto navigable = find(navigable_id); navigable.has_value() && pending_job.value()->document)
+        // A job that activated no entry leaves the document it populated. An activated entry's document is no longer
+        // populated.
+        if (auto navigable = find(navigable_id); navigable.has_value() && pending_job.value()->document)
             navigable->abandon_populated_document(*pending_job.value()->document);
         if (previous_entry_persisted_state.has_value()) {
             auto navigable = find(navigable_id);

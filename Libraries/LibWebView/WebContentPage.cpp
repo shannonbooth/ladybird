@@ -704,8 +704,8 @@ void WebContentPage::did_create_child_frame(Web::HTML::CrossProcessId parent_fra
     auto parent = traversable.find(parent_frame_id);
     auto& parent_navigable = parent.has_value() ? *parent : static_cast<CanonicalNavigable&>(traversable);
 
-    // The page creates frames in the parent's document that is fully active in it.
-    auto& container_document = traversable.document_active_in(parent_navigable, *this);
+    // The page creates frames in the parent's active document, whose activation it reports first.
+    auto& container_document = parent_navigable.active_document();
 
     if (auto existing_navigable = traversable.find(frame_id); existing_navigable.has_value()) {
         if (existing_navigable->parent() != &parent_navigable) {
@@ -715,7 +715,7 @@ void WebContentPage::did_create_child_frame(Web::HTML::CrossProcessId parent_fra
         traversable.rehost(*existing_navigable, *this, container_document, move(hosted_state));
         return;
     }
-    traversable.adopt_nested_history_for_created_child(parent_navigable, container_document, frame_id);
+    traversable.adopt_nested_history_for_created_child(parent_navigable, frame_id);
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#create-a-new-child-navigable
     // NB: The process creating the navigable reports the entry that initializing it, in step 8, created.
@@ -1457,9 +1457,14 @@ void WebContentPage::request_child_navigable_unload(Web::HTML::CrossProcessId na
     traversable().did_receive_child_navigable_unload_request(*this, navigable_id);
 }
 
-void WebContentPage::changing_navigable_continuation_applied(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::HostedNavigableState> activated_navigable_state, Optional<Web::HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state)
+void WebContentPage::changing_navigable_history_entry_activated(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::HostedNavigableState activated_navigable_state)
 {
-    traversable().did_receive_changing_navigable_continuation_applied(*this, operation_id, navigable_id, move(activated_navigable_state), move(previous_entry_persisted_state));
+    traversable().did_receive_changing_navigable_history_entry_activated(*this, operation_id, navigable_id, move(activated_navigable_state));
+}
+
+void WebContentPage::changing_navigable_continuation_applied(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state)
+{
+    traversable().did_receive_changing_navigable_continuation_applied(*this, operation_id, navigable_id, move(previous_entry_persisted_state));
 }
 
 void WebContentPage::nonchanging_navigable_history_state_updated(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
