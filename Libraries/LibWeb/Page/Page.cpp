@@ -821,8 +821,6 @@ GC::Ref<HTML::LocalNavigable> Page::begin_hosting(HTML::CrossProcessId id, HTML:
         browsing_context.set_is_auxiliary(replicated_state.active_browsing_context_is_auxiliary);
         if (replicated_state.opener_navigable_id.has_value())
             browsing_context.set_opener_browsing_context(*replicated_state.opener_navigable_id);
-        else if (replicated_state.active_browsing_context_has_opener)
-            browsing_context.set_discarded_opener_browsing_context();
         VERIFY(m_top_level_traversable.ptr() == navigable.ptr());
         m_top_level_traversable = stand_in;
         update_needs_beforeunload_check();
@@ -895,15 +893,10 @@ void Page::stop_hosting(HTML::LocalNavigable& local_navigable, HTML::ReplicatedN
         local_navigable.inform_the_navigation_api_about_child_navigable_destruction();
         document->unload();
     }
-    // The WindowProxy scripts hold stays theirs, and so does the one they hold for the browsing context's opener, which
-    // the replicated state cannot name once that opener is discarded.
-    if (auto browsing_context = local_navigable.browsing_context_after_unload()) {
-        if (auto window_proxy = browsing_context->window_proxy()) {
-            remote_navigable->set_window_proxy(*window_proxy);
-            window_proxy->set_window(remote_navigable->active_window());
-        }
-        if (browsing_context->has_opener_browsing_context())
-            remote_navigable->set_active_browsing_context_opener_window_proxy(browsing_context->opener_browsing_context_window_proxy());
+    // The WindowProxy scripts hold stays theirs.
+    if (auto window_proxy = local_navigable.window_proxy_after_unload()) {
+        remote_navigable->set_window_proxy(*window_proxy);
+        window_proxy->set_window(remote_navigable->active_window());
     }
     if (parent) {
         as<HTML::RemoteNavigable>(*parent).replace_child(local_navigable, remote_navigable);

@@ -1,4 +1,0 @@
-popup's opener closed before it moves: true
-popup moved: true
-popup's opener closed after it moves: true
-the popup's own opener is closed after it moves: true

@@ -51,7 +51,7 @@ public:
     bool is_auxiliary() const { return m_is_auxiliary; }
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#opener-browsing-context
-    RefPtr<CanonicalBrowsingContext> opener_browsing_context() const { return m_opener_browsing_context; }
+    RefPtr<CanonicalBrowsingContext> opener_browsing_context() const;
     void set_opener_browsing_context(RefPtr<CanonicalBrowsingContext>);
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#virtual-browsing-context-group-id
@@ -79,8 +79,6 @@ private:
 
     bool m_is_auxiliary { false };
 
-    // NB: A browsing context keeps its opener browsing context once that is discarded: the opener's window is closed
-    //     then, and still the opener.
     RefPtr<CanonicalBrowsingContext> m_opener_browsing_context;
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#opener-origin-at-creation

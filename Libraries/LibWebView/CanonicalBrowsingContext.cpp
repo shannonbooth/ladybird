@@ -203,6 +203,15 @@ CanonicalBrowsingContext& CanonicalBrowsingContext::top_level_browsing_context()
     return *this;
 }
 
+// AD-HOC: A discarded opener browsing context, which is active in no navigable, is null, as
+//         html/browsers/windows/auxiliary-browsing-contexts/opener-closed.html expects. The spec keeps it.
+RefPtr<CanonicalBrowsingContext> CanonicalBrowsingContext::opener_browsing_context() const
+{
+    if (!m_opener_browsing_context || !CanonicalTraversable::navigable_with_active_browsing_context(*m_opener_browsing_context))
+        return nullptr;
+    return m_opener_browsing_context;
+}
+
 void CanonicalBrowsingContext::set_opener_browsing_context(RefPtr<CanonicalBrowsingContext> opener)
 {
     m_opener_browsing_context = opener;

@@ -1,25 +1,24 @@
 <!DOCTYPE html>
 <script src="../include.js"></script>
 <script>
-    // A browsing context keeps its opener browsing context once that is discarded. A popup whose opener iframe was
-    // removed moves to another process, and its opener is still a closed window there.
+    // A popup whose opener iframe was removed has no opener, in its process and in the process it moves to.
     promiseTest(async () => {
         const httpServer = httpTestServer();
         const runId = crypto.randomUUID();
 
-        // The document the popup moves to tells whether its opener is a closed window through its number of child
-        // navigables, which this document reads as the popup's length.
-        const crossSiteUrl = new URL(await httpServer.createEcho("GET", `/closed-opener-cross-site-${runId}`, {
+        // The document the popup moves to tells whether it has an opener through its number of child navigables, which
+        // this document reads as the popup's length.
+        const crossSiteUrl = new URL(await httpServer.createEcho("GET", `/discarded-opener-cross-site-${runId}`, {
             status: 200,
             headers: { "Content-Type": "text/html" },
             body: `<!DOCTYPE html><script>
-                const count = opener !== null && opener.closed ? 1 : 2;
+                const count = opener === null ? 1 : 2;
                 for (let i = 0; i < count; ++i)
                     document.documentElement.append(document.createElement("iframe"));
             <\/script>`,
         }));
-        crossSiteUrl.hostname = uniqueLocalhostHostname("closed-opener-cross-site");
-        const popupUrl = await httpServer.createEcho("GET", `/closed-opener-first-${runId}`, {
+        crossSiteUrl.hostname = uniqueLocalhostHostname("discarded-opener-cross-site");
+        const popupUrl = await httpServer.createEcho("GET", `/discarded-opener-first-${runId}`, {
             status: 200,
             headers: { "Content-Type": "text/html" },
             body: `<!DOCTYPE html><script>
@@ -44,13 +43,14 @@
         const arrived = new Promise(resolve => addEventListener("message", event => resolve(event), { once: true }));
         openerIframe.contentWindow.postMessage(popupUrl, "*");
         const popup = (await arrived).source;
+        println(`popup has an opener before its opener is removed: ${popup.opener !== null}`);
         openerIframe.remove();
-        println(`popup's opener closed before it moves: ${await until(() => popup.opener && popup.opener.closed)}`);
+        println(`popup's opener is null before it moves: ${await until(() => popup.opener === null)}`);
 
         popup.postMessage("move", "*");
         println(`popup moved: ${await until(() => popup.length > 0)}`);
-        println(`popup's opener closed after it moves: ${popup.opener !== null && popup.opener.closed}`);
-        println(`the popup's own opener is closed after it moves: ${popup.length === 1}`);
+        println(`popup's opener is null after it moves: ${popup.opener === null}`);
+        println(`the popup's own opener is null after it moves: ${popup.length === 1}`);
         popup.close();
     });
 </script>

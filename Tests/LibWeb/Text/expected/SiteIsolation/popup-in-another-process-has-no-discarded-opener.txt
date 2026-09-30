@@ -1,0 +1,5 @@
+popup has an opener before its opener is removed: true
+popup's opener is null before it moves: true
+popup moved: true
+popup's opener is null after it moves: true
+the popup's own opener is null after it moves: true

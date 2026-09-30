@@ -277,7 +277,21 @@ GC::Ptr<WindowProxy> BrowsingContext::opener_browsing_context_window_proxy()
         m_opener_browsing_context_window_proxy = window_proxy;
         m_opener_navigable_id.clear();
     }
+    if (!has_opener_browsing_context())
+        return nullptr;
     return m_opener_browsing_context_window_proxy;
+}
+
+// AD-HOC: A discarded opener browsing context is null, as html/browsers/windows/auxiliary-browsing-contexts/opener-closed.html
+//         expects. The spec keeps it, with its window closed.
+bool BrowsingContext::has_opener_browsing_context() const
+{
+    if (m_opener_navigable_id.has_value())
+        return true;
+    if (!m_opener_browsing_context_window_proxy)
+        return false;
+    auto navigable = m_opener_browsing_context_window_proxy->navigable();
+    return navigable && !navigable->has_been_destroyed();
 }
 
 Optional<CrossProcessId> BrowsingContext::opener_navigable_id() const
@@ -312,14 +326,6 @@ void BrowsingContext::set_opener_browsing_context(CrossProcessId navigable_id)
 {
     m_opener_browsing_context_window_proxy = nullptr;
     m_opener_navigable_id = navigable_id;
-}
-
-// An opener browsing context discarded before this process held this browsing context is named by no navigable. Its
-// WindowProxy's window is closed.
-void BrowsingContext::set_discarded_opener_browsing_context()
-{
-    m_opener_browsing_context_window_proxy = RemoteNavigable::create_for_a_discarded_browsing_context(m_page)->active_window_proxy_in(m_window_proxy->realm());
-    m_opener_navigable_id.clear();
 }
 
 void BrowsingContext::visit_edges(Cell::Visitor& visitor)

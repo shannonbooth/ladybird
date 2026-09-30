@@ -21,7 +21,6 @@ class WEB_API RemoteNavigable final : public Navigable {
 
 public:
     static GC::Ref<RemoteNavigable> create(GC::Ref<Page>, CrossProcessId, GC::Ptr<Navigable> parent, ReplicatedNavigableState);
-    static GC::Ref<RemoteNavigable> create_for_a_discarded_browsing_context(GC::Ref<Page>);
     virtual ~RemoteNavigable() override;
 
     ReplicatedNavigableState const& replicated_state() const { return m_replicated_state; }
@@ -74,7 +73,6 @@ public:
     virtual OpenerPolicy const& active_document_opener_policy() const override { return m_replicated_state.opener_policy; }
     virtual bool active_browsing_context_is_auxiliary() const override { return m_replicated_state.active_browsing_context_is_auxiliary; }
     GC::Ptr<WindowProxy> active_browsing_context_opener_window_proxy() const;
-    void set_active_browsing_context_opener_window_proxy(GC::Ptr<WindowProxy> window_proxy) { m_active_browsing_context_opener_window_proxy = window_proxy; }
     virtual GC::Ptr<Navigable> active_browsing_context_opener_navigable() const override;
     virtual ReplicatedContainerState container_state() const override;
 
@@ -98,8 +96,6 @@ private:
     // https://html.spec.whatwg.org/multipage/document-sequences.html#nav-wp
     GC::Ptr<WindowProxy> m_window_proxy;
     GC::Ptr<RemoteWindow> m_active_window;
-
-    mutable GC::Ptr<WindowProxy> m_active_browsing_context_opener_window_proxy;
 
     GC::Ptr<LocalNavigable> m_provisional_navigable;
 

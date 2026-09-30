@@ -742,7 +742,7 @@ void LocalNavigable::visit_edges(Cell::Visitor& visitor)
 {
     Base::visit_edges(visitor);
     visitor.visit(m_active_document);
-    visitor.visit(m_browsing_context_after_unload);
+    visitor.visit(m_window_proxy_after_unload);
     visitor.visit(m_provisional_for);
     visitor.visit(m_input_method_composition_node);
     m_event_handler.visit_edges(visitor);
@@ -1214,9 +1214,9 @@ void LocalNavigable::run_ui_descendant_unload_task(ChildNavigableDestruction chi
     queue_a_task(Task::Source::NavigationAndTraversal, nullptr, nullptr,
         GC::create_function(heap(), [navigable = GC::Ref { *this }, stop_hosting_after_unload, on_complete] {
             if (auto active_document = navigable->active_document()) {
-                // The browsing context outlives the document, since scripts hold its WindowProxy for the navigable, and
-                // the WindowProxy of its opener.
-                navigable->m_browsing_context_after_unload = active_document->browsing_context();
+                // The browsing context's WindowProxy outlives the document, since scripts hold it for the navigable.
+                if (auto browsing_context = active_document->browsing_context())
+                    navigable->m_window_proxy_after_unload = browsing_context->window_proxy();
                 auto replicated_state = navigable->replicated_state();
                 active_document->unload();
 
@@ -1429,7 +1429,6 @@ ReplicatedNavigableState LocalNavigable::replicated_state() const
         .browsing_context_group_id = browsing_context_group_id(),
         .opener_policy = m_active_document->opener_policy(),
         .active_browsing_context_is_auxiliary = active_browsing_context_is_auxiliary(),
-        .active_browsing_context_has_opener = browsing_context.has_opener_browsing_context(),
         .opener_navigable_id = browsing_context.opener_navigable_id(),
         .active_document_is_completely_loaded = m_active_document->is_completely_loaded(),
         .is_closing = m_closing,

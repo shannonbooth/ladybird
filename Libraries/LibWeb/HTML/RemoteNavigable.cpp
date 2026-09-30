@@ -43,37 +43,6 @@ GC::Ref<RemoteNavigable> RemoteNavigable::create(GC::Ref<Page> page, CrossProces
     return GC::Heap::the().allocate<RemoteNavigable>(page, id, parent, move(replicated_state));
 }
 
-// A browsing context another process discarded before this process held the navigable it was active in is stood for
-// by a navigable destroyed from the start.
-GC::Ref<RemoteNavigable> RemoteNavigable::create_for_a_discarded_browsing_context(GC::Ref<Page> page)
-{
-    auto origin = URL::Origin::create_opaque();
-    ReplicatedNavigableState replicated_state {
-        .target_name = {},
-        .active_document_url = URL::about_blank(),
-        .active_document_origin = origin,
-        .active_document_is_fully_active = false,
-        .top_level_creation_url = URL::about_blank(),
-        .top_level_origin = origin,
-        .has_cross_site_ancestor = false,
-        .browsing_context_group_id = {},
-        .opener_policy = {},
-        .active_browsing_context_is_auxiliary = false,
-        .active_browsing_context_has_opener = false,
-        .opener_navigable_id = {},
-        .active_document_is_completely_loaded = false,
-        .is_closing = true,
-        .container = {},
-        .delays_the_load_event_of_its_container = false,
-        .has_session_history_entry_and_ready_for_navigation = false,
-        .compositor_context_id = {},
-    };
-    auto navigable = create(page, page->client().allocate_cross_process_id(), nullptr, move(replicated_state));
-    navigable->set_has_been_destroyed();
-    navigable->remove_from_all_remote_navigables();
-    return navigable;
-}
-
 RemoteNavigable::RemoteNavigable(GC::Ref<Page> page, CrossProcessId id, GC::Ptr<Navigable> parent, ReplicatedNavigableState replicated_state)
     : Navigable(page)
     , m_replicated_state(move(replicated_state))
@@ -102,7 +71,6 @@ void RemoteNavigable::visit_edges(Cell::Visitor& visitor)
     visitor.visit(m_children);
     visitor.visit(m_window_proxy);
     visitor.visit(m_active_window);
-    visitor.visit(m_active_browsing_context_opener_window_proxy);
     visitor.visit(m_provisional_navigable);
 }
 
@@ -146,14 +114,9 @@ GC::Ref<WindowProxy> RemoteNavigable::active_window_proxy_in(JS::Realm& realm)
 
 GC::Ptr<WindowProxy> RemoteNavigable::active_browsing_context_opener_window_proxy() const
 {
-    if (!m_replicated_state.active_browsing_context_has_opener)
-        return nullptr;
     if (auto opener_navigable = active_browsing_context_opener_navigable())
-        m_active_browsing_context_opener_window_proxy = opener_navigable->active_window_proxy();
-
-    // NB: A browsing context keeps its opener browsing context once that is discarded, and its window is closed. The
-    //     opener's navigable is not replicated then, and the WindowProxy found for it before stands for it.
-    return m_active_browsing_context_opener_window_proxy;
+        return opener_navigable->active_window_proxy();
+    return nullptr;
 }
 
 // NB: The active browsing context is in the process hosting this navigable, which replicates its opener browsing context
@@ -161,7 +124,7 @@ GC::Ptr<WindowProxy> RemoteNavigable::active_browsing_context_opener_window_prox
 //     a page of its own.
 GC::Ptr<Navigable> RemoteNavigable::active_browsing_context_opener_navigable() const
 {
-    if (!m_replicated_state.active_browsing_context_has_opener || !m_replicated_state.opener_navigable_id.has_value())
+    if (!m_replicated_state.opener_navigable_id.has_value())
         return nullptr;
     return navigable_with_id_in_any_page(page(), *m_replicated_state.opener_navigable_id);
 }
@@ -198,8 +161,6 @@ void RemoteNavigable::set_replicated_state(ReplicatedNavigableState state)
 {
     auto was_delaying_the_load_event_of_its_container = m_replicated_state.delays_the_load_event_of_its_container;
     auto previous_compositor_context_id = m_replicated_state.compositor_context_id;
-    if (!state.active_browsing_context_has_opener || (state.opener_navigable_id.has_value() && state.opener_navigable_id != m_replicated_state.opener_navigable_id))
-        m_active_browsing_context_opener_window_proxy = nullptr;
     m_replicated_state = move(state);
 
     // The documents of the navigable's children hosted here composite into the context its document is painted
