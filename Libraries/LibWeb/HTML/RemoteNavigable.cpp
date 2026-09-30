@@ -130,20 +130,11 @@ void RemoteNavigable::replace_child(Navigable& child, GC::Ref<Navigable> replace
 GC::Ptr<WindowProxy> RemoteNavigable::active_window_proxy()
 {
     // The WindowProxy of a navigable hosted by another process answers every access on the cross-origin path. It lives
-    // in the realm of a document this page hosts, or in the realm of the script asking for it when the page only
-    // represents another tab and hosts no document.
-    if (m_window_proxy)
-        return m_window_proxy;
-    auto local_roots = page().local_roots();
-    if (local_roots.is_empty())
-        return active_window_proxy_in(*Bindings::main_thread_vm().current_realm());
-    auto window = local_roots.first()->active_window();
-    VERIFY(window);
-    return active_window_proxy_in(relevant_realm(*window));
+    // in the realm of the script asking for it.
+    return active_window_proxy_in(*Bindings::main_thread_vm().current_realm());
 }
 
-// Outside script, a page hosting no document has no realm of its own for the WindowProxy: the caller gives the realm of
-// the window it hands the WindowProxy to.
+// Outside script, the caller gives the realm of the window it hands the WindowProxy to.
 GC::Ref<WindowProxy> RemoteNavigable::active_window_proxy_in(JS::Realm& realm)
 {
     if (!m_window_proxy) {
