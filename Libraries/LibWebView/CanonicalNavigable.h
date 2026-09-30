@@ -226,7 +226,7 @@ public:
     bool navigation_owner_matches(WebContentPage const&) const;
     bool navigation_transaction_matches(Utf16String const&, WebContentPage const&) const;
     bool cancel_navigation_transaction_for_client(WebContentClient&);
-    void did_finish_navigation_transaction(Optional<Utf16String> const&, Web::HTML::HistoryStepResult);
+    void did_finish_navigation_transaction(Optional<Utf16String> const&, WebContentPage const&, Web::HTML::HistoryStepResult);
     bool has_uncommitted_navigation() const { return m_ongoing_navigation.has_value(); }
     bool matches_ongoing_navigation(Optional<Utf16String> const& navigation_id) const;
 

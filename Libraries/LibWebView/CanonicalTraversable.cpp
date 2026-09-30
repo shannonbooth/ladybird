@@ -998,7 +998,6 @@ struct CanonicalTraversable::HistoryOperation {
     Vector<NonnullRefPtr<WebContentPage>> completion_endpoints;
     u64 sequence_number;
     bool was_initiated_by_browser { false };
-    bool owns_navigation_transaction { false };
     bool check_for_cancelation { false };
     Function<void()> on_browser_traversal_ready;
     Optional<Web::HTML::CrossProcessId> beforeunload_check_id;
@@ -2502,8 +2501,7 @@ void CanonicalTraversable::start_history_operation(HistoryOperation& operation, 
     }
 
     if (operation.parameters.has<Web::FinalizeCrossDocumentNavigationHistoryOperationParameters>()) {
-        operation.owns_navigation_transaction = navigation_transaction_matches(operation, *operation.initiating_page);
-        if (!operation.owns_navigation_transaction) {
+        if (!navigation_transaction_matches(operation, *operation.initiating_page)) {
             finish_history_operation(operation.operation_id, Web::HTML::HistoryStepResult::Applied, {});
             return;
         }
@@ -2760,10 +2758,9 @@ void CanonicalTraversable::finish_history_operation(Web::HTML::CrossProcessId op
     // stays with the operation: its completion can be what finished it.
     for (auto const& [navigable_id, pending_job] : taken_operation.pending_changing_jobs)
         pending_job->abandon(find(navigable_id));
-    if (taken_operation.owns_navigation_transaction) {
-        auto const& parameters = taken_operation.parameters.get<Web::FinalizeCrossDocumentNavigationHistoryOperationParameters>();
-        if (auto navigable = find(parameters.navigable_id); navigable.has_value())
-            navigable->did_finish_navigation_transaction(parameters.navigation_id, result);
+    if (auto const* parameters = taken_operation.parameters.get_pointer<Web::FinalizeCrossDocumentNavigationHistoryOperationParameters>(); parameters && taken_operation.initiating_page) {
+        if (auto navigable = find(parameters->navigable_id); navigable.has_value())
+            navigable->did_finish_navigation_transaction(parameters->navigation_id, *taken_operation.initiating_page, result);
     }
 
     if (committed_step.has_value()) {

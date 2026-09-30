@@ -1246,13 +1246,14 @@ bool CanonicalNavigable::cancel_navigation_transaction_for_client(WebContentClie
     return true;
 }
 
-void CanonicalNavigable::did_finish_navigation_transaction(Optional<Utf16String> const& navigation_id, Web::HTML::HistoryStepResult result)
+void CanonicalNavigable::did_finish_navigation_transaction(Optional<Utf16String> const& navigation_id, WebContentPage const& page, Web::HTML::HistoryStepResult result)
 {
     if (!navigation_id.has_value())
         return;
 
-    // A transaction still live at its operation's completion never activated its document.
-    if (m_ongoing_navigation.has_value() && m_ongoing_navigation->navigation_id == navigation_id)
+    // A transaction still live at its operation's completion never activated its document. Only the page that
+    // populates the navigation's document finalizes it.
+    if (navigation_transaction_matches(*navigation_id, page))
         clear_ongoing_navigation();
 
     if (result != Web::HTML::HistoryStepResult::Applied
