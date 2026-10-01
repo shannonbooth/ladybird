@@ -379,8 +379,9 @@ NonnullRefPtr<CanonicalDocument> CanonicalNavigable::create_and_initialize_a_doc
 
     // 6. If browsingContext's active document's is initial about:blank is true, and browsingContext's active document's
     //    origin is same origin-domain with navigationParams's origin, then set window to browsingContext's active window.
-    if (browsing_context->active_document()->is_initial_about_blank()
-        && browsing_context->active_document()->origin().is_same_origin_domain(navigation_params.origin)) {
+    auto reuses_active_window = browsing_context->active_document()->is_initial_about_blank()
+        && browsing_context->active_document()->origin().is_same_origin_domain(navigation_params.origin);
+    if (reuses_active_window) {
         window = browsing_context->active_window();
     }
     // 7. Otherwise:
@@ -413,10 +414,19 @@ NonnullRefPtr<CanonicalDocument> CanonicalNavigable::create_and_initialize_a_doc
     //    origin: navigationParams's origin
     //    browsing context: browsingContext
     //    URL: creationURL
-    // NB: The process hosting window's agent creates the document, with its other fields, and runs the remaining steps.
+    // NB: The process hosting window's agent creates the document, with its other fields.
+    auto document = CanonicalDocument::create(move(creation_url), navigation_params.origin, browsing_context, *window, CanonicalDocument::IsInitialAboutBlank::No);
+
+    // 10. Set window's associated Document to document.
+    // NB: This process creates document before the process hosting it does, and the navigation can be abandoned until
+    //     a history job claims document to activate it. A reused window takes document then.
+    if (!reuses_active_window)
+        window->set_associated_document({}, document);
+
+    // NB: The process hosting window's agent runs the remaining steps.
 
     // 22. Return document.
-    return CanonicalDocument::create(move(creation_url), navigation_params.origin, browsing_context, window.release_nonnull(), CanonicalDocument::IsInitialAboutBlank::No);
+    return document;
 }
 
 CanonicalNavigable::~CanonicalNavigable()
@@ -792,16 +802,21 @@ void CanonicalNavigable::did_create_populated_document_with_an_origin_of_its_own
     replace(m_document_populated_by_history_job);
 }
 
-// The history job finalizing the ongoing navigation is going to activate the document populated for it, even if a
-// newer navigation starts before it does.
-void CanonicalNavigable::claim_document_populated_for_ongoing_navigation(CanonicalDocument const& document)
+// The history job that populated a document, or that finalizes the navigation it was populated for, is going to
+// activate it, even if a newer navigation starts before it does. The process hosting the document has created it.
+void CanonicalNavigable::claim_populated_document(CanonicalDocument& document)
 {
-    if (!m_ongoing_navigation.has_value() || !m_ongoing_navigation->populated_document.has_value())
+    if (m_ongoing_navigation.has_value() && m_ongoing_navigation->populated_document.has_value() && m_ongoing_navigation->populated_document->document == &document) {
+        abandon_populated_document(m_document_populated_by_history_job);
+        m_document_populated_by_history_job = m_ongoing_navigation->populated_document.release_value();
+    }
+    if (!m_document_populated_by_history_job.has_value() || m_document_populated_by_history_job->document != &document)
         return;
-    if (m_ongoing_navigation->populated_document->document != &document)
-        return;
-    abandon_populated_document(m_document_populated_by_history_job);
-    m_document_populated_by_history_job = m_ongoing_navigation->populated_document.release_value();
+
+    // https://html.spec.whatwg.org/multipage/document-lifecycle.html#initialise-the-document-object
+    // 10. Set window's associated Document to document.
+    // NB: This hands a window reused from an initial about:blank over to document.
+    document.relevant_global_object().set_associated_document({}, document);
 }
 
 void CanonicalNavigable::abandon_populated_document(CanonicalDocument const& document)

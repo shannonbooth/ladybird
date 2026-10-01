@@ -2937,7 +2937,7 @@ void CanonicalTraversable::did_receive_changing_navigable_history_job_ready(WebC
         if (disposition == Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready) {
             pending_job.value()->unload_displayed_document = unload_displayed_document;
             if (auto navigable = find(navigable_id); navigable.has_value() && pending_job.value()->document)
-                navigable->claim_document_populated_for_ongoing_navigation(*pending_job.value()->document);
+                navigable->claim_populated_document(*pending_job.value()->document);
             auto on_complete = move(pending_job.value()->on_complete);
             on_complete(disposition);
             return;

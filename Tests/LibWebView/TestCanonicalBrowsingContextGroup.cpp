@@ -260,7 +260,7 @@ TEST_CASE(document_claimed_by_a_history_job_outlives_a_newer_navigation)
     auto claimed_document = make_document();
     traversable.ensure_ongoing_navigation().navigation_id = claimed_navigation_id;
     traversable.populate_document_for_ongoing_navigation(claimed_document_state, claimed_document);
-    traversable.claim_document_populated_for_ongoing_navigation(*claimed_document);
+    traversable.claim_populated_document(*claimed_document);
 
     // A newer navigation replaces the ongoing one before the claimed document is activated, and populates its own.
     traversable.clear_ongoing_navigation();
@@ -283,6 +283,46 @@ TEST_CASE(document_claimed_by_a_history_job_outlives_a_newer_navigation)
     EXPECT_EQ(&traversable.active_document(), claimed_document.ptr());
     EXPECT_EQ(traversable.pending_document().ptr(), newer_document.ptr());
     EXPECT(traversable.ongoing_navigation().has_value());
+}
+
+TEST_CASE(reused_window_takes_its_document_once_a_history_job_claims_it)
+{
+    WebView::CanonicalTraversable traversable;
+    auto initial_document = WebView::CanonicalBrowsingContext::create_a_new_top_level_browsing_context_and_document().document;
+    traversable.set_active_session_history_entry(WebView::CanonicalSessionHistoryEntry::create(WebView::CanonicalDocumentState::create({}, initial_document)));
+    auto& window = initial_document->relevant_global_object();
+
+    // A navigation response with the initial about:blank's origin reuses its window.
+    auto origin = initial_document->origin();
+    auto url = URL::about_blank();
+    auto create_document = [&] {
+        return traversable.create_and_initialize_a_document({
+            .is_inline_content = false,
+            .coop_enforcement_result = { .url = url, .origin = origin, .opener_policy = {} },
+            .response_url = url,
+            .request_current_url = {},
+            .origin = origin,
+            .opener_policy = {},
+            .environment_id = {},
+        });
+    };
+
+    // A navigation abandoned before a history job claims its document leaves the window with the initial about:blank.
+    {
+        traversable.ensure_ongoing_navigation().navigation_id = Utf16String::from_utf8("abandoned"sv);
+        auto abandoned_document = create_document();
+        EXPECT_EQ(&abandoned_document->relevant_global_object(), &window);
+        traversable.populate_document_for_ongoing_navigation(WebView::CanonicalDocumentState::create({}), abandoned_document);
+        traversable.clear_ongoing_navigation();
+    }
+    EXPECT_EQ(&window.associated_document(), initial_document.ptr());
+
+    traversable.ensure_ongoing_navigation().navigation_id = Utf16String::from_utf8("claimed"sv);
+    auto claimed_document = create_document();
+    traversable.populate_document_for_ongoing_navigation(WebView::CanonicalDocumentState::create({}), claimed_document);
+    EXPECT_EQ(&window.associated_document(), initial_document.ptr());
+    traversable.claim_populated_document(*claimed_document);
+    EXPECT_EQ(&window.associated_document(), claimed_document.ptr());
 }
 
 TEST_CASE(populated_document_replaces_tracked_load_when_document_state_is_reused)

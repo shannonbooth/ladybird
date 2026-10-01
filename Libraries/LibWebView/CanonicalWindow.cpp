@@ -56,7 +56,7 @@ CanonicalDocument const& CanonicalWindow::associated_document() const
     return *m_associated_document;
 }
 
-void CanonicalWindow::set_associated_document(Badge<CanonicalDocument>, CanonicalDocument& document)
+void CanonicalWindow::set_associated_document(Badge<CanonicalBrowsingContext, CanonicalNavigable>, CanonicalDocument& document)
 {
     m_associated_document = document;
 }

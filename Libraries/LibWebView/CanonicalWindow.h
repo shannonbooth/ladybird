@@ -35,7 +35,7 @@ public:
     void set_up_a_window_environment_settings_object(Optional<Web::HTML::EnvironmentId> id);
 
     CanonicalDocument const& associated_document() const;
-    void set_associated_document(Badge<CanonicalDocument>, CanonicalDocument&);
+    void set_associated_document(Badge<CanonicalBrowsingContext, CanonicalNavigable>, CanonicalDocument&);
 
 private:
     explicit CanonicalWindow(NonnullRefPtr<CanonicalSimilarOriginWindowAgent>);

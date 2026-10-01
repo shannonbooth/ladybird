@@ -87,6 +87,9 @@ CanonicalBrowsingContext::BrowsingContextAndDocument CanonicalBrowsingContext::c
     //     is initial about:blank: true
     auto document = CanonicalDocument::create(URL::about_blank(), origin, browsing_context, window, CanonicalDocument::IsInitialAboutBlank::Yes);
 
+    // NB: A Window's associated Document is set when the Window object is created.
+    window->set_associated_document({}, document);
+
     // 23. Make active document.
     document->make_active();
 
