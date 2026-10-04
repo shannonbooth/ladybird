@@ -393,7 +393,7 @@ void WebContentPage::maybe_record_history_visit_for_current_load(URL::URL const&
     m_history_recorded_url_for_current_load = normalized_url.release_value();
 }
 
-void WebContentPage::begin_top_level_load(Optional<Utf16String> navigation_id, URL::URL const& url)
+void WebContentPage::begin_top_level_load(URL::URL const& url)
 {
     if (auto process = WebView::Application::the().find_process(client().pid()); process.has_value())
         process->set_title(OptionalNone {});
@@ -403,7 +403,7 @@ void WebContentPage::begin_top_level_load(Optional<Utf16String> navigation_id, U
     auto& view = this->view();
     view.m_history_visit_transition_for_current_load = view.m_history_visit_transition_for_next_load;
     view.m_history_visit_transition_for_next_load = HistoryVisitTransition::Link;
-    view.did_start_navigation(navigation_id);
+    view.did_start_navigation();
 
     view.set_url({}, url);
     view.set_title({}, Utf16String::from_utf8(url.serialize()));
@@ -1726,7 +1726,7 @@ void WebContentPage::did_request_navigation_start(Web::HTML::CrossProcessId navi
         });
         if (target_navigable->is_top_level_traversable()) {
             if (displays_tab())
-                begin_top_level_load(move(navigation_id), url);
+                begin_top_level_load(url);
         }
         return;
     }
@@ -1788,7 +1788,7 @@ void WebContentPage::did_complete_navigation_unload_check(Web::HTML::CrossProces
     // load here.
     if (navigable->is_top_level_traversable()) {
         if (displays_tab())
-            begin_top_level_load(move(navigation_id), ongoing_navigation->loader()->request().history_entry.url);
+            begin_top_level_load(ongoing_navigation->loader()->request().history_entry.url);
     }
 }
 
@@ -1811,16 +1811,8 @@ void WebContentPage::did_finish_navigation_params_creation(Web::HTML::CrossProce
         return;
     }
 
-    auto end_recorded_load_for_canceled_navigation = [&] {
-        if (!navigable->is_top_level_traversable())
-            return;
-        if (displays_tab())
-            view().did_cancel_loading(navigation_id);
-    };
-
     if (!result.has_value()) {
-        end_recorded_load_for_canceled_navigation();
-        navigable->clear_ongoing_navigation();
+        navigable->did_cancel_navigation(navigation_id);
         return;
     }
 
@@ -1837,24 +1829,10 @@ void WebContentPage::did_finish_navigation_params_creation(Web::HTML::CrossProce
         // The page may have closed while the body was fetched; its navigation then has nothing left to finish.
         if (!page->is_open())
             return;
-        auto* open_page = page.ptr();
-        auto cancel_navigation = [&](CanonicalNavigable& navigable) {
-            if (navigable.is_top_level_traversable() && open_page->displays_tab())
-                open_page->view().did_cancel_loading(navigation_id);
-            navigable.clear_ongoing_navigation();
-        };
-        if (!succeeded) {
-            if (auto navigable = open_page->population_worker_navigable(navigable_id); navigable.has_value())
-                cancel_navigation(*navigable);
+        if (succeeded && page->continue_navigation_population_in_selected_process(navigable_id, navigation_id))
             return;
-        }
-        if (open_page->continue_navigation_population_in_selected_process(navigable_id, navigation_id))
-            return;
-        if (auto navigable = open_page->population_worker_navigable(navigable_id); navigable.has_value()) {
-            auto const* ongoing_navigation = navigable->ongoing_navigation();
-            if (ongoing_navigation && ongoing_navigation->navigation_id == navigation_id)
-                cancel_navigation(*navigable);
-        }
+        if (auto navigable = page->population_worker_navigable(navigable_id); navigable.has_value())
+            navigable->did_cancel_navigation(navigation_id);
     });
 }
 
@@ -1884,11 +1862,7 @@ void WebContentPage::did_fail_navigation_population(Web::HTML::CrossProcessId na
         populating->loader->reclaim_response_body_after_failed_handoff();
 
     m_history_recorded_url_for_current_load.clear();
-    if (navigable->is_top_level_traversable()) {
-        view().did_cancel_loading(navigation_id);
-        return;
-    }
-    navigable->clear_ongoing_navigation();
+    navigable->did_cancel_navigation(move(navigation_id));
 }
 
 void WebContentPage::did_change_hosted_navigable_state(Web::HTML::CrossProcessId navigable_id, Web::HTML::HostedNavigableState state)
@@ -1991,12 +1965,8 @@ Messages::WebContentClient::DidStartDownloadResponse WebContentPage::did_start_d
             && !ongoing_navigation->state.has<CanonicalNavigation::AcquiringResponseBody>()
             && ongoing_navigation->loader()
             && ongoing_navigation->loader()->response_body_matches(request_server_client_id, request_server_request_id)) {
-            if (navigable->is_top_level_traversable()) {
-                if (displays_tab())
-                    view().did_cancel_loading(ongoing_navigation->navigation_id);
-            }
             matches_in_flight_navigation = true;
-            navigable->clear_ongoing_navigation();
+            navigable->did_cancel_navigation(*ongoing_navigation->navigation_id);
         }
     }
     if (!matches_in_flight_navigation)
@@ -2054,10 +2024,9 @@ void WebContentPage::did_finish_loading(Web::HTML::CrossProcessId navigable_id, 
     if (navigable->active_document().host() != this)
         return;
 
-    if (!navigable->is_top_level_traversable()) {
-        navigable->clear_active_document_load();
+    navigable->clear_active_document_load();
+    if (!navigable->is_top_level_traversable())
         return;
-    }
 
     if (displays_tab()) {
         auto const& committed_url = view().url();
