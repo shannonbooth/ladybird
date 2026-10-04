@@ -224,7 +224,6 @@ public:
     void clear_ongoing_navigation_state();
     void set_navigation_host(WebContentPage&);
     bool cancel_navigation_for_client(WebContentClient&);
-    CanonicalNavigation* navigation_being_finalized() { return m_navigation_being_finalized.has_value() ? &*m_navigation_being_finalized : nullptr; }
     CanonicalNavigation const* navigation_being_finalized() const { return m_navigation_being_finalized.has_value() ? &*m_navigation_being_finalized : nullptr; }
     void did_finish_finalizing_navigation(Utf16String const& navigation_id, Web::HTML::HistoryStepResult);
     bool has_uncommitted_navigation() const { return ongoing_navigation(); }
