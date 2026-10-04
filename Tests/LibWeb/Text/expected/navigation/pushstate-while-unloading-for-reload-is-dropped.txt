@@ -1,0 +1,2 @@
+history.length grew by: 1
+hash after going back: ""

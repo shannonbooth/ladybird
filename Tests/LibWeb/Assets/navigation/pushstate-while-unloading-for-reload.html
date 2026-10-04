@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<script>
+    if (window.name !== "reloaded") {
+        window.name = "reloaded";
+        addEventListener("pagehide", () => history.pushState(null, "", "#pushed-while-unloading"));
+        location.reload();
+    } else {
+        // Going back is a traversal, which runs after anything the reload left on the session history traversal queue.
+        addEventListener("popstate", () => parent.postMessage({ length: history.length, hash: location.hash }, "*"), { once: true });
+        history.pushState(null, "", "#sync");
+        history.back();
+    }
+</script>

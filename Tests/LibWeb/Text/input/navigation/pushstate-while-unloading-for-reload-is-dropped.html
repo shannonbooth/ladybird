@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    // A reload keeps the document state of the entry it reloads. A pushState() from the reloaded document's pagehide
+    // has to be dropped, not applied to the document the reload activates.
+    asyncTest(done => {
+        const lengthBefore = history.length;
+        addEventListener("message", ({ data }) => {
+            println(`history.length grew by: ${data.length - lengthBefore}`);
+            println(`hash after going back: "${data.hash}"`);
+            done();
+        });
+        const iframe = document.createElement("iframe");
+        iframe.src = "../../../Assets/navigation/pushstate-while-unloading-for-reload.html";
+        document.body.appendChild(iframe);
+    });
+</script>

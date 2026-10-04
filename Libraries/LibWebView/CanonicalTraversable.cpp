@@ -2316,12 +2316,12 @@ void CanonicalTraversable::finalize_a_same_document_navigation(HistoryOperation&
     // calls; Firefox and Chromium preserve both entries.
     //
     // AD-HOC: The document that made the navigation can still have been replaced by the time this queue position
-    //         is reached: a cross-document navigation that committed ahead of it unloads that document, and that
-    //         document can push entries until it is destroyed (e.g. from pagehide, or from a timer that fires
+    //         is reached: a cross-document navigation or a reload that committed ahead of it unloads that document,
+    //         and that document can push entries until it is destroyed (e.g. from pagehide, or from a timer that fires
     //         during the commit). Such a stale finalization must not be applied. Its target entry belongs to a
     //         document that is no longer active, so applying it would traverse across documents and populate the
     //         unloaded document again, replacing the one that just committed.
-    if (!target_entry || target_entry->document_state != target_navigable->active_session_history_entry()->document_state) {
+    if (!target_entry || target_navigable->active_document().id() != request.document_id) {
         finish_history_operation(operation.operation_id, Web::HTML::HistoryStepResult::NoMatchingEntry, {});
         return;
     }

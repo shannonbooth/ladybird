@@ -439,6 +439,7 @@ TEST_CASE(queued_same_document_entries_are_addressed_by_identity)
     auto enqueue_push = [&](Web::HTML::CrossProcessId operation_id, Web::HTML::SessionHistoryEntryDescriptor entry) {
         Web::FinalizeSameDocumentNavigationHistoryOperationParameters parameters {
             .navigable_id = traversable.id(),
+            .document_id = traversable.active_document().id(),
             .target_entry = same_document_entry(move(entry)),
             .entry_to_replace = {},
             .previous_entry_persisted_state = {},
@@ -1044,6 +1045,7 @@ TEST_CASE(same_document_push_clears_forward_history_at_queue_position)
     target_entry.navigation_api_id = Utf16String::from_utf8("pushed-id"sv);
     auto request = Web::FinalizeSameDocumentNavigationHistoryOperationParameters {
         .navigable_id = traversable.id(),
+        .document_id = traversable.active_document().id(),
         .target_entry = same_document_entry(move(target_entry)),
         .entry_to_replace = {},
         .previous_entry_persisted_state = {},
@@ -1084,6 +1086,7 @@ TEST_CASE(failed_nested_same_document_push_preserves_forward_history)
     target_entry.navigation_api_id = Utf16String::from_utf8("pushed-id"sv);
     auto request = Web::FinalizeSameDocumentNavigationHistoryOperationParameters {
         .navigable_id = child.id(),
+        .document_id = {},
         .target_entry = same_document_entry(move(target_entry)),
         .entry_to_replace = {},
         .previous_entry_persisted_state = {},
@@ -1152,6 +1155,7 @@ TEST_CASE(same_document_replacement_replaces_the_active_entry)
     target_entry.navigation_api_id = Utf16String::from_utf8("replacement-id"sv);
     auto request = Web::FinalizeSameDocumentNavigationHistoryOperationParameters {
         .navigable_id = traversable.id(),
+        .document_id = traversable.active_document().id(),
         .target_entry = same_document_entry(move(target_entry)),
         .entry_to_replace = Web::HTML::SessionHistoryEntryIdentity {
             .document_state_id = test_document_state_id(10),
