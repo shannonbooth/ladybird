@@ -108,8 +108,8 @@ public:
     template<typename Callback>
     void for_each_populated_document(Callback callback) const
     {
-        if (m_ongoing_navigation.has_value() && m_ongoing_navigation->populated_document.has_value())
-            callback(*m_ongoing_navigation->populated_document);
+        if (auto const* navigation = ongoing_navigation(); navigation && navigation->populated_document.has_value())
+            callback(*navigation->populated_document);
         if (m_document_populated_by_history_job.has_value())
             callback(*m_document_populated_by_history_job);
     }
@@ -213,9 +213,11 @@ public:
     // navigation admitted before the operation's sequence number.
     void did_commit_navigation(CanonicalSessionHistoryEntry&, Web::HTML::HostedNavigableState, u64 operation_sequence_number, Optional<Utf16String const&> navigation_id, DidPopulateDocument, RefPtr<WebContentPage> host);
 
-    Optional<CanonicalNavigation>& ongoing_navigation() { return m_ongoing_navigation; }
-    Optional<CanonicalNavigation> const& ongoing_navigation() const { return m_ongoing_navigation; }
-    bool ongoing_navigation_is_traversal() const { return m_ongoing_navigation_traversal_operation_id.has_value(); }
+    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#ongoing-navigation
+    // The navigation, if the navigable's ongoing navigation is a navigation ID rather than "traversal" or null.
+    CanonicalNavigation* ongoing_navigation() { return m_ongoing_navigation.get_pointer<CanonicalNavigation>(); }
+    CanonicalNavigation const* ongoing_navigation() const { return m_ongoing_navigation.get_pointer<CanonicalNavigation>(); }
+    bool ongoing_navigation_is_traversal() const { return m_ongoing_navigation.has<Traversal>(); }
 
     // Held so that revoking a blob URL cannot take the entry away from a navigation on its way to this navigable, or
     // from the document it loaded. Session history holds none, so a revoked blob URL cannot be traversed back to.
@@ -235,7 +237,7 @@ public:
     bool navigation_transaction_matches(Utf16String const&, WebContentPage const&) const;
     bool cancel_navigation_transaction_for_client(WebContentClient&);
     void did_finish_navigation_transaction(Optional<Utf16String> const&, Web::HTML::HistoryStepResult);
-    bool has_uncommitted_navigation() const { return m_ongoing_navigation.has_value(); }
+    bool has_uncommitted_navigation() const { return ongoing_navigation(); }
     bool matches_ongoing_navigation(Optional<Utf16String> const& navigation_id) const;
 
     ActiveDocumentLoad const& active_document_load() const { return m_active_document_load; }
@@ -257,7 +259,10 @@ private:
     Optional<PopulatedDocument> m_document_populated_by_history_job;
     RefPtr<CanonicalSessionHistoryEntry> m_current_session_history_entry;
     RefPtr<CanonicalSessionHistoryEntry> m_active_session_history_entry;
-    Optional<CanonicalNavigation> m_ongoing_navigation;
+    struct Traversal {
+        Web::HTML::CrossProcessId operation_id;
+    };
+    Variant<Empty, Traversal, CanonicalNavigation> m_ongoing_navigation;
     Optional<Web::HTML::PreparedNavigationDescriptor> m_navigation_waiting_for_traversal;
     struct RoutedNavigation {
         Utf16String navigation_id;
@@ -269,7 +274,6 @@ private:
     BlobURLHandle m_pending_navigation_blob_url;
     BlobURLHandle m_navigation_blob_url;
     BlobURLHandle m_document_blob_url;
-    Optional<Web::HTML::CrossProcessId> m_ongoing_navigation_traversal_operation_id;
     ActiveDocumentLoad m_active_document_load;
     Optional<Web::DevicePixelRect> m_viewport_rect;
     Web::DevicePixelRect m_viewport_intersection;
