@@ -533,6 +533,11 @@ void ApplyHistoryStep::set_ongoing_navigation_to_traversal(CanonicalNavigable& n
     //         started before this step ran in its own process. Its navigate() saw no traversal, and the admission
     //         recheck must not misattribute that ordering and drop the navigation the step has to yield to.
     if (traversal_crosses_documents) {
+        // AD-HOC: A navigation admitted after the operation goes on, as the newest. See
+        //         https://github.com/whatwg/html/issues/12581.
+        if (navigable.ongoing_navigation().has_value() && navigable.ongoing_navigation()->sequence_number > m_operation_sequence_number)
+            return;
+        navigable.clear_ongoing_navigation();
         navigable.set_ongoing_navigation_to_traversal(m_operation_id);
         m_navigables_with_ongoing_history_traversal.set(navigable.id());
     }

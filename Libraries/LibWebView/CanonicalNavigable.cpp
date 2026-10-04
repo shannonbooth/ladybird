@@ -815,16 +815,20 @@ void CanonicalNavigable::did_create_populated_document_with_an_origin_of_its_own
     populated_document->document = move(document);
 }
 
-// The history job finalizing the ongoing navigation is going to activate the document populated for it, even if a
-// newer navigation starts before it does.
-void CanonicalNavigable::claim_document_populated_for_ongoing_navigation(CanonicalDocument const& document)
+// The history operation finalizing the ongoing navigation takes it: the one it names, or for a javascript: URL, which
+// names none, the one admitted before it. The document populated for the navigation waits on the navigable as a
+// history job's until the operation activates it.
+Optional<CanonicalNavigation> CanonicalNavigable::take_navigation_to_finalize(Optional<Utf16String> const& navigation_id, u64 operation_sequence_number)
 {
-    if (!m_ongoing_navigation.has_value() || !m_ongoing_navigation->populated_document.has_value())
-        return;
-    if (m_ongoing_navigation->populated_document->document != &document)
-        return;
-    abandon_populated_document(m_document_populated_by_history_job);
-    m_document_populated_by_history_job = m_ongoing_navigation->populated_document.release_value();
+    if (!m_ongoing_navigation.has_value())
+        return {};
+    if (navigation_id.has_value() ? m_ongoing_navigation->navigation_id != navigation_id : m_ongoing_navigation->sequence_number > operation_sequence_number)
+        return {};
+    if (m_ongoing_navigation->populated_document.has_value()) {
+        abandon_populated_document(m_document_populated_by_history_job);
+        m_document_populated_by_history_job = m_ongoing_navigation->populated_document.release_value();
+    }
+    return m_ongoing_navigation.release_value();
 }
 
 void CanonicalNavigable::abandon_populated_document(CanonicalDocument const& document)
@@ -1174,9 +1178,12 @@ void CanonicalNavigable::did_commit_navigation(CanonicalSessionHistoryEntry& ent
     // The activated document's load becomes the navigable's tracked load. Reloads can reuse the document state,
     // while a same-document activation leaves the active document's load in place.
     if (active_document_changed || did_populate_document == DidPopulateDocument::Yes) {
-        m_active_document_load = ActiveDocumentLoad {
-            .navigation_id = m_ongoing_navigation.has_value() ? m_ongoing_navigation->navigation_id : Optional<Utf16String> {},
-        };
+        Optional<Utf16String> load_navigation_id;
+        if (navigation_id.has_value())
+            load_navigation_id = *navigation_id;
+        else if (m_ongoing_navigation.has_value())
+            load_navigation_id = m_ongoing_navigation->navigation_id;
+        m_active_document_load = ActiveDocumentLoad { .navigation_id = move(load_navigation_id) };
     }
 
     clear_ongoing_navigation();
