@@ -952,6 +952,7 @@ void LocalNavigable::continue_navigation_at_population(NavigationPopulationReque
     output->classic_history_api_state = move(result.classic_history_api_state);
     output->resource_cleared = result.resource_cleared;
     output->inline_content_origin = move(result.inline_content_origin);
+    output->document_id = result.document_id;
 
     // https://html.spec.whatwg.org/multipage/browsing-the-web.html#attempt-to-populate-the-history-entry's-document
     // 5. Queue a global task on the navigation and traversal task source, given navigable's active window, to run
@@ -1882,7 +1883,7 @@ LocalNavigable::ChosenNavigable LocalNavigable::choose_a_navigable(Utf16View nam
             window_type = new_window_type;
 
             auto create_new_traversable = [&](GC::Ptr<BrowsingContext> opener) -> GC::Ref<LocalTraversableNavigable> {
-                auto traversable = LocalTraversableNavigable::create_a_new_top_level_traversable(*new_web_view.page, opener, new_web_view.initial_history_entry.release_value());
+                auto traversable = LocalTraversableNavigable::create_a_new_top_level_traversable(*new_web_view.page, opener, new_web_view.initial_history_entry.release_value(), new_web_view.initial_document_id.release_value());
                 traversable->active_document()->relevant_settings_object().id = new_web_view.initial_environment_id.release_value();
                 traversable->active_browsing_context()->set_browsing_context_group_id(new_web_view.browsing_context_group_id);
                 new_web_view.page->set_top_level_traversable(traversable);
@@ -3112,6 +3113,12 @@ static void report_a_document_with_an_origin_of_its_own(LocalNavigable& navigabl
     navigable.page().client().page_did_create_populated_document_with_an_origin_of_its_own(navigable.id(), origin, output.document->relevant_settings_object().id);
 }
 
+static void give_the_document_its_id(LocalNavigable& navigable, PopulateSessionHistoryEntryDocumentOutput const& output)
+{
+    if (output.document)
+        output.document->set_id(output.document_id.has_value() ? *output.document_id : navigable.page().client().allocate_cross_process_id());
+}
+
 void LocalNavigable::queue_navigation_and_traversal_task_for_session_history_entry_population(
     URL::URL url,
     bool source_allows_downloading,
@@ -3254,6 +3261,7 @@ void LocalNavigable::queue_navigation_and_traversal_task_for_session_history_ent
                             stop_or_resume_response_body_delivery(navigation_params);
                         }
                         output->navigation_params = navigation_params;
+                        give_the_document_its_id(*nav_params->navigable, output);
                         report_a_document_with_an_origin_of_its_own(*nav_params->navigable, output);
                         if (completion_steps)
                             completion_steps->function()(output);
@@ -3274,6 +3282,7 @@ void LocalNavigable::queue_navigation_and_traversal_task_for_session_history_ent
         }
 
         output->navigation_params = navigation_params;
+        give_the_document_its_id(*this, output);
         report_a_document_with_an_origin_of_its_own(*this, output);
         if (completion_steps)
             completion_steps->function()(output);
@@ -4161,7 +4170,10 @@ GC::Ptr<DOM::Document> LocalNavigable::evaluate_javascript_url(URL::URL const& u
 
     // 17. Return the result of loading an HTML document given navigationParams.
     // NB: The response body is a known byte sequence, so we can pass it directly for sniffing.
-    return load_document(navigation_params, result_utf8.bytes());
+    auto document = load_document(navigation_params, result_utf8.bytes());
+    if (document)
+        document->set_id(page().client().allocate_cross_process_id());
+    return document;
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate-to-a-javascript:-url
@@ -4648,6 +4660,7 @@ void finalize_a_cross_document_navigation(GC::Ref<LocalNavigable> navigable, His
             .history_handling = history_handling,
             .user_involvement = user_involvement,
             .environment_id = pending_document ? Optional<Web::HTML::EnvironmentId> { pending_document->relevant_settings_object().id } : Optional<Web::HTML::EnvironmentId> {},
+            .document_id = pending_document ? Optional<CrossProcessId> { pending_document->id() } : Optional<CrossProcessId> {},
         },
         {
             .pending_document = pending_document,

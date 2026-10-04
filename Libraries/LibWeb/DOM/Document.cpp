@@ -1768,6 +1768,12 @@ void Document::respond_to_base_url_changes(URL::URL const& old_document_url, URL
     // FIXME: 4. Consider speculative loads given document.
 }
 
+void Document::set_id(HTML::CrossProcessId id)
+{
+    VERIFY(!m_id.has_value());
+    m_id = id;
+}
+
 // https://html.spec.whatwg.org/multipage/urls-and-fetching.html#set-the-url
 void Document::set_url(URL::URL const& url)
 {

@@ -219,9 +219,9 @@ void ConnectionFromClient::set_render_side_font_service_transport(IPC::Transport
     m_font_provider->set_callbacks_for_other_threads(move(callbacks));
 }
 
-void ConnectionFromClient::initialize(Web::PageId initial_page_id, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables, Web::HTML::CrossProcessId root_navigable_id, Web::HTML::CrossProcessIdAllocator cross_process_id_allocator, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::VisibilityState system_visibility_state)
+void ConnectionFromClient::initialize(Web::PageId initial_page_id, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables, Web::HTML::CrossProcessId root_navigable_id, Web::HTML::CrossProcessIdAllocator cross_process_id_allocator, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::CrossProcessId initial_document_id, Web::HTML::VisibilityState system_visibility_state)
 {
-    m_page_host->initialize(initial_page_id, move(remote_navigables), root_navigable_id, cross_process_id_allocator, move(initial_history_entry), system_visibility_state);
+    m_page_host->initialize(initial_page_id, move(remote_navigables), root_navigable_id, cross_process_id_allocator, move(initial_history_entry), initial_document_id, system_visibility_state);
 }
 
 void ConnectionFromClient::create_representing_page(Web::PageId page_id, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables)

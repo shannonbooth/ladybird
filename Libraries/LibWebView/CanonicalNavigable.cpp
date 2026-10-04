@@ -340,7 +340,7 @@ CanonicalBrowsingContext::BrowsingContextAndDocument CanonicalNavigable::obtain_
 
     // 10. Let newBrowsingContext be the first return value of creating a new top-level browsing context and document.
     // NB: The navigation response's document replaces that document before any process creates it.
-    auto new_browsing_context = CanonicalBrowsingContext::create_a_new_top_level_browsing_context_and_document();
+    auto new_browsing_context = CanonicalBrowsingContext::create_a_new_top_level_browsing_context_and_document({});
 
     // 11. Let navigationCOOP be navigationParams's cross-origin opener policy.
     auto const& navigation_coop = navigation_params.opener_policy;
@@ -415,7 +415,7 @@ NonnullRefPtr<CanonicalDocument> CanonicalNavigable::create_and_initialize_a_doc
     //    opener policy: navigationParams's cross-origin opener policy
     //    URL: creationURL
     // NB: The process hosting window's agent creates the document, with its other fields, and runs the remaining steps.
-    auto document = CanonicalDocument::create(move(creation_url), navigation_params.origin, browsing_context, window.release_nonnull(), CanonicalDocument::IsInitialAboutBlank::No);
+    auto document = CanonicalDocument::create(navigation_params.document_id, move(creation_url), navigation_params.origin, browsing_context, window.release_nonnull(), CanonicalDocument::IsInitialAboutBlank::No);
     document->set_opener_policy(navigation_params.opener_policy);
 
     // 22. Return document.
@@ -779,6 +779,7 @@ void CanonicalNavigable::did_create_populated_document_with_an_origin_of_its_own
             .origin = origin,
             .opener_policy = {},
             .environment_id = environment_id,
+            .document_id = populated_document->document->id(),
         };
         auto document = create_and_initialize_a_document(response_document);
         document->set_host(populated_document->document->host());
