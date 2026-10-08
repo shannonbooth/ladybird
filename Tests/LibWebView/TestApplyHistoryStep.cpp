@@ -11,6 +11,7 @@
 #include <LibWebView/ApplyHistoryStep.h>
 #include <LibWebView/CanonicalBrowsingContext.h>
 #include <LibWebView/CanonicalNavigable.h>
+#include <LibWebView/CanonicalNavigation.h>
 #include <LibWebView/CanonicalTraversable.h>
 #include <LibWebView/WebContentClient.h>
 
@@ -28,6 +29,37 @@ static URL::URL parse_url(StringView url)
 }
 
 // Each test entry has a document state of its own, unless a test gives it one.
+// A navigation whose steps are checking if unloading is canceled, in no page.
+static WebView::CanonicalNavigation navigation_for_testing(Utf16String navigation_id, u64 sequence_number = 0, RefPtr<WebView::CanonicalSessionHistoryEntry> history_entry = {})
+{
+    return {
+        .url = URL::about_blank(),
+        .navigation_id = navigation_id,
+        .sequence_number = sequence_number,
+        .state = WebView::CanonicalNavigation::CheckingIfUnloadingIsCanceled { Web::HTML::NavigationStartRequest {
+            .navigable_id = {},
+            .url = URL::about_blank(),
+            .document_resource = {},
+            .request_referrer = Web::Fetch::Infrastructure::RequestReferrer::Client,
+            .request_referrer_policy = Web::ReferrerPolicy::ReferrerPolicy::EmptyString,
+            .initiator_origin = URL::Origin::create_opaque(),
+            .initiator_base_url = {},
+            .navigable_target_name = {},
+            .source_snapshot_params = Web::HTML::create_navigation_source_snapshot_without_a_source_document(),
+            .target_snapshot_params = {},
+            .csp_navigation_type = Web::ContentSecurityPolicy::Directives::NavigationType::Other,
+            .history_handling = Web::Bindings::NavigationHistoryBehavior::Auto,
+            .user_involvement = Web::HTML::UserNavigationInvolvement::None,
+            .navigation_id = navigation_id,
+            .classic_history_api_state = {},
+            .navigation_api_state = {},
+            .navigation_api_key = {},
+            .navigation_api_id = {},
+        } },
+        .history_entry = move(history_entry),
+    };
+}
+
 static u64 s_next_test_document_state_local_id = 1000000;
 
 static Web::HTML::SessionHistoryEntryDescriptor entry(i32 step, StringView url)
@@ -326,10 +358,10 @@ TEST_CASE(same_document_traversal_names_the_older_navigation_it_cancels)
 {
     TestTraversable test;
     test.with_two_same_document_top_level_entries();
-    test.traversable.set_ongoing_navigation({ .navigation_id = "older"_utf16, .sequence_number = 1 });
+    test.traversable.set_ongoing_navigation(navigation_for_testing("older"_utf16, 1));
 
     test.traverse_to_step(0);
-    EXPECT(!test.traversable.ongoing_navigation());
+    EXPECT(!test.traversable.ongoing_navigation_id().has_value());
     EXPECT(!test.traversable.ongoing_navigation_is_traversal());
     EXPECT_EQ(test.runner.changing_jobs.size(), 1uz);
     auto const& job = test.runner.changing_jobs[0].job;
@@ -341,10 +373,10 @@ TEST_CASE(same_document_traversal_yields_to_a_newer_admitted_navigation)
 {
     TestTraversable test;
     test.with_two_same_document_top_level_entries();
-    test.traversable.set_ongoing_navigation({ .navigation_id = "newer"_utf16, .sequence_number = 3 });
+    test.traversable.set_ongoing_navigation(navigation_for_testing("newer"_utf16, 3));
 
     test.traverse_to_step(0);
-    EXPECT(test.traversable.ongoing_navigation());
+    EXPECT(test.traversable.ongoing_navigation_id().has_value());
     EXPECT_EQ(test.runner.changing_jobs.size(), 1uz);
     auto const& job = test.runner.changing_jobs[0].job;
     EXPECT(job.traversal_yields_to == Web::HTML::TraversalYieldsTo::AdmittedNavigation);
@@ -355,10 +387,10 @@ TEST_CASE(cross_document_traversal_cancels_a_newer_navigation)
 {
     TestTraversable test;
     test.with_two_top_level_entries();
-    test.traversable.set_ongoing_navigation({ .navigation_id = "newer"_utf16, .sequence_number = 3 });
+    test.traversable.set_ongoing_navigation(navigation_for_testing("newer"_utf16, 3));
 
     test.traverse_to_step(0);
-    EXPECT(!test.traversable.ongoing_navigation());
+    EXPECT(!test.traversable.ongoing_navigation_id().has_value());
     EXPECT(test.traversable.ongoing_navigation_is_traversal());
     EXPECT_EQ(test.runner.changing_jobs.size(), 1uz);
     auto const& job = test.runner.changing_jobs[0].job;
