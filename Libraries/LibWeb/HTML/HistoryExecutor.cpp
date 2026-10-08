@@ -259,7 +259,7 @@ static void queue_apply_history_step_task(GC::Ref<LocalNavigable> navigable, GC:
     queue_a_task(Task::Source::NavigationAndTraversal, nullptr, task_document, steps);
 }
 
-bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavigableHistoryStepJob job, GC::Ptr<SourceSnapshotParams> source_snapshot_params, GC::Ptr<DOM::Document> pending_document, GC::Ref<OnLocalChangingNavigableHistoryStepJobComplete> on_complete)
+bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavigableHistoryStepJob job, GC::Ptr<SourceSnapshotParams> source_snapshot_params, GC::Ptr<DOM::Document> pending_document, Optional<Utf16String> const& finalized_navigation_id, GC::Ref<OnLocalChangingNavigableHistoryStepJobComplete> on_complete)
 {
     auto navigable = local_navigable_with_id(job.navigable_id);
     if (!navigable) {
@@ -337,14 +337,16 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
     // 2. Set navigable's current session history entry to targetEntry.
     navigable->set_current_session_history_entry(claimed_target_entry);
 
-    // AD-HOC: The UI operation owns the authoritative traversal tracker. LocalNavigable still uses this process-local
-    //         value to serialize pending navigations, so mirror it when the already-required changing job begins. A
-    //         same-document push or replace can arrive after a newer navigation installed its local ID, in which case
-    //         that navigation wins.
-    auto preserve_ongoing_navigation = applies_same_document_push_or_replace
-        && navigable->ongoing_navigation().has<Utf16String>();
-    if (!preserve_ongoing_navigation)
+    // AD-HOC: The UI operation owns the authoritative traversal tracker, mirrored here when the changing job begins.
+    //         As in browsers, only a traversal or reload sets it to "traversal". A push or replace leaves a newer
+    //         navigation's ID in place, as that navigation goes on and commits after this one, and nulls the ID of the
+    //         navigation it finalizes. See https://github.com/whatwg/html/issues/12581.
+    if (job.navigation_type.has_value() && first_is_one_of(*job.navigation_type, Bindings::NavigationType::Push, Bindings::NavigationType::Replace)) {
+        if (auto const* ongoing_navigation_id = navigable->ongoing_navigation().get_pointer<Utf16String>(); ongoing_navigation_id && *ongoing_navigation_id == finalized_navigation_id)
+            navigable->set_ongoing_navigation_without_informing_navigation_api(Empty {});
+    } else {
         navigable->set_ongoing_navigation_without_informing_navigation_api(HTML::LocalNavigable::Traversal::Tag);
+    }
 
     queue_apply_history_step_task(*navigable, navigable->active_document(), GC::create_function(heap(), [this, job = move(job), source_snapshot_params, pending_document, claimed_target_entry = move(claimed_target_entry), navigable, on_complete]() mutable {
         // NOTE: This check is not in the spec but we should not continue navigation if navigable has been destroyed.
@@ -883,7 +885,7 @@ void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId opera
             .source_snapshot = operation.serialized_source_snapshot_params,
             .population = move(population),
         },
-        source_snapshot_params, pending_document,
+        source_snapshot_params, pending_document, operation.finalized_navigation_id,
         GC::create_function(heap(), [this, operation_id, navigable_id, on_complete](LocalChangingNavigableHistoryStepJobResult result) {
             auto* operation = find_history_operation(operation_id);
             if (operation) {
@@ -895,7 +897,7 @@ void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId opera
                 }
             }
             // AD-HOC: A job can claim its navigable before becoming stale, or finish after its operation was
-            //         abandoned. Release the document-local projection so pending navigations can resume.
+            //         abandoned. Release the document-local projection.
             if (result.disposition != ChangingNavigableHistoryStepJobDisposition::Ready || !operation) {
                 if (auto navigable = local_navigable_with_id(navigable_id))
                     navigable->clear_ongoing_history_traversal();

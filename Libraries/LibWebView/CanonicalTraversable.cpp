@@ -2724,7 +2724,8 @@ void CanonicalTraversable::finish_history_operation(Web::HTML::CrossProcessId op
     if ((*operation)->queue_promise)
         (*operation)->queue_promise->resolve({});
 
-    run_steps_waiting_for_traversal();
+    if (auto view = this->view(); view.has_value())
+        view->run_webdriver_commands_waiting_for_a_document({});
 
     // The completion callback that brought us here can be running inside the algorithm object; destroy the
     // operation only once the stack has unwound.
@@ -2777,25 +2778,6 @@ void CanonicalTraversable::report_history_operation_result(HistoryOperation& ope
         if (auto view = this->view(); view.has_value())
             view->did_finish_history_traversal(operation.operation_id, result);
     }
-}
-
-// The navigations that waited for a traversal to be over begin, unless another traversal began, and so do the WebDriver
-// commands that waited for a document.
-void CanonicalTraversable::run_steps_waiting_for_traversal()
-{
-    Vector<Web::HTML::CrossProcessId> navigables_with_waiting_navigation;
-    for_each_in_inclusive_subtree([&](CanonicalNavigable const& navigable) {
-        if (navigable.has_navigation_waiting_for_traversal())
-            navigables_with_waiting_navigation.append(navigable.id());
-        return IterationDecision::Continue;
-    });
-    for (auto navigable_id : navigables_with_waiting_navigation) {
-        if (auto navigable = find(navigable_id); navigable.has_value())
-            navigable->begin_navigation_waiting_for_traversal();
-    }
-
-    if (auto view = this->view(); view.has_value())
-        view->run_webdriver_commands_waiting_for_a_document({});
 }
 
 void CanonicalTraversable::abandon_history_operations()
