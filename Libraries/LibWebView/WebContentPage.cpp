@@ -648,18 +648,7 @@ void WebContentPage::did_request_navigation_of_navigable(Web::HTML::CrossProcess
     //    3. Set initiatorOriginSnapshot to sourceDocument's origin.
     navigation.initiator_origin_snapshot = source_document.origin();
 
-    // A document that was lost with the process that hosted it is navigated from step 8 on here: no process hosts it.
-    if (!target->active_document().host()) {
-        target->begin_navigation(move(navigation));
-        return;
-    }
-    target->set_routed_navigation(navigation.navigation_id, navigation.initiator_origin_snapshot);
-
-    // The request continues navigate at step 8 in the process hosting the target's document.
-    auto endpoint = endpoint_hosting_navigable_represented_by(navigable_id);
-    if (!endpoint)
-        return;
-    endpoint->async_navigate_navigable(navigable_id, move(navigation));
+    target->begin_navigation(move(navigation));
 }
 
 void WebContentPage::did_post_message_to_navigable(Web::HTML::CrossProcessId navigable_id, Web::HTML::PostedMessageDescriptor message)
@@ -1702,14 +1691,9 @@ void WebContentPage::did_request_navigation_start(Web::HTML::CrossProcessId navi
     //     "traversal" since.
     auto navigation_is_blocked_by_history_traversal = target_navigable
         && target_navigable->ongoing_navigation_is_traversal();
-    // The page hosting the navigable's document continues navigate at step 8, for a sourceDocument it hosts or for
-    // one another page hosts, which asked the UI process to route the navigation here.
     Optional<URL::Origin> initiator_origin;
-    if (start_request.has_value() && target_navigable) {
+    if (start_request.has_value())
         initiator_origin = initiator_origin_snapshot(start_request->initiator_origin, start_request->source_snapshot_params, client());
-        if (!initiator_origin.has_value())
-            initiator_origin = target_navigable->take_routed_navigation_initiator_origin(navigation_id);
-    }
     if (!target_navigable
         || target_navigable->id() != navigable_id
         || !traversable().hosts(*target_navigable, *this)
