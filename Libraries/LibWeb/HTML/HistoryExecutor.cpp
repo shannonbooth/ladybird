@@ -825,9 +825,29 @@ void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId opera
     }
 
     auto navigable = local_navigable_with_id(navigable_id);
-    if (pending_document && local_target_entry && (!navigable || !prepare_to_finalize_a_cross_document_navigation(*navigable, *pending_document))) {
-        on_complete->function()(ChangingNavigableHistoryStepJobDisposition::Stale, UnloadDisplayedDocument::No);
-        return;
+
+    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-cross-document-navigation
+    // NB: The UI process runs these steps, but for step 2, which this job for them runs first.
+    if (pending_document && local_target_entry) {
+        // AD-HOC: The navigable can be destroyed, or its page be closing, before the steps run. Destruction may then
+        //         have detached the pending document, or destroyed the active document, before marking the navigable
+        //         destroyed.
+        GC::Ptr<DOM::Document> active_document = navigable ? navigable->active_document() : nullptr;
+        if (!navigable || navigable->has_been_destroyed() || pending_document->has_been_destroyed() || !pending_document->browsing_context() || !active_document || active_document->has_been_destroyed()) {
+            if (navigable)
+                navigable->set_delaying_load_events(false);
+            on_complete->function()(ChangingNavigableHistoryStepJobDisposition::Stale, UnloadDisplayedDocument::No);
+            return;
+        }
+
+        // AD-HOC: Until the new document is activated, the initial about:blank, which is ready for post-load tasks,
+        //         is what the container document sees. Hold the container's load event until the new document is
+        //         ready for post-load tasks.
+        if (auto container_document = navigable->container_document())
+            navigable->set_navigation_load_event_guard(*container_document);
+
+        // 2. Set navigable's is delaying load events to false.
+        navigable->set_delaying_load_events(false);
     }
     if (!navigable) {
         on_complete->function()(ChangingNavigableHistoryStepJobDisposition::Skipped, UnloadDisplayedDocument::No);

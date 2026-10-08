@@ -4280,33 +4280,6 @@ bool navigation_must_be_a_replace(URL::URL const& url, DOM::Document const& docu
     return url.scheme() == "javascript"sv || document.is_initial_about_blank();
 }
 
-// https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-cross-document-navigation
-// NB: The UI process runs these steps. Its job activating historyEntry's document begins here, with the parts that need
-//     the live navigable and Document.
-bool prepare_to_finalize_a_cross_document_navigation(LocalNavigable& navigable, DOM::Document& pending_document)
-{
-    // The steps can run after the navigable was destroyed, or after its page has started closing. In that case the
-    // navigable may not have been marked destroyed yet, while destruction has already detached the pending document
-    // from its browsing context or destroyed the active document. There is no live navigation left to finalize.
-    auto active_document = navigable.active_document();
-    if (navigable.has_been_destroyed() || pending_document.has_been_destroyed() || !pending_document.browsing_context() || !active_document || active_document->has_been_destroyed()) {
-        navigable.set_delaying_load_events(false);
-        return false;
-    }
-
-    // AD-HOC: Without this guard, decrementing the navigable's delay counter triggers schedule_load_event_delay_check
-    //         on the parent, which can see the about:blank (ready_for_post_load_tasks=true) before the session
-    //         history traversal activates the new document. The guard is cleared when the new document becomes ready
-    //         for post-load tasks (via set_ready_for_post_load_tasks).
-    if (auto container_document = navigable.container_document())
-        navigable.set_navigation_load_event_guard(*container_document);
-
-    // 2. Set navigable's is delaying load events to false.
-    navigable.set_delaying_load_events(false);
-
-    return true;
-}
-
 class CheckUnloadingCanceledState : public GC::Cell {
     GC_CELL(CheckUnloadingCanceledState, GC::Cell);
     GC_DECLARE_ALLOCATOR(CheckUnloadingCanceledState);
