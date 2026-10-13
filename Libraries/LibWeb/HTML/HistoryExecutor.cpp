@@ -281,19 +281,6 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
     //     job. Retain that exact local entry instead of repeating the global-step lookup in WebContent.
     auto claimed_target_entry = job.target_entry;
 
-    auto active_entry = navigable->active_session_history_entry();
-    auto applies_same_document_push_or_replace = is_same_document_push_or_replace(
-        job.navigation_type, *claimed_target_entry, navigable->active_document_id());
-
-    // A newer synchronous navigation can become active after this operation's exact-entry check. Preserve that visible entry while
-    // advancing current entry in queue order; the newer operation advances it again.
-    if (applies_same_document_push_or_replace
-        && active_entry != claimed_target_entry) {
-        navigable->set_current_session_history_entry(claimed_target_entry);
-        on_complete->function()({ ChangingNavigableHistoryStepJobDisposition::Skipped, nullptr });
-        return false;
-    }
-
     // https://html.spec.whatwg.org/multipage/nav-history-apis.html#fire-a-traverse-navigate-event
     // The UI process is the canonical coordinator for navigation starts and history operations. Only it can prove
     // that a navigation was admitted after this traversal; the presence of a local navigation ID does not establish
@@ -342,13 +329,12 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
 
         // 2. Let targetEntry be navigable's current session history entry.
         // AD-HOC: A synchronous navigation that jumps the queue during this run's apply-history-step re-claims the
-        //         navigable before this task runs. It supersedes a same-document push or replace, as the newest claim
-        //         wins, but no other run: that run still applies its claimed target entry once the jumped navigation's
-        //         nested run completes. A navigation proven newer completes the job as stale before this task is
-        //         queued.
+        //         navigable before this task runs. The run still applies its claimed target entry once the jumped
+        //         navigation's nested run completes. A navigation proven newer completes the job as stale before this
+        //         task is queued.
         auto target_entry = navigable->current_session_history_entry();
         if (target_entry != claimed_target_entry) {
-            if (!target_entry || is_same_document_push_or_replace(job.navigation_type, *claimed_target_entry, navigable->active_document_id())) {
+            if (!target_entry) {
                 on_complete->function()({ ChangingNavigableHistoryStepJobDisposition::Stale, nullptr });
                 return;
             }
@@ -378,14 +364,11 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
         changing_navigable_continuation->population_output = nullptr;
 
         // 4. If displayedEntry is targetEntry and targetEntry's document state's reload pending is false, then:
-        bool is_update_only = displayed_entry == target_entry
-            && !target_entry->document_state()->reload_pending();
-        if (is_same_document_push_or_replace(
-                job.navigation_type, *target_entry,
-                changing_navigable_continuation->displayed_document_id)) {
-            is_update_only = !target_entry->document_state()->reload_pending()
-                || displayed_entry == target_entry;
-        }
+        // AD-HOC: A same-document push or replace is update-only too. Its document displays its entry already, or a
+        //         newer one a synchronous navigation that jumped the queue pushed or replaced, which the continuation
+        //         then leaves displayed.
+        bool is_update_only = (displayed_entry == target_entry && !target_entry->document_state()->reload_pending())
+            || is_same_document_push_or_replace(job.navigation_type, *target_entry, changing_navigable_continuation->displayed_document_id);
         if (is_update_only) {
             // 1. Set changingNavigableContinuation's update-only to true.
             changing_navigable_continuation->update_only = true;
