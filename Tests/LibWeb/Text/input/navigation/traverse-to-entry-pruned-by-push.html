@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    // A same-document push prunes the forward entry that a pending traverseTo() targets. When the traversal reaches the
+    // traversable, firing its traverse navigate event finds no navigation API entry for the target, so the traversal is
+    // canceled: Its promises reject with an AbortError and no navigate or navigateerror event fires for it.
+    async function settle(promise) {
+        try {
+            await promise;
+            return "fulfilled";
+        } catch (e) {
+            return `rejected with ${e.name}`;
+        }
+    }
+
+    promiseTest(async () => {
+        await new Promise(resolve => window.addEventListener("load", resolve));
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        const startIndex = navigation.currentEntry.index;
+        await navigation.navigate("#foo").finished;
+        const targetKey = navigation.currentEntry.key;
+        await navigation.back().finished;
+
+        const events = [];
+        const onNavigate = e => events.push(`navigate ${e.navigationType} ${new URL(e.destination.url).hash}`);
+        const onNavigateError = e => events.push(`navigateerror ${e.error.name}`);
+        navigation.addEventListener("navigate", onNavigate);
+        navigation.addEventListener("navigateerror", onNavigateError);
+
+        const result = navigation.traverseTo(targetKey);
+        await navigation.navigate("#clobber").finished;
+
+        println(`committed: ${await settle(result.committed)}`);
+        println(`finished: ${await settle(result.finished)}`);
+        println(`events: ${events.join(", ")}`);
+        println(`current entry: ${new URL(navigation.currentEntry.url).hash} at index ${navigation.currentEntry.index - startIndex}`);
+        println(`entries after start: ${navigation.entries().slice(startIndex).map(entry => new URL(entry.url).hash || "(start)").join(", ")}`);
+
+        navigation.removeEventListener("navigate", onNavigate);
+        navigation.removeEventListener("navigateerror", onNavigateError);
+
+        // Traversing back and forward still works afterwards.
+        await navigation.back().finished;
+        println(`after back(): ${new URL(navigation.currentEntry.url).hash || "(start)"} at index ${navigation.currentEntry.index - startIndex}`);
+        await navigation.forward().finished;
+        println(`after forward(): ${new URL(navigation.currentEntry.url).hash} at index ${navigation.currentEntry.index - startIndex}`);
+    });
+</script>

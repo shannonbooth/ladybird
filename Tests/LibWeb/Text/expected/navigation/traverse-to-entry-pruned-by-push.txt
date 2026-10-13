@@ -1,0 +1,7 @@
+committed: rejected with AbortError
+finished: rejected with AbortError
+events: navigate push #clobber
+current entry: #clobber at index 1
+entries after start: (start), #clobber
+after back(): (start) at index 0
+after forward(): #clobber at index 1

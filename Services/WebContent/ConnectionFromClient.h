@@ -23,6 +23,7 @@
 #include <LibWeb/Bindings/NavigationType.h>
 #include <LibWeb/ContentSecurityPolicy/Directives/Directive.h>
 #include <LibWeb/Forward.h>
+#include <LibWeb/HTML/ApplyHistoryStep.h>
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/Loader/FileRequest.h>
 #include <LibWeb/Page/Page.h>
@@ -93,6 +94,9 @@ private:
 
     Optional<PageClient&> page(Web::PageId index, SourceLocation = SourceLocation::current());
     Optional<PageClient const&> page(Web::PageId index, SourceLocation = SourceLocation::current()) const;
+
+    GC::Ref<Web::HTML::OnEnqueueChangingNavigableContinuation> on_enqueue_changing_navigable_continuation(Web::PageId, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id);
+    GC::Ref<Web::HTML::OnSkipChangingNavigableHistoryStepJob> on_skip_changing_navigable_history_step_job(Web::PageId, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id);
 
     virtual void set_font_service(IPC::TransportHandle, IPC::File catalog, u64 catalog_size, u64 generation) override;
     virtual void initialize(Web::PageId initial_page_id, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables, Web::HTML::CrossProcessId root_navigable_id, Web::HTML::CrossProcessIdAllocator cross_process_id_allocator, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::CrossProcessId initial_document_id, Web::HTML::VisibilityState system_visibility_state) override;

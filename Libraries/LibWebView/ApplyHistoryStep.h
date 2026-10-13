@@ -39,9 +39,9 @@ struct WEBVIEW_API ApplyHistoryStepJobs {
     // NB: This queued work runs in the process hosting the active Window.
     Function<void(Web::HTML::CrossProcessId navigable_id)> queue_navigation_api_state_clear_task;
 
-    // One iteration of "12. For each navigable of changingNavigables, queue a global task ...". The job claims its
-    // navigable and either enqueues a changing navigable continuation in its own process (Ready) or reports why it
-    // could not (see Web::HTML::ChangingNavigableHistoryStepJobDisposition).
+    // One iteration of "13. For each navigable of changingNavigables, queue a global task ...". The job claims its
+    // navigable and enqueues a changing navigable continuation, retaining the continuation's state in its own process.
+    // AD-HOC: A job that does not run for its navigable (the navigable is gone, e.g.) is skipped instead.
     struct ChangingNavigableHistoryStepJob {
         Web::HTML::CrossProcessId navigable_id;
         // The target entry selected from canonical session history. The receiving process retains this exact entry
@@ -58,9 +58,15 @@ struct WEBVIEW_API ApplyHistoryStepJobs {
         Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot_params {};
     };
     Function<bool(ChangingNavigableHistoryStepJob&)> select_changing_navigable_history_step_job_endpoint;
-    Function<void(ChangingNavigableHistoryStepJob, Function<void(Web::HTML::ChangingNavigableHistoryStepJobDisposition)> on_complete)> run_changing_navigable_history_step_job;
+    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#changing-navigable-continuation-state
+    // NB: The process that ran the job retains the rest of the state.
+    struct ChangingNavigableContinuation {
+        Web::HTML::CrossProcessId navigable_id;
+        bool aborted { false };
+    };
+    Function<void(ChangingNavigableHistoryStepJob, Function<void(ChangingNavigableContinuation)> enqueue_continuation, Function<void()> skip)> run_changing_navigable_history_step_job;
 
-    // The "second part" of a changing navigable's job ("12. In both cases, let afterPotentialUnloads be ..."),
+    // The "second part" of a changing navigable's job ("14. In both cases, let afterPotentialUnloads be ..."),
     // applied to the continuation the job enqueued in its own process.
     struct ApplyChangingNavigableHistoryStepContinuation {
         Web::HTML::CrossProcessId navigable_id;
@@ -73,7 +79,7 @@ struct WEBVIEW_API ApplyHistoryStepJobs {
     };
     Function<void(ApplyChangingNavigableHistoryStepContinuation, Function<void()> on_complete)> apply_changing_navigable_history_step_continuation;
 
-    // One iteration of "18. For each navigable of nonchangingNavigablesThatStillNeedUpdates, queue a global task ...".
+    // One iteration of "20. For each navigable of nonchangingNavigablesThatStillNeedUpdates, queue a global task ...".
     Function<void(Web::HTML::CrossProcessId navigable_id, Web::HTML::HistoryObjectLengthAndIndex, Function<void()> on_complete)> update_nonchanging_navigable_history_step_state;
 };
 
@@ -135,7 +141,8 @@ private:
     void set_current_session_history_step();
     CanonicalSessionHistoryEntry* append_the_claimed_target_entry_again(CanonicalNavigable&, CanonicalSessionHistoryEntry& claimed_target_entry);
 
-    void changing_navigable_job_completed(Web::HTML::CrossProcessId, Web::HTML::ChangingNavigableHistoryStepJobDisposition);
+    void enqueue_changing_navigable_continuation(ApplyHistoryStepJobs::ChangingNavigableContinuation);
+    void skip_changing_navigable_history_step_job(Web::HTML::CrossProcessId);
     struct ChangingNavigable;
     ChangingNavigable* find_changing_navigable(Web::HTML::CrossProcessId);
     void set_ongoing_navigation_to_traversal(ChangingNavigable&, CanonicalNavigable&, CanonicalSessionHistoryEntry const&);
@@ -175,9 +182,8 @@ private:
     Vector<ChangingNavigable> m_changing_navigables;
     Vector<Web::HTML::CrossProcessId> m_nonchanging_navigables_that_still_need_updates;
     size_t m_completed_change_jobs { 0 };
-    // NB: The continuation states live in the processes that ran the jobs; this queue holds the navigables whose
-    //     continuations are ready to be applied.
-    Vector<Web::HTML::CrossProcessId> m_changing_navigable_continuations;
+    Vector<ApplyHistoryStepJobs::ChangingNavigableContinuation> m_changing_navigable_continuations;
+    bool m_any_changing_navigable_applied { false };
     HashTable<Web::HTML::CrossProcessId> m_navigables_that_must_wait_before_handling_sync_navigation;
     size_t m_completed_nonchanging_jobs { 0 };
 
