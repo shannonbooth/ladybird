@@ -1636,9 +1636,14 @@ void WebContentPage::beforeunload_check_result(Web::HTML::CrossProcessId operati
     traversable().did_receive_beforeunload_check_result(*this, operation_id, result, unload_prompt_shown);
 }
 
-void WebContentPage::changing_navigable_history_job_ready(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::ChangingNavigableHistoryStepJobDisposition disposition, Web::HTML::UnloadDisplayedDocument unload_displayed_document)
+void WebContentPage::changing_navigable_continuation_enqueued(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, bool aborted, Web::HTML::UnloadDisplayedDocument unload_displayed_document)
 {
-    traversable().did_receive_changing_navigable_history_job_ready(*this, operation_id, navigable_id, disposition, unload_displayed_document);
+    traversable().did_receive_changing_navigable_continuation_enqueued(*this, operation_id, navigable_id, aborted, unload_displayed_document);
+}
+
+void WebContentPage::changing_navigable_history_job_skipped(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
+{
+    traversable().did_receive_changing_navigable_history_job_skipped(*this, operation_id, navigable_id);
 }
 
 void WebContentPage::changing_navigable_unload_preparation_complete(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)

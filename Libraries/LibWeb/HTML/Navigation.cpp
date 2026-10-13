@@ -701,8 +701,10 @@ WebIDL::ExceptionOr<NavigationResult> Navigation::perform_a_navigation_api_trave
     auto on_apply_history_step_complete = GC::create_function(heap(), [this, api_method_tracker](HistoryStepResult result) {
         // NOTE: When result is "canceled-by-beforeunload" or "initiator-disallowed", the navigate event was never fired,
         //       aborting the ongoing navigation would not be correct; it would result in a navigateerror event without a
-        //       preceding navigate event. In the "canceled-by-navigate" case, navigate is fired, but the inner navigate event
-        //       firing algorithm will take care of aborting the ongoing navigation.
+        //       preceding navigate event. In the "canceled-by-navigate" case, either the navigate event was fired and the
+        //       inner navigate event firing algorithm took care of aborting the ongoing navigation, or the traversal was
+        //       aborted before firing because the destination entry was disposed, in which case checking if the traversal
+        //       destination was disposed took care of rejecting apiMethodTracker.
         auto& realm = relevant_realm(window());
         auto& global = relevant_global_object(window());
 
@@ -1389,27 +1391,67 @@ void Navigation::commit_a_navigate_event(GC::Ref<NavigateEvent> event, GC::Ptr<N
     // NB: Handled by TemporaryExecutionContext destructor.
 }
 
+// https://html.spec.whatwg.org/multipage/nav-history-apis.html#checking-if-a-traversal-destination-was-disposed
+bool Navigation::check_if_a_traversal_destination_was_disposed(SessionHistoryEntry const& destination_she)
+{
+    // 1. If navigation has entries and events disabled, then return false.
+    if (has_entries_and_events_disabled())
+        return false;
+
+    // 2. If destinationSHE's document is not navigation's relevant global object's associated Document, then return
+    //    false.
+    if (destination_she.document_state()->document_id() != window().associated_document().unique_id())
+        return false;
+
+    // 3. If navigation's entry list contains a NavigationHistoryEntry whose session history entry is destinationSHE,
+    //    then return false.
+    auto destination_nhe = m_entry_list.find_if([&](auto const& nhe) {
+        return &nhe->session_history_entry() == &destination_she;
+    });
+    if (destination_nhe != m_entry_list.end())
+        return false;
+
+    // 4. Let destinationKey be destinationSHE's navigation API key.
+    auto const& destination_key = destination_she.navigation_api_key();
+
+    // 5. If navigation's upcoming traverse API method trackers[destinationKey] exists, then reject the finished
+    //    promise for navigation's upcoming traverse API method trackers[destinationKey] with a new "AbortError"
+    //    DOMException created in navigation's relevant realm.
+    if (auto tracker = m_upcoming_traverse_api_method_trackers.get(destination_key); tracker.has_value()) {
+        auto& realm = relevant_realm(window());
+        TemporaryExecutionContext execution_context { realm };
+        reject_the_finished_promise(*tracker, WebIDL::AbortError::create(realm, "Navigation aborted because its destination entry was disposed"_utf16));
+    }
+
+    // 6. Return true.
+    return true;
+}
+
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#fire-a-traverse-navigate-event
 bool Navigation::fire_a_traverse_navigate_event(NonnullRefPtr<SessionHistoryEntry> destination_she, UserNavigationInvolvement user_involvement)
 {
-
-    // 1. Let event be the result of creating an event given NavigateEvent, in navigation's relevant realm.
-    // 2. Set event's classic history API state to null.
-    // AD-HOC: These are handled in the inner algorithm
-
-    // 3. Let destination be a new NavigationDestination created in navigation's relevant realm.
-    auto destination = NavigationDestination::create();
-
-    // 4. Set destination's URL to destinationSHE's URL.
-    destination->set_url(destination_she->url());
-
-    // 5. Let destinationNHE be the NavigationHistoryEntry in navigation's entry list whose session history entry is destinationSHE,
+    // 1. Let destinationNHE be the NavigationHistoryEntry in navigation's entry list whose session history entry is destinationSHE,
     //    or null if no such NavigationHistoryEntry exists.
     auto destination_nhe = m_entry_list.find_if([destination_she](auto& nhe) {
         return &nhe->session_history_entry() == destination_she;
     });
 
-    // 6. If destinationNHE is non-null, then:
+    // 2. Let isSameDocument be true if destinationSHE's document is equal to navigation's relevant global object's
+    //    associated Document; otherwise false.
+    auto& associated_document = window().associated_document();
+    auto is_same_document = destination_she->document_state()->document_id() == associated_document.unique_id();
+
+    // 3. Let event be the result of creating an event given NavigateEvent, in navigation's relevant realm.
+    // 4. Set event's classic history API state to null.
+    // AD-HOC: These are handled in the inner algorithm
+
+    // 5. Let destination be a new NavigationDestination created in navigation's relevant realm.
+    auto destination = NavigationDestination::create();
+
+    // 6. Set destination's URL to destinationSHE's URL.
+    destination->set_url(destination_she->url());
+
+    // 7. If destinationNHE is not null:
     if (destination_nhe != m_entry_list.end()) {
         // 1. Set destination's entry to destinationNHE.
         destination->set_entry(*destination_nhe);
@@ -1418,7 +1460,7 @@ bool Navigation::fire_a_traverse_navigate_event(NonnullRefPtr<SessionHistoryEntr
         destination->set_state(destination_she->navigation_api_state());
     }
 
-    // 7. Otherwise:
+    // 8. Otherwise:
     else {
         // 1. Set destination's entry to null.
         destination->set_entry(nullptr);
@@ -1427,12 +1469,10 @@ bool Navigation::fire_a_traverse_navigate_event(NonnullRefPtr<SessionHistoryEntr
         destination->set_state(MUST(structured_serialize_for_storage(window().principal_realm().vm(), JS::js_null())));
     }
 
-    // 8. Set destination's is same document to true if destinationSHE's document is equal to
-    //    navigation's relevant global object's associated Document; otherwise false.
-    auto& associated_document = window().associated_document();
-    destination->set_is_same_document(destination_she->document_state()->document_id() == associated_document.unique_id());
+    // 9. Set destination's is same document to isSameDocument.
+    destination->set_is_same_document(is_same_document);
 
-    // 9. Return the result of performing the inner navigate event firing algorithm given navigation, "traverse",
+    // 10. Return the result of performing the inner navigate event firing algorithm given navigation, "traverse",
     //    event, destination, userInvolvement, sourceElement, null, and null.
     // AD-HOC: We don't pass the event, but we do pass the classic_history_api state at the end to be set later
     return inner_navigate_event_firing_algorithm(NavigationType::Traverse, destination, user_involvement, {}, {}, {}, {});

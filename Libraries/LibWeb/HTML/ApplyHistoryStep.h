@@ -13,6 +13,7 @@ namespace Web::HTML {
 
 using OnApplyHistoryStepComplete = GC::Function<void(HistoryStepResult)>;
 
-using OnChangingNavigableHistoryStepJobComplete = GC::Function<void(ChangingNavigableHistoryStepJobDisposition, UnloadDisplayedDocument)>;
+using OnEnqueueChangingNavigableContinuation = GC::Function<void(bool aborted, UnloadDisplayedDocument)>;
+using OnSkipChangingNavigableHistoryStepJob = GC::Function<void()>;
 
 }

@@ -1,0 +1,8 @@
+committed: rejected with AbortError
+finished: rejected with AbortError
+events: navigate push #pushed, dispose #2
+entries: (initial), #1, #pushed
+current entry index: 2
+location.hash: #pushed
+after back(): #1 at index 1
+after forward(): #pushed at index 2

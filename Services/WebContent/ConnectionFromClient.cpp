@@ -595,7 +595,7 @@ void ConnectionFromClient::continue_history_navigation_population(Web::PageId pa
     auto page = this->page(page_id);
     auto navigable_id = population.request.navigable_id;
     if (!page.has_value()) {
-        async_changing_navigable_history_job_ready(page_id, operation_id, navigable_id, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped, Web::HTML::UnloadDisplayedDocument::No);
+        async_changing_navigable_history_job_skipped(page_id, operation_id, navigable_id);
         return;
     }
     auto& history_executor = page->page().history_executor();
@@ -603,23 +603,33 @@ void ConnectionFromClient::continue_history_navigation_population(Web::PageId pa
         return;
     auto user_involvement = population.request.user_involvement;
     history_executor.run_ui_changing_navigable_history_job(operation_id, navigable_id, move(target_entry), user_involvement, navigation_type, {}, {},
-        GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, page_id, operation_id, navigable_id](Web::HTML::ChangingNavigableHistoryStepJobDisposition disposition, Web::HTML::UnloadDisplayedDocument unload_displayed_document) {
-            async_changing_navigable_history_job_ready(page_id, operation_id, navigable_id, disposition, unload_displayed_document);
-        }),
-        move(population));
+        on_enqueue_changing_navigable_continuation(page_id, operation_id, navigable_id), on_skip_changing_navigable_history_step_job(page_id, operation_id, navigable_id), move(population));
 }
 
 void ConnectionFromClient::run_changing_navigable_history_job(Web::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor target_entry, Web::HTML::UserNavigationInvolvement user_involvement, Optional<Web::Bindings::NavigationType> navigation_type, Optional<Utf16String> finalized_navigation_id, Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot_params)
 {
     auto page = this->page(page_id);
     if (!page.has_value()) {
-        async_changing_navigable_history_job_ready(page_id, operation_id, navigable_id, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped, Web::HTML::UnloadDisplayedDocument::No);
+        async_changing_navigable_history_job_skipped(page_id, operation_id, navigable_id);
         return;
     }
 
-    page->page().history_executor().run_ui_changing_navigable_history_job(operation_id, navigable_id, move(target_entry), user_involvement, navigation_type, move(finalized_navigation_id), move(source_snapshot_params), GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, page_id, operation_id, navigable_id](Web::HTML::ChangingNavigableHistoryStepJobDisposition disposition, Web::HTML::UnloadDisplayedDocument unload_displayed_document) {
-        async_changing_navigable_history_job_ready(page_id, operation_id, navigable_id, disposition, unload_displayed_document);
-    }));
+    page->page().history_executor().run_ui_changing_navigable_history_job(operation_id, navigable_id, move(target_entry), user_involvement, navigation_type, move(finalized_navigation_id), move(source_snapshot_params),
+        on_enqueue_changing_navigable_continuation(page_id, operation_id, navigable_id), on_skip_changing_navigable_history_step_job(page_id, operation_id, navigable_id));
+}
+
+GC::Ref<Web::HTML::OnEnqueueChangingNavigableContinuation> ConnectionFromClient::on_enqueue_changing_navigable_continuation(Web::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
+{
+    return GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, page_id, operation_id, navigable_id](bool aborted, Web::HTML::UnloadDisplayedDocument unload_displayed_document) {
+        async_changing_navigable_continuation_enqueued(page_id, operation_id, navigable_id, aborted, unload_displayed_document);
+    });
+}
+
+GC::Ref<Web::HTML::OnSkipChangingNavigableHistoryStepJob> ConnectionFromClient::on_skip_changing_navigable_history_step_job(Web::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
+{
+    return GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, page_id, operation_id, navigable_id] {
+        async_changing_navigable_history_job_skipped(page_id, operation_id, navigable_id);
+    });
 }
 
 void ConnectionFromClient::prepare_changing_navigable_for_unload(Web::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)

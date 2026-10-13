@@ -27,16 +27,6 @@ enum class HistoryStepResult {
     Applied,
 };
 
-enum class ChangingNavigableHistoryStepJobDisposition : u8 {
-    // The job ran and enqueued its changing navigable continuation.
-    Ready,
-    // AD-HOC: The job did not apply to its navigable (for example, the navigable is gone, or a newer navigation
-    //         owns it); the rest of the history step continues without this navigable.
-    Skipped,
-    // AD-HOC: The whole history step is stale; a newer navigation has to win.
-    Stale,
-};
-
 enum class UnloadPromptShown : bool {
     No,
     Yes,

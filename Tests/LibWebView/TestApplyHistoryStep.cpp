@@ -117,7 +117,11 @@ public:
     };
     struct ChangingJob {
         ChangingNavigableHistoryStepJob job;
-        Function<void(Web::HTML::ChangingNavigableHistoryStepJobDisposition)> on_complete;
+        Function<void(WebView::ApplyHistoryStepJobs::ChangingNavigableContinuation)> enqueue_continuation;
+        Function<void()> skip;
+
+        void enqueue_ready_continuation() { enqueue_continuation({ .navigable_id = job.navigable_id }); }
+        void enqueue_aborted_continuation() { enqueue_continuation({ .navigable_id = job.navigable_id, .aborted = true }); }
     };
     struct Continuation {
         ApplyChangingNavigableHistoryStepContinuation continuation;
@@ -137,7 +141,7 @@ public:
             .select_changing_navigable_history_step_job_endpoint = [this](ChangingNavigableHistoryStepJob& job) {
                 selected_changing_job_endpoints.append(job.navigable_id);
                 return true; },
-            .run_changing_navigable_history_step_job = [this](ChangingNavigableHistoryStepJob job, Function<void(Web::HTML::ChangingNavigableHistoryStepJobDisposition)> on_complete) { changing_jobs.append({ move(job), move(on_complete) }); },
+            .run_changing_navigable_history_step_job = [this](ChangingNavigableHistoryStepJob job, Function<void(WebView::ApplyHistoryStepJobs::ChangingNavigableContinuation)> enqueue_continuation, Function<void()> skip) { changing_jobs.append({ move(job), move(enqueue_continuation), move(skip) }); },
             .apply_changing_navigable_history_step_continuation = [this](ApplyChangingNavigableHistoryStepContinuation continuation, Function<void()> on_complete) { continuations.append({ move(continuation), move(on_complete) }); },
             .update_nonchanging_navigable_history_step_state = [this](Web::HTML::CrossProcessId navigable_id, Web::HTML::HistoryObjectLengthAndIndex history_object_length_and_index, Function<void()> on_complete) { nonchanging_updates.append({ navigable_id, history_object_length_and_index, move(on_complete) }); },
         };
@@ -323,7 +327,7 @@ TEST_CASE(traversal_runs_the_changing_root_job_and_commits_the_target_step)
     auto& job = test.runner.changing_jobs[0];
     EXPECT_EQ(job.job.navigable_id, root_id());
     EXPECT_EQ(job.job.target_entry->url, parse_url("https://a.example/"sv));
-    job.on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready);
+    job.enqueue_ready_continuation();
 
     EXPECT_EQ(test.runner.continuations.size(), 1uz);
     auto& continuation = test.runner.continuations[0];
@@ -490,7 +494,7 @@ TEST_CASE(child_navigable_traversal_updates_the_nonchanging_root)
     auto& job = test.runner.changing_jobs[0];
     EXPECT_EQ(job.job.navigable_id, child_id());
     EXPECT_EQ(job.job.target_entry->url, parse_url("https://child.example/0"sv));
-    job.on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready);
+    job.enqueue_ready_continuation();
 
     EXPECT_EQ(test.runner.continuations.size(), 1uz);
     auto& continuation = test.runner.continuations[0];
@@ -523,7 +527,7 @@ TEST_CASE(skipped_changing_job_still_applies_the_history_step)
     VERIFY(target_entry);
     EXPECT(child.current_session_history_entry_is(*target_entry));
     EXPECT(!child.active_document_is(*target_entry));
-    test.runner.changing_jobs[0].on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped);
+    test.runner.changing_jobs[0].skip();
 
     EXPECT(test.runner.continuations.is_empty());
     EXPECT_EQ(test.runner.nonchanging_updates.size(), 1uz);
@@ -534,6 +538,43 @@ TEST_CASE(skipped_changing_job_still_applies_the_history_step)
     EXPECT(!child.ongoing_navigation().has<WebView::CanonicalNavigable::Traversal>());
 }
 
+TEST_CASE(aborted_continuation_cancels_the_history_step)
+{
+    TestTraversable test;
+    test.with_child_navigable_history();
+
+    test.traverse_to_step(0);
+    EXPECT_EQ(test.runner.changing_jobs.size(), 1uz);
+    auto& child = *test.traversable.children().first();
+    test.runner.changing_jobs[0].enqueue_aborted_continuation();
+
+    EXPECT(test.runner.continuations.is_empty());
+    EXPECT(test.runner.nonchanging_updates.is_empty());
+    EXPECT(test.result == Web::HTML::HistoryStepResult::CanceledByNavigate);
+    EXPECT_EQ(test.current_step(), 1);
+    EXPECT(!child.ongoing_navigation().has<WebView::CanonicalNavigable::Traversal>());
+}
+
+TEST_CASE(aborted_continuation_does_not_cancel_a_history_step_another_navigable_applies)
+{
+    TestTraversable test;
+    test.with_two_changing_navigables();
+
+    test.traverse_to_step(0);
+    EXPECT_EQ(test.runner.changing_jobs.size(), 2uz);
+
+    test.runner.changing_jobs[0].enqueue_aborted_continuation();
+    EXPECT(test.runner.continuations.is_empty());
+
+    test.runner.changing_jobs[1].enqueue_ready_continuation();
+    EXPECT_EQ(test.runner.continuations.size(), 1uz);
+    EXPECT_EQ(test.runner.continuations[0].continuation.navigable_id, test.runner.changing_jobs[1].job.navigable_id);
+
+    test.runner.continuations[0].on_complete();
+    EXPECT(test.result == Web::HTML::HistoryStepResult::Applied);
+    EXPECT_EQ(test.current_step(), 0);
+}
+
 TEST_CASE(ready_continuations_interleave_with_still_running_changing_jobs)
 {
     TestTraversable test;
@@ -542,10 +583,10 @@ TEST_CASE(ready_continuations_interleave_with_still_running_changing_jobs)
     test.traverse_to_step(0);
     EXPECT_EQ(test.runner.changing_jobs.size(), 2uz);
 
-    test.runner.changing_jobs[0].on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready);
+    test.runner.changing_jobs[0].enqueue_ready_continuation();
     EXPECT_EQ(test.runner.continuations.size(), 1uz);
 
-    test.runner.changing_jobs[1].on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready);
+    test.runner.changing_jobs[1].enqueue_ready_continuation();
     EXPECT_EQ(test.runner.continuations.size(), 1uz);
 
     test.runner.continuations[0].on_complete();
@@ -555,22 +596,6 @@ TEST_CASE(ready_continuations_interleave_with_still_running_changing_jobs)
     test.runner.continuations[1].on_complete();
     EXPECT(test.result == Web::HTML::HistoryStepResult::Applied);
     EXPECT_EQ(test.current_step(), 0);
-}
-
-TEST_CASE(stale_changing_job_completes_without_committing_the_target_step)
-{
-    TestTraversable test;
-    test.with_two_top_level_entries();
-
-    test.traverse_to_step(0);
-    EXPECT_EQ(test.runner.changing_jobs.size(), 1uz);
-    test.runner.changing_jobs[0].on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Stale);
-
-    EXPECT(test.runner.continuations.is_empty());
-    EXPECT(test.runner.nonchanging_updates.is_empty());
-    EXPECT(test.result == Web::HTML::HistoryStepResult::Applied);
-    EXPECT_EQ(test.current_step(), 1);
-    EXPECT(!test.traversable.ongoing_navigation().has<WebView::CanonicalNavigable::Traversal>());
 }
 
 TEST_CASE(synchronous_navigation_steps_jump_the_queue_before_continuations)
@@ -592,7 +617,7 @@ TEST_CASE(synchronous_navigation_steps_jump_the_queue_before_continuations)
     EXPECT(test.state.running_nested_apply_history_step);
     EXPECT(test.runner.continuations.is_empty());
 
-    test.runner.changing_jobs[0].on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready);
+    test.runner.changing_jobs[0].enqueue_ready_continuation();
     EXPECT(test.runner.continuations.is_empty());
 
     synchronous_steps_signal->resolve({});
@@ -628,7 +653,7 @@ TEST_CASE(synchronous_navigation_steps_queued_by_a_nested_step_do_not_starve_the
     });
 
     test.traverse_to_step(0);
-    test.runner.changing_jobs[0].on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready);
+    test.runner.changing_jobs[0].enqueue_ready_continuation();
     EXPECT(synchronous_steps_signal);
     EXPECT(test.runner.continuations.is_empty());
 
@@ -650,7 +675,7 @@ TEST_CASE(canceled_run_does_not_resume_after_synchronous_navigation)
     });
 
     test.traverse_to_step(0);
-    test.runner.changing_jobs[0].on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready);
+    test.runner.changing_jobs[0].enqueue_ready_continuation();
     EXPECT(synchronous_steps_signal);
     EXPECT(test.state.running_nested_apply_history_step);
 
@@ -675,14 +700,14 @@ TEST_CASE(an_older_run_does_not_commit_over_a_newer_runs_step)
     // A newer run (for example a synchronous navigation that jumped the queue) commits first.
     test.traverse_to_step(2);
     EXPECT_EQ(test.runner.changing_jobs.size(), 1uz);
-    test.runner.changing_jobs[0].on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready);
+    test.runner.changing_jobs[0].enqueue_ready_continuation();
     EXPECT_EQ(test.runner.continuations.size(), 1uz);
     test.runner.continuations[0].on_complete();
     EXPECT_EQ(test.current_step(), 2);
 
     older_operation.apply_the_history_step();
     EXPECT_EQ(test.runner.changing_jobs.size(), 2uz);
-    test.runner.changing_jobs[1].on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready);
+    test.runner.changing_jobs[1].enqueue_ready_continuation();
     EXPECT_EQ(test.runner.continuations.size(), 2uz);
     test.runner.continuations[1].on_complete();
 
@@ -719,7 +744,7 @@ TEST_CASE(a_paused_run_commits_after_a_newer_run_recommits_the_current_step)
 
     // Complete whatever the nested run dispatched; the push's own job (the first) stays pending.
     for (size_t i = 1; i < test.runner.changing_jobs.size(); ++i)
-        test.runner.changing_jobs[i].on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready);
+        test.runner.changing_jobs[i].enqueue_ready_continuation();
     for (size_t i = 0; i < test.runner.continuations.size(); ++i)
         test.runner.continuations[i].on_complete();
     EXPECT(nested_result == Web::HTML::HistoryStepResult::Applied);
@@ -729,7 +754,7 @@ TEST_CASE(a_paused_run_commits_after_a_newer_run_recommits_the_current_step)
 
     // The push resumes, and commits its own step.
     auto continuation_count = test.runner.continuations.size();
-    test.runner.changing_jobs[0].on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready);
+    test.runner.changing_jobs[0].enqueue_ready_continuation();
     EXPECT_EQ(test.runner.continuations.size(), continuation_count + 1);
     test.runner.continuations[continuation_count].on_complete();
 
@@ -738,7 +763,7 @@ TEST_CASE(a_paused_run_commits_after_a_newer_run_recommits_the_current_step)
     EXPECT_EQ(test.current_step(), 2);
 }
 
-TEST_CASE(a_paused_traversal_is_abandoned_once_a_jumping_push_removes_its_target_entry)
+TEST_CASE(a_paused_traversal_is_canceled_once_a_jumping_push_removes_its_target_entry)
 {
     Core::EventLoop event_loop;
     TestTraversable test;
@@ -768,18 +793,18 @@ TEST_CASE(a_paused_traversal_is_abandoned_once_a_jumping_push_removes_its_target
 
     // Complete whatever the nested run dispatched; the traversal's own job (the first) stays pending.
     for (size_t i = 1; i < test.runner.changing_jobs.size(); ++i)
-        test.runner.changing_jobs[i].on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready);
+        test.runner.changing_jobs[i].enqueue_ready_continuation();
     for (size_t i = 0; i < test.runner.continuations.size(); ++i)
         test.runner.continuations[i].on_complete();
     EXPECT(nested_result == Web::HTML::HistoryStepResult::Applied);
     EXPECT_EQ(test.current_step(), 2);
 
-    // The traversal's job reports in, but its target entry is gone: No continuation is applied, and the push's entry
-    // stays current.
+    // The traversal's job reports in, but its target entry is gone: No continuation is applied, no navigable applied
+    // the step, and the push's entry stays current.
     auto continuation_count = test.runner.continuations.size();
-    test.runner.changing_jobs[0].on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready);
+    test.runner.changing_jobs[0].enqueue_ready_continuation();
     EXPECT_EQ(test.runner.continuations.size(), continuation_count);
-    EXPECT(test.result == Web::HTML::HistoryStepResult::Applied);
+    EXPECT(test.result == Web::HTML::HistoryStepResult::CanceledByNavigate);
     EXPECT(!test.operation->committed_step().has_value());
     EXPECT_EQ(test.current_step(), 2);
     EXPECT_EQ(test.history.current_entry().url, parse_url("https://b.example/pushed"sv));
@@ -821,7 +846,7 @@ TEST_CASE(a_paused_push_appends_its_entry_again_once_a_jumping_push_clears_it)
 
     // Complete whatever the nested run dispatched; the navigation's own job (the first) stays pending.
     for (size_t i = 1; i < test.runner.changing_jobs.size(); ++i)
-        test.runner.changing_jobs[i].on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready);
+        test.runner.changing_jobs[i].enqueue_ready_continuation();
     for (size_t i = 0; i < test.runner.continuations.size(); ++i)
         test.runner.continuations[i].on_complete();
     EXPECT(nested_result == Web::HTML::HistoryStepResult::Applied);
@@ -830,7 +855,7 @@ TEST_CASE(a_paused_push_appends_its_entry_again_once_a_jumping_push_clears_it)
     // The navigation's job reports in. Its entry goes back into the session history, after the pushed entry, and the
     // navigation commits there.
     auto continuation_count = test.runner.continuations.size();
-    test.runner.changing_jobs[0].on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready);
+    test.runner.changing_jobs[0].enqueue_ready_continuation();
     EXPECT_EQ(test.runner.continuations.size(), continuation_count + 1);
     auto& continuation = test.runner.continuations[continuation_count].continuation;
     VERIFY(continuation.updated_target_entry);
@@ -885,14 +910,14 @@ TEST_CASE(a_paused_reload_continues_with_the_entry_that_a_jumping_replace_put_in
 
     // Complete whatever the nested run dispatched; the reload's own job (the first) stays pending.
     for (size_t i = 1; i < test.runner.changing_jobs.size(); ++i)
-        test.runner.changing_jobs[i].on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready);
+        test.runner.changing_jobs[i].enqueue_ready_continuation();
     for (size_t i = 0; i < test.runner.continuations.size(); ++i)
         test.runner.continuations[i].on_complete();
     EXPECT(nested_result == Web::HTML::HistoryStepResult::Applied);
 
     // The reload resumes, and its continuation names the replacement as the entry to activate.
     auto continuation_count = test.runner.continuations.size();
-    test.runner.changing_jobs[0].on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready);
+    test.runner.changing_jobs[0].enqueue_ready_continuation();
     EXPECT_EQ(test.runner.continuations.size(), continuation_count + 1);
     auto const& continuation = test.runner.continuations[continuation_count].continuation;
     VERIFY(continuation.updated_target_entry);
