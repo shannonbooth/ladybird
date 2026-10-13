@@ -185,13 +185,12 @@ private:
     struct HistoryOperation;
     void session_history_changed();
     HistoryOperation* find_history_operation(Web::HTML::CrossProcessId operation_id);
-    bool navigation_transaction_matches(HistoryOperation const&, WebContentPage&, Optional<Web::HTML::CrossProcessId> reply_navigable_id = {}) const;
     RefPtr<CanonicalNavigation> finalized_navigation(HistoryOperation const&) const;
     bool update_session_history_entry_persisted_state(CanonicalNavigable&, Web::HTML::SessionHistoryEntryPersistedState const&);
     void add_history_operation_completion_endpoint(HistoryOperation&, NonnullRefPtr<WebContentPage>);
     bool select_changing_navigable_history_step_job_endpoint(HistoryOperation&, ApplyHistoryStepJobs::ChangingNavigableHistoryStepJob&);
     void dispatch_changing_navigable_history_step_job(HistoryOperation&, ChangingNavigable&);
-    void did_fail_history_navigation_population(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, WebContentPage&);
+    void did_fail_history_navigation_population(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id);
     void continue_history_navigation_population(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id);
     void dispatch_changing_navigable_history_step_continuation(HistoryOperation&, ChangingNavigable&);
     void send_changing_navigable_continuation_task(HistoryOperation&, Web::HTML::CrossProcessId navigable_id, Web::HTML::UnloadDisplayedDocument);
@@ -212,7 +211,6 @@ private:
     void complete_descendant_unload_task(Web::HTML::CrossProcessId unload_id, Web::HTML::CrossProcessId navigable_id);
     [[nodiscard]] ChangingNavigable::JobState end_changing_navigable_history_step_job(ChangingNavigable&);
     [[nodiscard]] Function<void()> skip_changing_navigable_history_step_job(ChangingNavigable&);
-    [[nodiscard]] Function<void()> abort_changing_navigable_history_step_job(ChangingNavigable&);
     ApplyHistoryStepJobs create_apply_history_step_jobs(HistoryOperation&);
     void run_history_operation(HistoryOperation&);
     void traverse_the_history_by_a_delta_at_queue_position(HistoryOperation&, Web::TraverseByDeltaHistoryOperationParameters const&);
