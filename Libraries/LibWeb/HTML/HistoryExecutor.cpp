@@ -285,20 +285,14 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
     // 2. Set navigable's current session history entry to targetEntry.
     navigable->set_current_session_history_entry(claimed_target_entry);
 
-    // AD-HOC: The UI operation owns the authoritative traversal tracker, mirrored here when the changing job begins.
-    //         As in browsers, only a traversal or reload sets it to "traversal". A push or replace leaves a newer
-    //         navigation's ID in place, as that navigation goes on and commits after this one, and nulls the ID of the
-    //         navigation it finalizes. A same-document traversal leaves the navigation's ID in place too, as in
-    //         Chromium and Gecko. See https://github.com/whatwg/html/issues/12581.
-    auto is_same_document_traversal = job.navigation_type == Bindings::NavigationType::Traverse
-        && claimed_target_entry->document_state()->document_id() == navigable->active_document_id()
-        && !claimed_target_entry->document_state()->reload_pending();
-    if (job.navigation_type.has_value() && first_is_one_of(*job.navigation_type, Bindings::NavigationType::Push, Bindings::NavigationType::Replace)) {
-        if (job.finalized_navigation_id.has_value() && navigable->ongoing_navigation() == *job.finalized_navigation_id)
-            navigable->set_ongoing_navigation_without_informing_navigation_api(Empty {});
-    } else if (!is_same_document_traversal) {
+    // NB: The UI process ran step 8.4 of apply the history step, "Set navigable's ongoing navigation to 'traversal'".
+    //     Mirror its result here.
+    // AD-HOC: A push or replace leaves a newer navigation's ID in place, as that navigation goes on and commits after
+    //         this one, and nulls the ID of the navigation it finalizes. See https://github.com/whatwg/html/issues/12581.
+    if (job.ongoing_navigation_is_traversal)
         navigable->set_ongoing_navigation_without_informing_navigation_api(HTML::LocalNavigable::Traversal::Tag);
-    }
+    else if (job.finalized_navigation_id.has_value() && navigable->ongoing_navigation() == *job.finalized_navigation_id)
+        navigable->set_ongoing_navigation_without_informing_navigation_api(Empty {});
 
     queue_apply_history_step_task(*navigable, navigable->active_document(), GC::create_function(heap(), [this, job = move(job), source_snapshot_params, pending_document, claimed_target_entry = move(claimed_target_entry), navigable, enqueue_continuation, skip]() mutable {
         // NOTE: This check is not in the spec but we should not continue navigation if navigable has been destroyed.
@@ -652,7 +646,6 @@ void HistoryExecutor::apply_changing_navigable_history_step_continuation_impl(GC
 
             if (applies_same_document_push_or_replace
                 && navigable->active_session_history_entry() != target_entry) {
-                navigable->clear_ongoing_history_traversal();
                 on_complete->function()({}, {});
                 return;
             }
@@ -662,7 +655,6 @@ void HistoryExecutor::apply_changing_navigable_history_step_continuation_impl(GC
             //         child frame was destroyed or after a newer navigation claimed the frame. Browser engines let
             //         the newer frame state win, so skip this stale continuation in that case.
             if (!changing_navigable_is_still_current(navigable, displayed_document_id, applies_same_document_push_or_replace)) {
-                navigable->clear_ongoing_history_traversal();
                 on_complete->function()({}, {});
                 return;
             }
@@ -789,7 +781,7 @@ bool HistoryExecutor::resume_history_navigation_population(CrossProcessId operat
     return true;
 }
 
-void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId operation_id, CrossProcessId navigable_id, SessionHistoryEntryDescriptor target_entry, UserNavigationInvolvement user_involvement, Optional<Bindings::NavigationType> navigation_type, Optional<Utf16String> finalized_navigation_id, Optional<NavigationSourceSnapshot> source_snapshot_params, GC::Ref<OnEnqueueChangingNavigableContinuation> enqueue_continuation, GC::Ref<OnSkipChangingNavigableHistoryStepJob> skip, Optional<HistoryNavigationPopulation> population)
+void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId operation_id, CrossProcessId navigable_id, SessionHistoryEntryDescriptor target_entry, UserNavigationInvolvement user_involvement, Optional<Bindings::NavigationType> navigation_type, Optional<Utf16String> finalized_navigation_id, bool ongoing_navigation_is_traversal, Optional<NavigationSourceSnapshot> source_snapshot_params, GC::Ref<OnEnqueueChangingNavigableContinuation> enqueue_continuation, GC::Ref<OnSkipChangingNavigableHistoryStepJob> skip, Optional<HistoryNavigationPopulation> population)
 {
     auto& operation = ensure_history_operation(operation_id);
     auto pending_document = operation.pending_document;
@@ -841,6 +833,7 @@ void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId opera
             .user_involvement = user_involvement,
             .navigation_type = navigation_type,
             .finalized_navigation_id = move(finalized_navigation_id),
+            .ongoing_navigation_is_traversal = ongoing_navigation_is_traversal,
             .source_snapshot_params = move(source_snapshot_params),
             .population = move(population),
         },

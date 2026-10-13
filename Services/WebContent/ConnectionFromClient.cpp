@@ -590,7 +590,7 @@ void ConnectionFromClient::queue_navigation_api_state_clear_task(Web::PageId pag
     navigable->queue_navigation_api_state_clear_task();
 }
 
-void ConnectionFromClient::continue_history_navigation_population(Web::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::SessionHistoryEntryDescriptor target_entry, Optional<Web::Bindings::NavigationType> navigation_type, Web::HTML::HistoryNavigationPopulation population)
+void ConnectionFromClient::continue_history_navigation_population(Web::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::SessionHistoryEntryDescriptor target_entry, Optional<Web::Bindings::NavigationType> navigation_type, bool ongoing_navigation_is_traversal, Web::HTML::HistoryNavigationPopulation population)
 {
     auto page = this->page(page_id);
     auto navigable_id = population.request.navigable_id;
@@ -602,11 +602,11 @@ void ConnectionFromClient::continue_history_navigation_population(Web::PageId pa
     if (history_executor.resume_history_navigation_population(operation_id, move(population)))
         return;
     auto user_involvement = population.request.user_involvement;
-    history_executor.run_ui_changing_navigable_history_job(operation_id, navigable_id, move(target_entry), user_involvement, navigation_type, {}, {},
+    history_executor.run_ui_changing_navigable_history_job(operation_id, navigable_id, move(target_entry), user_involvement, navigation_type, {}, ongoing_navigation_is_traversal, {},
         on_enqueue_changing_navigable_continuation(page_id, operation_id, navigable_id), on_skip_changing_navigable_history_step_job(page_id, operation_id, navigable_id), move(population));
 }
 
-void ConnectionFromClient::run_changing_navigable_history_job(Web::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor target_entry, Web::HTML::UserNavigationInvolvement user_involvement, Optional<Web::Bindings::NavigationType> navigation_type, Optional<Utf16String> finalized_navigation_id, Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot_params)
+void ConnectionFromClient::run_changing_navigable_history_job(Web::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor target_entry, Web::HTML::UserNavigationInvolvement user_involvement, Optional<Web::Bindings::NavigationType> navigation_type, Optional<Utf16String> finalized_navigation_id, bool ongoing_navigation_is_traversal, Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot_params)
 {
     auto page = this->page(page_id);
     if (!page.has_value()) {
@@ -614,7 +614,7 @@ void ConnectionFromClient::run_changing_navigable_history_job(Web::PageId page_i
         return;
     }
 
-    page->page().history_executor().run_ui_changing_navigable_history_job(operation_id, navigable_id, move(target_entry), user_involvement, navigation_type, move(finalized_navigation_id), move(source_snapshot_params),
+    page->page().history_executor().run_ui_changing_navigable_history_job(operation_id, navigable_id, move(target_entry), user_involvement, navigation_type, move(finalized_navigation_id), ongoing_navigation_is_traversal, move(source_snapshot_params),
         on_enqueue_changing_navigable_continuation(page_id, operation_id, navigable_id), on_skip_changing_navigable_history_step_job(page_id, operation_id, navigable_id));
 }
 

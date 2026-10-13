@@ -1420,7 +1420,7 @@ void CanonicalTraversable::continue_history_navigation_population(Web::HTML::Cro
         }
         auto& loader = *changing_navigable->population_loader;
         endpoint->owe_reply({ OwedReply::Kind::ChangingJob, operation_id, navigable_id });
-        endpoint->async_continue_history_navigation_population(operation_id, changing_navigable->job->target_entry_descriptor(), changing_navigable->job->navigation_type,
+        endpoint->async_continue_history_navigation_population(operation_id, changing_navigable->job->target_entry_descriptor(), changing_navigable->job->navigation_type, traversable.ongoing_navigation_is_traversal(navigable_id),
             Web::HTML::HistoryNavigationPopulation { loader.request(), loader.take_result() });
     };
     if (auto client_id = endpoint->client().request_server_site_bindings().client_id(); client_id.has_value()) {
@@ -1451,6 +1451,7 @@ void CanonicalTraversable::dispatch_changing_navigable_history_step_job(HistoryO
         move(target_entry), changing_navigable.job->user_involvement,
         changing_navigable.job->navigation_type,
         finalized_navigation_id,
+        ongoing_navigation_is_traversal(navigable_id),
         changing_navigable.job->source_snapshot_params);
 }
 
@@ -1810,6 +1811,12 @@ bool CanonicalTraversable::page_populates_a_history_entry_for_local_file(WebCont
         }
     }
     return false;
+}
+
+bool CanonicalTraversable::ongoing_navigation_is_traversal(Web::HTML::CrossProcessId navigable_id) const
+{
+    auto navigable = find(navigable_id);
+    return navigable.has_value() && navigable->ongoing_navigation().has<CanonicalNavigable::Traversal>();
 }
 
 RefPtr<WebContentPage> CanonicalTraversable::changing_job_endpoint(CanonicalNavigable const& navigable, CanonicalDocumentState const& target_document_state) const
