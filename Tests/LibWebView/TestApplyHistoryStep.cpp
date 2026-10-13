@@ -116,21 +116,30 @@ public:
         Function<void(Web::HTML::CheckIfUnloadingIsCanceledResult)> on_complete;
     };
     struct ChangingJob {
+        WebView::ChangingNavigable* changing_navigable;
         ChangingNavigableHistoryStepJob job;
-        Function<void(WebView::ApplyHistoryStepJobs::ChangingNavigableContinuation)> enqueue_continuation;
-        Function<void()> skip;
 
-        void enqueue_ready_continuation() { enqueue_continuation({ .navigable_id = job.navigable_id }); }
-        void enqueue_aborted_continuation() { enqueue_continuation({ .navigable_id = job.navigable_id, .aborted = true }); }
+        void enqueue_ready_continuation() { changing_navigable->enqueue_continuation(); }
+        void enqueue_aborted_continuation()
+        {
+            changing_navigable->aborted = true;
+            changing_navigable->enqueue_continuation();
+        }
+        void skip() { changing_navigable->skip(); }
     };
     struct Continuation {
+        WebView::ChangingNavigable* changing_navigable;
+        Web::HTML::CrossProcessId navigable_id;
         ApplyChangingNavigableHistoryStepContinuation continuation;
-        Function<void()> on_complete;
+
+        void on_complete() { changing_navigable->continuation_applied(); }
     };
     struct NonchangingUpdate {
+        WebView::NonchangingNavigable* nonchanging_navigable;
         Web::HTML::CrossProcessId navigable_id;
         Web::HTML::HistoryObjectLengthAndIndex history_object_length_and_index;
-        Function<void()> on_complete;
+
+        void on_complete() { nonchanging_navigable->updated(); }
     };
 
     WebView::ApplyHistoryStepJobs jobs()
@@ -138,12 +147,12 @@ public:
         return {
             .check_if_unloading_is_canceled = [this](Vector<Web::HTML::CrossProcessId> navigables_that_need_before_unload, NonnullRefPtr<WebView::CanonicalSessionHistoryEntry> target_entry, Web::HTML::UserNavigationInvolvement, Function<void(Web::HTML::CheckIfUnloadingIsCanceledResult)> on_complete) { unloading_checks.append({ move(target_entry), move(navigables_that_need_before_unload), move(on_complete) }); },
             .queue_navigation_api_state_clear_task = [this](Web::HTML::CrossProcessId navigable_id) { navigation_api_state_clear_tasks.append(navigable_id); },
-            .select_changing_navigable_history_step_job_endpoint = [this](ChangingNavigableHistoryStepJob& job) {
-                selected_changing_job_endpoints.append(job.navigable_id);
+            .select_changing_navigable_history_step_job_endpoint = [this](WebView::ChangingNavigable& changing_navigable) {
+                selected_changing_job_endpoints.append(changing_navigable.id);
                 return true; },
-            .run_changing_navigable_history_step_job = [this](ChangingNavigableHistoryStepJob job, Function<void(WebView::ApplyHistoryStepJobs::ChangingNavigableContinuation)> enqueue_continuation, Function<void()> skip) { changing_jobs.append({ move(job), move(enqueue_continuation), move(skip) }); },
-            .apply_changing_navigable_history_step_continuation = [this](ApplyChangingNavigableHistoryStepContinuation continuation, Function<void()> on_complete) { continuations.append({ move(continuation), move(on_complete) }); },
-            .update_nonchanging_navigable_history_step_state = [this](Web::HTML::CrossProcessId navigable_id, Web::HTML::HistoryObjectLengthAndIndex history_object_length_and_index, Function<void()> on_complete) { nonchanging_updates.append({ navigable_id, history_object_length_and_index, move(on_complete) }); },
+            .run_changing_navigable_history_step_job = [this](WebView::ChangingNavigable& changing_navigable) { changing_jobs.append({ &changing_navigable, *changing_navigable.job }); },
+            .apply_changing_navigable_history_step_continuation = [this](WebView::ChangingNavigable& changing_navigable) { continuations.append({ &changing_navigable, changing_navigable.id, *changing_navigable.continuation }); },
+            .update_nonchanging_navigable_history_step_state = [this](WebView::NonchangingNavigable& nonchanging_navigable, Web::HTML::HistoryObjectLengthAndIndex history_object_length_and_index) { nonchanging_updates.append({ &nonchanging_navigable, nonchanging_navigable.id, history_object_length_and_index }); },
         };
     }
 
@@ -331,7 +340,7 @@ TEST_CASE(traversal_runs_the_changing_root_job_and_commits_the_target_step)
 
     EXPECT_EQ(test.runner.continuations.size(), 1uz);
     auto& continuation = test.runner.continuations[0];
-    EXPECT_EQ(continuation.continuation.navigable_id, root_id());
+    EXPECT_EQ(continuation.navigable_id, root_id());
     EXPECT_EQ(continuation.continuation.history_object_length_and_index.script_history_length, 2u);
     EXPECT_EQ(continuation.continuation.history_object_length_and_index.script_history_index, 0u);
     EXPECT_EQ(continuation.continuation.entries_for_navigation_api.size(), 1uz);
@@ -498,7 +507,7 @@ TEST_CASE(child_navigable_traversal_updates_the_nonchanging_root)
 
     EXPECT_EQ(test.runner.continuations.size(), 1uz);
     auto& continuation = test.runner.continuations[0];
-    EXPECT_EQ(continuation.continuation.navigable_id, child_id());
+    EXPECT_EQ(continuation.navigable_id, child_id());
     EXPECT_EQ(continuation.continuation.history_object_length_and_index.script_history_length, 3u);
     EXPECT_EQ(continuation.continuation.history_object_length_and_index.script_history_index, 0u);
     EXPECT_EQ(continuation.continuation.entries_for_navigation_api.size(), 2uz);
@@ -568,7 +577,7 @@ TEST_CASE(aborted_continuation_does_not_cancel_a_history_step_another_navigable_
 
     test.runner.changing_jobs[1].enqueue_ready_continuation();
     EXPECT_EQ(test.runner.continuations.size(), 1uz);
-    EXPECT_EQ(test.runner.continuations[0].continuation.navigable_id, test.runner.changing_jobs[1].job.navigable_id);
+    EXPECT_EQ(test.runner.continuations[0].navigable_id, test.runner.changing_jobs[1].job.navigable_id);
 
     test.runner.continuations[0].on_complete();
     EXPECT(test.result == Web::HTML::HistoryStepResult::Applied);

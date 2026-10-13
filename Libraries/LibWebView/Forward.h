@@ -43,6 +43,7 @@ class FontServiceHost;
 class HistoryStore;
 class HSTSStore;
 class Menu;
+class NavigationLoader;
 class OutOfProcessWebView;
 class ProcessManager;
 class RequestServerInstance;
