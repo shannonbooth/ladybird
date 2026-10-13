@@ -1418,9 +1418,12 @@ void CanonicalTraversable::continue_history_navigation_population(Web::HTML::Cro
             traversable.did_fail_history_navigation_population(operation_id, navigable_id, *endpoint);
             return;
         }
+        // NB: Removing the navigable ends its pending job.
+        auto navigable = traversable.find(navigable_id);
+        VERIFY(navigable.has_value());
         auto& loader = *changing_navigable->population_loader;
         endpoint->owe_reply({ OwedReply::Kind::ChangingJob, operation_id, navigable_id });
-        endpoint->async_continue_history_navigation_population(operation_id, changing_navigable->job->target_entry_descriptor(), changing_navigable->job->navigation_type,
+        endpoint->async_continue_history_navigation_population(operation_id, changing_navigable->job->target_entry_descriptor(), changing_navigable->job->navigation_type, navigable->ongoing_navigation().has<CanonicalNavigable::Traversal>(),
             Web::HTML::HistoryNavigationPopulation { loader.request(), loader.take_result() });
     };
     if (auto client_id = endpoint->client().request_server_site_bindings().client_id(); client_id.has_value()) {
@@ -1435,7 +1438,9 @@ void CanonicalTraversable::continue_history_navigation_population(Web::HTML::Cro
 void CanonicalTraversable::dispatch_changing_navigable_history_step_job(HistoryOperation& operation, ChangingNavigable& changing_navigable)
 {
     auto navigable_id = changing_navigable.id;
-    auto endpoint = changing_job_endpoint(operation, navigable_id);
+    auto navigable = find(navigable_id);
+    VERIFY(navigable.has_value());
+    auto endpoint = changing_job_endpoint(*navigable, *changing_navigable.job->target_entry->document_state);
     VERIFY(endpoint);
 
     if (changing_navigable.population_loader)
@@ -1451,6 +1456,7 @@ void CanonicalTraversable::dispatch_changing_navigable_history_step_job(HistoryO
         move(target_entry), changing_navigable.job->user_involvement,
         changing_navigable.job->navigation_type,
         finalized_navigation_id,
+        navigable->ongoing_navigation().has<CanonicalNavigable::Traversal>(),
         changing_navigable.job->source_snapshot_params);
 }
 
