@@ -1469,8 +1469,6 @@ void CanonicalTraversable::dispatch_changing_navigable_history_step_job(HistoryO
         operation.operation_id, navigable_id,
         move(target_entry), pending_job.value()->job.user_involvement,
         pending_job.value()->job.navigation_type,
-        pending_job.value()->job.traversal_yields_to,
-        pending_job.value()->job.canceled_navigation_id,
         finalized_navigation_id,
         pending_job.value()->job.source_snapshot_params);
 }

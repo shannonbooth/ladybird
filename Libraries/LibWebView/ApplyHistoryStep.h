@@ -55,9 +55,6 @@ struct WEBVIEW_API ApplyHistoryStepJobs {
         Web::HTML::SessionHistoryEntryDescriptor target_entry_descriptor() const;
         Web::HTML::UserNavigationInvolvement user_involvement { Web::HTML::UserNavigationInvolvement::None };
         Optional<Web::Bindings::NavigationType> navigation_type;
-        Web::HTML::TraversalYieldsTo traversal_yields_to { Web::HTML::TraversalYieldsTo::Nothing };
-        // The admitted navigation a same-document traversal canceled.
-        Optional<Utf16String> canceled_navigation_id {};
         Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot_params {};
     };
     Function<bool(ChangingNavigableHistoryStepJob&)> select_changing_navigable_history_step_job_endpoint;
@@ -173,9 +170,6 @@ private:
         Web::HTML::CrossProcessId id;
         // The target entry the navigable's job claimed, looked up again before it is activated (whatwg/html#12961).
         RefPtr<CanonicalSessionHistoryEntry> claimed_target_entry {};
-        // AD-HOC: What a same-document traversal yields to, with the admitted navigation it canceled.
-        Web::HTML::TraversalYieldsTo traversal_yields_to { Web::HTML::TraversalYieldsTo::Nothing };
-        Optional<Utf16String> canceled_navigation_id {};
         bool has_ongoing_history_traversal { false };
     };
     Vector<ChangingNavigable> m_changing_navigables;
