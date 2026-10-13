@@ -275,39 +275,21 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
     //     job. Retain that exact local entry instead of repeating the global-step lookup in WebContent.
     auto claimed_target_entry = job.target_entry;
 
-    // https://html.spec.whatwg.org/multipage/nav-history-apis.html#fire-a-traverse-navigate-event
-    // The UI process is the canonical coordinator for navigation starts and history operations. Only it can prove
-    // that a navigation was admitted after this traversal; the presence of a local navigation ID does not establish
-    // that ordering. A proven-newer navigation owns the visible outcome, so abandon the traversal without committing
-    // its canonical target step.
-    //
-    // A navigation this process started before it learned of a same-document traversal reaches the UI process after
-    // the traversal. Apart from the admitted navigation the traversal canceled, a navigation still awaiting the UI
-    // process is such a newer navigation.
-    auto yields_to_unadmitted_navigation = [&] {
-        auto ongoing_navigation = navigable->ongoing_navigation();
-        auto const* navigation_id = ongoing_navigation.get_pointer<Utf16String>();
-        return navigation_id
-            && job.canceled_navigation_id != *navigation_id
-            && navigable->has_navigation_parked_for_population(*navigation_id);
-    };
-    if (job.traversal_yields_to == TraversalYieldsTo::AdmittedNavigation
-        || (job.traversal_yields_to == TraversalYieldsTo::UnadmittedNavigation && yields_to_unadmitted_navigation())) {
-        on_complete->function()({ ChangingNavigableHistoryStepJobDisposition::Stale, nullptr });
-        return false;
-    }
-
     // 2. Set navigable's current session history entry to targetEntry.
     navigable->set_current_session_history_entry(claimed_target_entry);
 
     // AD-HOC: The UI operation owns the authoritative traversal tracker, mirrored here when the changing job begins.
     //         As in browsers, only a traversal or reload sets it to "traversal". A push or replace leaves a newer
     //         navigation's ID in place, as that navigation goes on and commits after this one, and nulls the ID of the
-    //         navigation it finalizes. See https://github.com/whatwg/html/issues/12581.
+    //         navigation it finalizes. A same-document traversal leaves the navigation's ID in place too, as in
+    //         Chromium and Gecko. See https://github.com/whatwg/html/issues/12581.
+    auto is_same_document_traversal = job.navigation_type == Bindings::NavigationType::Traverse
+        && claimed_target_entry->document_state()->document_id() == navigable->active_document_id()
+        && !claimed_target_entry->document_state()->reload_pending();
     if (job.navigation_type.has_value() && first_is_one_of(*job.navigation_type, Bindings::NavigationType::Push, Bindings::NavigationType::Replace)) {
         if (job.finalized_navigation_id.has_value() && navigable->ongoing_navigation() == *job.finalized_navigation_id)
             navigable->set_ongoing_navigation_without_informing_navigation_api(Empty {});
-    } else {
+    } else if (!is_same_document_traversal) {
         navigable->set_ongoing_navigation_without_informing_navigation_api(HTML::LocalNavigable::Traversal::Tag);
     }
 
@@ -790,7 +772,7 @@ bool HistoryExecutor::resume_history_navigation_population(CrossProcessId operat
     return true;
 }
 
-void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId operation_id, CrossProcessId navigable_id, SessionHistoryEntryDescriptor target_entry, UserNavigationInvolvement user_involvement, Optional<Bindings::NavigationType> navigation_type, TraversalYieldsTo traversal_yields_to, Optional<Utf16String> canceled_navigation_id, Optional<Utf16String> finalized_navigation_id, Optional<NavigationSourceSnapshot> source_snapshot_params, GC::Ref<OnChangingNavigableHistoryStepJobComplete> on_complete, Optional<HistoryNavigationPopulation> population)
+void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId operation_id, CrossProcessId navigable_id, SessionHistoryEntryDescriptor target_entry, UserNavigationInvolvement user_involvement, Optional<Bindings::NavigationType> navigation_type, Optional<Utf16String> finalized_navigation_id, Optional<NavigationSourceSnapshot> source_snapshot_params, GC::Ref<OnChangingNavigableHistoryStepJobComplete> on_complete, Optional<HistoryNavigationPopulation> population)
 {
     auto& operation = ensure_history_operation(operation_id);
     auto pending_document = operation.pending_document;
@@ -837,8 +819,6 @@ void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId opera
             .target_entry = local_target_entry.release_nonnull(),
             .user_involvement = user_involvement,
             .navigation_type = navigation_type,
-            .traversal_yields_to = traversal_yields_to,
-            .canceled_navigation_id = move(canceled_navigation_id),
             .finalized_navigation_id = move(finalized_navigation_id),
             .source_snapshot_params = move(source_snapshot_params),
             .population = move(population),
