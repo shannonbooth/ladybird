@@ -135,7 +135,7 @@ void ApplyHistoryStep::get_changing_and_nonchanging_navigables()
     // 6. Let changingNavigables be the result of get all navigables whose current session history entry will change
     //    or reload given traversable and targetStep.
     for (auto navigable_id : m_session_history.get_all_navigables_whose_current_session_history_entry_will_change_or_reload(m_traversable_navigable, m_target_step))
-        m_changing_navigables.append(ChangingNavigable { *this, navigable_id });
+        m_changing_navigables.append(ChangingNavigable { *this, navigable_id, find_navigable(navigable_id) });
 
     // AD-HOC: Unconditionally populating a document here could unload and re-navigate a frame because an unrelated
     //         navigable was created or destroyed, which no other engine does. So an update for a navigable's creation
@@ -144,7 +144,7 @@ void ApplyHistoryStep::get_changing_and_nonchanging_navigables()
     //         nested history kept. See https://github.com/whatwg/html/issues/12724.
     if (!m_navigation_type.has_value()) {
         m_changing_navigables.remove_all_matching([&](ChangingNavigable const& changing_navigable) {
-            auto const* navigable = find_navigable(changing_navigable.id);
+            auto const* navigable = changing_navigable.navigable();
             auto const* target_entry = navigable ? m_session_history.get_the_target_history_entry(*navigable, m_target_step) : nullptr;
             if (!target_entry)
                 return false;
@@ -156,11 +156,11 @@ void ApplyHistoryStep::get_changing_and_nonchanging_navigables()
     // 7. Let nonchangingNavigablesThatStillNeedUpdates be the result of getting all navigables that only need
     //    history object length/index update given traversable and targetStep.
     for (auto navigable_id : m_session_history.get_all_navigables_that_only_need_history_object_length_index_update(m_traversable_navigable, m_target_step))
-        m_nonchanging_navigables_that_still_need_updates.append(NonchangingNavigable { *this, navigable_id });
+        m_nonchanging_navigables_that_still_need_updates.append(NonchangingNavigable { *this, navigable_id, find_navigable(navigable_id) });
 
     // 8. For each navigable of changingNavigables:
     for (auto& changing_navigable : m_changing_navigables) {
-        auto* navigable = find_navigable(changing_navigable.id);
+        auto* navigable = changing_navigable.navigable();
 
         // 1. Let targetEntry be the result of getting the target history entry given navigable and targetStep.
         auto* target_entry = navigable ? m_session_history.get_the_target_history_entry(*navigable, m_target_step) : nullptr;
@@ -194,7 +194,7 @@ void ApplyHistoryStep::run_changing_navigable_jobs()
     //     navigable's active window to run the steps:
     // NB: The job runs in the process hosting the navigable.
     for (auto& changing_navigable : m_changing_navigables) {
-        auto const* navigable = find_navigable(changing_navigable.id);
+        auto const* navigable = changing_navigable.navigable();
         auto* target_entry = navigable ? m_session_history.get_the_target_history_entry(*navigable, m_target_step) : nullptr;
         if (!target_entry) {
             // AD-HOC: The canonical mirror can briefly disagree with the live navigable tree while a created or
@@ -224,6 +224,30 @@ void ApplyHistoryStep::run_changing_navigable_jobs()
     // NB: This is a member, as the loop below continues once jobs complete.
     m_changing_jobs_dispatched = true;
     process_changing_navigable_continuations();
+}
+
+ChangingNavigable::ChangingNavigable(ApplyHistoryStep& run, Web::HTML::CrossProcessId id, CanonicalNavigable* navigable)
+    : id(id)
+    , m_run(&run)
+    , m_navigable(navigable ? navigable->make_weak_ptr() : WeakPtr<CanonicalNavigable> {})
+{
+}
+
+CanonicalNavigable* ChangingNavigable::navigable() const
+{
+    return m_navigable.ptr();
+}
+
+NonchangingNavigable::NonchangingNavigable(ApplyHistoryStep& run, Web::HTML::CrossProcessId id, CanonicalNavigable* navigable)
+    : id(id)
+    , m_run(&run)
+    , m_navigable(navigable ? navigable->make_weak_ptr() : WeakPtr<CanonicalNavigable> {})
+{
+}
+
+CanonicalNavigable* NonchangingNavigable::navigable() const
+{
+    return m_navigable.ptr();
 }
 
 void ChangingNavigable::enqueue_continuation()
@@ -350,7 +374,7 @@ void ApplyHistoryStep::process_changing_navigable_continuations()
         RefPtr<CanonicalSessionHistoryEntry> target_entry = changing_navigable_continuation.job.has_value() ? changing_navigable_continuation.job->target_entry.ptr() : nullptr;
 
         // 6. Let navigable be changingNavigableContinuation's navigable.
-        auto* navigable = find_navigable(changing_navigable_continuation.id);
+        auto* navigable = changing_navigable_continuation.navigable();
 
         // AD-HOC: The spec has the continuation activate the target entry the job's task retained, without checking it
         //         against the session history again. But the sync navigations that jumped the queue above ran while the
@@ -596,7 +620,7 @@ NonchangingNavigable* ApplyHistoryStep::nonchanging_navigable(Web::HTML::CrossPr
 
 void ApplyHistoryStep::clear_ongoing_navigation_traversal(ChangingNavigable& changing_navigable)
 {
-    if (auto* navigable = find_navigable(changing_navigable.id))
+    if (auto* navigable = changing_navigable.navigable())
         navigable->clear_ongoing_navigation_traversal(m_operation_id);
 }
 

@@ -1324,8 +1324,7 @@ void CanonicalTraversable::did_finish_history_navigation_params_creation(WebCont
         return;
     }
     // The document's sandboxing flags are at least those the UI process snapshots for the navigable.
-    if (auto navigable = find(navigable_id); navigable.has_value())
-        population.request.target_snapshot_params.sandboxing_flags |= navigable->snapshot_target_snapshot_params().sandboxing_flags;
+    population.request.target_snapshot_params.sandboxing_flags |= changing_navigable->navigable()->snapshot_target_snapshot_params().sandboxing_flags;
     auto& loader = changing_navigable->population_loader;
     loader = NavigationLoader::create(source_page.client().is_private(), move(population.request));
     loader->did_finish_navigation_params_creation(move(population.result));
@@ -1352,17 +1351,17 @@ void CanonicalTraversable::did_fail_history_navigation_population(Web::HTML::Cro
 void CanonicalTraversable::continue_history_navigation_population(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
 {
     auto* operation = find_history_operation(operation_id);
-    auto navigable = find(navigable_id);
-    if (!operation || !navigable.has_value())
+    auto* changing_navigable = operation ? operation->pending_changing_job(navigable_id) : nullptr;
+    if (!changing_navigable || !changing_navigable->population_loader)
         return;
-    auto* changing_navigable = operation->pending_changing_job(navigable_id);
-    auto endpoint = changing_job_endpoint(*operation, navigable_id);
-    if (!changing_navigable || !endpoint || !changing_navigable->population_loader)
+    auto& navigable = *changing_navigable->navigable();
+    auto endpoint = changing_job_endpoint(navigable, *changing_navigable->job->target_entry->document_state);
+    if (!endpoint)
         return;
     auto loader = move(changing_navigable->population_loader);
 
     NonnullRefPtr target_entry = changing_navigable->job->target_entry;
-    auto host_or_error = navigable->obtain_page_to_populate_document(target_entry, *loader, *endpoint);
+    auto host_or_error = navigable.obtain_page_to_populate_document(target_entry, *loader, *endpoint);
     if (host_or_error.is_error()) {
         did_fail_history_navigation_population(operation_id, navigable_id);
         return;
@@ -1375,7 +1374,7 @@ void CanonicalTraversable::continue_history_navigation_population(Web::HTML::Cro
         changing_navigable = operation->pending_changing_job(navigable_id);
     if (!operation || !changing_navigable) {
         if (host.document)
-            navigable->abandon_populated_document(target_entry->document_state, *host.document);
+            navigable.abandon_populated_document(target_entry->document_state, *host.document);
         return;
     }
     if (host.document)
@@ -1397,12 +1396,9 @@ void CanonicalTraversable::continue_history_navigation_population(Web::HTML::Cro
             traversable.did_fail_history_navigation_population(operation_id, navigable_id);
             return;
         }
-        // NB: Removing the navigable ends its pending job.
-        auto navigable = traversable.find(navigable_id);
-        VERIFY(navigable.has_value());
         auto& loader = *changing_navigable->population_loader;
         endpoint->owe_reply({ OwedReply::Kind::ChangingJob, operation_id, navigable_id });
-        endpoint->async_continue_history_navigation_population(operation_id, changing_navigable->job->target_entry_descriptor(), changing_navigable->job->navigation_type, navigable->ongoing_navigation().has<CanonicalNavigable::Traversal>(),
+        endpoint->async_continue_history_navigation_population(operation_id, changing_navigable->job->target_entry_descriptor(), changing_navigable->job->navigation_type, changing_navigable->navigable()->ongoing_navigation().has<CanonicalNavigable::Traversal>(),
             Web::HTML::HistoryNavigationPopulation { loader.request(), loader.take_result() });
     };
     if (auto client_id = endpoint->client().request_server_site_bindings().client_id(); client_id.has_value()) {
@@ -1417,9 +1413,8 @@ void CanonicalTraversable::continue_history_navigation_population(Web::HTML::Cro
 void CanonicalTraversable::dispatch_changing_navigable_history_step_job(HistoryOperation& operation, ChangingNavigable& changing_navigable)
 {
     auto navigable_id = changing_navigable.id;
-    auto navigable = find(navigable_id);
-    VERIFY(navigable.has_value());
-    auto endpoint = changing_job_endpoint(*navigable, *changing_navigable.job->target_entry->document_state);
+    auto& navigable = *changing_navigable.navigable();
+    auto endpoint = changing_job_endpoint(navigable, *changing_navigable.job->target_entry->document_state);
     VERIFY(endpoint);
 
     auto target_entry = changing_navigable.job->target_entry_descriptor();
@@ -1432,7 +1427,7 @@ void CanonicalTraversable::dispatch_changing_navigable_history_step_job(HistoryO
         move(target_entry), changing_navigable.job->user_involvement,
         changing_navigable.job->navigation_type,
         finalized_navigation_id,
-        navigable->ongoing_navigation().has<CanonicalNavigable::Traversal>(),
+        navigable.ongoing_navigation().has<CanonicalNavigable::Traversal>(),
         changing_navigable.job->source_snapshot_params);
 }
 
@@ -1457,8 +1452,7 @@ void CanonicalTraversable::dispatch_changing_navigable_history_step_continuation
         // AD-HOC: Except for a navigable created by a document repopulated for its entry, which displays its initial
         //         about:blank until an update for a navigable's creation or destruction restores the entry its nested
         //         history kept. See https://github.com/whatwg/html/issues/12724.
-        auto navigable = find(navigable_id);
-        VERIFY(changing_navigable.job->navigation_type.has_value() || (navigable.has_value() && navigable->active_document().is_initial_about_blank()));
+        VERIFY(changing_navigable.job->navigation_type.has_value() || changing_navigable.navigable()->active_document().is_initial_about_blank());
 
         // 2. Deactivate displayedDocument, given userInvolvement, targetEntry, navigationType, and
         //    afterPotentialUnloads.
@@ -1480,14 +1474,11 @@ void CanonicalTraversable::send_changing_navigable_continuation_task(HistoryOper
         && operation.parameters.has<Web::ReloadHistoryOperationParameters>()) {
         // INTEROP: Reloading rebuilds the child history tree from the replacement document, as in WebKit.
         //          Keep the old entries until population succeeds so an abandoned reload preserves them.
-        auto navigable = find(navigable_id);
-        if (navigable.has_value()) {
-            Vector<Web::HTML::CrossProcessId> nested_history_ids;
-            for (auto const& nested_history : document_state.nested_histories)
-                nested_history_ids.append(nested_history.id);
-            for (auto nested_history_id : nested_history_ids)
-                remove_nested_history(*navigable, document_state.id, nested_history_id);
-        }
+        Vector<Web::HTML::CrossProcessId> nested_history_ids;
+        for (auto const& nested_history : document_state.nested_histories)
+            nested_history_ids.append(nested_history.id);
+        for (auto nested_history_id : nested_history_ids)
+            remove_nested_history(*changing_navigable->navigable(), document_state.id, nested_history_id);
     }
 
     auto continuation = *changing_navigable->continuation;
@@ -1840,10 +1831,8 @@ ChangingNavigable::JobState CanonicalTraversable::end_changing_navigable_history
     auto job_state = exchange(changing_navigable.job_state, ChangingNavigable::JobState::Ended);
     if (auto population_loader = move(changing_navigable.population_loader))
         population_loader->reclaim_response_body_after_failed_handoff();
-    if (auto document = move(changing_navigable.document)) {
-        if (auto navigable = find(changing_navigable.id); navigable.has_value())
-            navigable->abandon_populated_document(changing_navigable.job->target_entry->document_state, *document);
-    }
+    if (auto document = move(changing_navigable.document))
+        changing_navigable.navigable()->abandon_populated_document(changing_navigable.job->target_entry->document_state, *document);
     return job_state;
 }
 
@@ -1948,8 +1937,8 @@ ApplyHistoryStepJobs CanonicalTraversable::create_apply_history_step_jobs(Histor
         .update_nonchanging_navigable_history_step_state = [this, &operation](NonchangingNavigable& nonchanging_navigable, Web::HTML::HistoryObjectLengthAndIndex history_object_length_and_index) {
             if (operation.finished)
                 return;
-            auto navigable = find(nonchanging_navigable.id);
-            RefPtr<WebContentPage> endpoint = navigable.has_value() ? page_hosting(*navigable) : nullptr;
+            auto const* navigable = nonchanging_navigable.navigable();
+            RefPtr<WebContentPage> endpoint = navigable ? page_hosting(*navigable) : nullptr;
             if (!endpoint || !endpoint->is_open()) {
                 nonchanging_navigable.updated();
                 return;
@@ -2880,11 +2869,10 @@ void CanonicalTraversable::did_receive_changing_navigable_continuation_applied(W
         auto document = move(changing_navigable->document);
         if (activated_navigable_state.has_value())
             did_activate_history_entry(*operation, navigable_id, source_page, *changing_navigable->job->target_entry, activated_navigable_state.release_value());
-        else if (auto navigable = find(navigable_id); navigable.has_value() && document)
+        else if (auto* navigable = changing_navigable->navigable(); navigable && document)
             navigable->abandon_populated_document(changing_navigable->job->target_entry->document_state, *document);
         if (previous_entry_persisted_state.has_value()) {
-            auto navigable = find(navigable_id);
-            if (navigable.has_value())
+            if (auto* navigable = changing_navigable->navigable())
                 update_session_history_entry_persisted_state(*navigable, *previous_entry_persisted_state);
         }
         // A replacement document's creation operation also applies a top-level continuation, but it runs before

@@ -96,11 +96,10 @@ struct WEBVIEW_API ChangingNavigable {
     void enqueue_continuation();
     void continuation_applied();
 
-    ChangingNavigable(ApplyHistoryStep& run, Web::HTML::CrossProcessId id)
-        : id(id)
-        , m_run(&run)
-    {
-    }
+    ChangingNavigable(ApplyHistoryStep& run, Web::HTML::CrossProcessId id, CanonicalNavigable* navigable);
+
+    // The navigable, unless it is gone. Removing a navigable ends its job, so a pending job's navigable is there.
+    CanonicalNavigable* navigable() const;
 
     bool has_pending_job() const { return first_is_one_of(job_state, JobState::Running, JobState::ContinuationEnqueued, JobState::ApplyingContinuation); }
 
@@ -120,15 +119,15 @@ struct WEBVIEW_API ChangingNavigable {
 
 private:
     ApplyHistoryStep* m_run;
+    WeakPtr<CanonicalNavigable> m_navigable;
 };
 
 // One of a run's nonchangingNavigablesThatStillNeedUpdates.
 struct WEBVIEW_API NonchangingNavigable {
-    NonchangingNavigable(ApplyHistoryStep& run, Web::HTML::CrossProcessId id)
-        : id(id)
-        , m_run(&run)
-    {
-    }
+    NonchangingNavigable(ApplyHistoryStep& run, Web::HTML::CrossProcessId id, CanonicalNavigable* navigable);
+
+    // The navigable, unless it is gone.
+    CanonicalNavigable* navigable() const;
 
     void updated();
 
@@ -137,6 +136,7 @@ struct WEBVIEW_API NonchangingNavigable {
 
 private:
     ApplyHistoryStep* m_run;
+    WeakPtr<CanonicalNavigable> m_navigable;
 };
 
 // The apply-history-step state a traversable navigable shares across runs.
