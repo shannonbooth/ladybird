@@ -1194,7 +1194,7 @@ void CanonicalTraversable::recover_from_web_content_process_crash()
     VERIFY(reloading_entry);
     reloading_entry->document_state->reload_pending = true;
     session_history_changed();
-    enqueue_browser_history_traversal(target_step, false);
+    enqueue_browser_history_traversal(target_step);
 }
 
 RefPtr<WebContentPage> CanonicalTraversable::page_hosting(CanonicalNavigable const& navigable) const
@@ -1296,11 +1296,9 @@ bool CanonicalTraversable::select_changing_navigable_history_step_job_endpoint(H
     // dispatched instead of having the job echo it back.
     if (navigable->is_top_level_traversable()
         && operation.parameters.has<Web::ReloadHistoryOperationParameters>()) {
-        if (endpoint->is_open()) {
-            // A load a history operation starts, rather than a navigation, is tracked as the active document's.
-            clear_active_document_load();
-            endpoint->begin_top_level_load(job.target_entry->url);
-        }
+        // A load a history operation starts, rather than a navigation, is tracked as the active document's.
+        clear_active_document_load();
+        endpoint->begin_top_level_load(job.target_entry->url);
     }
     return true;
 }
@@ -1428,9 +1426,6 @@ void CanonicalTraversable::dispatch_changing_navigable_history_step_job(HistoryO
     auto endpoint = changing_job_endpoint(*navigable, *changing_navigable.job->target_entry->document_state);
     VERIFY(endpoint);
 
-    if (changing_navigable.population_loader)
-        changing_navigable.population_loader->reclaim_response_body_after_failed_handoff();
-    changing_navigable.population_loader = nullptr;
     auto target_entry = changing_navigable.job->target_entry_descriptor();
     Optional<Utf16String> finalized_navigation_id;
     if (auto const* parameters = operation.parameters.get_pointer<Web::FinalizeCrossDocumentNavigationHistoryOperationParameters>(); parameters && parameters->navigable_id == navigable_id)
@@ -1849,7 +1844,7 @@ ChangingNavigable::JobState CanonicalTraversable::end_changing_navigable_history
     auto job_state = exchange(changing_navigable.job_state, ChangingNavigable::JobState::Ended);
     if (auto population_loader = move(changing_navigable.population_loader))
         population_loader->reclaim_response_body_after_failed_handoff();
-    if (auto document = move(changing_navigable.document); document && changing_navigable.job.has_value()) {
+    if (auto document = move(changing_navigable.document)) {
         if (auto navigable = find(changing_navigable.id); navigable.has_value())
             navigable->abandon_populated_document(changing_navigable.job->target_entry->document_state, *document);
     }
@@ -1940,8 +1935,8 @@ ApplyHistoryStepJobs CanonicalTraversable::create_apply_history_step_jobs(Histor
                 return;
             }
             // If a sync navigation that jumped the queue changed the job's target entry while the job was paused, then
-            // the job follows — so that the entry recorded as the navigable's active one, and any re-dispatch of the
-            // job, name the entry as the session history has it.
+            // the job follows, so that the entry recorded as the navigable's active one is the entry as the session
+            // history has it.
             if (auto const& updated_target_entry = changing_navigable.continuation->updated_target_entry)
                 changing_navigable.job->target_entry = *updated_target_entry;
             changing_navigable.job_state = ChangingNavigable::JobState::ApplyingContinuation;
@@ -2180,11 +2175,11 @@ void CanonicalTraversable::revoke_history_operation(WebContentPage& source_page,
     source_page.async_complete_history_operation(operation_id, {}, m_session_history.size());
 }
 
-void CanonicalTraversable::enqueue_browser_history_traversal(i32 target_step, bool check_for_cancelation)
+void CanonicalTraversable::enqueue_browser_history_traversal(i32 target_step)
 {
     auto sequence_number = next_sequence_number();
-    auto steps = [this, target_step, check_for_cancelation, sequence_number](NonnullRefPtr<Core::Promise<Empty>> promise) mutable {
-        run_browser_history_traversal_at_queue_position(target_step, check_for_cancelation, sequence_number, nullptr, move(promise));
+    auto steps = [this, target_step, sequence_number](NonnullRefPtr<Core::Promise<Empty>> promise) mutable {
+        run_browser_history_traversal_at_queue_position(target_step, false, sequence_number, nullptr, move(promise));
     };
     m_history_traversal_queue.append_session_history_traversal_steps(move(steps));
 }
