@@ -176,7 +176,7 @@ void ApplyHistoryStep::get_changing_and_nonchanging_navigables()
             m_jobs.queue_navigation_api_state_clear_task(changing_navigable.id);
 
         // 4. Set navigable's ongoing navigation to "traversal".
-        set_ongoing_navigation_to_traversal(changing_navigable, *navigable, *target_entry);
+        set_ongoing_navigation_to_traversal(*navigable, *target_entry);
     }
 
     run_changing_navigable_jobs();
@@ -568,7 +568,7 @@ Web::HTML::SessionHistoryEntryDescriptor ApplyHistoryStepJobs::ChangingNavigable
     return descriptor;
 }
 
-void ApplyHistoryStep::set_ongoing_navigation_to_traversal(ChangingNavigable& changing_navigable, CanonicalNavigable& navigable, CanonicalSessionHistoryEntry const& target_entry)
+void ApplyHistoryStep::set_ongoing_navigation_to_traversal(CanonicalNavigable& navigable, CanonicalSessionHistoryEntry const& target_entry)
 {
     // AD-HOC: As in browsers, a push or replace leaves the ongoing navigation alone: a newer navigation goes on, and
     //         commits after it. So does a same-document traversal, as in Chromium and Gecko: a navigation started
@@ -595,7 +595,6 @@ void ApplyHistoryStep::set_ongoing_navigation_to_traversal(ChangingNavigable& ch
     // The marker cancels navigation-start requests that arrive while this operation is on the traversal queue, matching
     // navigate()'s "if navigable's ongoing navigation is 'traversal', then return".
     navigable.set_ongoing_navigation_to_traversal(m_operation_id);
-    changing_navigable.has_ongoing_history_traversal = true;
 }
 
 ChangingNavigable* ApplyHistoryStep::changing_navigable(Web::HTML::CrossProcessId navigable_id)
@@ -612,8 +611,6 @@ NonchangingNavigable* ApplyHistoryStep::nonchanging_navigable(Web::HTML::CrossPr
 
 void ApplyHistoryStep::clear_ongoing_navigation_traversal(ChangingNavigable& changing_navigable)
 {
-    if (!exchange(changing_navigable.has_ongoing_history_traversal, false))
-        return;
     if (auto* navigable = find_navigable(changing_navigable.id))
         navigable->clear_ongoing_navigation_traversal(m_operation_id);
 }

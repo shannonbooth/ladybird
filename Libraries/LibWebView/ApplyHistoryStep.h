@@ -110,7 +110,6 @@ struct WEBVIEW_API ChangingNavigable {
     Web::HTML::CrossProcessId id;
     Optional<ApplyHistoryStepJobs::ChangingNavigableHistoryStepJob> job;
     JobState job_state { JobState::NotRun };
-    bool has_ongoing_history_traversal { false };
 
     // https://html.spec.whatwg.org/multipage/browsing-the-web.html#changing-nav-continuation-aborted
     bool aborted { false };
@@ -212,7 +211,7 @@ private:
     void skip_changing_navigable_history_step_job(ChangingNavigable&);
     void changing_navigable_continuation_applied(ChangingNavigable&);
     void nonchanging_navigable_updated(NonchangingNavigable&);
-    void set_ongoing_navigation_to_traversal(ChangingNavigable&, CanonicalNavigable&, CanonicalSessionHistoryEntry const&);
+    void set_ongoing_navigation_to_traversal(CanonicalNavigable&, CanonicalSessionHistoryEntry const&);
     void clear_ongoing_navigation_traversal(ChangingNavigable&);
     void clear_all_ongoing_navigation_traversals();
     void return_result(Web::HTML::HistoryStepResult);
