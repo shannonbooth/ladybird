@@ -119,12 +119,7 @@ public:
         WebView::ChangingNavigable* changing_navigable;
         ChangingNavigableHistoryStepJob job;
 
-        void on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition disposition)
-        {
-            if (disposition == Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready)
-                changing_navigable->job_state = WebView::ChangingNavigable::JobState::ContinuationEnqueued;
-            changing_navigable->run().changing_navigable_job_completed(*changing_navigable, disposition);
-        }
+        void on_complete(Web::HTML::ChangingNavigableHistoryStepJobDisposition disposition) { changing_navigable->run().changing_navigable_job_completed(*changing_navigable, disposition); }
     };
     struct Continuation {
         WebView::ChangingNavigable* changing_navigable;
@@ -149,12 +144,8 @@ public:
             .select_changing_navigable_history_step_job_endpoint = [this](WebView::ChangingNavigable& changing_navigable) {
                 selected_changing_job_endpoints.append(changing_navigable.id);
                 return true; },
-            .run_changing_navigable_history_step_job = [this](WebView::ChangingNavigable& changing_navigable) {
-                changing_navigable.job_state = WebView::ChangingNavigable::JobState::Running;
-                changing_jobs.append({ &changing_navigable, *changing_navigable.job }); },
-            .apply_changing_navigable_history_step_continuation = [this](WebView::ChangingNavigable& changing_navigable) {
-                changing_navigable.job_state = WebView::ChangingNavigable::JobState::ApplyingContinuation;
-                continuations.append({ &changing_navigable, changing_navigable.id, *changing_navigable.continuation }); },
+            .run_changing_navigable_history_step_job = [this](WebView::ChangingNavigable& changing_navigable) { changing_jobs.append({ &changing_navigable, *changing_navigable.job }); },
+            .apply_changing_navigable_history_step_continuation = [this](WebView::ChangingNavigable& changing_navigable) { continuations.append({ &changing_navigable, changing_navigable.id, *changing_navigable.continuation }); },
             .update_nonchanging_navigable_history_step_state = [this](WebView::NonchangingNavigable& nonchanging_navigable, Web::HTML::HistoryObjectLengthAndIndex history_object_length_and_index) { nonchanging_updates.append({ &nonchanging_navigable, nonchanging_navigable.id, history_object_length_and_index }); },
         };
     }

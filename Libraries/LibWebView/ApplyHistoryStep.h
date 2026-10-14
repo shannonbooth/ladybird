@@ -191,6 +191,8 @@ public:
     ~ApplyHistoryStep();
 
     void apply_the_history_step();
+    // The run's operation ended without it. The run calls none of its jobs from then on.
+    void abandon();
 
     bool completed() const { return m_completed; }
     // The step this run committed as the current session history step, if it was the run that committed.

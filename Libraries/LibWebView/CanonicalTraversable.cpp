@@ -1884,8 +1884,6 @@ ApplyHistoryStepJobs CanonicalTraversable::create_apply_history_step_jobs(Histor
 {
     return {
         .check_if_unloading_is_canceled = [this, &operation](Vector<Web::HTML::CrossProcessId> navigables_that_need_before_unload, NonnullRefPtr<CanonicalSessionHistoryEntry> target_entry, Web::HTML::UserNavigationInvolvement user_involvement_for_navigate_event, Function<void(Web::HTML::CheckIfUnloadingIsCanceledResult)> on_complete) {
-            if (operation.finished)
-                return;
             auto check_id = check_if_unloading_is_canceled(move(navigables_that_need_before_unload), move(target_entry), user_involvement_for_navigate_event, {}, Web::HTML::UnloadPromptShown::No,
                 [this, operation_id = operation.operation_id, on_complete = move(on_complete)](Web::HTML::CheckIfUnloadingIsCanceledResult result, Web::HTML::UnloadPromptShown) {
                     auto* operation = find_history_operation(operation_id);
@@ -1899,40 +1897,22 @@ ApplyHistoryStepJobs CanonicalTraversable::create_apply_history_step_jobs(Histor
                 operation.beforeunload_check_id = check_id; },
         .queue_navigation_api_state_clear_task = [this, &operation](Web::HTML::CrossProcessId navigable_id) {
             auto navigable = find(navigable_id);
-            if (operation.finished || !navigable.has_value())
+            if (!navigable.has_value())
                 return;
             auto endpoint = page_hosting(*navigable);
             if (!endpoint)
                 return;
             add_history_operation_completion_endpoint(operation, *endpoint);
             endpoint->async_queue_navigation_api_state_clear_task(navigable_id); },
-        .select_changing_navigable_history_step_job_endpoint = [this, &operation](ChangingNavigable& changing_navigable) { return !operation.finished && select_changing_navigable_history_step_job_endpoint(operation, *changing_navigable.job); },
+        .select_changing_navigable_history_step_job_endpoint = [this, &operation](ChangingNavigable& changing_navigable) { return select_changing_navigable_history_step_job_endpoint(operation, *changing_navigable.job); },
         .run_changing_navigable_history_step_job = [this, &operation](ChangingNavigable& changing_navigable) {
-            if (operation.finished)
-                return;
-            changing_navigable.job_state = ChangingNavigable::JobState::Running;
             if (auto const* parameters = operation.parameters.get_pointer<Web::FinalizeCrossDocumentNavigationHistoryOperationParameters>(); parameters && parameters->navigable_id == changing_navigable.id) {
                 if (auto const& populated_document = changing_navigable.job->target_entry->document_state->populated_document; populated_document.has_value())
                     changing_navigable.document = populated_document->document;
             }
             dispatch_changing_navigable_history_step_job(changing_navigable); },
-        .apply_changing_navigable_history_step_continuation = [this, &operation](ChangingNavigable& changing_navigable) {
-            if (operation.finished)
-                return;
-            if (changing_navigable.job_state != ChangingNavigable::JobState::ContinuationEnqueued) {
-                changing_navigable.run().changing_navigable_continuation_applied(changing_navigable);
-                return;
-            }
-            // If a sync navigation that jumped the queue changed the job's target entry while the job was paused, then
-            // the job follows — so that the entry recorded as the navigable's active one, and any re-dispatch of the
-            // job, name the entry as the session history has it.
-            if (auto const& updated_target_entry = changing_navigable.continuation->updated_target_entry)
-                changing_navigable.job->target_entry = *updated_target_entry;
-            changing_navigable.job_state = ChangingNavigable::JobState::ApplyingContinuation;
-            dispatch_changing_navigable_history_step_continuation(changing_navigable); },
+        .apply_changing_navigable_history_step_continuation = [this](ChangingNavigable& changing_navigable) { dispatch_changing_navigable_history_step_continuation(changing_navigable); },
         .update_nonchanging_navigable_history_step_state = [this, &operation](NonchangingNavigable& nonchanging_navigable, Web::HTML::HistoryObjectLengthAndIndex history_object_length_and_index) {
-            if (operation.finished)
-                return;
             auto const* navigable = nonchanging_navigable.navigable();
             RefPtr<WebContentPage> endpoint = navigable ? page_hosting(*navigable) : nullptr;
             if (!endpoint || !endpoint->is_open()) {
@@ -2182,8 +2162,6 @@ void CanonicalTraversable::apply_history_step(HistoryOperation& operation, i32 s
         &operation, operation_id, operation.sequence_number,
         step, check_for_cancelation, initiator_to_check, move(source_snapshot_params), user_involvement, navigation_type,
         [this, &operation](Web::HTML::HistoryStepResult result) {
-            if (operation.finished)
-                return;
             finish_history_operation(operation.operation_id, result);
         });
     operation.algorithm->apply_the_history_step();
@@ -2664,6 +2642,7 @@ OwnPtr<HistoryOperation> CanonicalTraversable::take_history_operation(Web::HTML:
             if (changing_navigable->has_pending_job())
                 (void)end_changing_navigable_history_step_job(*changing_navigable);
         }
+        run->abandon();
     }
     if (auto const* parameters = (*operation)->parameters.get_pointer<Web::NavigableCreationHistoryOperationParameters>()) {
         if (auto navigable = find(parameters->navigable_id); navigable.has_value())
@@ -2843,7 +2822,6 @@ void CanonicalTraversable::did_receive_changing_navigable_history_job_ready(WebC
 
     if (disposition == Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready) {
         changing_navigable->unload_displayed_document = unload_displayed_document;
-        changing_navigable->job_state = ChangingNavigable::JobState::ContinuationEnqueued;
         changing_navigable->run().changing_navigable_job_completed(*changing_navigable, disposition);
         return;
     }

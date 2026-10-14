@@ -188,6 +188,8 @@ void ApplyHistoryStep::run_changing_navigable_jobs()
 {
     // 12. For each navigable of changingNavigables, queue a global task on the navigation and traversal task source.
     for (auto& changing_navigable : m_changing_navigables) {
+        if (m_completed)
+            return;
         auto const* navigable = changing_navigable->navigable();
         auto* target_entry = navigable ? m_session_history.get_the_target_history_entry(*navigable, m_target_step) : nullptr;
         if (!target_entry) {
@@ -211,6 +213,7 @@ void ApplyHistoryStep::run_changing_navigable_jobs()
             changing_navigable_job_completed(*changing_navigable, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped);
             continue;
         }
+        changing_navigable->job_state = ChangingNavigable::JobState::Running;
         m_jobs.run_changing_navigable_history_step_job(*changing_navigable);
     }
 
@@ -244,6 +247,9 @@ CanonicalNavigable* NonchangingNavigable::navigable() const
 
 void ApplyHistoryStep::changing_navigable_job_completed(ChangingNavigable& changing_navigable, Web::HTML::ChangingNavigableHistoryStepJobDisposition disposition)
 {
+    changing_navigable.job_state = disposition == Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready
+        ? ChangingNavigable::JobState::ContinuationEnqueued
+        : ChangingNavigable::JobState::Ended;
     if (m_completed)
         return;
 
@@ -275,6 +281,7 @@ void ApplyHistoryStep::changing_navigable_job_completed(ChangingNavigable& chang
 
 void ApplyHistoryStep::changing_navigable_continuation_applied(ChangingNavigable& changing_navigable)
 {
+    changing_navigable.job_state = ChangingNavigable::JobState::Ended;
     if (m_completed)
         return;
 
@@ -440,9 +447,23 @@ void ApplyHistoryStep::process_changing_navigable_continuations()
             continue;
         }
 
+        // NB: A job that ended after it enqueued its continuation leaves nothing to apply.
+        if (changing_navigable_continuation.job_state != ChangingNavigable::JobState::ContinuationEnqueued) {
+            clear_ongoing_navigation_traversal(changing_navigable_continuation);
+            m_completed_change_jobs++;
+            continue;
+        }
+
+        // If a sync navigation that jumped the queue changed the job's target entry while the job was paused, then the
+        // job follows, so that the entry recorded as the navigable's active one is the entry as the session history has
+        // it.
+        if (updated_target_entry)
+            changing_navigable_continuation.job->target_entry = *updated_target_entry;
+
         // NB: One continuation is applied at a time, so synchronous navigations queued by its application are in the
         //     traversal queue before the next continuation checks for them.
         m_continuation_in_flight = true;
+        changing_navigable_continuation.job_state = ChangingNavigable::JobState::ApplyingContinuation;
         changing_navigable_continuation.continuation = ApplyHistoryStepJobs::ApplyChangingNavigableHistoryStepContinuation {
             .updated_target_entry = move(updated_target_entry),
             .history_object_length_and_index = *history_object_length_and_index,
@@ -495,6 +516,8 @@ void ApplyHistoryStep::update_nonchanging_navigables()
     // 18. For each navigable of nonchangingNavigablesThatStillNeedUpdates, queue a global task on the navigation and
     //     traversal task source given navigable's active window to run the steps:
     for (auto& nonchanging_navigable : m_nonchanging_navigables_that_still_need_updates) {
+        if (m_completed)
+            return;
         nonchanging_navigable.update_in_flight = true;
         m_jobs.update_nonchanging_navigable_history_step_state(nonchanging_navigable, *history_object_length_and_index);
     }
@@ -520,6 +543,12 @@ void ApplyHistoryStep::set_current_session_history_step()
 
     // 21. Return "applied".
     return_result(Web::HTML::HistoryStepResult::Applied);
+}
+
+void ApplyHistoryStep::abandon()
+{
+    m_completed = true;
+    clear_all_ongoing_navigation_traversals();
 }
 
 void ApplyHistoryStep::return_result(Web::HTML::HistoryStepResult result)
