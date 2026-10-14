@@ -199,22 +199,11 @@ void ApplyHistoryStep::run_changing_navigable_jobs()
             continue;
         }
 
-        changing_navigable->job = ApplyHistoryStepJobs::ChangingNavigableHistoryStepJob {
-            .navigable_id = changing_navigable->id,
-            .target_entry = *target_entry,
-            .target_entry_reload_pending = target_entry->document_state->reload_pending,
-            .user_involvement = m_user_involvement,
-            .navigation_type = m_navigation_type,
-            .traversal_yields_to = changing_navigable->traversal_yields_to,
-            .canceled_navigation_id = changing_navigable->canceled_navigation_id,
-            .source_snapshot_params = m_source_snapshot_params,
-        };
-        if (!m_jobs.select_changing_navigable_history_step_job_endpoint(*changing_navigable)) {
-            changing_navigable_job_completed(*changing_navigable, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped);
-            continue;
-        }
+        changing_navigable->target_entry = target_entry;
+        changing_navigable->target_entry_reload_pending = target_entry->document_state->reload_pending;
         changing_navigable->job_state = ChangingNavigable::JobState::Running;
-        m_jobs.run_changing_navigable_history_step_job(*changing_navigable);
+        if (!m_jobs.run_changing_navigable_history_step_job(*changing_navigable))
+            changing_navigable_job_completed(*changing_navigable, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped);
     }
 
     m_changing_jobs_dispatched = true;
@@ -407,7 +396,7 @@ void ApplyHistoryStep::process_changing_navigable_continuations()
         // NB: navigable's own sync navigations wait from step 8 on. So, none of them can change the entry after this.
         auto* target_entry = navigable ? m_session_history.get_the_target_history_entry(*navigable, m_target_step) : nullptr;
         RefPtr<CanonicalSessionHistoryEntry> updated_target_entry;
-        if (NonnullRefPtr claimed_target_entry = changing_navigable_continuation.job->target_entry; target_entry) {
+        if (NonnullRefPtr claimed_target_entry = *changing_navigable_continuation.target_entry; target_entry) {
             auto is_in_claimed_slot = target_entry->document_state == claimed_target_entry->document_state
                 && target_entry->navigation_api_key == claimed_target_entry->navigation_api_key;
             if (is_in_claimed_slot) {
@@ -458,14 +447,13 @@ void ApplyHistoryStep::process_changing_navigable_continuations()
         // job follows, so that the entry recorded as the navigable's active one is the entry as the session history has
         // it.
         if (updated_target_entry)
-            changing_navigable_continuation.job->target_entry = *updated_target_entry;
+            changing_navigable_continuation.target_entry = move(updated_target_entry);
 
         // NB: One continuation is applied at a time, so synchronous navigations queued by its application are in the
         //     traversal queue before the next continuation checks for them.
         m_continuation_in_flight = true;
         changing_navigable_continuation.job_state = ChangingNavigable::JobState::ApplyingContinuation;
         changing_navigable_continuation.continuation = ApplyHistoryStepJobs::ApplyChangingNavigableHistoryStepContinuation {
-            .updated_target_entry = move(updated_target_entry),
             .history_object_length_and_index = *history_object_length_and_index,
             .entries_for_navigation_api = entries_for_navigation_api.release_value(),
         };
@@ -561,7 +549,7 @@ void ApplyHistoryStep::return_result(Web::HTML::HistoryStepResult result)
         m_on_complete(result);
 }
 
-Web::HTML::SessionHistoryEntryDescriptor ApplyHistoryStepJobs::ChangingNavigableHistoryStepJob::target_entry_descriptor() const
+Web::HTML::SessionHistoryEntryDescriptor ChangingNavigable::target_entry_descriptor() const
 {
     auto descriptor = target_entry->descriptor();
     descriptor.document_state.reload_pending = target_entry_reload_pending;
