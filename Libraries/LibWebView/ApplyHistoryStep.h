@@ -204,7 +204,7 @@ public:
     Optional<Web::HTML::NavigationSourceSnapshot> const& source_snapshot_params() const { return m_source_snapshot_params; }
 
     Vector<NonnullOwnPtr<ChangingNavigable>> const& changing_navigables() const { return m_changing_navigables; }
-    ChangingNavigable* changing_navigable(Web::HTML::CrossProcessId);
+    ChangingNavigable* changing_navigable(Web::HTML::CrossProcessId) const;
     NonchangingNavigable* nonchanging_navigable(Web::HTML::CrossProcessId);
 
     void changing_navigable_job_completed(ChangingNavigable&, Web::HTML::ChangingNavigableHistoryStepJobDisposition);

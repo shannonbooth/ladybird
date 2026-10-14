@@ -593,7 +593,7 @@ void ApplyHistoryStep::set_ongoing_navigation_to_traversal(ChangingNavigable& ch
     navigable.clear_ongoing_navigation();
 }
 
-ChangingNavigable* ApplyHistoryStep::changing_navigable(Web::HTML::CrossProcessId navigable_id)
+ChangingNavigable* ApplyHistoryStep::changing_navigable(Web::HTML::CrossProcessId navigable_id) const
 {
     auto it = m_changing_navigables.find_if([&](auto const& changing_navigable) { return changing_navigable->id == navigable_id; });
     return it == m_changing_navigables.end() ? nullptr : it->ptr();
