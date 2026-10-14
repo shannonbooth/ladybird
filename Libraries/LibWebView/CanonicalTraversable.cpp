@@ -1499,8 +1499,7 @@ void CanonicalTraversable::send_changing_navigable_continuation_task(ChangingNav
         operation.operation_id, changing_navigable.id,
         continuation.history_object_length_and_index.script_history_length,
         continuation.history_object_length_and_index.script_history_index,
-        move(continuation.entries_for_navigation_api),
-        changing_navigable.unload_displayed_document);
+        move(continuation.entries_for_navigation_api));
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#deactivate-a-document-for-a-cross-document-navigation

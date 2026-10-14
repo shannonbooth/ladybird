@@ -43,6 +43,13 @@ struct ChangingNavigableContinuationState : public GC::Cell {
     GC::Ptr<DOM::Document> resolved_document;
     Optional<URL::Origin> old_origin;
 
+    // Whether the continuation deactivates displayedDocument: Step 10 of apply the history step, "If
+    // changingNavigableContinuation's update-only is true, or targetEntry's document is displayedDocument", is false.
+    UnloadDisplayedDocument unload_displayed_document() const
+    {
+        return !update_only && resolved_document.ptr() != displayed_document.ptr() ? UnloadDisplayedDocument::Yes : UnloadDisplayedDocument::No;
+    }
+
     virtual void visit_edges(Cell::Visitor& visitor) override
     {
         Base::visit_edges(visitor);
@@ -297,12 +304,7 @@ void HistoryExecutor::complete_changing_navigable_history_step_job(CrossProcessI
         if (auto navigable = local_navigable_with_id(navigable_id))
             navigable->clear_ongoing_history_traversal();
     }
-    auto unload_displayed_document = continuation
-            && !continuation->update_only
-            && continuation->resolved_document.ptr() != continuation->displayed_document.ptr()
-        ? UnloadDisplayedDocument::Yes
-        : UnloadDisplayedDocument::No;
-    on_complete->function()(disposition, unload_displayed_document);
+    on_complete->function()(disposition, continuation ? continuation->unload_displayed_document() : UnloadDisplayedDocument::No);
 }
 
 void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId operation_id, CrossProcessId navigable_id, SessionHistoryEntryDescriptor target_entry_descriptor, UserNavigationInvolvement user_involvement, Optional<Bindings::NavigationType> navigation_type, TraversalYieldsTo traversal_yields_to, Optional<Utf16String> canceled_navigation_id, Optional<Utf16String> finalized_navigation_id, Optional<NavigationSourceSnapshot> navigation_source_snapshot, GC::Ref<OnChangingNavigableHistoryStepJobComplete> on_complete, Optional<HistoryNavigationPopulation> population)
@@ -708,7 +710,7 @@ void HistoryExecutor::prepare_ui_changing_navigable_for_unload(CrossProcessId op
     on_complete->function()();
 }
 
-void HistoryExecutor::apply_ui_changing_navigable_continuation(CrossProcessId operation_id, CrossProcessId navigable_id, HistoryObjectLengthAndIndex history_object_length_and_index, Vector<SessionHistoryEntryDescriptor> entry_descriptors_for_navigation_api, UnloadDisplayedDocument unload_displayed_document, GC::Ref<GC::Function<void(Optional<HostedNavigableState>, Optional<SessionHistoryEntryPersistedState>)>> on_complete)
+void HistoryExecutor::apply_ui_changing_navigable_continuation(CrossProcessId operation_id, CrossProcessId navigable_id, HistoryObjectLengthAndIndex history_object_length_and_index, Vector<SessionHistoryEntryDescriptor> entry_descriptors_for_navigation_api, GC::Ref<GC::Function<void(Optional<HostedNavigableState>, Optional<SessionHistoryEntryPersistedState>)>> on_complete)
 {
     auto* operation = find_history_operation(operation_id);
     if (!operation) {
@@ -721,6 +723,7 @@ void HistoryExecutor::apply_ui_changing_navigable_continuation(CrossProcessId op
         return;
     }
     GC::Ref continuation = *job->continuation;
+    auto unload_displayed_document = continuation->unload_displayed_document();
 
     Vector<NonnullRefPtr<SessionHistoryEntry>> entries_for_navigation_api;
     if (auto navigable = local_navigable_with_id(navigable_id); navigable && !navigable->has_been_destroyed())
@@ -763,11 +766,6 @@ void HistoryExecutor::apply_ui_changing_navigable_continuation(CrossProcessId op
 
     // 6. Let navigable be changingNavigableContinuation's navigable.
     auto navigable = continuation->navigable;
-
-    if (unload_displayed_document == UnloadDisplayedDocument::Yes) {
-        VERIFY(!continuation->update_only);
-        VERIFY(continuation->resolved_document.ptr() != displayed_document.ptr());
-    }
 
     // AD-HOC: We should not continue navigation if navigable has been destroyed.
     if (navigable->has_been_destroyed()) {
