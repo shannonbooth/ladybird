@@ -38,7 +38,6 @@ struct ChangingNavigableContinuationState : public GC::Cell {
     bool update_only = false;
     bool aborted = false;
     Optional<Bindings::NavigationType> navigation_type;
-    UserNavigationInvolvement user_involvement { UserNavigationInvolvement::None };
 
     GC::Ptr<DOM::Document> pending_document;
     GC::Ptr<PopulateSessionHistoryEntryDocumentOutput> population_output;
@@ -412,7 +411,6 @@ void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId opera
         changing_navigable_continuation->update_only = false;
         changing_navigable_continuation->aborted = false;
         changing_navigable_continuation->navigation_type = navigation_type;
-        changing_navigable_continuation->user_involvement = user_involvement;
         changing_navigable_continuation->pending_document = pending_document;
         changing_navigable_continuation->population_output = nullptr;
 
