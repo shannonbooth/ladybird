@@ -1248,15 +1248,21 @@ void CanonicalTraversable::did_not_receive_reply(OwedReply const& owed)
     case OwedReply::Kind::ChangingJob:
     case OwedReply::Kind::UnloadPreparation:
     case OwedReply::Kind::ContinuationApplied: {
-        auto* operation = find_history_operation(owed.id);
-        if (!operation || awaits_crash_recovery)
+        if (awaits_crash_recovery)
             return;
-        if (auto* changing_navigable = operation->pending_changing_job(owed.navigable_id))
+        if (auto* changing_navigable = pending_changing_job(owed.id, owed.navigable_id))
             abort_changing_navigable_history_step_job(*changing_navigable);
         return;
     }
     }
     VERIFY_NOT_REACHED();
+}
+
+// The changing navigable whose pending job a page's reply, which names it by IDs, concerns.
+ChangingNavigable* CanonicalTraversable::pending_changing_job(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
+{
+    auto* operation = find_history_operation(operation_id);
+    return operation ? operation->pending_changing_job(navigable_id) : nullptr;
 }
 
 HistoryOperation* CanonicalTraversable::find_history_operation(Web::HTML::CrossProcessId operation_id)
@@ -1305,13 +1311,8 @@ bool CanonicalTraversable::select_changing_navigable_history_step_job_endpoint(H
 void CanonicalTraversable::did_finish_history_navigation_params_creation(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::HistoryNavigationPopulation population)
 {
     auto navigable_id = population.request.navigable_id;
-    auto* operation = find_history_operation(operation_id);
     auto discard = [&] { NavigationLoader::discard(source_page.client().is_private(), population.result); };
-    if (!operation) {
-        discard();
-        return;
-    }
-    auto* changing_navigable = operation->pending_changing_job(navigable_id);
+    auto* changing_navigable = pending_changing_job(operation_id, navigable_id);
     if (!changing_navigable || changing_navigable->population_loader
         || !source_page.take_owed_reply({ OwedReply::Kind::ChangingJob, operation_id, navigable_id })) {
         discard();
@@ -1531,22 +1532,22 @@ void CanonicalTraversable::unload_displayed_document_for_cross_document_navigati
 
 // The process running a changing navigable's job activated targetEntry's document and applied the continuation's
 // remaining steps.
-void CanonicalTraversable::did_activate_history_entry(HistoryOperation& operation, Web::HTML::CrossProcessId navigable_id, NonnullRefPtr<WebContentPage> source_page, CanonicalSessionHistoryEntry& target_entry, Web::HTML::HostedNavigableState activated_navigable_state)
+void CanonicalTraversable::did_activate_history_entry(ChangingNavigable& changing_navigable, NonnullRefPtr<WebContentPage> source_page, Web::HTML::HostedNavigableState activated_navigable_state)
 {
-    auto navigable = find(navigable_id);
-    if (!navigable.has_value())
-        return;
+    auto& operation = changing_navigable.run().operation();
+    auto& navigable = *changing_navigable.navigable();
+    auto& target_entry = *changing_navigable.job->target_entry;
 
-    RefPtr<WebContentPage> host = page_hosting(*navigable);
+    RefPtr<WebContentPage> host = page_hosting(navigable);
     if (auto const& populated_document = target_entry.document_state->populated_document; populated_document.has_value() && populated_document->document->host() == source_page)
         host = source_page;
 
     Optional<Utf16String const&> navigation_id;
     if (auto navigation = finalized_navigation(operation))
         navigation_id = navigation->navigation_id;
-    navigable->did_commit_navigation(target_entry, move(activated_navigable_state), operation.sequence_number, navigation_id, move(host));
+    navigable.did_commit_navigation(target_entry, move(activated_navigable_state), operation.sequence_number, navigation_id, move(host));
 
-    if (navigable_id == id()) {
+    if (&navigable == this) {
         if (auto view = this->view(); view.has_value()) {
             // NB: The address bar can already show a pending navigation's URL while the old document
             //     is still visible. Only apply the destination's zoom after its document is activated.
@@ -1690,8 +1691,7 @@ void CanonicalTraversable::did_receive_changing_navigable_unload_preparation_com
 {
     if (!source_page.take_owed_reply({ OwedReply::Kind::UnloadPreparation, operation_id, navigable_id }))
         return;
-    auto* operation = find_history_operation(operation_id);
-    if (auto* changing_navigable = operation ? operation->pending_changing_job(navigable_id) : nullptr)
+    if (auto* changing_navigable = pending_changing_job(operation_id, navigable_id))
         unload_displayed_document_for_cross_document_navigation(*changing_navigable);
 }
 
@@ -2813,10 +2813,7 @@ void CanonicalTraversable::did_receive_changing_navigable_continuation_enqueued(
 {
     if (!source_page.take_owed_reply({ OwedReply::Kind::ChangingJob, operation_id, navigable_id }))
         return;
-    auto* operation = find_history_operation(operation_id);
-    if (!operation)
-        return;
-    auto* changing_navigable = operation->pending_changing_job(navigable_id);
+    auto* changing_navigable = pending_changing_job(operation_id, navigable_id);
     if (!changing_navigable)
         return;
 
@@ -2834,16 +2831,13 @@ void CanonicalTraversable::did_receive_changing_navigable_continuation_applied(W
 {
     if (!source_page.take_owed_reply({ OwedReply::Kind::ContinuationApplied, operation_id, navigable_id }))
         return;
-    if (auto* operation = find_history_operation(operation_id)) {
-        auto* changing_navigable = operation->pending_changing_job(navigable_id);
-        if (!changing_navigable)
-            return;
+    if (auto* changing_navigable = pending_changing_job(operation_id, navigable_id)) {
         // NB: This reply is owed once the continuation is sent, after which the job can only end.
         VERIFY(changing_navigable->job_state == ChangingNavigable::JobState::ApplyingContinuation);
         changing_navigable->job_state = ChangingNavigable::JobState::Ended;
         auto document = move(changing_navigable->document);
         if (activated_navigable_state.has_value())
-            did_activate_history_entry(*operation, navigable_id, source_page, *changing_navigable->job->target_entry, activated_navigable_state.release_value());
+            did_activate_history_entry(*changing_navigable, source_page, activated_navigable_state.release_value());
         else if (auto* navigable = changing_navigable->navigable(); navigable && document)
             navigable->abandon_populated_document(changing_navigable->job->target_entry->document_state, *document);
         if (previous_entry_persisted_state.has_value()) {
@@ -2853,7 +2847,7 @@ void CanonicalTraversable::did_receive_changing_navigable_continuation_applied(W
         // A replacement document's creation operation also applies a top-level continuation, but it runs before
         // the document has accepted the UI-owned history state. Only the browser traversal itself reaches the
         // observable top-level completion point here.
-        if (navigable_id == id() && operation->is_browser_traversal()) {
+        if (navigable_id == id() && changing_navigable->run().operation().is_browser_traversal()) {
             if (auto view = this->view(); view.has_value())
                 view->did_apply_top_level_history_traversal_step(operation_id);
         }
