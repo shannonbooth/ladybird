@@ -360,11 +360,6 @@ void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId opera
     } else {
         local_target_entry = navigable->resolve_local_session_history_entry(move(target_entry_descriptor));
     }
-    if (!local_target_entry) {
-        enqueue_continuation->function()(true, UnloadDisplayedDocument::No);
-        return;
-    }
-
     GC::Ptr<SourceSnapshotParams> source_snapshot_params;
     if (navigation_source_snapshot.has_value())
         source_snapshot_params = create_source_snapshot_params_from_navigation_source_snapshot(relevant_realm(*navigable->active_window()), *navigation_source_snapshot);
