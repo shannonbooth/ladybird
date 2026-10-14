@@ -216,7 +216,7 @@ private:
     void traverse_the_history_by_a_delta_at_queue_position(HistoryOperation&, Web::TraverseByDeltaHistoryOperationParameters const&);
     void perform_a_navigation_api_traversal_at_queue_position(HistoryOperation&, Web::NavigationAPITraverseHistoryOperationParameters const&);
     void finalize_a_same_document_navigation(HistoryOperation&, Web::FinalizeSameDocumentNavigationHistoryOperationParameters const&);
-    void enqueue_browser_history_traversal(i32 target_step, bool check_for_cancelation);
+    void enqueue_browser_history_traversal(i32 target_step);
     void run_browser_history_traversal_at_queue_position(i32 target_step, bool check_for_cancelation, u64 sequence_number, Function<void()> on_ready, NonnullRefPtr<Core::Promise<Empty>>);
     void did_attempt_to_populate_the_history_entry_document(WebContentPage& source_page, Web::FinalizeCrossDocumentNavigationHistoryOperationParameters const&);
     void finalize_a_cross_document_navigation(HistoryOperation&);
