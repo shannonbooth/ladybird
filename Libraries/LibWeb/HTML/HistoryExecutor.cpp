@@ -662,6 +662,7 @@ void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId opera
 
 void HistoryExecutor::prepare_ui_changing_navigable_for_unload(CrossProcessId operation_id, CrossProcessId navigable_id, GC::Ref<GC::Function<void()>> on_complete)
 {
+    // NB: The UI process sends this to the page hosting the navigable now, which need not be the one that ran the job.
     auto* operation = find_history_operation(operation_id);
     auto job = operation ? operation->changing_navigable_jobs.get(navigable_id) : OptionalNone {};
     if (!job.has_value() || !job->continuation) {
@@ -677,6 +678,7 @@ void HistoryExecutor::prepare_ui_changing_navigable_for_unload(CrossProcessId op
 
 void HistoryExecutor::apply_ui_changing_navigable_continuation(CrossProcessId operation_id, CrossProcessId navigable_id, HistoryObjectLengthAndIndex history_object_length_and_index, Vector<SessionHistoryEntryDescriptor> entry_descriptors_for_navigation_api, GC::Ref<GC::Function<void(Optional<HostedNavigableState>, Optional<SessionHistoryEntryPersistedState>)>> on_complete)
 {
+    // NB: As for preparing for unload, this page need not be the one that ran the job.
     auto* operation = find_history_operation(operation_id);
     auto job = operation ? operation->changing_navigable_jobs.take(navigable_id) : Optional<HistoryOperationState::ChangingNavigableJob> {};
     if (!job.has_value() || !job->continuation) {
