@@ -198,8 +198,9 @@ void ApplyHistoryStep::run_changing_navigable_jobs()
         auto* target_entry = navigable ? m_session_history.get_the_target_history_entry(*navigable, m_target_step) : nullptr;
         if (!target_entry) {
             // AD-HOC: The canonical mirror can briefly disagree with the live navigable tree while a created or
-            //         removed child navigable is reconciled; complete the job as skipped instead of dispatching it.
-            skip_changing_navigable_history_step_job(changing_navigable);
+            //         removed child navigable is reconciled; abort the job instead of dispatching it.
+            changing_navigable.aborted = true;
+            enqueue_changing_navigable_continuation(changing_navigable);
             continue;
         }
 
@@ -212,7 +213,8 @@ void ApplyHistoryStep::run_changing_navigable_jobs()
             .source_snapshot_params = m_source_snapshot_params,
         };
         if (!m_jobs.select_changing_navigable_history_step_job_endpoint(changing_navigable)) {
-            skip_changing_navigable_history_step_job(changing_navigable);
+            changing_navigable.aborted = true;
+            enqueue_changing_navigable_continuation(changing_navigable);
             continue;
         }
         m_jobs.run_changing_navigable_history_step_job(changing_navigable);
@@ -227,11 +229,6 @@ void ApplyHistoryStep::run_changing_navigable_jobs()
 void ChangingNavigable::enqueue_continuation()
 {
     m_run->enqueue_changing_navigable_continuation(*this);
-}
-
-void ChangingNavigable::skip()
-{
-    m_run->skip_changing_navigable_history_step_job(*this);
 }
 
 void ChangingNavigable::continuation_applied()
@@ -250,20 +247,6 @@ void ApplyHistoryStep::enqueue_changing_navigable_continuation(ChangingNavigable
         return;
 
     m_changing_navigable_continuations.append(&changing_navigable);
-    if (m_changing_jobs_dispatched)
-        process_changing_navigable_continuations();
-}
-
-void ApplyHistoryStep::skip_changing_navigable_history_step_job(ChangingNavigable& changing_navigable)
-{
-    if (m_completed)
-        return;
-
-    // AD-HOC: A skipped job stands in for a continuation that would not have been aborted, so it does not make this
-    //         step "canceled-by-navigate".
-    clear_ongoing_navigation_traversal(changing_navigable);
-    m_any_changing_navigable_applied = true;
-    m_completed_change_jobs++;
     if (m_changing_jobs_dispatched)
         process_changing_navigable_continuations();
 }
@@ -363,7 +346,8 @@ void ApplyHistoryStep::process_changing_navigable_continuations()
         // NB: The process that ran the job retains it.
 
         // 5. Let targetEntry be changingNavigableContinuation's target entry.
-        NonnullRefPtr target_entry = changing_navigable_continuation.job->target_entry;
+        // NB: A job aborted before it was dispatched has none.
+        RefPtr<CanonicalSessionHistoryEntry> target_entry = changing_navigable_continuation.job.has_value() ? changing_navigable_continuation.job->target_entry.ptr() : nullptr;
 
         // 6. Let navigable be changingNavigableContinuation's navigable.
         auto* navigable = find_navigable(changing_navigable_continuation.id);
@@ -421,6 +405,9 @@ void ApplyHistoryStep::process_changing_navigable_continuations()
         //       aborted if a same-document navigation disposed of its destination entry, and that navigation's
         //       synchronous navigation steps were appended before this continuation was queued, so they will update the
         //       current session history entry (either by jumping the queue or after this algorithm completes).
+        // NB: So does the push behind the AD-HOC aborts above.
+        // FIXME: A job that could not go on, as its process is gone, e.g., leaves navigable's current session history
+        //        entry on targetEntry, which it never activated.
 
         // 8. Set anyChangingNavigableApplied to true.
         m_any_changing_navigable_applied = true;

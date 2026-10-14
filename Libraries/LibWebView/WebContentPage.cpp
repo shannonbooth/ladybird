@@ -1641,11 +1641,6 @@ void WebContentPage::changing_navigable_continuation_enqueued(Web::HTML::CrossPr
     traversable().did_receive_changing_navigable_continuation_enqueued(*this, operation_id, navigable_id, aborted, unload_displayed_document);
 }
 
-void WebContentPage::changing_navigable_history_job_skipped(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
-{
-    traversable().did_receive_changing_navigable_history_job_skipped(*this, operation_id, navigable_id);
-}
-
 void WebContentPage::changing_navigable_unload_preparation_complete(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
 {
     traversable().did_receive_changing_navigable_unload_preparation_complete(*this, operation_id, navigable_id);

@@ -83,7 +83,6 @@ public:
     bool is_unloading_document_of(Web::HTML::CrossProcessId navigable_id) const;
     bool is_handing_navigable_to_another_page(CanonicalNavigable const&) const;
     void did_receive_changing_navigable_continuation_enqueued(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, bool aborted, Web::HTML::UnloadDisplayedDocument);
-    void did_receive_changing_navigable_history_job_skipped(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id);
     void did_finish_history_navigation_params_creation(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::HistoryNavigationPopulation);
     void did_receive_changing_navigable_unload_preparation_complete(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id);
     void did_receive_descendant_unload_task_complete(WebContentPage& source_page, Web::HTML::CrossProcessId unload_id, Web::HTML::CrossProcessId navigable_id);
@@ -209,7 +208,7 @@ private:
     void dispatch_descendant_unload_task(Web::HTML::CrossProcessId unload_id, Web::HTML::CrossProcessId navigable_id);
     void complete_descendant_unload_task(Web::HTML::CrossProcessId unload_id, Web::HTML::CrossProcessId navigable_id);
     [[nodiscard]] ChangingNavigable::JobState end_changing_navigable_history_step_job(ChangingNavigable&);
-    [[nodiscard]] Function<void()> skip_changing_navigable_history_step_job(ChangingNavigable&);
+    void abort_changing_navigable_history_step_job(ChangingNavigable&);
     ApplyHistoryStepJobs create_apply_history_step_jobs(HistoryOperation&);
     void run_history_operation(HistoryOperation&);
     void traverse_the_history_by_a_delta_at_queue_position(HistoryOperation&, Web::TraverseByDeltaHistoryOperationParameters const&);

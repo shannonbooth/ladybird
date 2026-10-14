@@ -125,7 +125,6 @@ public:
             changing_navigable->aborted = true;
             changing_navigable->enqueue_continuation();
         }
-        void skip() { changing_navigable->skip(); }
     };
     struct Continuation {
         WebView::ChangingNavigable* changing_navigable;
@@ -522,29 +521,6 @@ TEST_CASE(child_navigable_traversal_updates_the_nonchanging_root)
 
     EXPECT(test.result == Web::HTML::HistoryStepResult::Applied);
     EXPECT_EQ(test.current_step(), 0);
-}
-
-TEST_CASE(skipped_changing_job_still_applies_the_history_step)
-{
-    TestTraversable test;
-    test.with_child_navigable_history();
-
-    test.traverse_to_step(0);
-    EXPECT_EQ(test.runner.changing_jobs.size(), 1uz);
-    auto& child = *test.traversable.children().first();
-    auto* target_entry = test.history.get_the_target_history_entry(child, 0);
-    VERIFY(target_entry);
-    EXPECT(child.current_session_history_entry_is(*target_entry));
-    EXPECT(!child.active_document_is(*target_entry));
-    test.runner.changing_jobs[0].skip();
-
-    EXPECT(test.runner.continuations.is_empty());
-    EXPECT_EQ(test.runner.nonchanging_updates.size(), 1uz);
-    test.runner.nonchanging_updates[0].on_complete();
-
-    EXPECT(test.result == Web::HTML::HistoryStepResult::Applied);
-    EXPECT_EQ(test.current_step(), 0);
-    EXPECT(!child.ongoing_navigation().has<WebView::CanonicalNavigable::Traversal>());
 }
 
 TEST_CASE(aborted_continuation_cancels_the_history_step)

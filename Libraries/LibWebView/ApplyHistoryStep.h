@@ -45,7 +45,7 @@ struct WEBVIEW_API ApplyHistoryStepJobs {
 
     // One iteration of "13. For each navigable of changingNavigables, queue a global task ...". The job claims its
     // navigable and enqueues a changing navigable continuation, retaining the continuation's state in its own process.
-    // AD-HOC: A job that does not run for its navigable (the navigable is gone, e.g.) is skipped instead.
+    // AD-HOC: A job that cannot run for its navigable (the navigable is gone, e.g.) enqueues an aborted continuation.
     struct ChangingNavigableHistoryStepJob {
         Web::HTML::CrossProcessId navigable_id;
         // The target entry selected from canonical session history. The receiving process retains this exact entry
@@ -94,8 +94,6 @@ struct WEBVIEW_API ChangingNavigable {
     };
 
     void enqueue_continuation();
-    // AD-HOC: The job does not run for its navigable.
-    void skip();
     void continuation_applied();
 
     ChangingNavigable(ApplyHistoryStep& run, Web::HTML::CrossProcessId id)
@@ -105,7 +103,6 @@ struct WEBVIEW_API ChangingNavigable {
     }
 
     bool has_pending_job() const { return first_is_one_of(job_state, JobState::Running, JobState::ContinuationEnqueued, JobState::ApplyingContinuation); }
-    ApplyHistoryStep& run() { return *m_run; }
 
     Web::HTML::CrossProcessId id;
     Optional<ApplyHistoryStepJobs::ChangingNavigableHistoryStepJob> job;
@@ -208,7 +205,6 @@ private:
     CanonicalSessionHistoryEntry* append_the_target_entry_again(CanonicalNavigable&, CanonicalSessionHistoryEntry& history_entry);
 
     void enqueue_changing_navigable_continuation(ChangingNavigable&);
-    void skip_changing_navigable_history_step_job(ChangingNavigable&);
     void changing_navigable_continuation_applied(ChangingNavigable&);
     void nonchanging_navigable_updated(NonchangingNavigable&);
     void set_ongoing_navigation_to_traversal(CanonicalNavigable&, CanonicalSessionHistoryEntry const&);

@@ -1250,10 +1250,8 @@ void CanonicalTraversable::did_not_receive_reply(OwedReply const& owed)
         auto* operation = find_history_operation(owed.id);
         if (!operation || awaits_crash_recovery)
             return;
-        if (auto* changing_navigable = operation->pending_changing_job(owed.navigable_id)) {
-            auto skip = skip_changing_navigable_history_step_job(*changing_navigable);
-            skip();
-        }
+        if (auto* changing_navigable = operation->pending_changing_job(owed.navigable_id))
+            abort_changing_navigable_history_step_job(*changing_navigable);
         return;
     }
     }
@@ -1347,10 +1345,8 @@ void CanonicalTraversable::did_fail_history_navigation_population(Web::HTML::Cro
 {
     auto* operation = find_history_operation(operation_id);
     auto* changing_navigable = operation ? operation->pending_changing_job(navigable_id) : nullptr;
-    if (!changing_navigable)
-        return;
-    auto skip = skip_changing_navigable_history_step_job(*changing_navigable);
-    skip();
+    if (changing_navigable)
+        abort_changing_navigable_history_step_job(*changing_navigable);
 }
 
 void CanonicalTraversable::continue_history_navigation_population(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
@@ -1851,18 +1847,23 @@ ChangingNavigable::JobState CanonicalTraversable::end_changing_navigable_history
     return job_state;
 }
 
-// Ends a changing navigable's job, and returns what tells its run, for the caller to do now or deferred.
-Function<void()> CanonicalTraversable::skip_changing_navigable_history_step_job(ChangingNavigable& changing_navigable)
+// Tells a changing navigable's run that its job ended in job_state.
+static void changing_navigable_history_step_job_ended(ChangingNavigable& changing_navigable, ChangingNavigable::JobState job_state)
 {
     // NB: A continuation already enqueued finds its job ended when it is applied, and completes then.
-    return [run = changing_navigable.run().make_weak_ptr(), job_state = end_changing_navigable_history_step_job(changing_navigable), &changing_navigable] {
-        if (!run)
-            return;
-        if (job_state == ChangingNavigable::JobState::Running)
-            changing_navigable.skip();
-        else if (job_state == ChangingNavigable::JobState::ApplyingContinuation)
-            changing_navigable.continuation_applied();
-    };
+    if (job_state == ChangingNavigable::JobState::Running) {
+        changing_navigable.aborted = true;
+        changing_navigable.enqueue_continuation();
+    } else if (job_state == ChangingNavigable::JobState::ApplyingContinuation) {
+        changing_navigable.continuation_applied();
+    }
+}
+
+// AD-HOC: A changing navigable's job that cannot go on, as its process is gone, e.g., enqueues an aborted
+//         continuation. The other changing navigables still apply the step.
+void CanonicalTraversable::abort_changing_navigable_history_step_job(ChangingNavigable& changing_navigable)
+{
+    changing_navigable_history_step_job_ended(changing_navigable, end_changing_navigable_history_step_job(changing_navigable));
 }
 
 void CanonicalTraversable::end_history_jobs(CanonicalNavigable const& navigable, CanonicalDocument const* populated_document)
@@ -1871,7 +1872,10 @@ void CanonicalTraversable::end_history_jobs(CanonicalNavigable const& navigable,
     for (auto& entry : m_history_operations) {
         auto& operation = *entry.value;
         if (auto* changing_navigable = operation.pending_changing_job(navigable.id()); changing_navigable && (!populated_document || changing_navigable->document == populated_document)) {
-            completions.append(skip_changing_navigable_history_step_job(*changing_navigable));
+            completions.append([run = operation.algorithm->make_weak_ptr(), changing_navigable, job_state = end_changing_navigable_history_step_job(*changing_navigable)] {
+                if (run)
+                    changing_navigable_history_step_job_ended(*changing_navigable, job_state);
+            });
         }
         if (populated_document || !operation.algorithm)
             continue;
@@ -2853,28 +2857,13 @@ void CanonicalTraversable::did_receive_changing_navigable_continuation_enqueued(
         return;
 
     if (aborted) {
-        (void)end_changing_navigable_history_step_job(*changing_navigable);
-        changing_navigable->aborted = true;
-        changing_navigable->enqueue_continuation();
+        abort_changing_navigable_history_step_job(*changing_navigable);
         return;
     }
 
     changing_navigable->unload_displayed_document = unload_displayed_document;
     changing_navigable->job_state = ChangingNavigable::JobState::ContinuationEnqueued;
     changing_navigable->enqueue_continuation();
-}
-
-void CanonicalTraversable::did_receive_changing_navigable_history_job_skipped(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
-{
-    if (!source_page.take_owed_reply({ OwedReply::Kind::ChangingJob, operation_id, navigable_id }))
-        return;
-    auto* operation = find_history_operation(operation_id);
-    auto* changing_navigable = operation ? operation->pending_changing_job(navigable_id) : nullptr;
-    if (!changing_navigable)
-        return;
-
-    auto skip = skip_changing_navigable_history_step_job(*changing_navigable);
-    skip();
 }
 
 void CanonicalTraversable::did_receive_changing_navigable_continuation_applied(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::HostedNavigableState> activated_navigable_state, Optional<Web::HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state)
