@@ -1149,7 +1149,7 @@ bool CanonicalNavigable::active_document_is(CanonicalSessionHistoryEntry const& 
 
 void CanonicalNavigable::did_commit_navigation(CanonicalSessionHistoryEntry& entry, Web::HTML::HostedNavigableState hosted_state, u64 operation_sequence_number, Optional<Utf16String const&> navigation_id, RefPtr<WebContentPage> host)
 {
-    // A navigation admitted after the operation, such as one a same-document traversal yields to, is newer than it.
+    // A navigation admitted after the operation, such as one admitted during a same-document traversal, is newer than it.
     auto ongoing_navigation_id = this->ongoing_navigation_id();
     auto ongoing_navigation = ongoing_navigation_id.has_value() ? navigation_with_id(*ongoing_navigation_id) : nullptr;
     auto commits_ongoing_navigation = !ongoing_navigation
@@ -1220,7 +1220,7 @@ void CanonicalNavigable::did_commit_navigation(CanonicalSessionHistoryEntry& ent
     }
 
     // A navigation can commit while a newer navigation is already in flight. In that case update the replicated
-    // state for the committed document without changing the newer navigation's transaction.
+    // state for the committed document, and leave the newer navigation alone.
     if (!commits_ongoing_navigation)
         return;
 
