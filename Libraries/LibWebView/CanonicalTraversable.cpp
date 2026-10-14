@@ -1251,7 +1251,7 @@ void CanonicalTraversable::did_not_receive_reply(OwedReply const& owed)
         if (awaits_crash_recovery)
             return;
         if (auto* changing_navigable = pending_changing_job(owed.id, owed.navigable_id))
-            complete_changing_navigable_history_step_job(*changing_navigable, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped);
+            changing_navigable->run().end_changing_navigable_job(*changing_navigable, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped);
         return;
     }
     }
@@ -1332,7 +1332,7 @@ void CanonicalTraversable::did_fail_history_navigation_population(ChangingNaviga
     auto disposition = navigation_transaction_matches(changing_navigable.run().operation(), page, changing_navigable.id)
         ? Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped
         : Web::HTML::ChangingNavigableHistoryStepJobDisposition::Stale;
-    complete_changing_navigable_history_step_job(changing_navigable, disposition);
+    changing_navigable.run().end_changing_navigable_job(changing_navigable, disposition);
 }
 
 void CanonicalTraversable::continue_history_navigation_population(ChangingNavigable& changing_navigable)
@@ -1819,41 +1819,15 @@ void CanonicalTraversable::did_receive_child_navigable_unload_request(WebContent
     });
 }
 
-// Ends a changing navigable's job, which will not activate the document it populated.
-ChangingNavigable::JobState CanonicalTraversable::end_changing_navigable_history_step_job(ChangingNavigable& changing_navigable)
-{
-    auto job_state = exchange(changing_navigable.job_state, ChangingNavigable::JobState::Ended);
-    if (auto population_loader = move(changing_navigable.population_loader))
-        population_loader->reclaim_response_body_after_failed_handoff();
-    if (auto document = move(changing_navigable.document); document && changing_navigable.navigable())
-        changing_navigable.navigable()->abandon_populated_document(changing_navigable.target_entry->document_state, *document);
-    return job_state;
-}
-
-// Tells a changing navigable's run that its job ended in job_state, with disposition if the job was still running.
-static void changing_navigable_history_step_job_ended(ChangingNavigable& changing_navigable, ChangingNavigable::JobState job_state, Web::HTML::ChangingNavigableHistoryStepJobDisposition disposition)
-{
-    // NB: A continuation already enqueued finds its job ended when it is applied, and completes then.
-    if (job_state == ChangingNavigable::JobState::Running)
-        changing_navigable.run().changing_navigable_job_completed(changing_navigable, disposition);
-    else if (job_state == ChangingNavigable::JobState::ApplyingContinuation)
-        changing_navigable.run().changing_navigable_continuation_applied(changing_navigable);
-}
-
-void CanonicalTraversable::complete_changing_navigable_history_step_job(ChangingNavigable& changing_navigable, Web::HTML::ChangingNavigableHistoryStepJobDisposition disposition)
-{
-    changing_navigable_history_step_job_ended(changing_navigable, end_changing_navigable_history_step_job(changing_navigable), disposition);
-}
-
 void CanonicalTraversable::end_history_jobs(CanonicalNavigable const& navigable, CanonicalDocument const* populated_document)
 {
     Vector<Function<void()>> completions;
     for (auto& entry : m_history_operations) {
         auto& operation = *entry.value;
         if (auto* changing_navigable = operation.pending_changing_job(navigable.id()); changing_navigable && (!populated_document || changing_navigable->document == populated_document)) {
-            completions.append([weak_changing_navigable = changing_navigable->make_weak_ptr(), job_state = end_changing_navigable_history_step_job(*changing_navigable)] {
+            completions.append([weak_changing_navigable = changing_navigable->make_weak_ptr(), job_state = changing_navigable->end_job()] {
                 if (weak_changing_navigable)
-                    changing_navigable_history_step_job_ended(*weak_changing_navigable, job_state, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped);
+                    weak_changing_navigable->run().changing_navigable_job_ended(*weak_changing_navigable, job_state, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped);
             });
         }
         if (populated_document || !operation.algorithm)
@@ -2629,7 +2603,7 @@ OwnPtr<HistoryOperation> CanonicalTraversable::take_history_operation(Web::HTML:
     if (auto& run = (*operation)->algorithm) {
         for (auto& changing_navigable : run->changing_navigables()) {
             if (changing_navigable->has_pending_job())
-                (void)end_changing_navigable_history_step_job(*changing_navigable);
+                (void)changing_navigable->end_job();
         }
         run->abandon();
     }
@@ -2815,7 +2789,7 @@ void CanonicalTraversable::did_receive_changing_navigable_history_job_ready(WebC
         return;
     }
 
-    complete_changing_navigable_history_step_job(*changing_navigable, disposition);
+    changing_navigable->run().end_changing_navigable_job(*changing_navigable, disposition);
 }
 
 void CanonicalTraversable::did_receive_changing_navigable_continuation_applied(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::HostedNavigableState> activated_navigable_state, Optional<Web::HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state)

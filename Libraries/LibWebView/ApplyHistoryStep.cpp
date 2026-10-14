@@ -268,6 +268,24 @@ void ApplyHistoryStep::changing_navigable_job_completed(ChangingNavigable& chang
     }
 }
 
+ChangingNavigable::JobState ChangingNavigable::end_job()
+{
+    auto job_state = exchange(this->job_state, JobState::Ended);
+    if (auto population_loader = move(this->population_loader))
+        population_loader->reclaim_response_body_after_failed_handoff();
+    if (auto document = move(this->document); document && navigable())
+        navigable()->abandon_populated_document(target_entry->document_state, *document);
+    return job_state;
+}
+
+void ApplyHistoryStep::changing_navigable_job_ended(ChangingNavigable& changing_navigable, ChangingNavigable::JobState job_state, Web::HTML::ChangingNavigableHistoryStepJobDisposition disposition)
+{
+    if (job_state == ChangingNavigable::JobState::Running)
+        changing_navigable_job_completed(changing_navigable, disposition);
+    else if (job_state == ChangingNavigable::JobState::ApplyingContinuation)
+        changing_navigable_continuation_applied(changing_navigable);
+}
+
 void ApplyHistoryStep::changing_navigable_continuation_applied(ChangingNavigable& changing_navigable)
 {
     changing_navigable.job_state = ChangingNavigable::JobState::Ended;

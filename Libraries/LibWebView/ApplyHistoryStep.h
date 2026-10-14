@@ -82,6 +82,9 @@ struct WEBVIEW_API ChangingNavigable : public Weakable<ChangingNavigable> {
     // The navigable, unless it is gone. Removing a navigable ends its job, so a pending job's navigable is there.
     CanonicalNavigable* navigable() const;
 
+    // Ends the job, which will not activate the document it populated, and returns the state the job was in.
+    [[nodiscard]] JobState end_job();
+
     bool has_pending_job() const { return first_is_one_of(job_state, JobState::Running, JobState::ContinuationEnqueued, JobState::ApplyingContinuation); }
 
     // The target entry selected from canonical session history when the job is dispatched. The process running the job
@@ -207,6 +210,10 @@ public:
     void changing_navigable_job_completed(ChangingNavigable&, Web::HTML::ChangingNavigableHistoryStepJobDisposition);
     void changing_navigable_continuation_applied(ChangingNavigable&);
     void nonchanging_navigable_updated(NonchangingNavigable&);
+    // A job that ended in job_state counts as one that completed with disposition, or whose continuation was applied.
+    // NB: A continuation already enqueued finds its job ended when it is dequeued.
+    void changing_navigable_job_ended(ChangingNavigable&, ChangingNavigable::JobState, Web::HTML::ChangingNavigableHistoryStepJobDisposition);
+    void end_changing_navigable_job(ChangingNavigable& changing_navigable, Web::HTML::ChangingNavigableHistoryStepJobDisposition disposition) { changing_navigable_job_ended(changing_navigable, changing_navigable.end_job(), disposition); }
 
 private:
     void get_changing_and_nonchanging_navigables();
