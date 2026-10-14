@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<script src="../../include.js"></script>
+<script>
+    // A child's pagehide handler calls pushState() while its parent's document is unloaded by a cross-document
+    // navigation or traversal. The push jumps the session history traversal queue while the parent's history step is
+    // paused, and its job goes to the page hosting the child, which is retiring it. That job has to end without
+    // holding up the parent's step.
+    promiseTest(async () => {
+        const httpServer = httpTestServer();
+        const childHostname = uniqueLocalhostHostname("push-state-in-child-pagehide");
+
+        const childUrl = new URL(
+            await httpServer.createEcho("GET", "/push-state-in-child-pagehide-child", {
+                status: 200,
+                headers: { "Content-Type": "text/html" },
+                body: `<!DOCTYPE html><script>
+                    addEventListener("pagehide", () => {
+                        parent.parent.postMessage("child pagehide", "*");
+                        history.pushState({}, "", "#pushed-in-pagehide");
+                    });
+                <\/script>`,
+            })
+        );
+        childUrl.hostname = childHostname;
+
+        const parentUrl = await httpServer.createEcho("GET", "/push-state-in-child-pagehide-parent", {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+            body: `<!DOCTYPE html><iframe src="${childUrl}"></iframe>`,
+        });
+        const otherUrl = await httpServer.createEcho("GET", "/push-state-in-child-pagehide-other", {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+            body: "<!DOCTYPE html>",
+        });
+
+        let childPagehides = 0;
+        window.addEventListener("message", event => {
+            if (event.data === "child pagehide")
+                ++childPagehides;
+        });
+
+        const frame = document.createElement("iframe");
+        const loaded = () => new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+        const path = () => new URL(frame.contentWindow.location.href).pathname.split("/").pop();
+
+        let load = loaded();
+        frame.src = parentUrl;
+        document.body.append(frame);
+        await load;
+        println(`loaded ${path()}`);
+
+        load = loaded();
+        frame.contentWindow.location.href = otherUrl;
+        await load;
+        println(`navigated to ${path()}`);
+
+        load = loaded();
+        frame.contentWindow.history.back();
+        await load;
+        println(`back to ${path()}`);
+
+        load = loaded();
+        frame.contentWindow.history.forward();
+        await load;
+        println(`forward to ${path()}`);
+
+        await internals.flushSessionHistoryTraversalQueue();
+        println(`child pagehide events: ${childPagehides}`);
+    });
+</script>

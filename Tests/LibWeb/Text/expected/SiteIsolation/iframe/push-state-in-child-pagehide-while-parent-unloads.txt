@@ -1,0 +1,5 @@
+loaded push-state-in-child-pagehide-parent
+navigated to push-state-in-child-pagehide-other
+back to push-state-in-child-pagehide-parent
+forward to push-state-in-child-pagehide-other
+child pagehide events: 2
