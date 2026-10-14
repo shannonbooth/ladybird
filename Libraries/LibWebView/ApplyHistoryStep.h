@@ -33,33 +33,31 @@ class ApplyHistoryStep;
 struct ChangingNavigable;
 struct NonchangingNavigable;
 
-// Cross-process jobs used by apply the history step. Each job must complete exactly once, including after endpoint
-// loss, and must not call back after its operation completes.
-struct WEBVIEW_API ApplyHistoryStepJobs {
+// What a run of apply the history step does in the processes hosting the documents. Each job reports to the run
+// exactly once, including after its process is lost.
+class WEBVIEW_API ApplyHistoryStepHost {
+public:
+    virtual ~ApplyHistoryStepHost() = default;
 
     // https://html.spec.whatwg.org/multipage/browsing-the-web.html#checking-if-unloading-is-canceled
     // NB: Given targetStep's target entry, which the traversable's host resolves no further.
-    Function<void(Vector<Web::HTML::CrossProcessId> navigables_that_need_before_unload, NonnullRefPtr<CanonicalSessionHistoryEntry> target_entry, Web::HTML::UserNavigationInvolvement user_involvement_for_navigate_event, Function<void(Web::HTML::CheckIfUnloadingIsCanceledResult)> on_complete)> check_if_unloading_is_canceled;
+    virtual void check_if_unloading_is_canceled(ApplyHistoryStep&, Vector<Web::HTML::CrossProcessId> navigables_that_need_before_unload, NonnullRefPtr<CanonicalSessionHistoryEntry> target_entry, Web::HTML::UserNavigationInvolvement user_involvement_for_navigate_event, Function<void(Web::HTML::CheckIfUnloadingIsCanceledResult)> on_complete) = 0;
 
     // NB: This queued work runs in the process hosting the active Window.
-    Function<void(Web::HTML::CrossProcessId navigable_id)> queue_navigation_api_state_clear_task;
+    virtual void queue_navigation_api_state_clear_task(ChangingNavigable&) = 0;
 
     // One iteration of "12. For each navigable of changingNavigables, queue a global task ...", in the process hosting
     // the navigable. The job claims its navigable and either enqueues a changing navigable continuation in its own
     // process (Ready) or reports why it could not (see Web::HTML::ChangingNavigableHistoryStepJobDisposition). Returns
     // false if no process can run it.
-    Function<bool(ChangingNavigable&)> run_changing_navigable_history_step_job;
+    virtual bool run_changing_navigable_history_step_job(ChangingNavigable&) = 0;
 
     // The "second part" of a changing navigable's job ("12. In both cases, let afterPotentialUnloads be ..."),
     // applied to the continuation the job enqueued in its own process.
-    struct ApplyChangingNavigableHistoryStepContinuation {
-        Web::HTML::HistoryObjectLengthAndIndex history_object_length_and_index;
-        Vector<Web::HTML::SessionHistoryEntryDescriptor> entries_for_navigation_api;
-    };
-    Function<void(ChangingNavigable&)> apply_changing_navigable_history_step_continuation;
+    virtual void apply_changing_navigable_history_step_continuation(ChangingNavigable&) = 0;
 
     // One iteration of "18. For each navigable of nonchangingNavigablesThatStillNeedUpdates, queue a global task ...".
-    Function<void(NonchangingNavigable&, Web::HTML::HistoryObjectLengthAndIndex)> update_nonchanging_navigable_history_step_state;
+    virtual void update_nonchanging_navigable_history_step_state(NonchangingNavigable&, Web::HTML::HistoryObjectLengthAndIndex) = 0;
 };
 
 // One of a run's changingNavigables: its history step job, and the changing navigable continuation the job enqueues.
@@ -102,7 +100,12 @@ struct WEBVIEW_API ChangingNavigable : public Weakable<ChangingNavigable> {
     // AD-HOC: What a same-document traversal yields to, with the admitted navigation it canceled.
     Web::HTML::TraversalYieldsTo traversal_yields_to { Web::HTML::TraversalYieldsTo::Nothing };
     Optional<Utf16String> canceled_navigation_id {};
-    Optional<ApplyHistoryStepJobs::ApplyChangingNavigableHistoryStepContinuation> continuation;
+    // The run's part of the continuation, which the process running the job applies with the rest.
+    struct Continuation {
+        Web::HTML::HistoryObjectLengthAndIndex history_object_length_and_index;
+        Vector<Web::HTML::SessionHistoryEntryDescriptor> entries_for_navigation_api;
+    };
+    Optional<Continuation> continuation;
 
     // NB: For the process running the job: its choice for the continuation's step 10, the response body it populates
     //     targetEntry's document from, and the document it populated.
@@ -164,7 +167,7 @@ public:
         CanonicalNavigable& traversable_navigable,
         SessionHistoryTraversalQueue& session_history_traversal_queue,
         TraversableApplyHistoryStepState& traversable_state,
-        ApplyHistoryStepJobs jobs,
+        ApplyHistoryStepHost& host,
         HistoryOperation* operation,
         Web::HTML::CrossProcessId operation_id,
         u64 operation_sequence_number,
@@ -223,7 +226,7 @@ private:
     CanonicalNavigable& m_traversable_navigable;
     SessionHistoryTraversalQueue& m_session_history_traversal_queue;
     TraversableApplyHistoryStepState& m_traversable_state;
-    ApplyHistoryStepJobs m_jobs;
+    ApplyHistoryStepHost& m_host;
 
     HistoryOperation* const m_operation;
     Web::HTML::CrossProcessId const m_operation_id;

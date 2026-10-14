@@ -17,7 +17,7 @@ ApplyHistoryStep::ApplyHistoryStep(
     CanonicalNavigable& traversable_navigable,
     SessionHistoryTraversalQueue& session_history_traversal_queue,
     TraversableApplyHistoryStepState& traversable_state,
-    ApplyHistoryStepJobs jobs,
+    ApplyHistoryStepHost& host,
     HistoryOperation* operation,
     Web::HTML::CrossProcessId operation_id,
     u64 operation_sequence_number,
@@ -32,7 +32,7 @@ ApplyHistoryStep::ApplyHistoryStep(
     , m_traversable_navigable(traversable_navigable)
     , m_session_history_traversal_queue(session_history_traversal_queue)
     , m_traversable_state(traversable_state)
-    , m_jobs(move(jobs))
+    , m_host(host)
     , m_operation(operation)
     , m_operation_id(operation_id)
     , m_operation_sequence_number(operation_sequence_number)
@@ -114,7 +114,7 @@ void ApplyHistoryStep::apply_the_history_step()
     auto* target_entry = m_session_history.get_the_target_history_entry(m_traversable_navigable, m_target_step);
     VERIFY(target_entry);
 
-    m_jobs.check_if_unloading_is_canceled(move(navigables_crossing_documents), *target_entry, m_user_involvement,
+    m_host.check_if_unloading_is_canceled(*this, move(navigables_crossing_documents), *target_entry, m_user_involvement,
         [this](Web::HTML::CheckIfUnloadingIsCanceledResult result) {
             if (m_completed)
                 return;
@@ -175,7 +175,7 @@ void ApplyHistoryStep::get_changing_and_nonchanging_navigables()
         // 3. If targetEntry's document is not navigable's active document, then queue a global task on the navigation
         //    and traversal task source of navigable's active window to run these steps:
         if (!navigable->active_document_is(*target_entry))
-            m_jobs.queue_navigation_api_state_clear_task(changing_navigable->id);
+            m_host.queue_navigation_api_state_clear_task(*changing_navigable);
 
         // 4. Set navigable's ongoing navigation to "traversal".
         set_ongoing_navigation_to_traversal(*changing_navigable, *navigable, *target_entry);
@@ -202,7 +202,7 @@ void ApplyHistoryStep::run_changing_navigable_jobs()
         changing_navigable->target_entry = target_entry;
         changing_navigable->target_entry_reload_pending = target_entry->document_state->reload_pending;
         changing_navigable->job_state = ChangingNavigable::JobState::Running;
-        if (!m_jobs.run_changing_navigable_history_step_job(*changing_navigable))
+        if (!m_host.run_changing_navigable_history_step_job(*changing_navigable))
             changing_navigable_job_completed(*changing_navigable, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped);
     }
 
@@ -453,11 +453,11 @@ void ApplyHistoryStep::process_changing_navigable_continuations()
         //     traversal queue before the next continuation checks for them.
         m_continuation_in_flight = true;
         changing_navigable_continuation.job_state = ChangingNavigable::JobState::ApplyingContinuation;
-        changing_navigable_continuation.continuation = ApplyHistoryStepJobs::ApplyChangingNavigableHistoryStepContinuation {
+        changing_navigable_continuation.continuation = ChangingNavigable::Continuation {
             .history_object_length_and_index = *history_object_length_and_index,
             .entries_for_navigation_api = entries_for_navigation_api.release_value(),
         };
-        m_jobs.apply_changing_navigable_history_step_continuation(changing_navigable_continuation);
+        m_host.apply_changing_navigable_history_step_continuation(changing_navigable_continuation);
         if (m_continuation_in_flight)
             return;
     }
@@ -507,7 +507,7 @@ void ApplyHistoryStep::update_nonchanging_navigables()
         if (m_completed)
             return;
         nonchanging_navigable.update_in_flight = true;
-        m_jobs.update_nonchanging_navigable_history_step_state(nonchanging_navigable, *history_object_length_and_index);
+        m_host.update_nonchanging_navigable_history_step_state(nonchanging_navigable, *history_object_length_and_index);
     }
 }
 

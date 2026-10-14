@@ -1438,7 +1438,7 @@ bool CanonicalTraversable::run_changing_navigable_history_step_job(ChangingNavig
     return true;
 }
 
-void CanonicalTraversable::dispatch_changing_navigable_history_step_continuation(ChangingNavigable& changing_navigable)
+void CanonicalTraversable::apply_changing_navigable_history_step_continuation(ChangingNavigable& changing_navigable)
 {
     VERIFY(changing_navigable.continuation.has_value());
     VERIFY(changing_navigable.job_state == ChangingNavigable::JobState::ApplyingContinuation);
@@ -1874,44 +1874,45 @@ void CanonicalTraversable::end_history_jobs(CanonicalNavigable const& navigable,
     });
 }
 
-ApplyHistoryStepJobs CanonicalTraversable::create_apply_history_step_jobs(HistoryOperation& operation)
+void CanonicalTraversable::check_if_unloading_is_canceled(ApplyHistoryStep& run, Vector<Web::HTML::CrossProcessId> navigables_that_need_before_unload, NonnullRefPtr<CanonicalSessionHistoryEntry> target_entry, Web::HTML::UserNavigationInvolvement user_involvement_for_navigate_event, Function<void(Web::HTML::CheckIfUnloadingIsCanceledResult)> on_complete)
 {
-    return {
-        .check_if_unloading_is_canceled = [this, &operation](Vector<Web::HTML::CrossProcessId> navigables_that_need_before_unload, NonnullRefPtr<CanonicalSessionHistoryEntry> target_entry, Web::HTML::UserNavigationInvolvement user_involvement_for_navigate_event, Function<void(Web::HTML::CheckIfUnloadingIsCanceledResult)> on_complete) {
-            auto check_id = check_if_unloading_is_canceled(move(navigables_that_need_before_unload), move(target_entry), user_involvement_for_navigate_event, {}, Web::HTML::UnloadPromptShown::No,
-                [this, operation_id = operation.operation_id, on_complete = move(on_complete)](Web::HTML::CheckIfUnloadingIsCanceledResult result, Web::HTML::UnloadPromptShown) {
-                    auto* operation = find_history_operation(operation_id);
-                    if (!operation)
-                        return;
-                    operation->beforeunload_check_id.clear();
-                    on_complete(result);
-                });
-            // The check can finish, and the operation with it, before it returns.
-            if (!operation.finished)
-                operation.beforeunload_check_id = check_id; },
-        .queue_navigation_api_state_clear_task = [this, &operation](Web::HTML::CrossProcessId navigable_id) {
-            auto navigable = find(navigable_id);
-            if (!navigable.has_value())
+    auto& operation = run.operation();
+    auto check_id = check_if_unloading_is_canceled(move(navigables_that_need_before_unload), move(target_entry), user_involvement_for_navigate_event, {}, Web::HTML::UnloadPromptShown::No,
+        [this, operation_id = operation.operation_id, on_complete = move(on_complete)](Web::HTML::CheckIfUnloadingIsCanceledResult result, Web::HTML::UnloadPromptShown) {
+            auto* operation = find_history_operation(operation_id);
+            if (!operation)
                 return;
-            auto endpoint = page_hosting(*navigable);
-            if (!endpoint)
-                return;
-            add_history_operation_completion_endpoint(operation, *endpoint);
-            endpoint->async_queue_navigation_api_state_clear_task(navigable_id); },
-        .run_changing_navigable_history_step_job = [this](ChangingNavigable& changing_navigable) { return run_changing_navigable_history_step_job(changing_navigable); },
-        .apply_changing_navigable_history_step_continuation = [this](ChangingNavigable& changing_navigable) { dispatch_changing_navigable_history_step_continuation(changing_navigable); },
-        .update_nonchanging_navigable_history_step_state = [this, &operation](NonchangingNavigable& nonchanging_navigable, Web::HTML::HistoryObjectLengthAndIndex history_object_length_and_index) {
-            auto const* navigable = nonchanging_navigable.navigable();
-            RefPtr<WebContentPage> endpoint = navigable ? page_hosting(*navigable) : nullptr;
-            if (!endpoint || !endpoint->is_open()) {
-                nonchanging_navigable.run().nonchanging_navigable_updated(nonchanging_navigable);
-                return;
-            }
-            add_history_operation_completion_endpoint(operation, *endpoint);
-            endpoint->owe_reply({ OwedReply::Kind::NonchangingUpdate, operation.operation_id, nonchanging_navigable.id });
-            endpoint->async_update_nonchanging_navigable_history_state(operation.operation_id, nonchanging_navigable.id,
-                history_object_length_and_index.script_history_length, history_object_length_and_index.script_history_index); },
-    };
+            operation->beforeunload_check_id.clear();
+            on_complete(result);
+        });
+    // The check can finish, and the operation with it, before it returns.
+    if (!operation.finished)
+        operation.beforeunload_check_id = check_id;
+}
+
+void CanonicalTraversable::queue_navigation_api_state_clear_task(ChangingNavigable& changing_navigable)
+{
+    auto* navigable = changing_navigable.navigable();
+    auto endpoint = navigable ? page_hosting(*navigable) : nullptr;
+    if (!endpoint)
+        return;
+    add_history_operation_completion_endpoint(changing_navigable.run().operation(), *endpoint);
+    endpoint->async_queue_navigation_api_state_clear_task(changing_navigable.id);
+}
+
+void CanonicalTraversable::update_nonchanging_navigable_history_step_state(NonchangingNavigable& nonchanging_navigable, Web::HTML::HistoryObjectLengthAndIndex history_object_length_and_index)
+{
+    auto& operation = nonchanging_navigable.run().operation();
+    auto const* navigable = nonchanging_navigable.navigable();
+    RefPtr<WebContentPage> endpoint = navigable ? page_hosting(*navigable) : nullptr;
+    if (!endpoint || !endpoint->is_open()) {
+        nonchanging_navigable.run().nonchanging_navigable_updated(nonchanging_navigable);
+        return;
+    }
+    add_history_operation_completion_endpoint(operation, *endpoint);
+    endpoint->owe_reply({ OwedReply::Kind::NonchangingUpdate, operation.operation_id, nonchanging_navigable.id });
+    endpoint->async_update_nonchanging_navigable_history_state(operation.operation_id, nonchanging_navigable.id,
+        history_object_length_and_index.script_history_length, history_object_length_and_index.script_history_index);
 }
 
 void CanonicalTraversable::run_history_operation_at_queue_position(Web::HTML::CrossProcessId operation_id, Web::HistoryOperationParameters request, RefPtr<WebContentPage> requesting_page, u64 sequence_number, RefPtr<CanonicalSessionHistoryEntry> target_entry, NonnullRefPtr<Core::Promise<Empty>> promise)
@@ -2146,7 +2147,7 @@ void CanonicalTraversable::apply_history_step(HistoryOperation& operation, i32 s
     VERIFY(!operation.algorithm);
     auto operation_id = operation.operation_id;
     operation.algorithm = make<ApplyHistoryStep>(
-        m_session_history, *this, m_history_traversal_queue, m_apply_history_step_traversable_state, create_apply_history_step_jobs(operation),
+        m_session_history, *this, m_history_traversal_queue, m_apply_history_step_traversable_state, static_cast<ApplyHistoryStepHost&>(*this),
         &operation, operation_id, operation.sequence_number,
         step, check_for_cancelation, initiator_to_check, move(source_snapshot_params), user_involvement, navigation_type,
         [this, &operation](Web::HTML::HistoryStepResult result) {
