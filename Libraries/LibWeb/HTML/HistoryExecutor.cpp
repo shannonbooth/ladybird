@@ -313,15 +313,6 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
             target_entry = claimed_target_entry;
         }
 
-        if (!target_entry->step_value().has_value()) {
-            // NB: Child navigables created during a busy top-level navigation can still have a pending initial
-            //     session history entry. The spec's step-based history algorithms operate on used history steps,
-            //     so a pending child entry must not block or crash the top-level apply-history step. The queued
-            //     child creation/destruction history step will reconcile the child once it has a concrete step.
-            skip->function()();
-            return;
-        }
-
         // 3. Let changingNavigableContinuation be a changing navigable continuation state with:
         auto changing_navigable_continuation = heap().allocate<ChangingNavigableContinuationState>();
         changing_navigable_continuation->displayed_document = navigable->active_document();
