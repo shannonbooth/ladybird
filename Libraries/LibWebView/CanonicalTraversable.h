@@ -183,19 +183,20 @@ private:
     ViewImplementation* m_view { nullptr };
     void session_history_changed();
     HistoryOperation* find_history_operation(Web::HTML::CrossProcessId operation_id);
+    ChangingNavigable* pending_changing_job(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id);
     bool navigation_transaction_matches(HistoryOperation const&, WebContentPage&, Optional<Web::HTML::CrossProcessId> reply_navigable_id = {}) const;
     RefPtr<CanonicalNavigation> finalized_navigation(HistoryOperation const&) const;
     bool update_session_history_entry_persisted_state(CanonicalNavigable&, Web::HTML::SessionHistoryEntryPersistedState const&);
     void add_history_operation_completion_endpoint(HistoryOperation&, NonnullRefPtr<WebContentPage>);
     bool select_changing_navigable_history_step_job_endpoint(HistoryOperation&, ApplyHistoryStepJobs::ChangingNavigableHistoryStepJob&);
     void dispatch_changing_navigable_history_step_job(ChangingNavigable&);
-    void did_fail_history_navigation_population(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, WebContentPage&);
-    void continue_history_navigation_population(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id);
+    void did_fail_history_navigation_population(ChangingNavigable&, WebContentPage&);
+    void continue_history_navigation_population(ChangingNavigable&);
     void dispatch_changing_navigable_history_step_continuation(ChangingNavigable&);
     void send_changing_navigable_continuation_task(ChangingNavigable&);
     void deactivate_a_document_for_cross_document_navigation(ChangingNavigable&);
     void unload_displayed_document_for_cross_document_navigation(ChangingNavigable&);
-    void did_activate_history_entry(HistoryOperation&, Web::HTML::CrossProcessId navigable_id, NonnullRefPtr<WebContentPage> source_page, CanonicalSessionHistoryEntry& target_entry, Web::HTML::HostedNavigableState activated_navigable_state);
+    void did_activate_history_entry(ChangingNavigable&, NonnullRefPtr<WebContentPage> source_page, Web::HTML::HostedNavigableState activated_navigable_state);
     enum class UnloadedInItsHost : bool {
         No,
         Yes,

@@ -9,6 +9,7 @@
 #include <AK/Function.h>
 #include <AK/HashMap.h>
 #include <AK/HashTable.h>
+#include <AK/NonnullOwnPtr.h>
 #include <AK/Optional.h>
 #include <AK/RefPtr.h>
 #include <AK/Utf16String.h>
@@ -84,8 +85,11 @@ struct WEBVIEW_API ApplyHistoryStepJobs {
 };
 
 // One of a run's changingNavigables: its history step job, and the changing navigable continuation the job enqueues.
-// NB: The process running the job retains the rest of the continuation's state.
-struct WEBVIEW_API ChangingNavigable {
+// NB: The process running the job retains the rest of the continuation's state. What waits on the job holds a weak
+//     pointer to the record, which goes with its run.
+struct WEBVIEW_API ChangingNavigable : public Weakable<ChangingNavigable> {
+    AK_ALLOC_WITH_KMALLOC;
+
     enum class JobState : u8 {
         NotRun,
         Running,
@@ -200,7 +204,7 @@ public:
     }
     Web::HTML::CrossProcessId operation_id() const { return m_operation_id; }
 
-    Vector<ChangingNavigable>& changing_navigables() { return m_changing_navigables; }
+    Vector<NonnullOwnPtr<ChangingNavigable>> const& changing_navigables() const { return m_changing_navigables; }
     ChangingNavigable* changing_navigable(Web::HTML::CrossProcessId);
     NonchangingNavigable* nonchanging_navigable(Web::HTML::CrossProcessId);
 
@@ -246,7 +250,7 @@ private:
 
     // The algorithm's variables.
     i32 m_target_step { 0 };
-    Vector<ChangingNavigable> m_changing_navigables;
+    Vector<NonnullOwnPtr<ChangingNavigable>> m_changing_navigables;
     Vector<NonchangingNavigable> m_nonchanging_navigables_that_still_need_updates;
     size_t m_completed_change_jobs { 0 };
     Vector<ChangingNavigable*> m_changing_navigable_continuations;
