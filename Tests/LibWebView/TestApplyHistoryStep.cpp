@@ -119,11 +119,11 @@ public:
         WebView::ChangingNavigable* changing_navigable;
         ChangingNavigableHistoryStepJob job;
 
-        void enqueue_ready_continuation() { changing_navigable->enqueue_continuation(); }
+        void enqueue_ready_continuation() { changing_navigable->run().enqueue_changing_navigable_continuation(*changing_navigable); }
         void enqueue_aborted_continuation()
         {
             changing_navigable->aborted = true;
-            changing_navigable->enqueue_continuation();
+            changing_navigable->run().enqueue_changing_navigable_continuation(*changing_navigable);
         }
     };
     struct Continuation {
@@ -131,14 +131,14 @@ public:
         Web::HTML::CrossProcessId navigable_id;
         ApplyChangingNavigableHistoryStepContinuation continuation;
 
-        void on_complete() { changing_navigable->continuation_applied(); }
+        void on_complete() { changing_navigable->run().changing_navigable_continuation_applied(*changing_navigable); }
     };
     struct NonchangingUpdate {
         WebView::NonchangingNavigable* nonchanging_navigable;
         Web::HTML::CrossProcessId navigable_id;
         Web::HTML::HistoryObjectLengthAndIndex history_object_length_and_index;
 
-        void on_complete() { nonchanging_navigable->updated(); }
+        void on_complete() { nonchanging_navigable->run().nonchanging_navigable_updated(*nonchanging_navigable); }
     };
 
     WebView::ApplyHistoryStepJobs jobs()
@@ -242,7 +242,7 @@ struct TestTraversable {
 
     WebView::ApplyHistoryStep& apply_step(i32 step, Optional<Web::Bindings::NavigationType> navigation_type, bool check_for_cancelation = false, Optional<Web::HTML::CrossProcessId> initiator_to_check = {}, Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot_params = {})
     {
-        operation = make<WebView::ApplyHistoryStep>(history, traversable, queue, state, runner.jobs(), second_operation_id(), 2, step,
+        operation = make<WebView::ApplyHistoryStep>(history, traversable, queue, state, runner.jobs(), nullptr, second_operation_id(), 2, step,
             check_for_cancelation, initiator_to_check, move(source_snapshot_params), Web::HTML::UserNavigationInvolvement::BrowserUI,
             navigation_type,
             [this](Web::HTML::HistoryStepResult history_step_result) { result = history_step_result; });
@@ -678,7 +678,7 @@ TEST_CASE(an_older_run_does_not_commit_over_a_newer_runs_step)
     test.with_three_top_level_entries();
 
     Optional<Web::HTML::HistoryStepResult> older_result;
-    WebView::ApplyHistoryStep older_operation(test.history, test.traversable, test.queue, test.state, test.runner.jobs(), first_operation_id(), 1, 0,
+    WebView::ApplyHistoryStep older_operation(test.history, test.traversable, test.queue, test.state, test.runner.jobs(), nullptr, first_operation_id(), 1, 0,
         false, {}, {}, Web::HTML::UserNavigationInvolvement::BrowserUI, Web::Bindings::NavigationType::Traverse,
         [&](Web::HTML::HistoryStepResult result) { older_result = result; });
 
@@ -714,7 +714,7 @@ TEST_CASE(a_paused_run_commits_after_a_newer_run_recommits_the_current_step)
     OwnPtr<WebView::ApplyHistoryStep> nested_operation;
     Optional<Web::HTML::HistoryStepResult> nested_result;
     test.queue.append_session_history_synchronous_navigation_steps(child_id(), {}, [&](NonnullRefPtr<Core::Promise<Empty>> signal) {
-        nested_operation = make<WebView::ApplyHistoryStep>(test.history, test.traversable, test.queue, test.state, test.runner.jobs(), third_operation_id(), 3, 1,
+        nested_operation = make<WebView::ApplyHistoryStep>(test.history, test.traversable, test.queue, test.state, test.runner.jobs(), nullptr, third_operation_id(), 3, 1,
             false, Optional<Web::HTML::CrossProcessId> {}, Optional<Web::HTML::NavigationSourceSnapshot> {}, Web::HTML::UserNavigationInvolvement::None, Web::Bindings::NavigationType::Replace,
             [&, signal](Web::HTML::HistoryStepResult result) {
                 nested_result = result;
@@ -762,7 +762,7 @@ TEST_CASE(a_paused_traversal_is_canceled_once_a_jumping_push_removes_its_target_
         auto pushed_entry = WebView::CanonicalSessionHistoryEntry::create(test.history.top_level_entry_for_step(1)->document_state);
         pushed_entry->url = parse_url("https://b.example/pushed"sv);
         VERIFY(test.history.push_session_history_entry(test.traversable, move(pushed_entry)) == 2);
-        nested_operation = make<WebView::ApplyHistoryStep>(test.history, test.traversable, test.queue, test.state, test.runner.jobs(), third_operation_id(), 3, 2,
+        nested_operation = make<WebView::ApplyHistoryStep>(test.history, test.traversable, test.queue, test.state, test.runner.jobs(), nullptr, third_operation_id(), 3, 2,
             false, Optional<Web::HTML::CrossProcessId> {}, Optional<Web::HTML::NavigationSourceSnapshot> {}, Web::HTML::UserNavigationInvolvement::None, Web::Bindings::NavigationType::Push,
             [&, signal](Web::HTML::HistoryStepResult result) {
                 nested_result = result;
@@ -815,7 +815,7 @@ TEST_CASE(a_paused_push_appends_its_entry_again_once_a_jumping_push_clears_it)
         auto pushed_entry = WebView::CanonicalSessionHistoryEntry::create(test.history.top_level_entry_for_step(1)->document_state);
         pushed_entry->url = parse_url("https://b.example/pushed"sv);
         VERIFY(test.history.push_session_history_entry(test.traversable, move(pushed_entry)) == 2);
-        nested_operation = make<WebView::ApplyHistoryStep>(test.history, test.traversable, test.queue, test.state, test.runner.jobs(), third_operation_id(), 3, 2,
+        nested_operation = make<WebView::ApplyHistoryStep>(test.history, test.traversable, test.queue, test.state, test.runner.jobs(), nullptr, third_operation_id(), 3, 2,
             false, Optional<Web::HTML::CrossProcessId> {}, Optional<Web::HTML::NavigationSourceSnapshot> {}, Web::HTML::UserNavigationInvolvement::None, Web::Bindings::NavigationType::Push,
             [&, signal](Web::HTML::HistoryStepResult result) {
                 nested_result = result;
@@ -879,7 +879,7 @@ TEST_CASE(a_paused_reload_continues_with_the_entry_that_a_jumping_replace_put_in
     Optional<Web::HTML::HistoryStepResult> nested_result;
     test.queue.append_session_history_synchronous_navigation_steps(child_id(), {}, [&](NonnullRefPtr<Core::Promise<Empty>> signal) {
         VERIFY(test.history.replace_session_history_entry(test.traversable, *reloading_entry, replacement_entry));
-        nested_operation = make<WebView::ApplyHistoryStep>(test.history, test.traversable, test.queue, test.state, test.runner.jobs(), third_operation_id(), 3, 1,
+        nested_operation = make<WebView::ApplyHistoryStep>(test.history, test.traversable, test.queue, test.state, test.runner.jobs(), nullptr, third_operation_id(), 3, 1,
             false, Optional<Web::HTML::CrossProcessId> {}, Optional<Web::HTML::NavigationSourceSnapshot> {}, Web::HTML::UserNavigationInvolvement::None, Web::Bindings::NavigationType::Replace,
             [&, signal](Web::HTML::HistoryStepResult result) {
                 nested_result = result;

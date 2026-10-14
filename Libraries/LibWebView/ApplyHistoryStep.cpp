@@ -18,6 +18,7 @@ ApplyHistoryStep::ApplyHistoryStep(
     SessionHistoryTraversalQueue& session_history_traversal_queue,
     TraversableApplyHistoryStepState& traversable_state,
     ApplyHistoryStepJobs jobs,
+    HistoryOperation* operation,
     Web::HTML::CrossProcessId operation_id,
     u64 operation_sequence_number,
     i32 step,
@@ -32,6 +33,7 @@ ApplyHistoryStep::ApplyHistoryStep(
     , m_session_history_traversal_queue(session_history_traversal_queue)
     , m_traversable_state(traversable_state)
     , m_jobs(move(jobs))
+    , m_operation(operation)
     , m_operation_id(operation_id)
     , m_operation_sequence_number(operation_sequence_number)
     , m_step(step)
@@ -248,21 +250,6 @@ NonchangingNavigable::NonchangingNavigable(ApplyHistoryStep& run, Web::HTML::Cro
 CanonicalNavigable* NonchangingNavigable::navigable() const
 {
     return m_navigable.ptr();
-}
-
-void ChangingNavigable::enqueue_continuation()
-{
-    m_run->enqueue_changing_navigable_continuation(*this);
-}
-
-void ChangingNavigable::continuation_applied()
-{
-    m_run->changing_navigable_continuation_applied(*this);
-}
-
-void NonchangingNavigable::updated()
-{
-    m_run->nonchanging_navigable_updated(*this);
 }
 
 void ApplyHistoryStep::enqueue_changing_navigable_continuation(ChangingNavigable& changing_navigable)

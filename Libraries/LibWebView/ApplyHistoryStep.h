@@ -93,10 +93,9 @@ struct WEBVIEW_API ChangingNavigable {
         Ended,
     };
 
-    void enqueue_continuation();
-    void continuation_applied();
-
     ChangingNavigable(ApplyHistoryStep& run, Web::HTML::CrossProcessId id, CanonicalNavigable* navigable);
+
+    ApplyHistoryStep& run() const { return *m_run; }
 
     // The navigable, unless it is gone. Removing a navigable ends its job, so a pending job's navigable is there.
     CanonicalNavigable* navigable() const;
@@ -126,10 +125,10 @@ private:
 struct WEBVIEW_API NonchangingNavigable {
     NonchangingNavigable(ApplyHistoryStep& run, Web::HTML::CrossProcessId id, CanonicalNavigable* navigable);
 
+    ApplyHistoryStep& run() const { return *m_run; }
+
     // The navigable, unless it is gone.
     CanonicalNavigable* navigable() const;
-
-    void updated();
 
     Web::HTML::CrossProcessId id;
     bool update_in_flight { false };
@@ -172,6 +171,7 @@ public:
         SessionHistoryTraversalQueue& session_history_traversal_queue,
         TraversableApplyHistoryStepState& traversable_state,
         ApplyHistoryStepJobs jobs,
+        HistoryOperation* operation,
         Web::HTML::CrossProcessId operation_id,
         u64 operation_sequence_number,
         i32 step,
@@ -189,14 +189,24 @@ public:
     // The step this run committed as the current session history step, if it was the run that committed.
     Optional<i32> committed_step() const { return m_committed_step; }
 
+    // The history operation the run belongs to, for the code dispatching its jobs.
+    HistoryOperation& operation() const
+    {
+        VERIFY(m_operation);
+        return *m_operation;
+    }
+    Web::HTML::CrossProcessId operation_id() const { return m_operation_id; }
+
     Vector<ChangingNavigable>& changing_navigables() { return m_changing_navigables; }
     ChangingNavigable* changing_navigable(Web::HTML::CrossProcessId);
     NonchangingNavigable* nonchanging_navigable(Web::HTML::CrossProcessId);
 
-private:
-    friend struct ChangingNavigable;
-    friend struct NonchangingNavigable;
+    // What the jobs report, each once.
+    void enqueue_changing_navigable_continuation(ChangingNavigable&);
+    void changing_navigable_continuation_applied(ChangingNavigable&);
+    void nonchanging_navigable_updated(NonchangingNavigable&);
 
+private:
     void get_changing_and_nonchanging_navigables();
     void run_changing_navigable_jobs();
     void process_changing_navigable_continuations();
@@ -204,9 +214,6 @@ private:
     void set_current_session_history_step();
     CanonicalSessionHistoryEntry* append_the_target_entry_again(CanonicalNavigable&, CanonicalSessionHistoryEntry& history_entry);
 
-    void enqueue_changing_navigable_continuation(ChangingNavigable&);
-    void changing_navigable_continuation_applied(ChangingNavigable&);
-    void nonchanging_navigable_updated(NonchangingNavigable&);
     void set_ongoing_navigation_to_traversal(CanonicalNavigable&, CanonicalSessionHistoryEntry const&);
     void clear_ongoing_navigation_traversal(ChangingNavigable&);
     void clear_all_ongoing_navigation_traversals();
@@ -219,6 +226,7 @@ private:
     TraversableApplyHistoryStepState& m_traversable_state;
     ApplyHistoryStepJobs m_jobs;
 
+    HistoryOperation* const m_operation;
     Web::HTML::CrossProcessId const m_operation_id;
     u64 const m_operation_sequence_number;
 

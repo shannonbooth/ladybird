@@ -67,6 +67,7 @@ struct BookmarkItem;
 struct BrowserOptions;
 struct CookieStorageKey;
 struct HistoryEntry;
+struct HistoryOperation;
 struct SearchEngine;
 struct WebContentOptions;
 class WebContentPage;

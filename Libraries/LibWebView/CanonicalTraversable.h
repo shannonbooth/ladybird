@@ -181,20 +181,19 @@ public:
 
 private:
     ViewImplementation* m_view { nullptr };
-    struct HistoryOperation;
     void session_history_changed();
     HistoryOperation* find_history_operation(Web::HTML::CrossProcessId operation_id);
     RefPtr<CanonicalNavigation> finalized_navigation(HistoryOperation const&) const;
     bool update_session_history_entry_persisted_state(CanonicalNavigable&, Web::HTML::SessionHistoryEntryPersistedState const&);
     void add_history_operation_completion_endpoint(HistoryOperation&, NonnullRefPtr<WebContentPage>);
     bool select_changing_navigable_history_step_job_endpoint(HistoryOperation&, ApplyHistoryStepJobs::ChangingNavigableHistoryStepJob&);
-    void dispatch_changing_navigable_history_step_job(HistoryOperation&, ChangingNavigable&);
+    void dispatch_changing_navigable_history_step_job(ChangingNavigable&);
     void did_fail_history_navigation_population(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id);
     void continue_history_navigation_population(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id);
-    void dispatch_changing_navigable_history_step_continuation(HistoryOperation&, ChangingNavigable&);
-    void send_changing_navigable_continuation_task(HistoryOperation&, Web::HTML::CrossProcessId navigable_id);
-    void deactivate_a_document_for_cross_document_navigation(HistoryOperation&, Web::HTML::CrossProcessId navigable_id);
-    void unload_displayed_document_for_cross_document_navigation(HistoryOperation&, Web::HTML::CrossProcessId navigable_id);
+    void dispatch_changing_navigable_history_step_continuation(ChangingNavigable&);
+    void send_changing_navigable_continuation_task(ChangingNavigable&);
+    void deactivate_a_document_for_cross_document_navigation(ChangingNavigable&);
+    void unload_displayed_document_for_cross_document_navigation(ChangingNavigable&);
     void did_activate_history_entry(HistoryOperation&, Web::HTML::CrossProcessId navigable_id, NonnullRefPtr<WebContentPage> source_page, CanonicalSessionHistoryEntry& target_entry, Web::HTML::HostedNavigableState activated_navigable_state);
     enum class UnloadedInItsHost : bool {
         No,
@@ -204,7 +203,8 @@ private:
     void unload_document_in_its_host(NonnullRefPtr<WebContentPage>, Web::HTML::CrossProcessId navigable_id, Web::HTML::ChildNavigableDestruction, Function<void()> after_unload);
     void stand_in_for_lost_document(CanonicalNavigable&);
     RefPtr<WebContentPage> changing_job_endpoint(CanonicalNavigable const&, CanonicalDocumentState const& target_document_state) const;
-    RefPtr<WebContentPage> changing_job_endpoint(HistoryOperation const&, Web::HTML::CrossProcessId navigable_id) const;
+    // The page a changing navigable's pending job runs in.
+    RefPtr<WebContentPage> changing_job_endpoint(ChangingNavigable const&) const;
     void dispatch_descendant_unload_task(Web::HTML::CrossProcessId unload_id, Web::HTML::CrossProcessId navigable_id);
     void complete_descendant_unload_task(Web::HTML::CrossProcessId unload_id, Web::HTML::CrossProcessId navigable_id);
     [[nodiscard]] ChangingNavigable::JobState end_changing_navigable_history_step_job(ChangingNavigable&);
