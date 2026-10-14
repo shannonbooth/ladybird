@@ -264,47 +264,139 @@ static void queue_apply_history_step_task(GC::Ref<LocalNavigable> navigable, GC:
     queue_a_task(Task::Source::NavigationAndTraversal, nullptr, task_document, steps);
 }
 
-bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavigableHistoryStepJob job, GC::Ptr<DOM::Document> pending_document, GC::Ref<EnqueueLocalChangingNavigableContinuation> enqueue_continuation, GC::Ref<GC::Function<void()>> skip)
+static bool changing_navigable_is_still_current(GC::Ptr<LocalNavigable> navigable, Optional<UniqueNodeID> expected_active_document_id, bool allow_ongoing_navigation)
 {
-    auto navigable = local_navigable_with_id(job.navigable_id);
-    if (!navigable) {
-        skip->function()();
+    if (!navigable || navigable->has_been_destroyed() || !navigable->active_window())
         return false;
+
+    auto active_document = navigable->active_document();
+    if (!active_document || active_document->has_been_destroyed())
+        return false;
+
+    if (navigable->active_document_id() != expected_active_document_id)
+        return false;
+
+    return navigable->ongoing_navigation().has<Empty>()
+        || (allow_ongoing_navigation && navigable->ongoing_navigation().has<Utf16String>());
+}
+
+bool HistoryExecutor::resume_history_navigation_population(CrossProcessId operation_id, HistoryNavigationPopulation&& population)
+{
+    auto* operation = find_history_operation(operation_id);
+    if (!operation)
+        return false;
+    auto job = operation->changing_navigable_jobs.get(population.request.navigable_id);
+    if (!job.has_value() || !job->continue_population)
+        return false;
+    GC::Ref continue_population = *exchange(job->continue_population, nullptr);
+    continue_population->function()(move(population));
+    return true;
+}
+
+void HistoryExecutor::enqueue_changing_navigable_continuation(CrossProcessId operation_id, CrossProcessId navigable_id, GC::Ref<ChangingNavigableContinuationState> changing_navigable_continuation, GC::Ref<OnEnqueueChangingNavigableContinuation> on_enqueue)
+{
+    // NB: The UI process holds changingNavigableContinuations. This process keeps the continuation until the UI process
+    //     applies it.
+    auto* operation = find_history_operation(operation_id);
+    if (operation) {
+        if (changing_navigable_continuation->aborted)
+            operation->changing_navigable_jobs.remove(navigable_id);
+        else
+            operation->changing_navigable_jobs.ensure(navigable_id).continuation = changing_navigable_continuation;
+    }
+    // NB: The UI process runs the steps for an aborted continuation once it dequeues it, without applying it in this
+    //     process. Mirror its setting of navigable's ongoing navigation to null here.
+    // AD-HOC: A job can finish after its operation was abandoned. Release the document-local projection.
+    if (changing_navigable_continuation->aborted || !operation) {
+        if (auto navigable = local_navigable_with_id(navigable_id))
+            navigable->clear_ongoing_history_traversal();
+    }
+    on_enqueue->function()(changing_navigable_continuation->aborted, changing_navigable_continuation->unload_displayed_document());
+}
+
+void HistoryExecutor::skip_changing_navigable_history_step_job(CrossProcessId operation_id, CrossProcessId navigable_id, GC::Ref<OnSkipChangingNavigableHistoryStepJob> on_skip)
+{
+    if (auto* operation = find_history_operation(operation_id))
+        operation->changing_navigable_jobs.remove(navigable_id);
+    // AD-HOC: A job can claim its navigable before it is skipped. Release the document-local projection.
+    if (auto navigable = local_navigable_with_id(navigable_id))
+        navigable->clear_ongoing_history_traversal();
+    on_skip->function()();
+}
+
+void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId operation_id, CrossProcessId navigable_id, SessionHistoryEntryDescriptor target_entry_descriptor, UserNavigationInvolvement user_involvement, Optional<Bindings::NavigationType> navigation_type, Optional<Utf16String> finalized_navigation_id, bool ongoing_navigation_is_traversal, Optional<NavigationSourceSnapshot> navigation_source_snapshot, GC::Ref<OnEnqueueChangingNavigableContinuation> enqueue_continuation, GC::Ref<OnSkipChangingNavigableHistoryStepJob> skip, Optional<HistoryNavigationPopulation> population)
+{
+    auto& operation = ensure_history_operation(operation_id);
+    auto pending_document = operation.pending_document;
+    // The update for a navigable's creation targets an entry the navigable retains, not the one the request gave.
+    RefPtr<SessionHistoryEntry> local_target_entry;
+    if (operation.local_target_navigable_id == navigable_id && navigation_type.has_value()) {
+        VERIFY(operation.local_target_entry);
+        local_target_entry = operation.local_target_entry;
     }
 
-    // AD-HOC: If the navigable has been destroyed, or has no active window, skip it.
-    //         Complete the job here rather than relying on the queued task, because Document::destroy() removes tasks
-    //         associated with a document from the task queue, which can cause those tasks to never run.
-    if (navigable->has_been_destroyed() || !navigable->active_window()) {
-        skip->function()();
-        return false;
+    auto navigable = local_navigable_with_id(navigable_id);
+
+    // AD-HOC: The navigable can be destroyed, or its page be closing, before the job finalizing a navigation runs.
+    //         Destruction may then have detached the pending document, or destroyed the active document, before
+    //         marking the navigable destroyed.
+    if (pending_document && local_target_entry) {
+        GC::Ptr<DOM::Document> active_document = navigable ? navigable->active_document() : nullptr;
+        if (!navigable || navigable->has_been_destroyed() || pending_document->has_been_destroyed() || !pending_document->browsing_context() || !active_document || active_document->has_been_destroyed()) {
+            enqueue_continuation->function()(true, UnloadDisplayedDocument::No);
+            return;
+        }
+    }
+    // AD-HOC: The navigable can be gone, or have no active window, before the job runs. Complete the job here rather
+    //         than in the queued task, which destroying the navigable's document would drop.
+    if (!navigable || navigable->has_been_destroyed() || !navigable->active_window()) {
+        skip_changing_navigable_history_step_job(operation_id, navigable_id, skip);
+        return;
+    }
+    if (local_target_entry) {
+        auto document_state = local_target_entry->document_state();
+        if (!document_state
+            || document_state->cross_process_id() != target_entry_descriptor.document_state.id) {
+            enqueue_continuation->function()(true, UnloadDisplayedDocument::No);
+            return;
+        }
+
+        apply_session_history_entry_descriptor_from_ui_process(*local_target_entry, target_entry_descriptor);
+        apply_session_history_document_state_descriptor_from_ui_process(*document_state, target_entry_descriptor.document_state);
+    } else {
+        local_target_entry = navigable->resolve_local_session_history_entry(move(target_entry_descriptor));
+    }
+    if (!local_target_entry) {
+        enqueue_continuation->function()(true, UnloadDisplayedDocument::No);
+        return;
     }
 
     GC::Ptr<SourceSnapshotParams> source_snapshot_params;
-    if (job.source_snapshot_params.has_value())
-        source_snapshot_params = create_source_snapshot_params_from_navigation_source_snapshot(relevant_realm(*navigable->active_window()), *job.source_snapshot_params);
+    if (navigation_source_snapshot.has_value())
+        source_snapshot_params = create_source_snapshot_params_from_navigation_source_snapshot(relevant_realm(*navigable->active_window()), *navigation_source_snapshot);
 
-    // 1. Let targetEntry be the result of getting the target history entry given navigable and targetStep.
-    // NB: The UI coordinator already ran that step against canonical history and sent the selected entry with this
-    //     job. Retain that exact local entry instead of repeating the global-step lookup in WebContent.
-    auto claimed_target_entry = job.target_entry;
+    // 8.1. Let targetEntry be the result of getting the target history entry given navigable and targetStep.
+    // NB: The UI process got targetEntry, and sent it with this job.
+    NonnullRefPtr target_entry = local_target_entry.release_nonnull();
 
-    // 2. Set navigable's current session history entry to targetEntry.
-    navigable->set_current_session_history_entry(claimed_target_entry);
-
-    // NB: The UI process ran step 8.4 of apply the history step, "Set navigable's ongoing navigation to 'traversal'".
-    //     Mirror its result here.
+    // 8.2. Set navigable's current session history entry to targetEntry.
+    // 8.4. Set navigable's ongoing navigation to "traversal".
+    // NB: The UI process ran these steps. Mirror their results here.
     // AD-HOC: A push or replace leaves a newer navigation's ID in place, as that navigation goes on and commits after
     //         this one, and nulls the ID of the navigation it finalizes. See https://github.com/whatwg/html/issues/12581.
-    if (job.ongoing_navigation_is_traversal)
+    navigable->set_current_session_history_entry(target_entry);
+    if (ongoing_navigation_is_traversal)
         navigable->set_ongoing_navigation_without_informing_navigation_api(HTML::LocalNavigable::Traversal::Tag);
-    else if (job.finalized_navigation_id.has_value() && navigable->ongoing_navigation() == *job.finalized_navigation_id)
+    else if (finalized_navigation_id.has_value() && navigable->ongoing_navigation() == *finalized_navigation_id)
         navigable->set_ongoing_navigation_without_informing_navigation_api(Empty {});
+    operation.changing_navigable_jobs.ensure(navigable_id);
 
-    queue_apply_history_step_task(*navigable, navigable->active_document(), GC::create_function(heap(), [this, job = move(job), source_snapshot_params, pending_document, claimed_target_entry = move(claimed_target_entry), navigable, enqueue_continuation, skip]() mutable {
-        // NOTE: This check is not in the spec but we should not continue navigation if navigable has been destroyed.
+    // 13. For each navigable of changingNavigables, queue a global task on the navigation and traversal task source of
+    //     navigable's active window to run the steps:
+    queue_apply_history_step_task(*navigable, navigable->active_document(), GC::create_function(heap(), [this, operation_id, navigable_id, navigation_type, user_involvement, population = move(population), source_snapshot_params, pending_document, target_entry = move(target_entry), navigable, enqueue_continuation, skip]() mutable {
+        // AD-HOC: The navigable can be destroyed before this task runs.
         if (navigable->has_been_destroyed() || !navigable->active_window() || !navigable->active_document()) {
-            skip->function()();
+            skip_changing_navigable_history_step_job(operation_id, navigable_id, skip);
             return;
         }
 
@@ -312,13 +404,9 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
         auto displayed_entry = navigable->active_session_history_entry();
 
         // 2. Let targetEntry be navigable's current session history entry.
-        // AD-HOC: A synchronous navigation that jumps the queue during this run's apply-history-step re-claims the
-        //         navigable before this task runs. The run still applies its claimed target entry once the jumped
-        //         navigation's nested run completes.
-        auto target_entry = navigable->current_session_history_entry();
-        if (target_entry != claimed_target_entry) {
-            target_entry = claimed_target_entry;
-        }
+        // AD-HOC: This is the entry step 8.1 got instead. A synchronous navigation that jumped the queue can have made
+        //         another entry current since, and the UI process resolves that once it dequeues this navigable's
+        //         continuation. See https://github.com/whatwg/html/issues/12961.
 
         // 3. Let changingNavigableContinuation be a changing navigable continuation state with:
         auto changing_navigable_continuation = heap().allocate<ChangingNavigableContinuationState>();
@@ -328,8 +416,8 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
         changing_navigable_continuation->navigable = navigable;
         changing_navigable_continuation->update_only = false;
         changing_navigable_continuation->aborted = false;
-        changing_navigable_continuation->navigation_type = job.navigation_type;
-        changing_navigable_continuation->user_involvement = job.user_involvement;
+        changing_navigable_continuation->navigation_type = navigation_type;
+        changing_navigable_continuation->user_involvement = user_involvement;
         changing_navigable_continuation->pending_document = pending_document;
         changing_navigable_continuation->population_output = nullptr;
 
@@ -338,22 +426,22 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
         //         newer one a synchronous navigation that jumped the queue pushed or replaced, which the continuation
         //         then leaves displayed.
         bool is_update_only = (displayed_entry == target_entry && !target_entry->document_state()->reload_pending())
-            || is_same_document_push_or_replace(job.navigation_type, *target_entry, changing_navigable_continuation->displayed_document_id);
+            || is_same_document_push_or_replace(navigation_type, *target_entry, changing_navigable_continuation->displayed_document_id);
         if (is_update_only) {
             // 1. Set changingNavigableContinuation's update-only to true.
             changing_navigable_continuation->update_only = true;
             changing_navigable_continuation->resolved_document = navigable->active_document();
 
             // 2. Enqueue changingNavigableContinuation on changingNavigableContinuations.
-            enqueue_continuation->function()(changing_navigable_continuation);
+            enqueue_changing_navigable_continuation(operation_id, navigable_id, changing_navigable_continuation, enqueue_continuation);
 
             // 3. Abort these steps.
             return;
         }
 
         // 5. Switch on navigationType:
-        if (job.navigation_type.has_value()) {
-            switch (job.navigation_type.value()) {
+        if (navigation_type.has_value()) {
+            switch (navigation_type.value()) {
             case Bindings::NavigationType::Reload:
                 // - "reload": Assert: targetEntry's document state's reload pending is true.
                 VERIFY(target_entry->document_state()->reload_pending());
@@ -391,7 +479,7 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
         //   * targetEntry is not displayedEntry; and
         //   * oldOrigin is the same as displayedEntry's document state's origin,
         // then:
-        if (job.navigation_type == Bindings::NavigationType::Traverse
+        if (navigation_type == Bindings::NavigationType::Traverse
             && !navigable->is_traversable()
             && target_entry != displayed_entry
             && old_origin == displayed_entry->document_state()->origin()) {
@@ -400,7 +488,7 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
 
             // 2. Let navigateEventResult be the result of firing a traverse navigate event at navigation given
             //    targetEntry and userInvolvement.
-            auto navigate_event_result = navigation->fire_a_traverse_navigate_event(*target_entry, job.user_involvement);
+            auto navigate_event_result = navigation->fire_a_traverse_navigate_event(*target_entry, user_involvement);
 
             // 3. If navigateEventResult is false, then:
             if (!navigate_event_result) {
@@ -408,14 +496,14 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
                 changing_navigable_continuation->aborted = true;
 
                 // 2. Enqueue changingNavigableContinuation on changingNavigableContinuations.
-                enqueue_continuation->function()(changing_navigable_continuation);
+                enqueue_changing_navigable_continuation(operation_id, navigable_id, changing_navigable_continuation, enqueue_continuation);
 
                 // 3. Abort these steps.
                 return;
             }
         }
 
-        auto after_document_populated = GC::create_function(heap(), [old_origin, changing_navigable_continuation, target_entry, navigable, enqueue_continuation](GC::Ptr<PopulateSessionHistoryEntryDocumentOutput> output) mutable {
+        auto after_document_populated = GC::create_function(heap(), [this, operation_id, navigable_id, old_origin, changing_navigable_continuation, target_entry, navigable, enqueue_continuation](GC::Ptr<PopulateSessionHistoryEntryDocumentOutput> output) mutable {
             changing_navigable_continuation->population_output = output;
             changing_navigable_continuation->old_origin = old_origin;
 
@@ -444,7 +532,7 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
             // NOTE: Steps 2-3 are deferred to after_potential_unload to avoid exposing mutations during unload.
 
             // 4. Enqueue changingNavigableContinuation on changingNavigableContinuations.
-            enqueue_continuation->function()(changing_navigable_continuation);
+            enqueue_changing_navigable_continuation(operation_id, navigable_id, changing_navigable_continuation, enqueue_continuation);
         });
 
         // 8. If targetEntry's document is null, or targetEntry's document state's reload pending is true, then:
@@ -489,11 +577,11 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
                         }));
                     }));
             });
-            if (job.population.has_value()) {
-                continue_population->function()(job.population.release_value());
+            if (population.has_value()) {
+                continue_population->function()(population.release_value());
                 return;
             }
-            auto* operation = find_history_operation(job.operation_id);
+            auto* operation = find_history_operation(operation_id);
             if (!operation)
                 return;
             operation->changing_navigable_jobs.ensure(navigable->id()).continue_population = continue_population;
@@ -547,7 +635,7 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
                 .target_snapshot_params = target_snapshot_params,
                 .csp_navigation_type = ContentSecurityPolicy::Directives::Directive::NavigationType::Other,
                 .history_handling = Bindings::NavigationHistoryBehavior::Replace,
-                .user_involvement = job.user_involvement,
+                .user_involvement = user_involvement,
                 .navigation_id = {},
             };
             request.history_entry.document_state.reload_pending = input_reload_pending;
@@ -556,7 +644,7 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
             //    targetSnapshotParams, userInvolvement, with allowPOST set to allowPOST and completionSteps set to
             //    queue a global task on the navigation and traversal task source given navigable's active window to
             //    run afterDocumentPopulated.
-            Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(heap(), [operation_id = job.operation_id, request = move(request), input_url = move(input_url), input_document_resource = move(input_document_resource), input_request_referrer = move(input_request_referrer), input_request_referrer_policy, input_initiator_origin = move(input_initiator_origin), input_origin = move(input_origin), input_history_policy_container = move(input_history_policy_container), input_about_base_url = move(input_about_base_url), input_navigable_target_name = move(input_navigable_target_name), input_reload_pending, input_ever_populated, input_user_agent_initiated, potentially_target_specific_source_snapshot_params, target_snapshot_params, this, allow_POST, navigable, user_involvement = job.user_involvement] {
+            Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(heap(), [operation_id, request = move(request), input_url = move(input_url), input_document_resource = move(input_document_resource), input_request_referrer = move(input_request_referrer), input_request_referrer_policy, input_initiator_origin = move(input_initiator_origin), input_origin = move(input_origin), input_history_policy_container = move(input_history_policy_container), input_about_base_url = move(input_about_base_url), input_navigable_target_name = move(input_navigable_target_name), input_reload_pending, input_ever_populated, input_user_agent_initiated, potentially_target_specific_source_snapshot_params, target_snapshot_params, this, allow_POST, navigable, user_involvement = user_involvement] {
                 navigable->populate_session_history_entry_document(
                     move(input_url), move(input_document_resource), move(input_request_referrer),
                     input_request_referrer_policy, move(input_initiator_origin), move(input_origin),
@@ -575,33 +663,43 @@ bool HistoryExecutor::run_changing_navigable_history_step_job_impl(ChangingNavig
             after_document_populated->function()(nullptr);
         }
     }));
-    return true;
 }
 
-static bool changing_navigable_is_still_current(GC::Ptr<LocalNavigable> navigable, Optional<UniqueNodeID> expected_active_document_id, bool allow_ongoing_navigation)
+void HistoryExecutor::prepare_ui_changing_navigable_for_unload(CrossProcessId operation_id, CrossProcessId navigable_id, GC::Ref<GC::Function<void()>> on_complete)
 {
-    if (!navigable || navigable->has_been_destroyed() || !navigable->active_window())
-        return false;
+    auto* operation = find_history_operation(operation_id);
+    auto job = operation ? operation->changing_navigable_jobs.get(navigable_id) : OptionalNone {};
+    if (!job.has_value() || !job->continuation) {
+        on_complete->function()();
+        return;
+    }
 
-    auto active_document = navigable->active_document();
-    if (!active_document || active_document->has_been_destroyed())
-        return false;
-
-    if (navigable->active_document_id() != expected_active_document_id)
-        return false;
-
-    return navigable->ongoing_navigation().has<Empty>()
-        || (allow_ongoing_navigation && navigable->ongoing_navigation().has<Utf16String>());
+    // Step 5.2 of deactivate a document for a cross-document navigation: set navigable's ongoing navigation to null.
+    if (auto navigable = local_navigable_with_id(navigable_id))
+        navigable->clear_ongoing_history_traversal();
+    on_complete->function()();
 }
 
-void HistoryExecutor::apply_changing_navigable_history_step_continuation_impl(GC::Ref<ChangingNavigableContinuationState> continuation, LocalApplyChangingNavigableHistoryStepContinuation command, GC::Ref<GC::Function<void(Optional<HostedNavigableState>, Optional<SessionHistoryEntryPersistedState>)>> on_complete)
+void HistoryExecutor::apply_ui_changing_navigable_continuation(CrossProcessId operation_id, CrossProcessId navigable_id, HistoryObjectLengthAndIndex history_object_length_and_index, Vector<SessionHistoryEntryDescriptor> entry_descriptors_for_navigation_api, GC::Ref<GC::Function<void(Optional<HostedNavigableState>, Optional<SessionHistoryEntryPersistedState>)>> on_complete)
 {
+    auto* operation = find_history_operation(operation_id);
+    auto job = operation ? operation->changing_navigable_jobs.take(navigable_id) : Optional<HistoryOperationState::ChangingNavigableJob> {};
+    if (!job.has_value() || !job->continuation) {
+        on_complete->function()({}, {});
+        return;
+    }
+
+    // 15. While completedChangeJobs does not equal totalChangeJobs:
+    // NB: The UI process ran this iteration's steps up to 11, and this process runs the rest, for the continuation it
+    //     dequeued.
+    GC::Ref continuation = *job->continuation;
     auto unload_displayed_document_choice = continuation->unload_displayed_document();
+
     // 4. Let displayedDocument be changingNavigableContinuation's displayed document.
     auto displayed_document = continuation->displayed_document;
 
     // 5. Let targetEntry be changingNavigableContinuation's target entry.
-    RefPtr<SessionHistoryEntry> const target_entry = continuation->target_entry;
+    RefPtr<SessionHistoryEntry> target_entry = continuation->target_entry;
 
     auto population_output = continuation->population_output;
     auto old_origin = continuation->old_origin;
@@ -626,13 +724,40 @@ void HistoryExecutor::apply_changing_navigable_history_step_continuation_impl(GC
     }
 
     // 9. Let (scriptHistoryLength, scriptHistoryIndex) be the result of getting the history object length and index given traversable and targetStep.
-    auto script_history_length = command.history_object_length_and_index.script_history_length;
-    auto script_history_index = command.history_object_length_and_index.script_history_index;
+    // NB: The UI process got these.
+    auto script_history_length = history_object_length_and_index.script_history_length;
+    auto script_history_index = history_object_length_and_index.script_history_index;
 
     // 11. Let entriesForNavigationAPI be the result of getting session history entries for the navigation API given navigable and targetStep.
-    auto entries_for_navigation_api = move(command.entries_for_navigation_api);
+    // NB: The UI process got these, and sent their descriptors.
+    auto entries_for_navigation_api = navigable->session_history_entries_for_navigation_api_from_ui_process(move(entry_descriptors_for_navigation_api), *target_entry);
 
-    // NOTE: Steps 12 and 13 come after step 14.
+    // AD-HOC: The spec has the continuation activate the target entry that the job's task retained. But a sync
+    //         navigation that jumped the queue while the job was paused can have replaced that entry (replaceState()
+    //         during a reload, e.g.). And then the session history — and so the entry list from the UI process — has
+    //         the replacement in its slot. A same-doc replacement keeps the navigation API key and the document state
+    //         of the entry it replaces. So those two name the slot. The replacement is the entry to activate: It's the
+    //         one that the session history has, it's the navigable's current entry already, and the document that the
+    //         job populated belongs to the document state they share. Activating the replaced entry instead would leave
+    //         the new document's navigation API entry list without the document's own entry in it.
+    //         See https://github.com/whatwg/html/issues/12961.
+    //
+    //         Gecko/WebKit/Blink never leave it out either: Gecko Navigation::InitializeHistoryEntries finds it by
+    //         its navigation key, WebKit Navigation::initializeForNewWindow appends it if it isn't found, and Blink
+    //         NavigationApi::InitializeForNewWindow builds the list around it.
+    // NB: The UI process has looked the target entry up again by then: It doesn't apply a traversal's continuation at
+    //     all if the slot itself is gone, and it has appended a navigation's new entry again.
+    auto is_target_entry = [&](auto const& entry) { return entry.ptr() == target_entry.ptr(); };
+    if (entries_for_navigation_api.find_if(is_target_entry) == entries_for_navigation_api.end()) {
+        auto replacement = entries_for_navigation_api.find_if([&](auto const& entry) {
+            return entry->document_state()->cross_process_id() == target_entry->document_state()->cross_process_id()
+                && entry->navigation_api_key() == target_entry->navigation_api_key();
+        });
+        if (replacement != entries_for_navigation_api.end())
+            target_entry = *replacement;
+    }
+
+    // NB: Steps 12 and 13 come after step 14.
 
     // 14. In both cases, let afterPotentialUnloads be the following steps:
     bool const update_only = continuation->update_only;
@@ -765,173 +890,6 @@ void HistoryExecutor::apply_changing_navigable_history_step_continuation_impl(GC
                 after_potential_unload->function()();
             }));
     }
-}
-
-bool HistoryExecutor::resume_history_navigation_population(CrossProcessId operation_id, HistoryNavigationPopulation&& population)
-{
-    auto* operation = find_history_operation(operation_id);
-    if (!operation)
-        return false;
-    auto job = operation->changing_navigable_jobs.get(population.request.navigable_id);
-    if (!job.has_value() || !job->continue_population)
-        return false;
-    GC::Ref continue_population = *exchange(job->continue_population, nullptr);
-    continue_population->function()(move(population));
-    return true;
-}
-
-void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId operation_id, CrossProcessId navigable_id, SessionHistoryEntryDescriptor target_entry, UserNavigationInvolvement user_involvement, Optional<Bindings::NavigationType> navigation_type, Optional<Utf16String> finalized_navigation_id, bool ongoing_navigation_is_traversal, Optional<NavigationSourceSnapshot> source_snapshot_params, GC::Ref<OnEnqueueChangingNavigableContinuation> enqueue_continuation, GC::Ref<OnSkipChangingNavigableHistoryStepJob> skip, Optional<HistoryNavigationPopulation> population)
-{
-    auto& operation = ensure_history_operation(operation_id);
-    auto pending_document = operation.pending_document;
-    // The update for a navigable's creation targets an entry the navigable retains, not the one the request gave.
-    RefPtr<SessionHistoryEntry> local_target_entry;
-    if (operation.local_target_navigable_id == navigable_id && navigation_type.has_value()) {
-        VERIFY(operation.local_target_entry);
-        local_target_entry = operation.local_target_entry;
-    }
-
-    auto navigable = local_navigable_with_id(navigable_id);
-
-    // AD-HOC: The navigable can be destroyed, or its page be closing, before the job finalizing a navigation runs.
-    //         Destruction may then have detached the pending document, or destroyed the active document, before
-    //         marking the navigable destroyed.
-    if (pending_document && local_target_entry) {
-        GC::Ptr<DOM::Document> active_document = navigable ? navigable->active_document() : nullptr;
-        if (!navigable || navigable->has_been_destroyed() || pending_document->has_been_destroyed() || !pending_document->browsing_context() || !active_document || active_document->has_been_destroyed()) {
-            enqueue_continuation->function()(true, UnloadDisplayedDocument::No);
-            return;
-        }
-    }
-    if (!navigable) {
-        skip->function()();
-        return;
-    }
-    if (local_target_entry) {
-        auto document_state = local_target_entry->document_state();
-        if (!document_state
-            || document_state->cross_process_id() != target_entry.document_state.id) {
-            enqueue_continuation->function()(true, UnloadDisplayedDocument::No);
-            return;
-        }
-
-        apply_session_history_entry_descriptor_from_ui_process(*local_target_entry, target_entry);
-        apply_session_history_document_state_descriptor_from_ui_process(*document_state, target_entry.document_state);
-    } else {
-        local_target_entry = navigable->resolve_local_session_history_entry(move(target_entry));
-    }
-    if (!local_target_entry) {
-        enqueue_continuation->function()(true, UnloadDisplayedDocument::No);
-        return;
-    }
-    auto did_claim_navigable = run_changing_navigable_history_step_job_impl(
-        {
-            .operation_id = operation_id,
-            .navigable_id = navigable_id,
-            .target_entry = local_target_entry.release_nonnull(),
-            .user_involvement = user_involvement,
-            .navigation_type = navigation_type,
-            .finalized_navigation_id = move(finalized_navigation_id),
-            .ongoing_navigation_is_traversal = ongoing_navigation_is_traversal,
-            .source_snapshot_params = move(source_snapshot_params),
-            .population = move(population),
-        },
-        pending_document,
-        GC::create_function(heap(), [this, operation_id, navigable_id, enqueue_continuation](GC::Ref<ChangingNavigableContinuationState> changing_navigable_continuation) {
-            auto* operation = find_history_operation(operation_id);
-            if (operation) {
-                if (changing_navigable_continuation->aborted)
-                    operation->changing_navigable_jobs.remove(navigable_id);
-                else
-                    operation->changing_navigable_jobs.ensure(navigable_id).continuation = changing_navigable_continuation;
-            }
-            // NB: The UI process runs the steps for an aborted continuation once it dequeues it, without applying it in
-            //     this process. Mirror its setting of navigable's ongoing navigation to null here.
-            // AD-HOC: A job can finish after its operation was abandoned. Release the document-local projection.
-            if (changing_navigable_continuation->aborted || !operation) {
-                if (auto navigable = local_navigable_with_id(navigable_id))
-                    navigable->clear_ongoing_history_traversal();
-            }
-            enqueue_continuation->function()(changing_navigable_continuation->aborted, changing_navigable_continuation->unload_displayed_document());
-        }),
-        GC::create_function(heap(), [this, operation_id, navigable_id, skip] {
-            if (auto* operation = find_history_operation(operation_id))
-                operation->changing_navigable_jobs.remove(navigable_id);
-            // AD-HOC: A job can claim its navigable before it is skipped. Release the document-local projection.
-            if (auto navigable = local_navigable_with_id(navigable_id))
-                navigable->clear_ongoing_history_traversal();
-            skip->function()();
-        }));
-    if (did_claim_navigable)
-        operation.changing_navigable_jobs.ensure(navigable_id);
-}
-
-void HistoryExecutor::prepare_ui_changing_navigable_for_unload(CrossProcessId operation_id, CrossProcessId navigable_id, GC::Ref<GC::Function<void()>> on_complete)
-{
-    auto* operation = find_history_operation(operation_id);
-    auto job = operation ? operation->changing_navigable_jobs.get(navigable_id) : OptionalNone {};
-    if (!job.has_value() || !job->continuation) {
-        on_complete->function()();
-        return;
-    }
-
-    // Step 5.2 of deactivate a document for a cross-document navigation: set navigable's ongoing navigation to null.
-    if (auto navigable = local_navigable_with_id(navigable_id))
-        navigable->clear_ongoing_history_traversal();
-    on_complete->function()();
-}
-
-void HistoryExecutor::apply_ui_changing_navigable_continuation(CrossProcessId operation_id, CrossProcessId navigable_id, HistoryObjectLengthAndIndex history_object_length_and_index, Vector<SessionHistoryEntryDescriptor> entry_descriptors_for_navigation_api, GC::Ref<GC::Function<void(Optional<HostedNavigableState>, Optional<SessionHistoryEntryPersistedState>)>> on_complete)
-{
-    auto* operation = find_history_operation(operation_id);
-    if (!operation) {
-        on_complete->function()({}, {});
-        return;
-    }
-    auto job = operation->changing_navigable_jobs.take(navigable_id);
-    if (!job.has_value() || !job->continuation) {
-        on_complete->function()({}, {});
-        return;
-    }
-    GC::Ref continuation = *job->continuation;
-
-    Vector<NonnullRefPtr<SessionHistoryEntry>> entries_for_navigation_api;
-    if (auto navigable = local_navigable_with_id(navigable_id); navigable && !navigable->has_been_destroyed())
-        entries_for_navigation_api = navigable->session_history_entries_for_navigation_api_from_ui_process(move(entry_descriptors_for_navigation_api), *continuation->target_entry);
-
-    // AD-HOC: The spec has the continuation activate the target entry that the job's task retained. But a sync
-    //         navigation that jumped the queue while the job was paused can have replaced that entry (replaceState()
-    //         during a reload, e.g.). And then the session history — and so the entry list from the UI process — has
-    //         the replacement in its slot. A same-doc replacement keeps the navigation API key and the document state
-    //         of the entry it replaces. So those two name the slot. The replacement is the entry to activate: It's the
-    //         one that the session history has, it's the navigable's current entry already, and the document that the
-    //         job populated belongs to the document state they share. Activating the replaced entry instead would leave
-    //         the new document's navigation API entry list without the document's own entry in it.
-    //         See https://github.com/whatwg/html/issues/12961.
-    //
-    //         Gecko/WebKit/Blink never leave it out either: Gecko Navigation::InitializeHistoryEntries finds it by
-    //         its navigation key, WebKit Navigation::initializeForNewWindow appends it if it isn't found, and Blink
-    //         NavigationApi::InitializeForNewWindow builds the list around it.
-    // NB: The UI process has looked the target entry up again by then: It doesn't apply a traversal's continuation at
-    //     all if the slot itself is gone, and it has appended a navigation's new entry again.
-    auto& target_entry = continuation->target_entry;
-    auto is_target_entry = [&](auto const& entry) { return entry.ptr() == target_entry.ptr(); };
-    if (entries_for_navigation_api.find_if(is_target_entry) == entries_for_navigation_api.end()) {
-        auto replacement = entries_for_navigation_api.find_if([&](auto const& entry) {
-            return entry->document_state()->cross_process_id() == target_entry->document_state()->cross_process_id()
-                && entry->navigation_api_key() == target_entry->navigation_api_key();
-        });
-        if (replacement != entries_for_navigation_api.end())
-            target_entry = *replacement;
-    }
-
-    apply_changing_navigable_history_step_continuation_impl(
-        *continuation,
-        {
-            .history_object_length_and_index = history_object_length_and_index,
-            .entries_for_navigation_api = move(entries_for_navigation_api),
-        },
-        on_complete);
 }
 
 }
