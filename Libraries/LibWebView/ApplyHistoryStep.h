@@ -205,7 +205,7 @@ private:
     void process_changing_navigable_continuations();
     void update_nonchanging_navigables();
     void set_current_session_history_step();
-    CanonicalSessionHistoryEntry* append_the_claimed_target_entry_again(CanonicalNavigable&, CanonicalSessionHistoryEntry& claimed_target_entry);
+    CanonicalSessionHistoryEntry* append_the_target_entry_again(CanonicalNavigable&, CanonicalSessionHistoryEntry& history_entry);
 
     void enqueue_changing_navigable_continuation(ChangingNavigable&);
     void skip_changing_navigable_history_step_job(ChangingNavigable&);
@@ -227,7 +227,7 @@ private:
     u64 const m_operation_sequence_number;
 
     // The algorithm's arguments.
-    // NB: A run that appends its claimed target entry again moves to that entry's step.
+    // NB: A run that appends a target entry again moves to that entry's step.
     i32 m_step;
     // NB: The HTML Standard spells this algorithm argument "checkForCancelation".
     bool const m_check_for_cancelation;

@@ -375,7 +375,7 @@ void ApplyHistoryStep::process_changing_navigable_continuations()
         //         forward history (pushState during a forward traversal, or while a navigation's own new entry is still
         //         ahead of the current step, e.g.). Activating such an entry gives its doc a navigation API entry list
         //         without the document's own entry in it, and leaves the navigable on an entry that the session history
-        //         doesn't have. So this looks the target entry up again. A replacement in the claimed slot is the entry
+        //         doesn't have. So this looks the target entry up again. A replacement in its slot is the entry
         //         to activate now. A traversal whose slot is gone is aborted, as the push that cleared the slot owns the
         //         visible outcome, like one whose destination entry a push disposed before its navigate event. And a
         //         navigation whose new entry is gone appends it again, after the pushed entry, unless the push left the
@@ -400,7 +400,7 @@ void ApplyHistoryStep::process_changing_navigable_continuations()
             } else if (m_navigation_type == Web::Bindings::NavigationType::Traverse) {
                 changing_navigable_continuation.aborted = true;
             } else if (m_navigation_type == Web::Bindings::NavigationType::Push) {
-                updated_target_entry = append_the_claimed_target_entry_again(*navigable, *target_entry);
+                updated_target_entry = append_the_target_entry_again(*navigable, *target_entry);
                 if (!updated_target_entry)
                     changing_navigable_continuation.aborted = true;
             }
@@ -469,13 +469,13 @@ void ApplyHistoryStep::process_changing_navigable_continuations()
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-cross-document-navigation
 // A pushState that jumped the queue cleared the entry a navigation appended, as forward history, and took its step. So,
 // we re-run the appending steps of finalizing a cross-doc navigation, against the session history as the push left it.
-CanonicalSessionHistoryEntry* ApplyHistoryStep::append_the_claimed_target_entry_again(CanonicalNavigable& navigable, CanonicalSessionHistoryEntry& claimed_target_entry)
+CanonicalSessionHistoryEntry* ApplyHistoryStep::append_the_target_entry_again(CanonicalNavigable& navigable, CanonicalSessionHistoryEntry& history_entry)
 {
     // 9.1. Clear the forward session history of traversable.
     // 9.2. Set targetStep to traversable's current session history step + 1.
     // 9.3. Set historyEntry's step to targetStep.
     // 9.4. Append historyEntry to targetEntries.
-    auto target_step = m_session_history.push_session_history_entry(navigable, claimed_target_entry);
+    auto target_step = m_session_history.push_session_history_entry(navigable, history_entry);
     if (!target_step.has_value())
         return nullptr;
 
@@ -485,8 +485,8 @@ CanonicalSessionHistoryEntry* ApplyHistoryStep::append_the_claimed_target_entry_
     m_generation = ++m_traversable_state.generation_counter;
 
     // The push also took the navigable's current session history entry over.
-    navigable.set_current_session_history_entry(claimed_target_entry);
-    return &claimed_target_entry;
+    navigable.set_current_session_history_entry(history_entry);
+    return &history_entry;
 }
 
 void ApplyHistoryStep::update_nonchanging_navigables()
