@@ -1459,7 +1459,7 @@ void CanonicalTraversable::dispatch_changing_navigable_history_step_continuation
 
         // 2. Queue a global task on the navigation and traversal task source given navigable's active window to
         //    perform afterPotentialUnloads.
-        send_changing_navigable_continuation_task(operation, navigable_id, Web::HTML::UnloadDisplayedDocument::No);
+        send_changing_navigable_continuation_task(operation, navigable_id);
     } else {
         // 15.13. Otherwise:
         // 1. Assert: navigationType is not null.
@@ -1475,7 +1475,7 @@ void CanonicalTraversable::dispatch_changing_navigable_history_step_continuation
     }
 }
 
-void CanonicalTraversable::send_changing_navigable_continuation_task(HistoryOperation& operation, Web::HTML::CrossProcessId navigable_id, Web::HTML::UnloadDisplayedDocument unload_displayed_document)
+void CanonicalTraversable::send_changing_navigable_continuation_task(HistoryOperation& operation, Web::HTML::CrossProcessId navigable_id)
 {
     auto endpoint = changing_job_endpoint(operation, navigable_id);
     if (!endpoint)
@@ -1485,7 +1485,7 @@ void CanonicalTraversable::send_changing_navigable_continuation_task(HistoryOper
     VERIFY(changing_navigable->continuation.has_value());
 
     auto const& document_state = *changing_navigable->job->target_entry->document_state;
-    if (unload_displayed_document == Web::HTML::UnloadDisplayedDocument::Yes && changing_navigable->job->target_entry_reload_pending
+    if (changing_navigable->unload_displayed_document == Web::HTML::UnloadDisplayedDocument::Yes && changing_navigable->job->target_entry_reload_pending
         && operation.parameters.has<Web::ReloadHistoryOperationParameters>()) {
         // INTEROP: Reloading rebuilds the child history tree from the replacement document, as in WebKit.
         //          Keep the old entries until population succeeds so an abandoned reload preserves them.
@@ -1505,8 +1505,7 @@ void CanonicalTraversable::send_changing_navigable_continuation_task(HistoryOper
         operation.operation_id, navigable_id,
         continuation.history_object_length_and_index.script_history_length,
         continuation.history_object_length_and_index.script_history_index,
-        move(continuation.entries_for_navigation_api),
-        unload_displayed_document);
+        move(continuation.entries_for_navigation_api));
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#deactivate-a-document-for-a-cross-document-navigation
@@ -1562,7 +1561,7 @@ void CanonicalTraversable::unload_displayed_document_for_cross_document_navigati
         auto* operation = find_history_operation(operation_id);
         if (!operation || !operation->pending_changing_job(navigable_id))
             return;
-        send_changing_navigable_continuation_task(*operation, navigable_id, Web::HTML::UnloadDisplayedDocument::Yes);
+        send_changing_navigable_continuation_task(*operation, navigable_id);
     });
 }
 
