@@ -725,6 +725,8 @@ void HistoryExecutor::apply_ui_changing_navigable_continuation(CrossProcessId op
     GC::Ref continuation = *job->continuation;
     auto unload_displayed_document = continuation->unload_displayed_document();
 
+    // 9. Let entriesForNavigationAPI be the result of getting session history entries for the navigation API given navigable and targetStep.
+    // NB: The UI process got these, and sent their descriptors.
     Vector<NonnullRefPtr<SessionHistoryEntry>> entries_for_navigation_api;
     if (auto navigable = local_navigable_with_id(navigable_id); navigable && !navigable->has_been_destroyed())
         entries_for_navigation_api = navigable->session_history_entries_for_navigation_api_from_ui_process(move(entry_descriptors_for_navigation_api), *continuation->target_entry);
@@ -744,6 +746,7 @@ void HistoryExecutor::apply_ui_changing_navigable_continuation(CrossProcessId op
     //         NavigationApi::InitializeForNewWindow builds the list around it.
     // NB: The UI process has looked the target entry up again by then: It doesn't apply a traversal's continuation at
     //     all if the slot itself is gone, and it has appended a navigation's new entry again.
+    // 5. Let targetEntry be changingNavigableContinuation's target entry.
     auto& target_entry = continuation->target_entry;
     auto is_target_entry = [&](auto const& entry) { return entry.ptr() == target_entry.ptr(); };
     if (entries_for_navigation_api.find_if(is_target_entry) == entries_for_navigation_api.end()) {
@@ -757,9 +760,6 @@ void HistoryExecutor::apply_ui_changing_navigable_continuation(CrossProcessId op
 
     // 4. Let displayedDocument be changingNavigableContinuation's displayed document.
     auto displayed_document = continuation->displayed_document;
-
-    // 5. Let targetEntry be changingNavigableContinuation's target entry.
-    // NB: target_entry, as looked up again above.
 
     auto population_output = continuation->population_output;
     auto old_origin = continuation->old_origin;
@@ -781,9 +781,6 @@ void HistoryExecutor::apply_ui_changing_navigable_continuation(CrossProcessId op
     // 7. Let (scriptHistoryLength, scriptHistoryIndex) be the result of getting the history object length and index given traversable and targetStep.
     auto script_history_length = history_object_length_and_index.script_history_length;
     auto script_history_index = history_object_length_and_index.script_history_index;
-
-    // 9. Let entriesForNavigationAPI be the result of getting session history entries for the navigation API given navigable and targetStep.
-    // NB: entries_for_navigation_api, from the UI process's descriptors above.
 
     // NOTE: Steps 10 and 11 come after step 12.
 

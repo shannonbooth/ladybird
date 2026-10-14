@@ -952,7 +952,6 @@ StringView CanonicalTraversable::browser_history_traversal_stage_to_string(Brows
     VERIFY_NOT_REACHED();
 }
 
-// One history operation on a traversable's session history traversal queue.
 struct HistoryOperation {
     AK_ALLOC_WITH_KMALLOC;
 
@@ -986,7 +985,6 @@ struct HistoryOperation {
     bool finished { false };
     Optional<Web::HTML::CrossProcessId> beforeunload_check_id;
 
-    // The changing navigable whose job the operation's run dispatched, and which has not ended.
     ChangingNavigable* pending_changing_job(Web::HTML::CrossProcessId navigable_id)
     {
         auto* changing_navigable = algorithm ? algorithm->changing_navigable(navigable_id) : nullptr;
@@ -1258,7 +1256,6 @@ void CanonicalTraversable::did_not_receive_reply(OwedReply const& owed)
     VERIFY_NOT_REACHED();
 }
 
-// The changing navigable whose pending job a page's reply, which names it by IDs, concerns.
 ChangingNavigable* CanonicalTraversable::pending_changing_job(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
 {
     auto* operation = find_history_operation(operation_id);
@@ -1362,7 +1359,7 @@ void CanonicalTraversable::continue_history_navigation_population(ChangingNaviga
     }
     auto host = host_or_error.release_value();
     if (host.document)
-        changing_navigable.document = host.document;
+        changing_navigable.populated_document = host.document;
     endpoint = host.page;
     add_history_operation_completion_endpoint(changing_navigable.run().operation(), *endpoint);
     changing_navigable.population_loader = move(loader);
@@ -1423,7 +1420,7 @@ bool CanonicalTraversable::run_changing_navigable_history_step_job(ChangingNavig
     if (auto const* parameters = operation.parameters.get_pointer<Web::FinalizeCrossDocumentNavigationHistoryOperationParameters>(); parameters && parameters->navigable_id == navigable_id) {
         finalized_navigation_id = parameters->navigation_id;
         if (auto const& populated_document = changing_navigable.target_entry->document_state->populated_document; populated_document.has_value())
-            changing_navigable.document = populated_document->document;
+            changing_navigable.populated_document = populated_document->document;
     }
     auto const& run = changing_navigable.run();
     endpoint->owe_reply({ OwedReply::Kind::ChangingJob, operation.operation_id, navigable_id });
@@ -1824,7 +1821,7 @@ void CanonicalTraversable::end_history_jobs(CanonicalNavigable const& navigable,
     Vector<Function<void()>> completions;
     for (auto& entry : m_history_operations) {
         auto& operation = *entry.value;
-        if (auto* changing_navigable = operation.pending_changing_job(navigable.id()); changing_navigable && (!populated_document || changing_navigable->document == populated_document)) {
+        if (auto* changing_navigable = operation.pending_changing_job(navigable.id()); changing_navigable && (!populated_document || changing_navigable->populated_document == populated_document)) {
             completions.append([weak_changing_navigable = changing_navigable->make_weak_ptr(), job_state = changing_navigable->end_job()] {
                 if (weak_changing_navigable)
                     weak_changing_navigable->run().changing_navigable_job_ended(*weak_changing_navigable, job_state, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped);
@@ -2800,7 +2797,7 @@ void CanonicalTraversable::did_receive_changing_navigable_continuation_applied(W
         // NB: This reply is owed once the continuation is sent, after which the job can only end.
         VERIFY(changing_navigable->job_state == ChangingNavigable::JobState::ApplyingContinuation);
         changing_navigable->job_state = ChangingNavigable::JobState::Ended;
-        auto document = move(changing_navigable->document);
+        auto document = move(changing_navigable->populated_document);
         if (activated_navigable_state.has_value())
             did_activate_history_entry(*changing_navigable, source_page, activated_navigable_state.release_value());
         else if (auto* navigable = changing_navigable->navigable(); navigable && document)

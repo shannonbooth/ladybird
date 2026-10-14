@@ -7,7 +7,6 @@
 #include <AK/ScopeGuard.h>
 #include <LibWebView/ApplyHistoryStep.h>
 #include <LibWebView/CanonicalDocument.h>
-#include <LibWebView/CanonicalNavigable.h>
 #include <LibWebView/NavigationLoader.h>
 
 namespace WebView {
@@ -210,30 +209,6 @@ void ApplyHistoryStep::run_changing_navigable_jobs()
     process_changing_navigable_continuations();
 }
 
-ChangingNavigable::ChangingNavigable(ApplyHistoryStep& run, Web::HTML::CrossProcessId id, CanonicalNavigable* navigable)
-    : id(id)
-    , m_run(&run)
-    , m_navigable(navigable ? navigable->make_weak_ptr() : WeakPtr<CanonicalNavigable> {})
-{
-}
-
-CanonicalNavigable* ChangingNavigable::navigable() const
-{
-    return m_navigable.ptr();
-}
-
-NonchangingNavigable::NonchangingNavigable(ApplyHistoryStep& run, Web::HTML::CrossProcessId id, CanonicalNavigable* navigable)
-    : id(id)
-    , m_run(&run)
-    , m_navigable(navigable ? navigable->make_weak_ptr() : WeakPtr<CanonicalNavigable> {})
-{
-}
-
-CanonicalNavigable* NonchangingNavigable::navigable() const
-{
-    return m_navigable.ptr();
-}
-
 void ApplyHistoryStep::changing_navigable_job_completed(ChangingNavigable& changing_navigable, Web::HTML::ChangingNavigableHistoryStepJobDisposition disposition)
 {
     changing_navigable.job_state = disposition == Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready
@@ -273,7 +248,7 @@ ChangingNavigable::JobState ChangingNavigable::end_job()
     auto job_state = exchange(this->job_state, JobState::Ended);
     if (auto population_loader = move(this->population_loader))
         population_loader->reclaim_response_body_after_failed_handoff();
-    if (auto document = move(this->document); document && navigable())
+    if (auto document = move(populated_document); document && navigable())
         navigable()->abandon_populated_document(target_entry->document_state, *document);
     return job_state;
 }

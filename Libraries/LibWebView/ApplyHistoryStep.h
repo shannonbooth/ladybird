@@ -22,6 +22,7 @@
 #include <LibWebCommon/HTML/HistoryOperation.h>
 #include <LibWebCommon/HTML/NavigationSourceSnapshot.h>
 #include <LibWebCommon/HTML/UserNavigationInvolvement.h>
+#include <LibWebView/CanonicalNavigable.h>
 #include <LibWebView/Export.h>
 #include <LibWebView/Forward.h>
 #include <LibWebView/SessionHistory.h>
@@ -60,10 +61,33 @@ public:
     virtual void update_nonchanging_navigable_history_step_state(NonchangingNavigable&, Web::HTML::HistoryObjectLengthAndIndex) = 0;
 };
 
+// A navigable that one of a run's jobs is for.
+struct WEBVIEW_API ApplyHistoryStepNavigable {
+    ApplyHistoryStepNavigable(ApplyHistoryStep& run, Web::HTML::CrossProcessId id, CanonicalNavigable* navigable)
+        : id(id)
+        , m_run(&run)
+        , m_navigable(navigable ? navigable->make_weak_ptr() : WeakPtr<CanonicalNavigable> {})
+    {
+    }
+
+    ApplyHistoryStep& run() const { return *m_run; }
+
+    // The navigable, unless it is gone. Removing a navigable ends its job, so a pending job's navigable is there.
+    CanonicalNavigable* navigable() const { return m_navigable.ptr(); }
+
+    Web::HTML::CrossProcessId id;
+
+private:
+    ApplyHistoryStep* m_run;
+    WeakPtr<CanonicalNavigable> m_navigable;
+};
+
 // One of a run's changingNavigables: its history step job, and the changing navigable continuation the job enqueues.
 // NB: The process running the job retains the rest of the continuation's state. What waits on the job holds a weak
 //     pointer to the record, which goes with its run.
-struct WEBVIEW_API ChangingNavigable : public Weakable<ChangingNavigable> {
+struct WEBVIEW_API ChangingNavigable
+    : public ApplyHistoryStepNavigable
+    , public Weakable<ChangingNavigable> {
     AK_ALLOC_WITH_KMALLOC;
 
     enum class JobState : u8 {
@@ -75,12 +99,7 @@ struct WEBVIEW_API ChangingNavigable : public Weakable<ChangingNavigable> {
         Ended,
     };
 
-    ChangingNavigable(ApplyHistoryStep& run, Web::HTML::CrossProcessId id, CanonicalNavigable* navigable);
-
-    ApplyHistoryStep& run() const { return *m_run; }
-
-    // The navigable, unless it is gone. Removing a navigable ends its job, so a pending job's navigable is there.
-    CanonicalNavigable* navigable() const;
+    using ApplyHistoryStepNavigable::ApplyHistoryStepNavigable;
 
     // Ends the job, which will not activate the document it populated, and returns the state the job was in.
     [[nodiscard]] JobState end_job();
@@ -97,7 +116,6 @@ struct WEBVIEW_API ChangingNavigable : public Weakable<ChangingNavigable> {
     // The target entry as the job claimed it, for the processes the job runs in.
     Web::HTML::SessionHistoryEntryDescriptor target_entry_descriptor() const;
 
-    Web::HTML::CrossProcessId id;
     JobState job_state { JobState::NotRun };
     bool has_ongoing_history_traversal { false };
     // AD-HOC: What a same-document traversal yields to, with the admitted navigation it canceled.
@@ -110,32 +128,16 @@ struct WEBVIEW_API ChangingNavigable : public Weakable<ChangingNavigable> {
     };
     Optional<Continuation> continuation;
 
-    // NB: For the process running the job: its choice for the continuation's step 10, the response body it populates
-    //     targetEntry's document from, and the document it populated.
     Web::HTML::UnloadDisplayedDocument unload_displayed_document { Web::HTML::UnloadDisplayedDocument::No };
     RefPtr<NavigationLoader> population_loader;
-    RefPtr<CanonicalDocument> document;
-
-private:
-    ApplyHistoryStep* m_run;
-    WeakPtr<CanonicalNavigable> m_navigable;
+    RefPtr<CanonicalDocument> populated_document;
 };
 
 // One of a run's nonchangingNavigablesThatStillNeedUpdates.
-struct WEBVIEW_API NonchangingNavigable {
-    NonchangingNavigable(ApplyHistoryStep& run, Web::HTML::CrossProcessId id, CanonicalNavigable* navigable);
+struct WEBVIEW_API NonchangingNavigable : public ApplyHistoryStepNavigable {
+    using ApplyHistoryStepNavigable::ApplyHistoryStepNavigable;
 
-    ApplyHistoryStep& run() const { return *m_run; }
-
-    // The navigable, unless it is gone.
-    CanonicalNavigable* navigable() const;
-
-    Web::HTML::CrossProcessId id;
     bool update_in_flight { false };
-
-private:
-    ApplyHistoryStep* m_run;
-    WeakPtr<CanonicalNavigable> m_navigable;
 };
 
 // The apply-history-step state a traversable navigable shares across runs.
@@ -191,7 +193,6 @@ public:
     // The step this run committed as the current session history step, if it was the run that committed.
     Optional<i32> committed_step() const { return m_committed_step; }
 
-    // The history operation the run belongs to, for the code dispatching its jobs.
     HistoryOperation& operation() const
     {
         VERIFY(m_operation);
@@ -206,7 +207,6 @@ public:
     ChangingNavigable* changing_navigable(Web::HTML::CrossProcessId);
     NonchangingNavigable* nonchanging_navigable(Web::HTML::CrossProcessId);
 
-    // What the jobs report, each once.
     void changing_navigable_job_completed(ChangingNavigable&, Web::HTML::ChangingNavigableHistoryStepJobDisposition);
     void changing_navigable_continuation_applied(ChangingNavigable&);
     void nonchanging_navigable_updated(NonchangingNavigable&);
