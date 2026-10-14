@@ -45,6 +45,13 @@ struct ChangingNavigableContinuationState : public GC::Cell {
     GC::Ptr<DOM::Document> resolved_document;
     Optional<URL::Origin> old_origin;
 
+    // Whether the continuation deactivates displayedDocument: Step 15.12 of apply the history step, "If
+    // changingNavigableContinuation's update-only is true, or targetEntry's document is displayedDocument", is false.
+    UnloadDisplayedDocument unload_displayed_document() const
+    {
+        return !aborted && !update_only && resolved_document.ptr() != displayed_document.ptr() ? UnloadDisplayedDocument::Yes : UnloadDisplayedDocument::No;
+    }
+
     virtual void visit_edges(Cell::Visitor& visitor) override
     {
         Base::visit_edges(visitor);
@@ -587,8 +594,9 @@ static bool changing_navigable_is_still_current(GC::Ptr<LocalNavigable> navigabl
         || (allow_ongoing_navigation && navigable->ongoing_navigation().has<Utf16String>());
 }
 
-void HistoryExecutor::apply_changing_navigable_history_step_continuation_impl(GC::Ref<ChangingNavigableContinuationState> continuation, LocalApplyChangingNavigableHistoryStepContinuation command, UnloadDisplayedDocument unload_displayed_document_choice, GC::Ref<GC::Function<void(Optional<HostedNavigableState>, Optional<SessionHistoryEntryPersistedState>)>> on_complete)
+void HistoryExecutor::apply_changing_navigable_history_step_continuation_impl(GC::Ref<ChangingNavigableContinuationState> continuation, LocalApplyChangingNavigableHistoryStepContinuation command, GC::Ref<GC::Function<void(Optional<HostedNavigableState>, Optional<SessionHistoryEntryPersistedState>)>> on_complete)
 {
+    auto unload_displayed_document_choice = continuation->unload_displayed_document();
     // 4. Let displayedDocument be changingNavigableContinuation's displayed document.
     auto displayed_document = continuation->displayed_document;
 
@@ -843,12 +851,7 @@ void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId opera
                 if (auto navigable = local_navigable_with_id(navigable_id))
                     navigable->clear_ongoing_history_traversal();
             }
-            auto unload_displayed_document = !changing_navigable_continuation->aborted
-                    && !changing_navigable_continuation->update_only
-                    && changing_navigable_continuation->resolved_document.ptr() != changing_navigable_continuation->displayed_document.ptr()
-                ? UnloadDisplayedDocument::Yes
-                : UnloadDisplayedDocument::No;
-            enqueue_continuation->function()(changing_navigable_continuation->aborted, unload_displayed_document);
+            enqueue_continuation->function()(changing_navigable_continuation->aborted, changing_navigable_continuation->unload_displayed_document());
         }),
         GC::create_function(heap(), [this, operation_id, navigable_id, skip] {
             if (auto* operation = find_history_operation(operation_id))
@@ -876,7 +879,7 @@ void HistoryExecutor::prepare_ui_changing_navigable_for_unload(CrossProcessId op
     on_complete->function()();
 }
 
-void HistoryExecutor::apply_ui_changing_navigable_continuation(CrossProcessId operation_id, CrossProcessId navigable_id, HistoryObjectLengthAndIndex history_object_length_and_index, Vector<SessionHistoryEntryDescriptor> entry_descriptors_for_navigation_api, UnloadDisplayedDocument unload_displayed_document, GC::Ref<GC::Function<void(Optional<HostedNavigableState>, Optional<SessionHistoryEntryPersistedState>)>> on_complete)
+void HistoryExecutor::apply_ui_changing_navigable_continuation(CrossProcessId operation_id, CrossProcessId navigable_id, HistoryObjectLengthAndIndex history_object_length_and_index, Vector<SessionHistoryEntryDescriptor> entry_descriptors_for_navigation_api, GC::Ref<GC::Function<void(Optional<HostedNavigableState>, Optional<SessionHistoryEntryPersistedState>)>> on_complete)
 {
     auto* operation = find_history_operation(operation_id);
     if (!operation) {
@@ -926,7 +929,6 @@ void HistoryExecutor::apply_ui_changing_navigable_continuation(CrossProcessId op
             .history_object_length_and_index = history_object_length_and_index,
             .entries_for_navigation_api = move(entries_for_navigation_api),
         },
-        unload_displayed_document,
         on_complete);
 }
 

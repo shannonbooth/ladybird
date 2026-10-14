@@ -193,7 +193,7 @@ private:
     void did_fail_history_navigation_population(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id);
     void continue_history_navigation_population(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id);
     void dispatch_changing_navigable_history_step_continuation(HistoryOperation&, ChangingNavigable&);
-    void send_changing_navigable_continuation_task(HistoryOperation&, Web::HTML::CrossProcessId navigable_id, Web::HTML::UnloadDisplayedDocument);
+    void send_changing_navigable_continuation_task(HistoryOperation&, Web::HTML::CrossProcessId navigable_id);
     void deactivate_a_document_for_cross_document_navigation(HistoryOperation&, Web::HTML::CrossProcessId navigable_id);
     void unload_displayed_document_for_cross_document_navigation(HistoryOperation&, Web::HTML::CrossProcessId navigable_id);
     void did_activate_history_entry(HistoryOperation&, Web::HTML::CrossProcessId navigable_id, NonnullRefPtr<WebContentPage> source_page, CanonicalSessionHistoryEntry& target_entry, Web::HTML::HostedNavigableState activated_navigable_state);
