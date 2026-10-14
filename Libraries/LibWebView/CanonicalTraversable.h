@@ -188,8 +188,7 @@ private:
     void add_history_operation_completion_endpoint(HistoryOperation&, NonnullRefPtr<WebContentPage>);
     bool select_changing_navigable_history_step_job_endpoint(HistoryOperation&, ApplyHistoryStepJobs::ChangingNavigableHistoryStepJob&);
     void dispatch_changing_navigable_history_step_job(ChangingNavigable&);
-    void did_fail_history_navigation_population(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id);
-    void continue_history_navigation_population(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id);
+    void continue_history_navigation_population(ChangingNavigable&);
     void dispatch_changing_navigable_history_step_continuation(ChangingNavigable&);
     void send_changing_navigable_continuation_task(ChangingNavigable&);
     void deactivate_a_document_for_cross_document_navigation(ChangingNavigable&);

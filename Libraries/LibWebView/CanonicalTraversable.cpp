@@ -1321,7 +1321,7 @@ void CanonicalTraversable::did_finish_history_navigation_params_creation(WebCont
     //     process a document created from another file: URL, and possibly with it local file access.
     if (population.request.history_entry.url.scheme() == "file"sv && population.request.history_entry.url != changing_navigable->job->target_entry->url) {
         discard();
-        did_fail_history_navigation_population(operation_id, navigable_id);
+        abort_changing_navigable_history_step_job(*changing_navigable);
         return;
     }
     // The document's sandboxing flags are at least those the UI process snapshots for the navigable.
@@ -1329,82 +1329,66 @@ void CanonicalTraversable::did_finish_history_navigation_params_creation(WebCont
     auto& loader = changing_navigable->population_loader;
     loader = NavigationLoader::create(source_page.client().is_private(), move(population.request));
     loader->did_finish_navigation_params_creation(move(population.result));
-    loader->acquire_response_body([weak_this = make_weak_ptr(), operation_id, navigable_id](bool succeeded) {
-        if (!weak_this)
+    // NB: A pending job's operation is still the traversable's, so a callback that finds the job pending can use it.
+    loader->acquire_response_body([this, weak_changing_navigable = changing_navigable->make_weak_ptr()](bool succeeded) {
+        if (!weak_changing_navigable || !weak_changing_navigable->has_pending_job())
             return;
-        auto& traversable = static_cast<CanonicalTraversable&>(*weak_this);
         if (!succeeded) {
-            traversable.did_fail_history_navigation_population(operation_id, navigable_id);
+            abort_changing_navigable_history_step_job(*weak_changing_navigable);
             return;
         }
-        traversable.continue_history_navigation_population(operation_id, navigable_id);
+        continue_history_navigation_population(*weak_changing_navigable);
     });
 }
 
-void CanonicalTraversable::did_fail_history_navigation_population(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
+void CanonicalTraversable::continue_history_navigation_population(ChangingNavigable& changing_navigable)
 {
-    auto* operation = find_history_operation(operation_id);
-    auto* changing_navigable = operation ? operation->pending_changing_job(navigable_id) : nullptr;
-    if (changing_navigable)
-        abort_changing_navigable_history_step_job(*changing_navigable);
-}
-
-void CanonicalTraversable::continue_history_navigation_population(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
-{
-    auto* operation = find_history_operation(operation_id);
-    auto* changing_navigable = operation ? operation->pending_changing_job(navigable_id) : nullptr;
-    if (!changing_navigable || !changing_navigable->population_loader)
+    if (!changing_navigable.population_loader)
         return;
-    auto& navigable = *changing_navigable->navigable();
-    auto endpoint = changing_job_endpoint(*changing_navigable);
+    auto endpoint = changing_job_endpoint(changing_navigable);
     if (!endpoint)
         return;
-    auto loader = move(changing_navigable->population_loader);
+    auto loader = move(changing_navigable.population_loader);
 
-    NonnullRefPtr target_entry = changing_navigable->job->target_entry;
-    auto host_or_error = navigable.obtain_page_to_populate_document(target_entry, *loader, *endpoint);
+    NonnullRefPtr target_entry = changing_navigable.job->target_entry;
+    auto navigable = changing_navigable.navigable()->make_weak_ptr();
+    auto weak_changing_navigable = changing_navigable.make_weak_ptr();
+    auto host_or_error = navigable->obtain_page_to_populate_document(target_entry, *loader, *endpoint);
+
+    // Obtaining the page can replace the tab's process, whose change callbacks can end the job, and with its operation
+    // the record.
+    if (!weak_changing_navigable || !changing_navigable.has_pending_job()) {
+        if (navigable && !host_or_error.is_error() && host_or_error.value().document)
+            navigable->abandon_populated_document(target_entry->document_state, *host_or_error.value().document);
+        return;
+    }
     if (host_or_error.is_error()) {
-        did_fail_history_navigation_population(operation_id, navigable_id);
+        abort_changing_navigable_history_step_job(changing_navigable);
         return;
     }
     auto host = host_or_error.release_value();
-
-    // Obtaining the page can replace the tab's process, whose change callbacks can finish the operation.
-    operation = find_history_operation(operation_id);
-    if (operation)
-        changing_navigable = operation->pending_changing_job(navigable_id);
-    if (!operation || !changing_navigable) {
-        if (host.document)
-            navigable.abandon_populated_document(target_entry->document_state, *host.document);
-        return;
-    }
     if (host.document)
-        changing_navigable->document = host.document;
+        changing_navigable.document = host.document;
     endpoint = host.page;
-    add_history_operation_completion_endpoint(*operation, *endpoint);
-    changing_navigable->population_loader = move(loader);
-    auto finish_handoff = [weak_this = make_weak_ptr(), weak_loader = changing_navigable->population_loader->make_weak_ptr(), operation_id, navigable_id, endpoint](bool succeeded) {
-        if (!weak_this || !weak_loader)
+    add_history_operation_completion_endpoint(changing_navigable.run().operation(), *endpoint);
+    changing_navigable.population_loader = move(loader);
+    auto finish_handoff = [this, weak_changing_navigable = move(weak_changing_navigable), weak_loader = changing_navigable.population_loader->make_weak_ptr(), endpoint](bool succeeded) {
+        if (!weak_changing_navigable || !weak_changing_navigable->has_pending_job() || !weak_loader || weak_changing_navigable->population_loader.ptr() != weak_loader.ptr())
             return;
-        auto& traversable = static_cast<CanonicalTraversable&>(*weak_this);
-        auto* operation = traversable.find_history_operation(operation_id);
-        if (!operation)
-            return;
-        auto* changing_navigable = operation->pending_changing_job(navigable_id);
-        if (!changing_navigable || changing_navigable->population_loader.ptr() != weak_loader.ptr())
-            return;
+        auto& changing_navigable = *weak_changing_navigable;
         if (!succeeded || !endpoint->is_open()) {
-            traversable.did_fail_history_navigation_population(operation_id, navigable_id);
+            abort_changing_navigable_history_step_job(changing_navigable);
             return;
         }
-        auto& loader = *changing_navigable->population_loader;
-        endpoint->owe_reply({ OwedReply::Kind::ChangingJob, operation_id, navigable_id });
-        endpoint->async_continue_history_navigation_population(operation_id, changing_navigable->job->target_entry_descriptor(), changing_navigable->job->navigation_type, changing_navigable->navigable()->ongoing_navigation().has<CanonicalNavigable::Traversal>(),
+        auto operation_id = changing_navigable.run().operation_id();
+        auto& loader = *changing_navigable.population_loader;
+        endpoint->owe_reply({ OwedReply::Kind::ChangingJob, operation_id, changing_navigable.id });
+        endpoint->async_continue_history_navigation_population(operation_id, changing_navigable.job->target_entry_descriptor(), changing_navigable.job->navigation_type, changing_navigable.navigable()->ongoing_navigation().has<CanonicalNavigable::Traversal>(),
             Web::HTML::HistoryNavigationPopulation { loader.request(), loader.take_result() });
     };
     if (auto client_id = endpoint->client().request_server_site_bindings().client_id(); client_id.has_value()) {
         if (auto request_server = RequestServerManager::the().instance_for_client(*client_id)) {
-            changing_navigable->population_loader->move_response_body_to(*request_server, move(finish_handoff));
+            changing_navigable.population_loader->move_response_body_to(*request_server, move(finish_handoff));
             return;
         }
     }
@@ -1537,14 +1521,11 @@ void CanonicalTraversable::unload_displayed_document_for_cross_document_navigati
     auto endpoint = changing_job_endpoint(changing_navigable);
     if (!endpoint)
         return;
-    auto operation_id = changing_navigable.run().operation_id();
-    auto navigable_id = changing_navigable.id;
-    unload_a_document_and_its_descendants(navigable_id, *endpoint, Web::HTML::ChildNavigableDestruction::No, [this, operation_id, navigable_id](UnloadedInItsHost) {
+    unload_a_document_and_its_descendants(changing_navigable.id, *endpoint, Web::HTML::ChildNavigableDestruction::No, [this, weak_changing_navigable = changing_navigable.make_weak_ptr()](UnloadedInItsHost) {
         // afterPotentialUnloads runs in the continuation task, in the process running the job. That process first
         // unloads the document it displays: displayedDocument, or the stand-in of a host chosen for the new document.
-        auto* operation = find_history_operation(operation_id);
-        if (auto* changing_navigable = operation ? operation->pending_changing_job(navigable_id) : nullptr)
-            send_changing_navigable_continuation_task(*changing_navigable);
+        if (weak_changing_navigable && weak_changing_navigable->has_pending_job())
+            send_changing_navigable_continuation_task(*weak_changing_navigable);
     });
 }
 
@@ -1771,13 +1752,13 @@ bool CanonicalTraversable::page_populates_a_history_entry_for_local_file(WebCont
         if (!operation->algorithm)
             continue;
         for (auto const& changing_navigable : operation->algorithm->changing_navigables()) {
-            if (!changing_navigable.has_pending_job())
+            if (!changing_navigable->has_pending_job())
                 continue;
-            auto const& target_entry = *changing_navigable.job->target_entry;
+            auto const& target_entry = *changing_navigable->job->target_entry;
             if (target_entry.document_state->held_local_file_content
                 && target_entry.url.scheme() == "file"sv
                 && target_entry.url.file_path() == path
-                && changing_job_endpoint(changing_navigable) == &page)
+                && changing_job_endpoint(*changing_navigable) == &page)
                 return true;
         }
     }
@@ -1855,9 +1836,9 @@ void CanonicalTraversable::end_history_jobs(CanonicalNavigable const& navigable,
     for (auto& entry : m_history_operations) {
         auto& operation = *entry.value;
         if (auto* changing_navigable = operation.pending_changing_job(navigable.id()); changing_navigable && (!populated_document || changing_navigable->document == populated_document)) {
-            completions.append([run = operation.algorithm->make_weak_ptr(), changing_navigable, job_state = end_changing_navigable_history_step_job(*changing_navigable)] {
-                if (run)
-                    changing_navigable_history_step_job_ended(*changing_navigable, job_state);
+            completions.append([weak_changing_navigable = changing_navigable->make_weak_ptr(), job_state = end_changing_navigable_history_step_job(*changing_navigable)] {
+                if (weak_changing_navigable)
+                    changing_navigable_history_step_job_ended(*weak_changing_navigable, job_state);
             });
         }
         if (populated_document || !operation.algorithm)
@@ -2659,8 +2640,8 @@ OwnPtr<HistoryOperation> CanonicalTraversable::take_history_operation(Web::HTML:
     // A changing job still pending when its operation finishes never activates the document it populated.
     if (auto& run = (*operation)->algorithm) {
         for (auto& changing_navigable : run->changing_navigables()) {
-            if (changing_navigable.has_pending_job())
-                (void)end_changing_navigable_history_step_job(changing_navigable);
+            if (changing_navigable->has_pending_job())
+                (void)end_changing_navigable_history_step_job(*changing_navigable);
         }
     }
     if (auto const* parameters = (*operation)->parameters.get_pointer<Web::NavigableCreationHistoryOperationParameters>()) {
