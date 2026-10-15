@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<iframe id="child" src="../../data/iframe-test-content-1.html"></iframe>
+<script>
+    // A same-document push in a child navigable prunes the forward entry that a pending traverseTo() targets. When the
+    // traversal reaches the child, firing its traverse navigate event finds no navigation API entry for the target, so
+    // the traversal is aborted: Its promises reject with an AbortError and no navigate or navigateerror event fires.
+    // The push stays the current entry.
+    async function settle(promise) {
+        try {
+            await promise;
+            return "fulfilled";
+        } catch (e) {
+            return `rejected with ${e.name}`;
+        }
+    }
+
+    promiseTest(async () => {
+        await new Promise(resolve => window.addEventListener("load", resolve));
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        const nav = child.contentWindow.navigation;
+        const childHistory = child.contentWindow.history;
+        const entryNames = () => nav.entries().map(entry => new URL(entry.url).hash || "(initial)");
+
+        await nav.navigate("#1").finished;
+        await nav.navigate("#2").finished;
+        await nav.back().finished;
+
+        const events = [];
+        nav.addEventListener("navigate", e => events.push(`navigate ${e.navigationType} ${new URL(e.destination.url).hash}`));
+        nav.addEventListener("navigateerror", e => events.push(`navigateerror ${e.error.name}`));
+        nav.entries()[2].addEventListener("dispose", () => events.push("dispose #2"));
+
+        const result = nav.traverseTo(nav.entries()[2].key);
+        childHistory.pushState({}, "", "#pushed");
+
+        println(`committed: ${await settle(result.committed)}`);
+        println(`finished: ${await settle(result.finished)}`);
+        println(`events: ${events.join(", ")}`);
+        println(`entries: ${entryNames().join(", ")}`);
+        println(`current entry index: ${nav.currentEntry.index}`);
+        println(`location.hash: ${child.contentWindow.location.hash}`);
+
+        // Traversing back and forward still works afterwards.
+        await nav.back().finished;
+        println(`after back(): ${new URL(nav.currentEntry.url).hash} at index ${nav.currentEntry.index}`);
+        await nav.forward().finished;
+        println(`after forward(): ${new URL(nav.currentEntry.url).hash} at index ${nav.currentEntry.index}`);
+    });
+</script>

@@ -75,6 +75,7 @@ struct WEBVIEW_API ChangingNavigable {
     // NB: Its target entry and navigable are the record's. The process running the job reports the rest.
     RefPtr<CanonicalDocument> displayed_document;
     bool update_only { false };
+    bool aborted { false };
     // targetEntry's document, as the job left it.
     Optional<Web::HTML::CrossProcessId> target_document_id;
 
@@ -140,7 +141,8 @@ public:
     Vector<NonnullOwnPtr<ChangingNavigable>> const& changing_navigables() const { return m_changing_navigables; }
     ChangingNavigable* changing_navigable(Web::HTML::CrossProcessId) const;
 
-    void changing_navigable_job_completed(ChangingNavigable&, Web::HTML::ChangingNavigableHistoryStepJobDisposition);
+    void enqueue_changing_navigable_continuation(ChangingNavigable&);
+    void abort_changing_navigable_job(ChangingNavigable&);
     void nonchanging_navigable_updated();
     // The run goes on once its continuations are processed again.
     void end_changing_navigable_job(ChangingNavigable&);
@@ -180,6 +182,7 @@ private:
     Vector<NonnullOwnPtr<ChangingNavigable>> m_changing_navigables;
     Vector<Web::HTML::CrossProcessId> m_nonchanging_navigables_that_still_need_updates;
     size_t m_completed_change_jobs { 0 };
+    bool m_any_changing_navigable_applied { false };
     Vector<ChangingNavigable*> m_changing_navigable_continuations;
     // AD-HOC: One continuation is applied at a time, so synchronous navigations queued by its application are in the
     //         traversal queue before the next continuation checks for them.

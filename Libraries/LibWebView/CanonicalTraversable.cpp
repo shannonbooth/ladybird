@@ -1245,7 +1245,7 @@ void CanonicalTraversable::did_not_receive_reply(OwedReply const& owed)
         if (!operation || awaits_crash_recovery)
             return;
         if (auto* changing_navigable = operation->pending_changing_job(owed.navigable_id))
-            operation->algorithm->changing_navigable_job_completed(*changing_navigable, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped);
+            operation->algorithm->abort_changing_navigable_job(*changing_navigable);
         return;
     }
     }
@@ -1288,7 +1288,7 @@ void CanonicalTraversable::did_finish_history_navigation_params_creation(WebCont
     //     process a document created from another file: URL, and possibly with it local file access.
     if (population.request.history_entry.url.scheme() == "file"sv && population.request.history_entry.url != changing_navigable->target_entry->url) {
         discard();
-        did_fail_history_navigation_population(*operation, *changing_navigable);
+        operation->algorithm->abort_changing_navigable_job(*changing_navigable);
         return;
     }
     // The document's sandboxing flags are at least those the UI process snapshots for the navigable.
@@ -1302,16 +1302,11 @@ void CanonicalTraversable::did_finish_history_navigation_params_creation(WebCont
         if (!changing_navigable)
             return;
         if (!succeeded) {
-            did_fail_history_navigation_population(*operation, *changing_navigable);
+            operation->algorithm->abort_changing_navigable_job(*changing_navigable);
             return;
         }
         continue_history_navigation_population(*operation, *changing_navigable);
     });
-}
-
-void CanonicalTraversable::did_fail_history_navigation_population(HistoryOperation& operation, ChangingNavigable& changing_navigable)
-{
-    operation.algorithm->changing_navigable_job_completed(changing_navigable, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped);
 }
 
 void CanonicalTraversable::continue_history_navigation_population(HistoryOperation& operation, ChangingNavigable& changing_navigable)
@@ -1335,7 +1330,7 @@ void CanonicalTraversable::continue_history_navigation_population(HistoryOperati
         return;
     }
     if (host_or_error.is_error()) {
-        did_fail_history_navigation_population(operation, changing_navigable);
+        operation.algorithm->abort_changing_navigable_job(changing_navigable);
         return;
     }
     auto host = host_or_error.release_value();
@@ -1350,7 +1345,7 @@ void CanonicalTraversable::continue_history_navigation_population(HistoryOperati
         if (!changing_navigable || !weak_loader || changing_navigable->population_loader.ptr() != weak_loader.ptr())
             return;
         if (!succeeded || !endpoint->is_open()) {
-            did_fail_history_navigation_population(*operation, *changing_navigable);
+            operation->algorithm->abort_changing_navigable_job(*changing_navigable);
             return;
         }
         auto& loader = *changing_navigable->population_loader;
@@ -1420,7 +1415,7 @@ void CanonicalTraversable::apply_changing_navigable_history_step_continuation(Ap
 {
     VERIFY(changing_navigable.continuation.has_value());
 
-    // 10. If changingNavigableContinuation's update-only is true, or targetEntry's document is displayedDocument, then:
+    // 12. If changingNavigableContinuation's update-only is true, or targetEntry's document is displayedDocument:
     if (changing_navigable.update_only || changing_navigable.target_document_id == changing_navigable.displayed_document->id()) {
         // 1. Set navigable's ongoing navigation to null.
         // NB: The canonical traversal claim is released when the continuation is applied. The queued task mirrors
@@ -1430,7 +1425,7 @@ void CanonicalTraversable::apply_changing_navigable_history_step_continuation(Ap
         //    perform afterPotentialUnloads.
         send_changing_navigable_continuation_task(run.operation(), changing_navigable);
     } else {
-        // 11. Otherwise:
+        // 13. Otherwise:
         // 1. Assert: navigationType is not null.
         // AD-HOC: Except for a navigable created by a document repopulated for its entry, which displays its initial
         //         about:blank until an update for a navigable's creation or destruction restores the entry its nested
@@ -1696,7 +1691,7 @@ bool CanonicalTraversable::is_handing_navigable_to_another_page(CanonicalNavigab
         auto const* changing_navigable = operation.value->pending_changing_job(navigable.id());
         if (changing_navigable
             && changing_navigable->continuation.has_value()
-            // NB: Step 11 of apply the history step applies the continuation, which deactivates displayedDocument.
+            // NB: Step 13 of apply the history step applies the continuation, which deactivates displayedDocument.
             && !changing_navigable->update_only
             && changing_navigable->target_document_id != changing_navigable->displayed_document->id()
             && changing_job_endpoint(*changing_navigable) != navigable.active_document().host()) {
@@ -2679,7 +2674,7 @@ void CanonicalTraversable::did_receive_beforeunload_check_result(WebContentPage&
     dispatch_next_beforeunload_group(check_id);
 }
 
-void CanonicalTraversable::did_receive_changing_navigable_history_job_ready(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::ChangingNavigableHistoryStepJobDisposition disposition, bool update_only, Optional<Web::HTML::CrossProcessId> target_document_id)
+void CanonicalTraversable::did_receive_changing_navigable_continuation_enqueued(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, bool aborted, bool update_only, Optional<Web::HTML::CrossProcessId> target_document_id)
 {
     if (!source_page.take_owed_reply({ OwedReply::Kind::ChangingJob, operation_id, navigable_id }))
         return;
@@ -2688,11 +2683,10 @@ void CanonicalTraversable::did_receive_changing_navigable_history_job_ready(WebC
     if (!changing_navigable)
         return;
 
-    if (disposition == Web::HTML::ChangingNavigableHistoryStepJobDisposition::Ready) {
-        changing_navigable->update_only = update_only;
-        changing_navigable->target_document_id = target_document_id;
-    }
-    operation->algorithm->changing_navigable_job_completed(*changing_navigable, disposition);
+    changing_navigable->aborted = aborted;
+    changing_navigable->update_only = update_only;
+    changing_navigable->target_document_id = target_document_id;
+    operation->algorithm->enqueue_changing_navigable_continuation(*changing_navigable);
 }
 
 void CanonicalTraversable::did_receive_changing_navigable_continuation_applied(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::HostedNavigableState> activated_navigable_state, Optional<Web::HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state)

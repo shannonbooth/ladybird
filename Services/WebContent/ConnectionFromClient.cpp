@@ -595,7 +595,7 @@ void ConnectionFromClient::continue_history_navigation_population(Web::PageId pa
     auto page = this->page(page_id);
     auto navigable_id = population.request.navigable_id;
     if (!page.has_value()) {
-        async_changing_navigable_history_job_ready(page_id, operation_id, navigable_id, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped, false, {});
+        async_changing_navigable_continuation_enqueued(page_id, operation_id, navigable_id, true, false, {});
         return;
     }
     auto& history_executor = page->page().history_executor();
@@ -603,8 +603,8 @@ void ConnectionFromClient::continue_history_navigation_population(Web::PageId pa
         return;
     auto user_involvement = population.request.user_involvement;
     history_executor.run_ui_changing_navigable_history_job(operation_id, navigable_id, move(target_entry), user_involvement, navigation_type, {}, ongoing_navigation_is_traversal, {},
-        GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, page_id, operation_id, navigable_id](Web::HTML::ChangingNavigableHistoryStepJobDisposition disposition, bool update_only, Optional<Web::HTML::CrossProcessId> target_document_id) {
-            async_changing_navigable_history_job_ready(page_id, operation_id, navigable_id, disposition, update_only, target_document_id);
+        GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, page_id, operation_id, navigable_id](bool aborted, bool update_only, Optional<Web::HTML::CrossProcessId> target_document_id) {
+            async_changing_navigable_continuation_enqueued(page_id, operation_id, navigable_id, aborted, update_only, target_document_id);
         }),
         move(population));
 }
@@ -613,12 +613,12 @@ void ConnectionFromClient::run_changing_navigable_history_job(Web::PageId page_i
 {
     auto page = this->page(page_id);
     if (!page.has_value()) {
-        async_changing_navigable_history_job_ready(page_id, operation_id, navigable_id, Web::HTML::ChangingNavigableHistoryStepJobDisposition::Skipped, false, {});
+        async_changing_navigable_continuation_enqueued(page_id, operation_id, navigable_id, true, false, {});
         return;
     }
 
-    page->page().history_executor().run_ui_changing_navigable_history_job(operation_id, navigable_id, move(target_entry), user_involvement, navigation_type, move(finalized_navigation_id), ongoing_navigation_is_traversal, move(source_snapshot_params), GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, page_id, operation_id, navigable_id](Web::HTML::ChangingNavigableHistoryStepJobDisposition disposition, bool update_only, Optional<Web::HTML::CrossProcessId> target_document_id) {
-        async_changing_navigable_history_job_ready(page_id, operation_id, navigable_id, disposition, update_only, target_document_id);
+    page->page().history_executor().run_ui_changing_navigable_history_job(operation_id, navigable_id, move(target_entry), user_involvement, navigation_type, move(finalized_navigation_id), ongoing_navigation_is_traversal, move(source_snapshot_params), GC::create_function(Web::HTML::main_thread_event_loop().heap(), [this, page_id, operation_id, navigable_id](bool aborted, bool update_only, Optional<Web::HTML::CrossProcessId> target_document_id) {
+        async_changing_navigable_continuation_enqueued(page_id, operation_id, navigable_id, aborted, update_only, target_document_id);
     }));
 }
 

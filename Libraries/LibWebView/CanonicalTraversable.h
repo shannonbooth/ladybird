@@ -82,7 +82,7 @@ public:
     // https://html.spec.whatwg.org/multipage/browsing-the-web.html#checking-if-unloading-is-canceled
     Optional<Web::HTML::CrossProcessId> check_if_unloading_is_canceled(Vector<Web::HTML::CrossProcessId> navigables_that_need_before_unload, RefPtr<CanonicalSessionHistoryEntry> target_entry, Optional<Web::HTML::UserNavigationInvolvement> user_involvement_for_navigate_event, RefPtr<WebContentPage> skipped_endpoint, Web::HTML::UnloadPromptShown, Function<void(Web::HTML::CheckIfUnloadingIsCanceledResult, Web::HTML::UnloadPromptShown)> on_complete);
     bool is_handing_navigable_to_another_page(CanonicalNavigable const&) const;
-    void did_receive_changing_navigable_history_job_ready(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::ChangingNavigableHistoryStepJobDisposition, bool update_only, Optional<Web::HTML::CrossProcessId> target_document_id);
+    void did_receive_changing_navigable_continuation_enqueued(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, bool aborted, bool update_only, Optional<Web::HTML::CrossProcessId> target_document_id);
     void did_finish_history_navigation_params_creation(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::HistoryNavigationPopulation);
     void did_receive_descendant_unload_task_complete(WebContentPage& source_page, Web::HTML::CrossProcessId unload_id, Web::HTML::CrossProcessId navigable_id);
     void did_receive_child_navigable_unload_request(WebContentPage& source_page, Web::HTML::CrossProcessId navigable_id);
@@ -192,7 +192,6 @@ private:
     RefPtr<CanonicalNavigation> finalized_navigation(HistoryOperation const&) const;
     bool update_session_history_entry_persisted_state(CanonicalNavigable&, Web::HTML::SessionHistoryEntryPersistedState const&);
     void add_history_operation_completion_endpoint(HistoryOperation&, NonnullRefPtr<WebContentPage>);
-    void did_fail_history_navigation_population(HistoryOperation&, ChangingNavigable&);
     void continue_history_navigation_population(HistoryOperation&, ChangingNavigable&);
     void send_changing_navigable_continuation_task(HistoryOperation&, ChangingNavigable&);
     void send_displayed_document_unload_task(HistoryOperation&, ChangingNavigable&);

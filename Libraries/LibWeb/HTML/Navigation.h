@@ -131,6 +131,7 @@ public:
     void abort_the_ongoing_navigation(GC::Ptr<WebIDL::DOMException> error = {});
     void abort_a_navigate_event(GC::Ref<NavigateEvent>, GC::Ref<WebIDL::DOMException> reason);
     void abort_a_navigate_event(GC::Ref<NavigateEvent>, JS::Value reason);
+    bool check_if_a_traversal_destination_was_disposed(SessionHistoryEntry const& destination_she);
     bool fire_a_traverse_navigate_event(NonnullRefPtr<SessionHistoryEntry> destination_she, UserNavigationInvolvement = UserNavigationInvolvement::None);
     bool fire_a_push_replace_reload_navigate_event(
         NavigationType,

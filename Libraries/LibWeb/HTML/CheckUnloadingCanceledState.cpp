@@ -202,12 +202,15 @@ void CheckUnloadingCanceledState::start_phase1()
         VERIFY(m_traversable->active_window());
         auto navigation = m_traversable->active_window()->navigation();
 
-        // 4. Let navigateEventResult be the result of firing a traverse navigate event at navigation given targetEntry and userInvolvementForNavigateEvent.
+        // 4. If the result of checking if a traversal destination was disposed given navigation and targetEntry is
+        //    true, then set finalStatus to "canceled-by-navigate".
         VERIFY(m_target_entry);
-        auto navigate_event_result = navigation->fire_a_traverse_navigate_event(*m_target_entry, *m_user_involvement);
+        if (navigation->check_if_a_traversal_destination_was_disposed(*m_target_entry))
+            m_final_status = Result::CanceledByNavigate;
 
-        // 5. If navigateEventResult is false, then set finalStatus to "canceled-by-navigate".
-        if (!navigate_event_result)
+        // 5. Otherwise, if the result of firing a traverse navigate event at navigation given targetEntry and
+        //    userInvolvementForNavigateEvent is false, then set finalStatus to "canceled-by-navigate".
+        else if (!navigation->fire_a_traverse_navigate_event(*m_target_entry, *m_user_involvement))
             m_final_status = Result::CanceledByNavigate;
 
         // 6. Set eventsFired to true.
