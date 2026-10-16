@@ -42,8 +42,7 @@ struct NavigationStartRequest {
     StorageSerializationRecord navigation_api_state;
     Utf16String navigation_api_key;
     Utf16String navigation_api_id;
-    CrossProcessId directive_state_id;
-    Optional<String> directive_state_value;
+    DirectiveState directive_state;
 };
 
 // The serializable inputs needed to continue the navigate algorithm in the process selected to

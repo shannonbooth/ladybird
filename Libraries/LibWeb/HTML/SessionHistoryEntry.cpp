@@ -44,10 +44,10 @@ static CrossProcessId generate_directive_state_id()
 
 NonnullRefPtr<SessionHistoryEntry> SessionHistoryEntry::create()
 {
-    return create(DirectiveState::create(generate_directive_state_id()));
+    return create(DirectiveState { .id = generate_directive_state_id(), .value = {} });
 }
 
-NonnullRefPtr<SessionHistoryEntry> SessionHistoryEntry::create(NonnullRefPtr<DirectiveState> directive_state)
+NonnullRefPtr<SessionHistoryEntry> SessionHistoryEntry::create(DirectiveState directive_state)
 {
     return adopt_ref(*new SessionHistoryEntry(move(directive_state)));
 }
@@ -68,11 +68,11 @@ UniqueNodeID SessionHistoryEntry::document_id() const
 }
 
 SessionHistoryEntry::SessionHistoryEntry()
-    : SessionHistoryEntry(DirectiveState::create(generate_directive_state_id()))
+    : SessionHistoryEntry(DirectiveState { .id = generate_directive_state_id(), .value = {} })
 {
 }
 
-SessionHistoryEntry::SessionHistoryEntry(NonnullRefPtr<DirectiveState> directive_state)
+SessionHistoryEntry::SessionHistoryEntry(DirectiveState directive_state)
     : m_classic_history_api_state(structured_serialize_undefined_or_null_for_storage(JS::js_null()))
     , m_navigation_api_state(structured_serialize_undefined_or_null_for_storage(JS::js_undefined()))
     , m_navigation_api_key(generate_random_uuid_utf16())
@@ -116,8 +116,7 @@ SessionHistoryEntryDescriptor create_session_history_entry_descriptor(SessionHis
         .navigation_api_id = entry.navigation_api_id(),
         .scroll_restoration_mode = entry.scroll_restoration_mode(),
         .scroll_position_data = entry.scroll_position_data(),
-        .directive_state_id = entry.directive_state()->cross_process_id(),
-        .directive_state_value = entry.directive_state()->value(),
+        .directive_state = entry.directive_state(),
     };
 }
 
@@ -155,8 +154,7 @@ SameDocumentNavigationEntry create_same_document_navigation_entry(SessionHistory
         .navigation_api_id = entry.navigation_api_id(),
         .scroll_restoration_mode = entry.scroll_restoration_mode(),
         .scroll_position_data = entry.scroll_position_data(),
-        .directive_state_id = entry.directive_state()->cross_process_id(),
-        .directive_state_value = entry.directive_state()->value(),
+        .directive_state = entry.directive_state(),
     };
 }
 
@@ -173,10 +171,7 @@ void apply_session_history_entry_descriptor_from_ui_process(SessionHistoryEntry&
     entry.set_navigation_api_id(move(entry_descriptor.navigation_api_id));
     entry.set_scroll_restoration_mode(entry_descriptor.scroll_restoration_mode);
     entry.set_scroll_position_data(move(entry_descriptor.scroll_position_data));
-    if (entry.directive_state()->cross_process_id() == entry_descriptor.directive_state_id)
-        entry.directive_state()->set_value(move(entry_descriptor.directive_state_value));
-    else
-        entry.set_directive_state(DirectiveState::create(entry_descriptor.directive_state_id, move(entry_descriptor.directive_state_value)));
+    entry.set_directive_state(move(entry_descriptor.directive_state));
 }
 
 void apply_session_history_document_state_descriptor_from_ui_process(DocumentState& document_state, SessionHistoryDocumentStateDescriptor const& document_state_descriptor)
@@ -212,11 +207,7 @@ RefPtr<DocumentState> get_or_create_document_state_from_ui_process(SessionHistor
 
 NonnullRefPtr<SessionHistoryEntry> create_session_history_entry_from_ui_process(SessionHistoryEntryDescriptor entry_descriptor, SessionHistoryEntryReconstructionState& reconstruction_state)
 {
-    auto& directive_state = reconstruction_state.directive_states.ensure(entry_descriptor.directive_state_id, [&] {
-        return DirectiveState::create(entry_descriptor.directive_state_id, entry_descriptor.directive_state_value);
-    });
-    directive_state->set_value(entry_descriptor.directive_state_value);
-    auto entry = SessionHistoryEntry::create(directive_state);
+    auto entry = SessionHistoryEntry::create(entry_descriptor.directive_state);
     apply_session_history_entry_descriptor_from_ui_process(*entry, entry_descriptor);
 
     auto document_state = get_or_create_document_state_from_ui_process(entry_descriptor.document_state, reconstruction_state);

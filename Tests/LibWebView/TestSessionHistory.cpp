@@ -101,8 +101,7 @@ static Web::HTML::SessionHistoryEntryDescriptor create_test_entry(i32 step, URL:
         .navigation_api_id = {},
         .scroll_restoration_mode = Web::HTML::ScrollRestorationMode::Auto,
         .scroll_position_data = {},
-        .directive_state_id = test_document_state_id(2000 + static_cast<u64>(step)),
-        .directive_state_value = {},
+        .directive_state = { .id = test_document_state_id(2000 + static_cast<u64>(step)), .value = {} },
     };
 }
 
@@ -209,15 +208,14 @@ static Web::HTML::SameDocumentNavigationEntry same_document_entry(Web::HTML::Ses
         .navigation_api_id = move(entry.navigation_api_id),
         .scroll_restoration_mode = entry.scroll_restoration_mode,
         .scroll_position_data = move(entry.scroll_position_data),
-        .directive_state_id = entry.directive_state_id,
-        .directive_state_value = move(entry.directive_state_value),
+        .directive_state = move(entry.directive_state),
     };
 }
 
 TEST_CASE(fragment_directive_state_is_separate_from_entry_url)
 {
     auto entry = create_test_entry(0, parse_url("https://example.test/#feature-detectability"sv));
-    entry.directive_state_value = "text=For-,feature%20detectability"_string;
+    entry.directive_state.value = "text=For-,feature%20detectability"_string;
     EXPECT_EQ(
         WebView::display_url_for_session_history_entry(entry),
         parse_url("https://example.test/#feature-detectability:~:text=For-,feature%20detectability"sv));
@@ -225,16 +223,16 @@ TEST_CASE(fragment_directive_state_is_separate_from_entry_url)
         WebView::display_url_for_session_history_entry(entry, false),
         parse_url("https://example.test/#feature-detectability"sv));
 
-    entry.directive_state_value.clear();
+    entry.directive_state.value.clear();
     EXPECT_EQ(
         WebView::display_url_for_session_history_entry(entry),
         parse_url("https://example.test/#feature-detectability"sv));
 
-    entry.directive_state_value = "text=For-,feature%20detectability"_string;
+    entry.directive_state.value = "text=For-,feature%20detectability"_string;
     auto canonical_entry = MUST(WebView::CanonicalSessionHistoryEntry::create_from_descriptor(entry));
     auto descriptor = canonical_entry->descriptor();
     EXPECT_EQ(descriptor.url, parse_url("https://example.test/#feature-detectability"sv));
-    EXPECT_EQ(descriptor.directive_state_value, "text=For-,feature%20detectability"sv);
+    EXPECT_EQ(descriptor.directive_state.value, "text=For-,feature%20detectability"sv);
 }
 
 static void expect_entry(WebView::TraversableSessionHistory const& history, size_t index, i32 expected_step, StringView expected_url)

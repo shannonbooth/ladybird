@@ -504,7 +504,7 @@ static ErrorOr<void> validate_entry_within_column_caps(Web::HTML::SessionHistory
     TRY(validate_text_column_within_cap(entry.url.serialize(), totals));
     TRY(validate_text_column_within_cap(entry.navigation_api_key, totals));
     TRY(validate_text_column_within_cap(entry.navigation_api_id, totals));
-    TRY(validate_text_column_within_cap(entry.directive_state_value, totals));
+    TRY(validate_text_column_within_cap(entry.directive_state.value, totals));
     TRY(validate_text_column_within_cap(document_state.navigable_target_name, totals));
     if (document_state.about_base_url.has_value())
         TRY(validate_text_column_within_cap(document_state.about_base_url->serialize(), totals));
@@ -811,9 +811,9 @@ static ErrorOr<void> store_history_entries(Database::Database& database, Session
             TRY(bind("navigation_api_key"sv, entry.navigation_api_key));
             TRY(bind("navigation_api_id"sv, entry.navigation_api_id));
             TRY(bind("scroll_restoration_mode"sv, encode_scroll_restoration_mode(entry.scroll_restoration_mode)));
-            TRY(bind("directive_state_namespace_id"sv, encode_cross_process_id_component(entry.directive_state_id.namespace_id)));
-            TRY(bind("directive_state_local_id"sv, encode_cross_process_id_component(entry.directive_state_id.local_id)));
-            TRY(bind("directive_state_value"sv, entry.directive_state_value));
+            TRY(bind("directive_state_namespace_id"sv, encode_cross_process_id_component(entry.directive_state.id.namespace_id)));
+            TRY(bind("directive_state_local_id"sv, encode_cross_process_id_component(entry.directive_state.id.local_id)));
+            TRY(bind("directive_state_value"sv, entry.directive_state.value));
             TRY(bind("scroll_x_raw"sv, scroll.map([](auto const& point) { return point.x().raw_value(); })));
             TRY(bind("scroll_y_raw"sv, scroll.map([](auto const& point) { return point.y().raw_value(); })));
             TRY(bind("origin_kind"sv, origin.kind));
@@ -1218,8 +1218,8 @@ static ErrorOr<Web::HTML::SessionHistoryEntryDescriptor> build_entry(EntryRow&& 
     entry.navigation_api_key = row.navigation_api_key;
     entry.navigation_api_id = row.navigation_api_id;
     entry.scroll_restoration_mode = scroll_restoration_mode;
-    entry.directive_state_id = Web::HTML::CrossProcessId { .namespace_id = decode_cross_process_id_component(row.directive_state_namespace_id), .local_id = decode_cross_process_id_component(row.directive_state_local_id) };
-    entry.directive_state_value = move(row.directive_state_value);
+    entry.directive_state.id = Web::HTML::CrossProcessId { .namespace_id = decode_cross_process_id_component(row.directive_state_namespace_id), .local_id = decode_cross_process_id_component(row.directive_state_local_id) };
+    entry.directive_state.value = move(row.directive_state_value);
     if (row.scroll_x_raw.has_value())
         entry.scroll_position_data.viewport_scroll_position = Web::CSSPixelPoint { Web::CSSPixels::from_raw(*row.scroll_x_raw), Web::CSSPixels::from_raw(*row.scroll_y_raw) };
     return entry;

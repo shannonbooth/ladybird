@@ -7676,18 +7676,19 @@ void Document::update_for_history_step_application(NonnullRefPtr<HTML::SessionHi
 
         // https://wicg.github.io/scroll-to-text-fragment/#applying-directives-to-a-document
         // 2. If document's latest entry's directive state is not entry's directive state then:
-        auto latest_entry_directive_state = [&] -> RefPtr<HTML::DirectiveState> {
+        auto latest_entry_directive_state = [&] -> Optional<HTML::DirectiveState> {
             if (m_latest_entry)
                 return m_latest_entry->directive_state();
             if (previous_entry_for_activation)
                 return previous_entry_for_activation->directive_state();
 
-            return nullptr;
+            return {};
         }();
-        if (!latest_entry_directive_state || latest_entry_directive_state.ptr() != entry->directive_state().ptr()) {
+        // NB: Entries that share a directive state share its ID.
+        if (!latest_entry_directive_state.has_value() || latest_entry_directive_state->id != entry->directive_state().id) {
             text_directive_state_changed = true;
             // 1. Let fragment directive be entry's directive state's value.
-            auto const& fragment_directive = entry->directive_state()->value();
+            auto const& fragment_directive = entry->directive_state().value;
 
             // 2. Set document's pending text directives to the result of parsing fragment directive.
             m_text_fragment_ranges.clear();

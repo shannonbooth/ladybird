@@ -47,8 +47,7 @@ static WebView::CanonicalNavigation::Start navigation_for_testing(Utf16String na
             .navigation_api_state = {},
             .navigation_api_key = {},
             .navigation_api_id = {},
-            .directive_state_id = {},
-            .directive_state_value = {},
+            .directive_state = { .id = {}, .value = {} },
         } },
         .history_entry = move(history_entry),
     };

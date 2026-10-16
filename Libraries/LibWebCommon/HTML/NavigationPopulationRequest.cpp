@@ -53,12 +53,9 @@ static Optional<String> remove_the_fragment_directive(URL::URL& url)
 NavigationPopulationRequest create_navigation_population_request(NavigationStartRequest start_request, CrossProcessId document_state_id)
 {
     auto url = start_request.url;
-    auto directive_state_id = start_request.directive_state_id;
-    auto directive_state_value = start_request.directive_state_value;
-    if (directive_state_id.namespace_id == 0 || directive_state_id.local_id == 0)
-        directive_state_id = document_state_id;
+    auto directive_state = start_request.directive_state;
     if (auto fragment_directive = remove_the_fragment_directive(url); fragment_directive.has_value())
-        directive_state_value = move(fragment_directive);
+        directive_state.value = move(fragment_directive);
 
     // 4. Let documentState be a new document state with
     //    request referrer policy: referrerPolicy
@@ -109,8 +106,7 @@ NavigationPopulationRequest create_navigation_population_request(NavigationStart
         .navigation_api_id = move(start_request.navigation_api_id),
         .scroll_restoration_mode = ScrollRestorationMode::Auto,
         .scroll_position_data = {},
-        .directive_state_id = directive_state_id,
-        .directive_state_value = move(directive_state_value),
+        .directive_state = move(directive_state),
     };
 
     return {
@@ -133,7 +129,7 @@ void apply_navigation_population_result(NavigationPopulationRequest& request, Na
         auto redirected_url = *result.redirected_url;
         auto fragment_directive = remove_the_fragment_directive(redirected_url);
         if (fragment_directive.has_value() || result.redirect_replaced_fragment)
-            request.history_entry.directive_state_value = move(fragment_directive);
+            request.history_entry.directive_state.value = move(fragment_directive);
         request.history_entry.url = move(redirected_url);
     }
     if (result.classic_history_api_state.has_value())
@@ -168,8 +164,7 @@ ErrorOr<void> encode(Encoder& encoder, Web::HTML::NavigationStartRequest const& 
     TRY(encoder.encode(request.navigation_api_state));
     TRY(encoder.encode(request.navigation_api_key));
     TRY(encoder.encode(request.navigation_api_id));
-    TRY(encoder.encode(request.directive_state_id));
-    TRY(encoder.encode(request.directive_state_value));
+    TRY(encoder.encode(request.directive_state));
     return {};
 }
 
@@ -198,8 +193,7 @@ ErrorOr<Web::HTML::NavigationStartRequest> decode(Decoder& decoder)
         .navigation_api_state = TRY(decoder.decode<Web::HTML::StorageSerializationRecord>()),
         .navigation_api_key = TRY(decoder.decode<Utf16String>()),
         .navigation_api_id = TRY(decoder.decode<Utf16String>()),
-        .directive_state_id = TRY(decoder.decode<Web::HTML::CrossProcessId>()),
-        .directive_state_value = TRY(decoder.decode<Optional<String>>()),
+        .directive_state = TRY(decoder.decode<Web::HTML::DirectiveState>()),
     };
 }
 

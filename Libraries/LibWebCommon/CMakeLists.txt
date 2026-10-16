@@ -16,6 +16,7 @@ set(SOURCES
     HTML/BrowsingContext.cpp
     HTML/CrossOrigin/OpenerPolicyEnforcement.cpp
     HTML/CrossProcessId.cpp
+    HTML/DirectiveState.cpp
     HTML/EmbedderPolicy.cpp
     HTML/FileFilter.cpp
     HTML/HistoryOperation.cpp

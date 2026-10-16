@@ -17,14 +17,14 @@ namespace WebView {
 URL::URL display_url_for_session_history_entry(Web::HTML::SessionHistoryEntryDescriptor const& entry, bool include_fragment_directive)
 {
     auto displayed_url = entry.url;
-    if (!include_fragment_directive || !entry.directive_state_value.has_value())
+    if (!include_fragment_directive || !entry.directive_state.value.has_value())
         return displayed_url;
 
     StringBuilder fragment;
     if (displayed_url.fragment().has_value())
         fragment.append(*displayed_url.fragment());
     fragment.append(":~:"sv);
-    fragment.append(*entry.directive_state_value);
+    fragment.append(*entry.directive_state.value);
     auto fragment_string = MUST(fragment.to_string());
     displayed_url.set_fragment(fragment_string.bytes_as_string_view());
     return displayed_url;
@@ -363,18 +363,15 @@ bool TraversableSessionHistory::replace_session_history_entry(CanonicalNavigable
     return true;
 }
 
-void TraversableSessionHistory::update_directive_state_value(Web::HTML::CrossProcessId directive_state_id, Optional<String> directive_state_value)
+void TraversableSessionHistory::update_directive_state(Web::HTML::DirectiveState const& directive_state)
 {
-    if (directive_state_id.namespace_id == 0 || directive_state_id.local_id == 0)
-        return;
-
     Vector<Vector<NonnullRefPtr<CanonicalSessionHistoryEntry>>*> entry_lists { &m_entries };
 
     for (size_t i = 0; i < entry_lists.size(); ++i) {
         auto* entries = entry_lists[i];
         for (auto& entry : *entries) {
-            if (entry->directive_state_id == directive_state_id)
-                entry->directive_state_value = directive_state_value;
+            if (entry->directive_state.id == directive_state.id)
+                entry->directive_state.value = directive_state.value;
 
             for (auto& nested_history : entry->document_state->nested_histories) {
                 if (!entry_lists.contains_slow(&nested_history.entries))

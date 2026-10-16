@@ -44,8 +44,7 @@ SessionHistoryEntryDescriptor create_initial_session_history_entry_descriptor(Cr
         .navigation_api_id = generate_random_uuid_utf16(),
         .scroll_restoration_mode = ScrollRestorationMode::Auto,
         .scroll_position_data = {},
-        .directive_state_id = directive_state_id,
-        .directive_state_value = {},
+        .directive_state = { .id = directive_state_id, .value = {} },
     };
 }
 
@@ -71,8 +70,7 @@ ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::SessionHistoryEntryDescri
     TRY(encoder.encode(entry.navigation_api_id));
     TRY(encoder.encode(entry.scroll_restoration_mode));
     TRY(encoder.encode(entry.scroll_position_data));
-    TRY(encoder.encode(entry.directive_state_id));
-    TRY(encoder.encode(entry.directive_state_value));
+    TRY(encoder.encode(entry.directive_state));
     return {};
 }
 
@@ -88,8 +86,7 @@ ErrorOr<Web::HTML::SessionHistoryEntryDescriptor> IPC::decode(Decoder& decoder)
     auto navigation_api_id = TRY(decoder.decode<Utf16String>());
     auto scroll_restoration_mode = TRY(decoder.decode<Web::HTML::ScrollRestorationMode>());
     auto scroll_position_data = TRY(decoder.decode<Web::HTML::SessionHistoryEntryScrollPositionData>());
-    auto directive_state_id = TRY(decoder.decode<Web::HTML::CrossProcessId>());
-    auto directive_state_value = TRY(decoder.decode<Optional<String>>());
+    auto directive_state = TRY(decoder.decode<Web::HTML::DirectiveState>());
 
     return Web::HTML::SessionHistoryEntryDescriptor {
         .step = step,
@@ -101,8 +98,7 @@ ErrorOr<Web::HTML::SessionHistoryEntryDescriptor> IPC::decode(Decoder& decoder)
         .navigation_api_id = move(navigation_api_id),
         .scroll_restoration_mode = scroll_restoration_mode,
         .scroll_position_data = move(scroll_position_data),
-        .directive_state_id = directive_state_id,
-        .directive_state_value = move(directive_state_value),
+        .directive_state = move(directive_state),
     };
 }
 

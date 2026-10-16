@@ -15,6 +15,7 @@
 #include <LibWebCommon/Export.h>
 #include <LibWebCommon/Fetch/Infrastructure/HTTP/RequestReferrer.h>
 #include <LibWebCommon/HTML/CrossProcessId.h>
+#include <LibWebCommon/HTML/DirectiveState.h>
 #include <LibWebCommon/HTML/DocumentStateClient.h>
 #include <LibWebCommon/HTML/POSTResource.h>
 #include <LibWebCommon/HTML/SerializationRecords.h>
@@ -91,8 +92,7 @@ struct SessionHistoryEntryDescriptor {
     Utf16String navigation_api_id;
     ScrollRestorationMode scroll_restoration_mode { ScrollRestorationMode::Auto };
     SessionHistoryEntryScrollPositionData scroll_position_data;
-    CrossProcessId directive_state_id;
-    Optional<String> directive_state_value;
+    DirectiveState directive_state;
 };
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#nested-history

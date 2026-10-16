@@ -1858,8 +1858,7 @@ NonnullRefPtr<CanonicalSessionHistoryEntry> CanonicalTraversable::session_histor
 {
     auto entry = CanonicalSessionHistoryEntry::create(navigable.active_session_history_entry()->document_state);
     entry->url = same_document_entry.url;
-    entry->directive_state_id = same_document_entry.directive_state_id;
-    entry->directive_state_value = same_document_entry.directive_state_value;
+    entry->directive_state = same_document_entry.directive_state;
     entry->classic_history_api_state = same_document_entry.classic_history_api_state;
     entry->navigation_api_state = same_document_entry.navigation_api_state;
     entry->navigation_api_key = same_document_entry.navigation_api_key;
@@ -2235,7 +2234,7 @@ void CanonicalTraversable::finalize_a_same_document_navigation(HistoryOperation&
 
     // Canonical entries carry a stable ID and a copied value for a directive state shared across
     // history entries. Keep those copies synchronized when the shared state is mutated.
-    m_session_history.update_directive_state_value(target_entry->directive_state_id, target_entry->directive_state_value);
+    m_session_history.update_directive_state(target_entry->directive_state);
 
     target_navigable->set_active_session_history_entry(target_entry);
 

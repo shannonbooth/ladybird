@@ -17,10 +17,10 @@
 #include <LibWeb/Export.h>
 #include <LibWeb/Fetch/Infrastructure/HTTP/Requests.h>
 #include <LibWeb/Forward.h>
-#include <LibWeb/HTML/DirectiveState.h>
 #include <LibWeb/HTML/DocumentState.h>
 #include <LibWeb/HTML/StructuredSerializeTypes.h>
 #include <LibWebCommon/HTML/CrossProcessId.h>
+#include <LibWebCommon/HTML/DirectiveState.h>
 #include <LibWebCommon/HTML/SessionHistoryEntryDescriptor.h>
 #include <LibWebCommon/PixelUnits.h>
 #include <LibWebCommon/ReferrerPolicy/ReferrerPolicy.h>
@@ -30,10 +30,10 @@ namespace Web::HTML {
 class WEB_API SessionHistoryEntry final : public RefCounted<SessionHistoryEntry> {
 public:
     static NonnullRefPtr<SessionHistoryEntry> create();
-    static NonnullRefPtr<SessionHistoryEntry> create(NonnullRefPtr<DirectiveState>);
+    static NonnullRefPtr<SessionHistoryEntry> create(DirectiveState);
 
     SessionHistoryEntry();
-    explicit SessionHistoryEntry(NonnullRefPtr<DirectiveState>);
+    explicit SessionHistoryEntry(DirectiveState);
     ~SessionHistoryEntry();
 
     enum class Pending {
@@ -74,8 +74,8 @@ public:
 
     [[nodiscard]] SessionHistoryEntryScrollPositionData const& scroll_position_data() const { return m_scroll_position_data; }
     void set_scroll_position_data(SessionHistoryEntryScrollPositionData scroll_position_data) { m_scroll_position_data = move(scroll_position_data); }
-    [[nodiscard]] NonnullRefPtr<DirectiveState> const& directive_state() const { return m_directive_state; }
-    void set_directive_state(NonnullRefPtr<DirectiveState> state) { m_directive_state = move(state); }
+    [[nodiscard]] DirectiveState const& directive_state() const { return m_directive_state; }
+    void set_directive_state(DirectiveState state) { m_directive_state = move(state); }
 
 private:
     // https://html.spec.whatwg.org/multipage/browsing-the-web.html#she-step
@@ -112,7 +112,7 @@ private:
     // https://html.spec.whatwg.org/multipage/browsing-the-web.html#she-scroll-position
     // scroll position data, which is scroll position data for the document's restorable scrollable regions
     SessionHistoryEntryScrollPositionData m_scroll_position_data;
-    NonnullRefPtr<DirectiveState> m_directive_state;
+    DirectiveState m_directive_state;
 
     // https://html.spec.whatwg.org/multipage/browsing-the-web.html#she-other
     // FIXME: persisted user state, which is implementation-defined, initially null
@@ -129,7 +129,6 @@ WEB_API SessionHistoryEntryIdentity session_history_entry_identity(SessionHistor
 // there share one here too.
 struct SessionHistoryEntryReconstructionState {
     HashMap<CrossProcessId, RefPtr<DocumentState>> document_states;
-    HashMap<CrossProcessId, NonnullRefPtr<DirectiveState>> directive_states;
 };
 
 WEB_API void apply_session_history_entry_descriptor_from_ui_process(SessionHistoryEntry&, SessionHistoryEntryDescriptor&);

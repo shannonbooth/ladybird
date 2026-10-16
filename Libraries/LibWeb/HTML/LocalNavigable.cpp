@@ -610,7 +610,7 @@ void PopulateSessionHistoryEntryDocumentOutput::apply_to(NonnullRefPtr<SessionHi
         //       fragment directive was already removed from that URL and stored in the directive state,
         //       so leaving the state unchanged performs that inheritance.
         if (fragment_directive.has_value() || redirect_replaced_fragment)
-            entry->directive_state()->set_value(move(fragment_directive));
+            entry->set_directive_state({ .id = entry->directive_state().id, .value = move(fragment_directive) });
     }
     if (classic_history_api_state.has_value())
         entry->set_classic_history_api_state(classic_history_api_state.release_value());
@@ -3694,8 +3694,7 @@ void LocalNavigable::begin_navigation(PreparedNavigation navigation)
         .navigation_api_state = entry_defaults->navigation_api_state(),
         .navigation_api_key = entry_defaults->navigation_api_key(),
         .navigation_api_id = entry_defaults->navigation_api_id(),
-        .directive_state_id = entry_defaults->directive_state()->cross_process_id(),
-        .directive_state_value = move(directive_state_value),
+        .directive_state = { .id = entry_defaults->directive_state().id, .value = move(directive_state_value) },
     };
     park_navigation_for_population(navigation_id, move(navigation));
 
@@ -3793,7 +3792,7 @@ void LocalNavigable::navigate_to_a_fragment(URL::URL const& url, HistoryHandling
     auto fragment_directive = remove_the_fragment_directive(stripped_url);
     auto const has_fragment_directive = fragment_directive.has_value();
     if (fragment_directive.has_value())
-        directive_state = DirectiveState::create(page().client().allocate_cross_process_id(), move(fragment_directive));
+        directive_state = { .id = page().client().allocate_cross_process_id(), .value = move(fragment_directive) };
 
     // 1. Let navigation be navigable's active window's navigation API.
     VERIFY(active_window());
@@ -4306,7 +4305,7 @@ void perform_url_and_history_update_steps(DOM::Document& document, URL::URL new_
         has_fragment_directive = fragment->find(":~:"sv).has_value();
     auto directive_state_value = remove_the_fragment_directive(new_url);
     if (has_fragment_directive)
-        directive_state = DirectiveState::create(navigable->page().client().allocate_cross_process_id(), move(directive_state_value));
+        directive_state = { .id = navigable->page().client().allocate_cross_process_id(), .value = move(directive_state_value) };
 
     // 3. Let newEntry be a new session history entry, with
     //      URL: newURL

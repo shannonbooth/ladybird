@@ -103,7 +103,7 @@ GC::Ref<LocalTraversableNavigable> LocalTraversableNavigable::create_a_new_top_l
     // NB: The owner's copy of this entry and this one must be the same entry, so take its identity
     initial_history_entry->set_navigation_api_key(initial_entry.navigation_api_key);
     initial_history_entry->set_navigation_api_id(initial_entry.navigation_api_id);
-    initial_history_entry->set_directive_state(DirectiveState::create(initial_entry.directive_state_id));
+    initial_history_entry->set_directive_state(initial_entry.directive_state);
 
     // 9. Append initialHistoryEntry to traversable's session history entries.
     // NB: A traversable's owner keeps the canonical session history; this entry is the owner's initial entry.
