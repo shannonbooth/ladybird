@@ -50,6 +50,9 @@ struct WEBVIEW_API ChangingNavigable {
 
     bool has_pending_job() const { return !job_ended; }
 
+    // The job gives up its population: the response body its loader holds, and the document it populated.
+    void abandon_population();
+
     Web::HTML::CrossProcessId id;
 
     // The process running the job retains this exact entry instead of resolving a target step against its local session
@@ -142,7 +145,6 @@ public:
     ChangingNavigable* changing_navigable(Web::HTML::CrossProcessId) const;
 
     void enqueue_changing_navigable_continuation(ChangingNavigable&);
-    void abort_changing_navigable_job(ChangingNavigable&);
     void nonchanging_navigable_updated();
     // The run goes on once its continuations are processed again.
     void end_changing_navigable_job(ChangingNavigable&);

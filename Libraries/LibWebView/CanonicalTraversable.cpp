@@ -568,14 +568,19 @@ void CanonicalTraversable::remove_page(WebContentPage& page)
 void CanonicalTraversable::stand_in_for_lost_document(CanonicalNavigable& navigable)
 {
     auto reporting_page = navigable.reporting_page();
+    // The navigable's history jobs go with the document they were run against.
+    end_history_jobs(navigable);
     navigable.hand_pending_webdriver_commands_to(*reporting_page);
     navigable.did_lose_active_document();
     if (auto state = navigable.replicated_state(); state.has_value())
         reporting_page->async_update_remote_navigable(navigable.id(), *state);
     // NB: The canonical session history can still lack the nested history of a newly created navigable.
-    auto const* current_entry = m_session_history.get_the_target_history_entry(navigable, m_session_history.current_step());
+    auto* current_entry = m_session_history.get_the_target_history_entry(navigable, m_session_history.current_step());
     if (!current_entry)
         return;
+    // A job that ended left the navigable's current session history entry on its target entry, which the stand-in does
+    // not display.
+    navigable.set_current_session_history_entry(current_entry);
     reporting_page->async_begin_hosting_navigable(navigable.id(), current_entry->descriptor(), system_visibility_state());
     if (&navigable == this)
         give_stand_in_its_opener(*reporting_page);
@@ -1240,14 +1245,9 @@ void CanonicalTraversable::did_not_receive_reply(OwedReply const& owed)
         return;
     }
     case OwedReply::Kind::ChangingJob:
-    case OwedReply::Kind::ContinuationApplied: {
-        auto* operation = find_history_operation(owed.id);
-        if (!operation || awaits_crash_recovery)
-            return;
-        if (auto* changing_navigable = operation->pending_changing_job(owed.navigable_id))
-            operation->algorithm->abort_changing_navigable_job(*changing_navigable);
+    case OwedReply::Kind::ContinuationApplied:
+        // NB: Removing the page ended the job already. See changing_job_endpoint().
         return;
-    }
     }
     VERIFY_NOT_REACHED();
 }
@@ -1288,7 +1288,7 @@ void CanonicalTraversable::did_finish_history_navigation_params_creation(WebCont
     //     process a document created from another file: URL, and possibly with it local file access.
     if (population.request.history_entry.url.scheme() == "file"sv && population.request.history_entry.url != changing_navigable->target_entry->url) {
         discard();
-        operation->algorithm->abort_changing_navigable_job(*changing_navigable);
+        finish_history_navigation_population_without_document(*operation, *changing_navigable);
         return;
     }
     // The document's sandboxing flags are at least those the UI process snapshots for the navigable.
@@ -1302,7 +1302,7 @@ void CanonicalTraversable::did_finish_history_navigation_params_creation(WebCont
         if (!changing_navigable)
             return;
         if (!succeeded) {
-            operation->algorithm->abort_changing_navigable_job(*changing_navigable);
+            finish_history_navigation_population_without_document(*operation, *changing_navigable);
             return;
         }
         continue_history_navigation_population(*operation, *changing_navigable);
@@ -1330,7 +1330,7 @@ void CanonicalTraversable::continue_history_navigation_population(HistoryOperati
         return;
     }
     if (host_or_error.is_error()) {
-        operation.algorithm->abort_changing_navigable_job(changing_navigable);
+        finish_history_navigation_population_without_document(operation, changing_navigable);
         return;
     }
     auto host = host_or_error.release_value();
@@ -1345,7 +1345,7 @@ void CanonicalTraversable::continue_history_navigation_population(HistoryOperati
         if (!changing_navigable || !weak_loader || changing_navigable->population_loader.ptr() != weak_loader.ptr())
             return;
         if (!succeeded || !endpoint->is_open()) {
-            operation->algorithm->abort_changing_navigable_job(*changing_navigable);
+            finish_history_navigation_population_without_document(*operation, *changing_navigable);
             return;
         }
         auto& loader = *changing_navigable->population_loader;
@@ -1360,6 +1360,18 @@ void CanonicalTraversable::continue_history_navigation_population(HistoryOperati
         }
     }
     finish_handoff(false);
+}
+
+// https://html.spec.whatwg.org/multipage/browsing-the-web.html#attempt-to-populate-the-history-entry's-document
+// AD-HOC: Population the UI process cannot finish, as it cannot read the response body or obtain a page to host the
+//         document, produces no document, as a 204 response does. The process running the job then enqueues an
+//         update-only continuation, and the displayed document stays.
+void CanonicalTraversable::finish_history_navigation_population_without_document(HistoryOperation& operation, ChangingNavigable& changing_navigable)
+{
+    changing_navigable.abandon_population();
+    auto endpoint = changing_job_endpoint(changing_navigable);
+    endpoint->owe_reply({ OwedReply::Kind::ChangingJob, operation.operation_id, changing_navigable.id });
+    endpoint->async_finish_history_navigation_population_without_document(operation.operation_id, changing_navigable.id);
 }
 
 bool CanonicalTraversable::run_changing_navigable_history_step_job(ApplyHistoryStep& run, ChangingNavigable& changing_navigable)
@@ -1731,7 +1743,9 @@ RefPtr<WebContentPage> CanonicalTraversable::changing_job_endpoint(CanonicalNavi
 }
 
 // NB: A pending job's navigable is in the tree, so its document's page, or the page holding its container, is there: a
-//     navigable whose container's page is lost is removed with it, ending its job.
+//     navigable whose container's page is lost is removed with it, ending its job, and one whose document's page is
+//     lost is stood in for, ending its job too. A page a populated document was placed in abandons that document when
+//     it is lost, ending the job that populated it.
 NonnullRefPtr<WebContentPage> CanonicalTraversable::changing_job_endpoint(ChangingNavigable const& changing_navigable) const
 {
     auto endpoint = changing_job_endpoint(changing_navigable.navigable(), *changing_navigable.target_entry->document_state);

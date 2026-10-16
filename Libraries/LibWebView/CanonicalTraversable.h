@@ -193,6 +193,7 @@ private:
     bool update_session_history_entry_persisted_state(CanonicalNavigable&, Web::HTML::SessionHistoryEntryPersistedState const&);
     void add_history_operation_completion_endpoint(HistoryOperation&, NonnullRefPtr<WebContentPage>);
     void continue_history_navigation_population(HistoryOperation&, ChangingNavigable&);
+    void finish_history_navigation_population_without_document(HistoryOperation&, ChangingNavigable&);
     void send_changing_navigable_continuation_task(HistoryOperation&, ChangingNavigable&);
     void send_displayed_document_unload_task(HistoryOperation&, ChangingNavigable&);
     void deactivate_a_document_for_cross_document_navigation(HistoryOperation&, ChangingNavigable&);

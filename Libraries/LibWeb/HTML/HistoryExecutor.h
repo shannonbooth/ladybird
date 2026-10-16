@@ -50,7 +50,7 @@ public:
 
         struct ChangingNavigableJob {
             GC::Ptr<ChangingNavigableContinuationState> continuation;
-            GC::Ptr<GC::Function<void(HistoryNavigationPopulation)>> continue_population;
+            GC::Ptr<GC::Function<void(Optional<HistoryNavigationPopulation>)>> continue_population;
         };
         HashMap<CrossProcessId, ChangingNavigableJob> changing_navigable_jobs {};
     };
@@ -69,6 +69,7 @@ public:
     void run_ui_beforeunload_check(Vector<CrossProcessId> navigable_ids, Optional<SessionHistoryEntryDescriptor> target_entry, Optional<UserNavigationInvolvement> user_involvement_for_navigate_event, UnloadPromptShown, GC::Ref<GC::Function<void(CheckIfUnloadingIsCanceledResult, UnloadPromptShown)>>);
     void run_ui_changing_navigable_history_job(CrossProcessId operation_id, CrossProcessId navigable_id, SessionHistoryEntryDescriptor target_entry_descriptor, UserNavigationInvolvement, Optional<Bindings::NavigationType>, Optional<Utf16String> finalized_navigation_id, bool ongoing_navigation_is_traversal, Optional<NavigationSourceSnapshot>, GC::Ref<OnEnqueueChangingNavigableContinuation>, Optional<HistoryNavigationPopulation> = {});
     bool resume_history_navigation_population(CrossProcessId operation_id, HistoryNavigationPopulation&&);
+    bool finish_history_navigation_population_without_document(CrossProcessId operation_id, CrossProcessId navigable_id);
     void apply_ui_changing_navigable_continuation(CrossProcessId operation_id, CrossProcessId navigable_id, SessionHistoryEntryIdentity target_entry_identity, HistoryObjectLengthAndIndex, Vector<SessionHistoryEntryDescriptor> entries_for_navigation_api, GC::Ref<OnChangingNavigableContinuationApplied>);
     void unload_displayed_document_and_apply_ui_changing_navigable_continuation(CrossProcessId operation_id, CrossProcessId navigable_id, SessionHistoryEntryIdentity target_entry_identity, HistoryObjectLengthAndIndex, Vector<SessionHistoryEntryDescriptor> entries_for_navigation_api, GC::Ref<OnChangingNavigableContinuationApplied>);
     void clear_ui_changing_navigable_ongoing_traversal(CrossProcessId operation_id, CrossProcessId navigable_id);
@@ -79,6 +80,7 @@ private:
     virtual void visit_edges(Cell::Visitor&) override;
 
     HistoryOperationState* find_history_operation(CrossProcessId operation_id);
+    GC::Ptr<GC::Function<void(Optional<HistoryNavigationPopulation>)>> take_continue_population(CrossProcessId operation_id, CrossProcessId navigable_id);
     HistoryOperationState& ensure_history_operation(CrossProcessId operation_id);
 
     struct DequeuedChangingNavigableContinuation {

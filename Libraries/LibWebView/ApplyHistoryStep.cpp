@@ -191,22 +191,12 @@ void ApplyHistoryStep::enqueue_changing_navigable_continuation(ChangingNavigable
     process_changing_navigable_continuations();
 }
 
-// AD-HOC: A job that cannot run, or cannot go on, counts as one whose continuation was aborted.
-void ApplyHistoryStep::abort_changing_navigable_job(ChangingNavigable& changing_navigable)
-{
-    end_changing_navigable_job(changing_navigable);
-    process_changing_navigable_continuations();
-}
-
 // The job ends, without activating the document it populated.
 void ApplyHistoryStep::end_changing_navigable_job(ChangingNavigable& changing_navigable)
 {
     auto& navigable = changing_navigable.navigable();
     changing_navigable.job_ended = true;
-    if (auto population_loader = move(changing_navigable.population_loader))
-        population_loader->reclaim_response_body_after_failed_handoff();
-    if (auto document = move(changing_navigable.populated_document))
-        navigable.abandon_populated_document(changing_navigable.target_entry->document_state, *document);
+    changing_navigable.abandon_population();
     navigable.clear_ongoing_navigation_traversal(m_operation_id);
 
     m_changing_navigable_continuations.remove_first_matching([&](auto* continuation) { return continuation == &changing_navigable; });
@@ -358,8 +348,6 @@ void ApplyHistoryStep::process_changing_navigable_continuations()
         //       synchronous navigation steps were appended before this continuation was queued, so they will update the
         //       current session history entry (either by jumping the queue or after this algorithm completes).
         // NB: So does the push behind the AD-HOC aborts above.
-        // FIXME: A job aborted as it could not go on, as its process is gone, e.g., leaves navigable's current session
-        //        history entry on targetEntry, which it never activated.
 
         // 8. Set anyChangingNavigableApplied to true.
         m_any_changing_navigable_applied = true;
@@ -479,6 +467,14 @@ void ApplyHistoryStep::abandon()
 void ApplyHistoryStep::return_result(Web::HTML::HistoryStepResult result)
 {
     m_traversable.finish_history_operation(m_operation_id, result);
+}
+
+void ChangingNavigable::abandon_population()
+{
+    if (auto loader = move(population_loader))
+        loader->reclaim_response_body_after_failed_handoff();
+    if (auto document = move(populated_document))
+        navigable().abandon_populated_document(target_entry->document_state, *document);
 }
 
 Web::HTML::SessionHistoryEntryDescriptor ChangingNavigable::target_entry_descriptor() const

@@ -609,6 +609,14 @@ void ConnectionFromClient::continue_history_navigation_population(Web::PageId pa
         move(population));
 }
 
+void ConnectionFromClient::finish_history_navigation_population_without_document(Web::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
+{
+    auto page = this->page(page_id);
+    if (page.has_value() && page->page().history_executor().finish_history_navigation_population_without_document(operation_id, navigable_id))
+        return;
+    async_changing_navigable_continuation_enqueued(page_id, operation_id, navigable_id, true, false, {});
+}
+
 void ConnectionFromClient::run_changing_navigable_history_job(Web::PageId page_id, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryDescriptor target_entry, Web::HTML::UserNavigationInvolvement user_involvement, Optional<Web::Bindings::NavigationType> navigation_type, Optional<Utf16String> finalized_navigation_id, bool ongoing_navigation_is_traversal, Optional<Web::HTML::NavigationSourceSnapshot> source_snapshot_params)
 {
     auto page = this->page(page_id);

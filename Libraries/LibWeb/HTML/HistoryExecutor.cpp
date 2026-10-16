@@ -249,16 +249,33 @@ static void queue_apply_history_step_task(GC::Ref<LocalNavigable> navigable, GC:
     queue_a_task(Task::Source::NavigationAndTraversal, nullptr, navigable->active_document(), steps);
 }
 
-bool HistoryExecutor::resume_history_navigation_population(CrossProcessId operation_id, HistoryNavigationPopulation&& population)
+GC::Ptr<GC::Function<void(Optional<HistoryNavigationPopulation>)>> HistoryExecutor::take_continue_population(CrossProcessId operation_id, CrossProcessId navigable_id)
 {
     auto* operation = find_history_operation(operation_id);
     if (!operation)
+        return nullptr;
+    auto job = operation->changing_navigable_jobs.get(navigable_id);
+    if (!job.has_value())
+        return nullptr;
+    return exchange(job->continue_population, nullptr);
+}
+
+bool HistoryExecutor::resume_history_navigation_population(CrossProcessId operation_id, HistoryNavigationPopulation&& population)
+{
+    auto continue_population = take_continue_population(operation_id, population.request.navigable_id);
+    if (!continue_population)
         return false;
-    auto job = operation->changing_navigable_jobs.get(population.request.navigable_id);
-    if (!job.has_value() || !job->continue_population)
-        return false;
-    GC::Ref continue_population = *exchange(job->continue_population, nullptr);
     continue_population->function()(move(population));
+    return true;
+}
+
+// NB: The UI process could not finish the job's population, which so produces no document.
+bool HistoryExecutor::finish_history_navigation_population_without_document(CrossProcessId operation_id, CrossProcessId navigable_id)
+{
+    auto continue_population = take_continue_population(operation_id, navigable_id);
+    if (!continue_population)
+        return false;
+    continue_population->function()({});
     return true;
 }
 
@@ -508,13 +525,13 @@ void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId opera
             && (target_entry->document_state()->document_id() != navigable->active_document_id()
                 || target_entry->document_state()->reload_pending());
         if (needs_population) {
-            auto continue_population = GC::create_function(heap(), [this, navigable, after_document_populated](HistoryNavigationPopulation population) {
-                if (navigable->has_been_destroyed() || !navigable->active_window()) {
+            auto continue_population = GC::create_function(heap(), [this, navigable, after_document_populated](Optional<HistoryNavigationPopulation> population) {
+                if (!population.has_value() || navigable->has_been_destroyed() || !navigable->active_window()) {
                     after_document_populated->function()(nullptr);
                     return;
                 }
-                auto& request = population.request;
-                auto& result = population.result;
+                auto& request = population->request;
+                auto& result = population->result;
                 auto& realm = navigable->active_window()->principal_realm();
                 TemporaryExecutionContext execution_context { realm, TemporaryExecutionContext::CallbacksEnabled::Yes };
                 auto params = create_navigation_params_from_descriptor(realm, *navigable, move(result.navigation_params));
