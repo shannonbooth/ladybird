@@ -4235,22 +4235,11 @@ void LocalTraversableNavigable::request_close_preflight(GC::Ref<GC::Function<voi
         return;
     }
 
-    auto document = active_document();
-    if (!document) {
-        callback->function()(true);
-        return;
-    }
-
-    auto state_callback = GC::create_function(heap(), [callback](CheckIfUnloadingIsCanceledResult result, UnloadPromptShown) {
+    // NB: The documents of the traversable's inclusive descendant navigables are hosted by this page and by others.
+    //     The UI process checks if unloading is canceled in each page hosting one.
+    page().client().page_did_request_unload_check(id(), GC::create_function(heap(), [callback](CheckIfUnloadingIsCanceledResult result) {
         callback->function()(result == CheckIfUnloadingIsCanceledResult::Continue);
-    });
-    auto state = heap().allocate<CheckUnloadingCanceledState>(GC::Ptr<LocalTraversableNavigable> { this }, GC::Ptr<LocalTraversableNavigable> {}, Optional<UserNavigationInvolvement> {}, UnloadPromptShown::No, state_callback);
-    Vector<GC::Root<LocalNavigable>> local_navigables;
-    for (auto& navigable : document->inclusive_descendant_navigables()) {
-        if (auto* local_navigable = as_if<LocalNavigable>(navigable.ptr()))
-            local_navigables.append(*local_navigable);
-    }
-    state->start(local_navigables, {});
+    }));
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-cross-document-navigation
