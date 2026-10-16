@@ -258,10 +258,10 @@ void ConnectionFromClient::navigate_to_a_javascript_url(Web::PageId page_id, Web
     async_did_fail_navigation_population(page_id, navigable_id, move(navigation_id));
 }
 
-void ConnectionFromClient::run_navigation_unload_check(Web::PageId page_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id, Web::HTML::UnloadPromptShown unload_prompt_shown)
+void ConnectionFromClient::continue_navigation_after_unload_check(Web::PageId page_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id, Web::HTML::CheckIfUnloadingIsCanceledResult unload_prompt_canceled)
 {
     if (auto page = this->page(page_id); page.has_value()) {
-        page->run_navigation_unload_check(navigable_id, navigation_id, unload_prompt_shown);
+        page->continue_navigation_after_unload_check(navigable_id, navigation_id, unload_prompt_canceled);
         return;
     }
     async_did_fail_navigation_population(page_id, navigable_id, move(navigation_id));

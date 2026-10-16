@@ -7,6 +7,7 @@
 #include <LibWeb/ContentSecurityPolicy/Directives/Directive.h>
 #include <LibWeb/DOM/Document.h>
 #include <LibWeb/HTML/BrowsingContext.h>
+#include <LibWeb/HTML/CheckUnloadingCanceledState.h>
 #include <LibWeb/HTML/DocumentState.h>
 #include <LibWeb/HTML/EventLoop/EventLoop.h>
 #include <LibWeb/HTML/HistoryExecutor.h>
@@ -224,7 +225,10 @@ void HistoryExecutor::run_ui_beforeunload_check(Vector<CrossProcessId> navigable
         if (auto navigable = local_navigable_with_id(navigable_id); navigable && !navigable->has_been_destroyed() && navigable->active_document())
             navigables.append(*navigable);
     }
-    check_if_unloading_is_canceled(move(navigables), traversable, traversable, move(target_entry), user_involvement_for_navigate_event, unload_prompt_shown, on_complete);
+    // NB: The process hosting the traversable owns the check, so that closing it while a prompt is shown can adopt it.
+    GC::Ptr<LocalTraversableNavigable> owner = m_page->has_local_traversable() ? as_if<LocalTraversableNavigable>(*m_page->local_traversable()) : nullptr;
+    auto state = heap().allocate<CheckUnloadingCanceledState>(owner, traversable, user_involvement_for_navigate_event, unload_prompt_shown, on_complete);
+    state->start(navigables, move(target_entry));
 }
 
 static bool is_same_document_push_or_replace(Optional<Bindings::NavigationType> navigation_type, SessionHistoryEntry const& target_entry, DOM::Document const& displayed_document)

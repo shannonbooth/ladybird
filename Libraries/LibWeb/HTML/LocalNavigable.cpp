@@ -3704,64 +3704,54 @@ void LocalNavigable::begin_navigation(PreparedNavigation navigation)
     return;
 }
 
-void LocalNavigable::run_navigation_unload_check(Utf16String const& navigation_id, UnloadPromptShown unload_prompt_shown, GC::Ref<GC::Function<void(bool)>> completion_steps)
+// https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate
+// NB: The UI process ran step 1, checking if unloading is canceled for navigable's active document's inclusive
+//     descendant navigables in each page hosting one, and continues the navigation here with its result.
+bool LocalNavigable::continue_navigation_after_unload_check(Utf16String const& navigation_id, CheckIfUnloadingIsCanceledResult unload_prompt_canceled)
 {
-    if (has_been_destroyed() || !active_window()) {
-        completion_steps->function()(false);
-        return;
+    if (has_been_destroyed() || !active_window() || !has_navigation_parked_for_population(navigation_id))
+        return false;
+
+    // 2. If unloadPromptCanceled is not "continue":
+    if (unload_prompt_canceled != CheckIfUnloadingIsCanceledResult::Continue) {
+        // FIXME: 1. Invoke WebDriver BiDi navigation failed with navigable and a new WebDriver BiDi navigation status
+        //           whose id is navigationId, status is "canceled", and url is url.
+        // 2. Abort these steps.
+        stop_delaying_load_events_for_navigation(navigation_id);
+        // AD-HOC: Step 2 ends with 'Abort these steps.', which leaves navigable's ongoing navigation as
+        //         navigationId: step 24 of navigate set it ('Set the ongoing navigation for navigable to
+        //         navigationId.'), and the canceled navigation runs nothing further that would reset it. 'Each
+        //         navigable has an ongoing navigation, which is a navigation ID, "traversal", or null,
+        //         initially null. It is used to track navigation aborting and to prevent any navigations from
+        //         taking place during traversal.' So, with the id left in place, WebDriver's 'wait for
+        //         navigation to complete' would wait on the canceled navigation until the page load timeout,
+        //         after an Element Click, or a Back, that the prompt canceled: 'If there is an ongoing attempt
+        //         to navigate session's current browsing context that has not yet matured, wait for navigation
+        //         to mature.'
+        //         https://html.spec.whatwg.org/multipage/browsing-the-web.html#ongoing-navigation
+        //         https://w3c.github.io/webdriver/#dfn-wait-for-navigation-to-complete
+        //         Chromium, WebKit and Gecko drop the navigation outright when their beforeunload check says no
+        //         (Navigator::BeforeUnloadCompleted() cancels the NavigationRequest, FrameLoader::
+        //         continueLoadAfterNavigationPolicy() stops on shouldClose(), and nsDocShell::InternalLoad()
+        //         returns on PermitUnload()), so no state of the canceled attempt outlives it there either, and
+        //         none does here once the ongoing navigation is reset.
+        if (ongoing_navigation() == navigation_id)
+            set_ongoing_navigation({});
+        return false;
     }
 
-    if (!has_navigation_parked_for_population(navigation_id)) {
-        completion_steps->function()(false);
-        return;
+    // 3. Queue a global task on the navigation and traversal task source given navigable's active window to run these
+    //    steps:
+    //    1. If navigable's ongoing navigation is no longer navigationId:
+    if (ongoing_navigation() != navigation_id) {
+        // FIXME: 1. Invoke WebDriver BiDi navigation failed with navigable and a new WebDriver BiDi navigation status
+        //           whose id is navigationId, status is "canceled", and url is url.
+        // 2. Abort these steps.
+        stop_delaying_load_events_for_navigation(navigation_id);
+        return false;
     }
 
-    // 1. Let unloadPromptCanceled be the result of checking if unloading is user-canceled for navigable's active document's inclusive descendant navigables.
-    // NB: This page checks the documents it hosts, last: the UI process, which requested the check, ran it in the
-    //     pages hosting the others first, and whether one of them showed the prompt comes with the request.
-    check_if_unloading_is_canceled(hosted_inclusive_descendant_navigables(), as_if<LocalTraversableNavigable>(this), {}, {}, {}, unload_prompt_shown,
-        GC::create_function(heap(), [this, navigation_id, completion_steps](CheckIfUnloadingIsCanceledResult unload_prompt_canceled, UnloadPromptShown) {
-            if (has_been_destroyed() || !active_window()) {
-                completion_steps->function()(false);
-                return;
-            }
-
-            // 2. If unloadPromptCanceled is not "continue", or navigable's ongoing navigation is no longer navigationId:
-            // NB: The UI process learns of the canceled check from the population-failure report and ends the
-            //     recorded load itself.
-            if (unload_prompt_canceled != CheckIfUnloadingIsCanceledResult::Continue) {
-                stop_delaying_load_events_for_navigation(navigation_id);
-                // AD-HOC: Step 2 ends with 'Abort these steps.', which leaves navigable's ongoing navigation as
-                //         navigationId: step 24 of navigate set it ('Set the ongoing navigation for navigable to
-                //         navigationId.'), and the canceled navigation runs nothing further that would reset it. 'Each
-                //         navigable has an ongoing navigation, which is a navigation ID, "traversal", or null,
-                //         initially null. It is used to track navigation aborting and to prevent any navigations from
-                //         taking place during traversal.' So, with the id left in place, WebDriver's 'wait for
-                //         navigation to complete' would wait on the canceled navigation until the page load timeout,
-                //         after an Element Click, or a Back, that the prompt canceled: 'If there is an ongoing attempt
-                //         to navigate session's current browsing context that has not yet matured, wait for navigation
-                //         to mature.'
-                //         https://html.spec.whatwg.org/multipage/browsing-the-web.html#ongoing-navigation
-                //         https://w3c.github.io/webdriver/#dfn-wait-for-navigation-to-complete
-                //         Chromium, WebKit and Gecko drop the navigation outright when their beforeunload check says no
-                //         (Navigator::BeforeUnloadCompleted() cancels the NavigationRequest, FrameLoader::
-                //         continueLoadAfterNavigationPolicy() stops on shouldClose(), and nsDocShell::InternalLoad()
-                //         returns on PermitUnload()), so no state of the canceled attempt outlives it there either, and
-                //         none does here once the ongoing navigation is reset.
-                if (ongoing_navigation() == navigation_id)
-                    set_ongoing_navigation({});
-                completion_steps->function()(false);
-                return;
-            }
-
-            if (ongoing_navigation() != navigation_id) {
-                stop_delaying_load_events_for_navigation(navigation_id);
-                completion_steps->function()(false);
-                return;
-            }
-
-            completion_steps->function()(true);
-        }));
+    return true;
 }
 
 bool LocalNavigable::resume_navigation_params_creation(Utf16String const& navigation_id, Optional<NavigationPopulationRequest> request)
@@ -4232,25 +4222,6 @@ void LocalNavigable::reload(Optional<StorageSerializationRecord> navigation_api_
 bool navigation_must_be_a_replace(URL::URL const& url, DOM::Document const& document)
 {
     return url.scheme() == "javascript"sv || document.is_initial_about_blank();
-}
-
-// https://html.spec.whatwg.org/multipage/browsing-the-web.html#checking-if-unloading-is-canceled
-void check_if_unloading_is_canceled(
-    Vector<GC::Root<LocalNavigable>> navigables_that_need_before_unload,
-    GC::Ptr<LocalTraversableNavigable> owner,
-    GC::Ptr<LocalTraversableNavigable> traversable,
-    RefPtr<SessionHistoryEntry> target_entry,
-    Optional<UserNavigationInvolvement> user_involvement_for_navigate_events,
-    UnloadPromptShown unload_prompt_shown,
-    GC::Ref<GC::Function<void(CheckIfUnloadingIsCanceledResult, UnloadPromptShown)>> callback)
-{
-    auto state = GC::Heap::the().allocate<CheckUnloadingCanceledState>(
-        owner,
-        traversable,
-        user_involvement_for_navigate_events,
-        unload_prompt_shown,
-        callback);
-    state->start(navigables_that_need_before_unload, move(target_entry));
 }
 
 void LocalTraversableNavigable::request_close_preflight(GC::Ref<GC::Function<void(bool)>> callback)

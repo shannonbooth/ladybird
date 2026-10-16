@@ -101,7 +101,7 @@ endpoint WebContentServer routed by Web::PageId page_id
     set_ongoing_navigation(Web::PageId page_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id) =|
     navigate_to_a_fragment(Web::PageId page_id, Web::HTML::CrossProcessId navigable_id, URL::URL url, Web::HTML::HistoryHandlingBehavior history_handling, Web::HTML::UserNavigationInvolvement user_involvement, Utf16String navigation_id) =|
     navigate_to_a_javascript_url(Web::PageId page_id, Web::HTML::CrossProcessId navigable_id, URL::URL url, Web::HTML::HistoryHandlingBehavior history_handling, URL::Origin initiator_origin, Web::HTML::NavigationSourceSnapshot source_snapshot_params, Web::HTML::UserNavigationInvolvement user_involvement, Web::ContentSecurityPolicy::Directives::NavigationType csp_navigation_type, Utf16String navigation_id) =|
-    run_navigation_unload_check(Web::PageId page_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id, Web::HTML::UnloadPromptShown unload_prompt_shown) =|
+    continue_navigation_after_unload_check(Web::PageId page_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id, Web::HTML::CheckIfUnloadingIsCanceledResult unload_prompt_canceled) =|
     create_navigation_params(Web::PageId page_id, Web::HTML::NavigationPopulationRequest request) =|
     cancel_navigation_params_creation(Web::PageId page_id, Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id) =|
     deliver_posted_message(Web::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::PostedMessageDescriptor message) =|

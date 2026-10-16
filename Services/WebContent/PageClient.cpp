@@ -353,7 +353,7 @@ void PageClient::navigate_to_a_javascript_url(Web::HTML::CrossProcessId navigabl
     navigable->navigate_to_a_javascript_url_from_ui_process(url, history_handling, initiator_origin, source_snapshot_params, user_involvement, csp_navigation_type, move(navigation_id));
 }
 
-void PageClient::run_navigation_unload_check(Web::HTML::CrossProcessId navigable_id, Utf16String const& navigation_id, Web::HTML::UnloadPromptShown unload_prompt_shown)
+void PageClient::continue_navigation_after_unload_check(Web::HTML::CrossProcessId navigable_id, Utf16String const& navigation_id, Web::HTML::CheckIfUnloadingIsCanceledResult unload_prompt_canceled)
 {
     auto* navigable = as_if<Web::HTML::LocalNavigable>(page().navigable_with_id(navigable_id).ptr());
     if (!navigable) {
@@ -361,15 +361,15 @@ void PageClient::run_navigation_unload_check(Web::HTML::CrossProcessId navigable
         return;
     }
 
-    navigable->run_navigation_unload_check(navigation_id, unload_prompt_shown, GC::create_function(navigable->heap(), [this, navigable = GC::Ref { *navigable }, navigable_id, navigation_id](bool should_continue) {
-        // The UI process retained the pending entry at admission; a passed check only needs the signal.
-        if (!should_continue) {
-            navigable->resume_navigation_params_creation(navigation_id, {});
+    // The UI process retained the pending entry at admission; a passed check only needs the signal.
+    if (!navigable->continue_navigation_after_unload_check(navigation_id, unload_prompt_canceled)) {
+        navigable->resume_navigation_params_creation(navigation_id, {});
+        // NB: The UI process ended a navigation whose unload check was canceled when the check finished.
+        if (unload_prompt_canceled == Web::HTML::CheckIfUnloadingIsCanceledResult::Continue)
             client().async_did_fail_navigation_population(m_id, navigable_id, navigation_id);
-            return;
-        }
-        client().async_did_complete_navigation_unload_check(m_id, navigable_id, navigation_id);
-    }));
+        return;
+    }
+    client().async_did_complete_navigation_unload_check(m_id, navigable_id, navigation_id);
 }
 
 void PageClient::page_did_change_hosted_navigable_state(Web::HTML::CrossProcessId navigable_id, Web::HTML::HostedNavigableState const& state)

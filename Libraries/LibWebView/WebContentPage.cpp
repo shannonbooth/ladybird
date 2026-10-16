@@ -1993,16 +1993,12 @@ void WebContentPage::begin_navigation_unload_check(CanonicalNavigable& target_na
         inclusive_descendants.append(navigable.id());
         return IterationDecision::Continue;
     });
-    (void)target_navigable.top_level_traversable().check_if_unloading_is_canceled(move(inclusive_descendants), {}, {}, *this, Web::HTML::UnloadPromptShown::No,
-        [page = NonnullRefPtr<WebContentPage>(*this), navigable_id = target_navigable.id(), navigation_id](Web::HTML::CheckIfUnloadingIsCanceledResult result, Web::HTML::UnloadPromptShown unload_prompt_shown) {
-            if (result != Web::HTML::CheckIfUnloadingIsCanceledResult::Continue) {
-                // The navigation parked for its population is not coming; the recorded load ends as a failed one.
-                page->async_cancel_navigation_params_creation(navigable_id, navigation_id);
-                if (page->is_open())
-                    page->did_fail_navigation_population(navigable_id, navigation_id);
-                return;
-            }
-            page->async_run_navigation_unload_check(navigable_id, navigation_id, unload_prompt_shown);
+    (void)target_navigable.top_level_traversable().check_if_unloading_is_canceled(move(inclusive_descendants), {}, {},
+        [page = NonnullRefPtr<WebContentPage>(*this), navigable_id = target_navigable.id(), navigation_id](Web::HTML::CheckIfUnloadingIsCanceledResult result) {
+            page->async_continue_navigation_after_unload_check(navigable_id, navigation_id, result);
+            // The navigation parked for its population is not coming; the recorded load ends as a failed one.
+            if (result != Web::HTML::CheckIfUnloadingIsCanceledResult::Continue && page->is_open())
+                page->did_fail_navigation_population(navigable_id, navigation_id);
         });
 }
 
@@ -2648,8 +2644,8 @@ void WebContentPage::request_unload_check(Web::HTML::CrossProcessId navigable_id
         inclusive_descendants.append(descendant.id());
         return IterationDecision::Continue;
     });
-    (void)navigable->top_level_traversable().check_if_unloading_is_canceled(move(inclusive_descendants), {}, {}, {}, Web::HTML::UnloadPromptShown::No,
-        [page = NonnullRefPtr<WebContentPage>(*this), check_id](Web::HTML::CheckIfUnloadingIsCanceledResult result, Web::HTML::UnloadPromptShown) {
+    (void)navigable->top_level_traversable().check_if_unloading_is_canceled(move(inclusive_descendants), {}, {},
+        [page = NonnullRefPtr<WebContentPage>(*this), check_id](Web::HTML::CheckIfUnloadingIsCanceledResult result) {
             page->async_unload_check_result(check_id, result);
         });
 }
