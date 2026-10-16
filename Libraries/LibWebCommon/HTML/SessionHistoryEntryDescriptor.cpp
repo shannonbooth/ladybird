@@ -17,7 +17,7 @@ static Utf16String generate_random_uuid_utf16()
     return Utf16String::from_ascii_without_validation(uuid.bytes());
 }
 
-SessionHistoryEntryDescriptor create_initial_session_history_entry_descriptor(CrossProcessId document_state_id, Optional<URL::URL> about_base_url, Utf16String navigable_target_name)
+SessionHistoryEntryDescriptor create_initial_session_history_entry_descriptor(CrossProcessId document_state_id, CrossProcessId directive_state_id, Optional<URL::URL> about_base_url, Utf16String navigable_target_name)
 {
     // NB: The origin fields are set from the document once it is created.
     return {
@@ -44,7 +44,7 @@ SessionHistoryEntryDescriptor create_initial_session_history_entry_descriptor(Cr
         .navigation_api_id = generate_random_uuid_utf16(),
         .scroll_restoration_mode = ScrollRestorationMode::Auto,
         .scroll_position_data = {},
-        .directive_state_id = {},
+        .directive_state_id = directive_state_id,
         .directive_state_value = {},
     };
 }

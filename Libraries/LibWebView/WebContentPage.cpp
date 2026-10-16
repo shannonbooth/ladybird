@@ -2526,7 +2526,7 @@ Messages::WebContentClient::DidRequestNewWebViewResponse WebContentPage::did_req
 
     auto root_navigable_id = Application::the().allocate_ui_process_cross_process_id();
     auto initial_history_entry = Web::HTML::create_initial_session_history_entry_descriptor(
-        Application::the().allocate_ui_process_cross_process_id(), move(opener_base_url), move(target_name));
+        Application::the().allocate_ui_process_cross_process_id(), Application::the().allocate_ui_process_cross_process_id(), move(opener_base_url), move(target_name));
     auto document_id = Application::the().allocate_ui_process_cross_process_id();
     auto& traversable = CanonicalTraversable::create_a_new_top_level_traversable(root_navigable_id, opener, move(initial_history_entry), document_id);
 

@@ -12,7 +12,7 @@
 
 static NonnullRefPtr<WebView::CanonicalSessionHistoryEntry> initial_history_entry()
 {
-    return MUST(WebView::CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::create_initial_session_history_entry_descriptor({}, {}, {})));
+    return MUST(WebView::CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::create_initial_session_history_entry_descriptor({}, {}, {}, {})));
 }
 
 TEST_CASE(storage_round_trips_on_fresh_database)

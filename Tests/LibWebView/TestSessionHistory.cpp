@@ -18,7 +18,7 @@
 
 static NonnullRefPtr<WebView::CanonicalSessionHistoryEntry> initial_history_entry()
 {
-    return MUST(WebView::CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::create_initial_session_history_entry_descriptor({}, {}, {})));
+    return MUST(WebView::CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::create_initial_session_history_entry_descriptor({}, {}, {}, {})));
 }
 
 static void give_active_document(WebView::CanonicalNavigable& navigable)

@@ -1102,7 +1102,7 @@ ErrorOr<NonnullRefPtr<WebContentClient>> Application::create_web_content_client(
             return canonical_initial_history_entry.release_value();
         // The UI process determines the origin of the traversable's first document, which has no creator, before the
         // process creates it.
-        auto entry = Web::HTML::create_initial_session_history_entry_descriptor(*initial_document_state_id, {}, {});
+        auto entry = Web::HTML::create_initial_session_history_entry_descriptor(*initial_document_state_id, allocate_ui_process_cross_process_id(), {}, {});
         entry.document_state.origin = URL::Origin::create_opaque();
         return entry;
     }();

@@ -112,7 +112,7 @@ struct SessionHistoryNestedHistoryDescriptor {
 
 // https://html.spec.whatwg.org/multipage/history.html#session-history-entry
 
-WEBCOMMON_API SessionHistoryEntryDescriptor create_initial_session_history_entry_descriptor(CrossProcessId document_state_id, Optional<URL::URL> about_base_url, Utf16String navigable_target_name);
+WEBCOMMON_API SessionHistoryEntryDescriptor create_initial_session_history_entry_descriptor(CrossProcessId document_state_id, CrossProcessId directive_state_id, Optional<URL::URL> about_base_url, Utf16String navigable_target_name);
 
 WEBCOMMON_API PendingSessionHistoryEntryDescriptor create_pending_session_history_entry_descriptor(SessionHistoryEntryDescriptor);
 
