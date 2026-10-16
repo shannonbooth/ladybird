@@ -102,14 +102,12 @@ SessionHistoryDocumentStateDescriptor create_session_history_document_state_desc
 
 SessionHistoryEntryDescriptor create_session_history_entry_descriptor(SessionHistoryEntry const& entry)
 {
-    auto entry_step = entry.step_value();
-    VERIFY(entry_step.has_value());
     SessionHistoryDocumentStateDescriptor document_state_descriptor;
     if (auto document_state = entry.document_state())
         document_state_descriptor = create_session_history_document_state_descriptor(*document_state);
 
     return {
-        .step = static_cast<i32>(*entry_step),
+        .step = entry.step_value(),
         .url = entry.url(),
         .document_state = move(document_state_descriptor),
         .classic_history_api_state = entry.classic_history_api_state(),
@@ -144,27 +142,6 @@ SessionHistoryEntryIdentity session_history_entry_identity(SessionHistoryEntry c
     };
 }
 
-PendingSessionHistoryEntryDescriptor create_pending_session_history_entry_descriptor(SessionHistoryEntry const& entry)
-{
-    VERIFY(!entry.step_value().has_value());
-    SessionHistoryDocumentStateDescriptor document_state_descriptor;
-    if (auto document_state = entry.document_state())
-        document_state_descriptor = create_session_history_document_state_descriptor(*document_state);
-
-    return {
-        .url = entry.url(),
-        .document_state = move(document_state_descriptor),
-        .classic_history_api_state = entry.classic_history_api_state(),
-        .navigation_api_state = entry.navigation_api_state(),
-        .navigation_api_key = entry.navigation_api_key(),
-        .navigation_api_id = entry.navigation_api_id(),
-        .scroll_restoration_mode = entry.scroll_restoration_mode(),
-        .scroll_position_data = entry.scroll_position_data(),
-        .directive_state_id = entry.directive_state()->cross_process_id(),
-        .directive_state_value = entry.directive_state()->value(),
-    };
-}
-
 SameDocumentNavigationEntry create_same_document_navigation_entry(SessionHistoryEntry const& entry)
 {
     auto document_state = entry.document_state();
@@ -186,7 +163,10 @@ SameDocumentNavigationEntry create_same_document_navigation_entry(SessionHistory
 void apply_session_history_entry_descriptor_from_ui_process(SessionHistoryEntry& entry, SessionHistoryEntryDescriptor& entry_descriptor)
 {
     entry.set_url(move(entry_descriptor.url));
-    entry.set_step(static_cast<int>(entry_descriptor.step));
+    if (entry_descriptor.step.has_value())
+        entry.set_step(*entry_descriptor.step);
+    else
+        entry.set_step(SessionHistoryEntry::Pending::Tag);
     entry.set_classic_history_api_state(move(entry_descriptor.classic_history_api_state));
     entry.set_navigation_api_state(move(entry_descriptor.navigation_api_state));
     entry.set_navigation_api_key(move(entry_descriptor.navigation_api_key));

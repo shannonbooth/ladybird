@@ -51,7 +51,7 @@ static void append_history_log_nested_histories(StringBuilder& builder, Vector<W
 
 static void append_history_log_entry(StringBuilder& builder, Web::HTML::SessionHistoryEntryDescriptor const& entry)
 {
-    builder.appendff("{}:{}", entry.step, entry.url);
+    builder.appendff("{}:{}", *entry.step, entry.url);
     auto resource_type = document_state_resource_type(entry.document_state.resource);
     if (entry.document_state.reload_pending
         || !entry.document_state.navigable_target_name.is_empty()
@@ -117,7 +117,7 @@ static JsonArray history_json_nested_histories(Vector<Web::HTML::SessionHistoryN
 JsonObject history_json_entry(Web::HTML::SessionHistoryEntryDescriptor const& entry, bool current)
 {
     JsonObject serialized;
-    serialized.set("step"sv, entry.step);
+    serialized.set("step"sv, *entry.step);
     serialized.set("url"sv, entry.url.serialize());
     serialized.set("documentStateId"sv, MUST(String::formatted("{}", entry.document_state.id)));
     serialized.set("resource"sv, document_state_resource_type(entry.document_state.resource));

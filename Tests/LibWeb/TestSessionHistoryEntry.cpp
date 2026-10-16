@@ -18,7 +18,7 @@ static URL::URL parse_url(StringView url)
     return parsed_url.release_value();
 }
 
-TEST_CASE(concretizing_a_pending_entry_preserves_its_identity)
+TEST_CASE(a_pending_entry_is_described_without_a_step)
 {
     auto vm = JS::VM::create();
 
@@ -30,10 +30,9 @@ TEST_CASE(concretizing_a_pending_entry_preserves_its_identity)
 
     auto navigation_api_key = entry->navigation_api_key();
     auto navigation_api_id = entry->navigation_api_id();
-    auto descriptor = Web::HTML::create_session_history_entry_descriptor(
-        Web::HTML::create_pending_session_history_entry_descriptor(*entry), 7);
+    auto descriptor = Web::HTML::create_session_history_entry_descriptor(*entry);
 
-    EXPECT_EQ(descriptor.step, 7);
+    EXPECT(!descriptor.step.has_value());
     EXPECT_EQ(descriptor.navigation_api_key, navigation_api_key);
     EXPECT_EQ(descriptor.navigation_api_id, navigation_api_id);
 }

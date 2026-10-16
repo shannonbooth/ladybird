@@ -763,7 +763,7 @@ void WebContentPage::did_create_populated_document_with_an_origin_of_its_own(Web
         navigable->did_create_populated_document_with_an_origin_of_its_own(*this, document_id, origin, environment_id);
 }
 
-void WebContentPage::did_create_child_frame(Web::HTML::CrossProcessId parent_frame_id, Web::HTML::CrossProcessId container_document_id, Web::HTML::CrossProcessId frame_id, Web::HTML::HostedNavigableState hosted_state, Web::HTML::PendingSessionHistoryEntryDescriptor initial_history_entry, URL::Origin origin, Web::HTML::EnvironmentId environment_id, Web::HTML::CrossProcessId document_id)
+void WebContentPage::did_create_child_frame(Web::HTML::CrossProcessId parent_frame_id, Web::HTML::CrossProcessId container_document_id, Web::HTML::CrossProcessId frame_id, Web::HTML::HostedNavigableState hosted_state, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, URL::Origin origin, Web::HTML::EnvironmentId environment_id, Web::HTML::CrossProcessId document_id)
 {
     auto& traversable = this->traversable();
 
@@ -788,8 +788,8 @@ void WebContentPage::did_create_child_frame(Web::HTML::CrossProcessId parent_fra
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#create-a-new-child-navigable
     // NB: The process creating the navigable reports the entry that initializing it, in step 8, created.
-    auto initial_entry = CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::create_session_history_entry_descriptor(move(initial_history_entry), 0));
-    if (initial_entry.is_error()) {
+    auto initial_entry = CanonicalSessionHistoryEntry::create_from_descriptor(initial_history_entry);
+    if (initial_history_entry.step.has_value() || initial_entry.is_error()) {
         client().did_misbehave("did_create_child_frame"sv, "invalid initial session history entry"sv);
         return;
     }
@@ -1637,6 +1637,10 @@ void WebContentPage::request_history_operation(Web::HTML::CrossProcessId operati
         async_complete_history_operation(operation_id, {}, traversable().session_history().size());
         return;
     }
+    if (auto const* finalize = parameters.get_pointer<Web::FinalizeCrossDocumentNavigationHistoryOperationParameters>(); finalize && finalize->history_entry.step.has_value()) {
+        client().did_misbehave("request_history_operation"sv, "finalized entry has a step"sv);
+        return;
+    }
     if (auto const* same_document = parameters.get_pointer<Web::FinalizeSameDocumentNavigationHistoryOperationParameters>(); same_document && same_document->previous_entry_update.has_value() && !is_valid_session_history_entry_update(*same_document->previous_entry_update)) {
         client().did_misbehave("request_history_operation"sv, "invalid scroll restoration mode"sv);
         return;
@@ -2017,7 +2021,7 @@ void WebContentPage::did_complete_navigation_unload_check(Web::HTML::CrossProces
         move(checking->start_request),
         Application::the().allocate_ui_process_cross_process_id());
     population_request.target_snapshot_params.sandboxing_flags |= navigable->snapshot_target_snapshot_params().sandboxing_flags;
-    ongoing_navigation->history_entry = MUST(CanonicalSessionHistoryEntry::create_from_descriptor(Web::HTML::create_session_history_entry_descriptor(population_request.history_entry, 0)));
+    ongoing_navigation->history_entry = MUST(CanonicalSessionHistoryEntry::create_from_descriptor(population_request.history_entry));
     ongoing_navigation->state = CanonicalNavigation::CreatingNavigationParams { NavigationLoader::create(client().is_private(), move(population_request)) };
     async_create_navigation_params(ongoing_navigation->loader()->request());
 
@@ -2057,7 +2061,7 @@ void WebContentPage::did_finish_navigation_params_creation(Web::HTML::CrossProce
     ongoing_navigation->state = CanonicalNavigation::AcquiringResponseBody { move(loader) };
     NonnullRefPtr acquiring_loader = *ongoing_navigation->loader();
     acquiring_loader->did_finish_navigation_params_creation(result.release_value());
-    if (ongoing_navigation->history_entry->update_from_descriptor(Web::HTML::create_session_history_entry_descriptor(acquiring_loader->request().history_entry, 0)).is_error()) {
+    if (ongoing_navigation->history_entry->update_from_descriptor(acquiring_loader->request().history_entry).is_error()) {
         auto rejected_result = acquiring_loader->take_result();
         NavigationLoader::discard(client().is_private(), rejected_result);
         navigable->did_cancel_navigation(navigation_id);

@@ -920,8 +920,7 @@ void LocalNavigable::continue_navigation_at_population(NavigationPopulationReque
     auto navigable = GC::Ref { *this };
 
     SessionHistoryEntryReconstructionState reconstruction_state;
-    auto history_entry = create_session_history_entry_from_ui_process(create_session_history_entry_descriptor(move(request.history_entry), 0), reconstruction_state);
-    history_entry->set_step(SessionHistoryEntry::Pending::Tag);
+    auto history_entry = create_session_history_entry_from_ui_process(move(request.history_entry), reconstruction_state);
 
     navigable->set_ongoing_navigation(request.navigation_id);
 
@@ -2487,7 +2486,7 @@ static void perform_navigation_params_fetch(JS::Realm& realm, GC::Ref<Navigation
 // https://wicg.github.io/scroll-to-text-fragment/#restricting-the-text-fragment
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#create-navigation-params-by-fetching
 static void create_navigation_params_by_fetching(
-    PendingSessionHistoryEntryDescriptor const& entry,
+    SessionHistoryEntryDescriptor const& entry,
     GC::Ptr<LocalNavigable> navigable,
     GC::Ref<SourceSnapshotParams> source_snapshot_params,
     TargetSnapshotParams const& target_snapshot_params,
@@ -2818,7 +2817,7 @@ using NavigationParamsCreationCompletion = GC::Function<void(GC::Ref<InternalNav
 
 static void create_navigation_params_for_population(
     LocalNavigable& navigable,
-    PendingSessionHistoryEntryDescriptor const& entry,
+    SessionHistoryEntryDescriptor const& entry,
     GC::Ref<SourceSnapshotParams> source_snapshot_params,
     TargetSnapshotParams const& target_snapshot_params,
     UserNavigationInvolvement user_involvement,
@@ -4304,7 +4303,7 @@ void finalize_a_cross_document_navigation(GC::Ref<LocalNavigable> navigable, His
     navigable->page().history_executor().request_history_operation(
         FinalizeCrossDocumentNavigationHistoryOperationParameters {
             .navigable_id = navigable->id(),
-            .history_entry = create_pending_session_history_entry_descriptor(*history_entry),
+            .history_entry = create_session_history_entry_descriptor(*history_entry),
             .navigation_id = navigation_id,
             .history_handling = history_handling,
             .user_involvement = user_involvement,

@@ -802,7 +802,7 @@ static ErrorOr<void> store_history_entries(Database::Database& database, Session
         TRY(database.try_execute_bound_statement(statements.insert_entry, [&](auto& bind) -> ErrorOr<void> {
             TRY(bind("history_id"sv, history_id));
             TRY(bind("entry_ordinal"sv, entry_ordinal));
-            TRY(bind("step"sv, entry.step));
+            TRY(bind("step"sv, *entry.step));
             TRY(bind("url"sv, entry.url.serialize()));
             TRY(bind("document_state_namespace_id"sv, encode_cross_process_id_component(document_state.id.namespace_id)));
             TRY(bind("document_state_local_id"sv, encode_cross_process_id_component(document_state.id.local_id)));

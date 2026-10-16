@@ -3200,7 +3200,7 @@ static Optional<size_t> current_top_level_history_entry_index_for_step(Vector<We
 
     Optional<size_t> current_entry_index;
     for (size_t i = 0; i < entries.size(); ++i) {
-        if (entries[i].step > *current_step)
+        if (*entries[i].step > *current_step)
             break;
         current_entry_index = i;
     }

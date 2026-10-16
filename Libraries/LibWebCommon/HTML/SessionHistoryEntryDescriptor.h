@@ -81,20 +81,8 @@ struct SessionHistoryEntryUpdate {
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#session-history-entry
 struct SessionHistoryEntryDescriptor {
-    i32 step { 0 };
-    URL::URL url;
-    SessionHistoryDocumentStateDescriptor document_state;
-    StorageSerializationRecord classic_history_api_state;
-    StorageSerializationRecord navigation_api_state;
-    Utf16String navigation_api_key;
-    Utf16String navigation_api_id;
-    ScrollRestorationMode scroll_restoration_mode { ScrollRestorationMode::Auto };
-    SessionHistoryEntryScrollPositionData scroll_position_data;
-    CrossProcessId directive_state_id;
-    Optional<String> directive_state_value;
-};
-
-struct PendingSessionHistoryEntryDescriptor {
+    // NB: Empty while the entry's step is "pending".
+    Optional<i32> step;
     URL::URL url;
     SessionHistoryDocumentStateDescriptor document_state;
     StorageSerializationRecord classic_history_api_state;
@@ -117,10 +105,6 @@ struct SessionHistoryNestedHistoryDescriptor {
 
 WEBCOMMON_API SessionHistoryEntryDescriptor create_initial_session_history_entry_descriptor(CrossProcessId document_state_id, CrossProcessId directive_state_id, Optional<URL::URL> about_base_url, Utf16String navigable_target_name);
 
-WEBCOMMON_API PendingSessionHistoryEntryDescriptor create_pending_session_history_entry_descriptor(SessionHistoryEntryDescriptor);
-
-WEBCOMMON_API SessionHistoryEntryDescriptor create_session_history_entry_descriptor(PendingSessionHistoryEntryDescriptor, i32 step);
-
 WEBCOMMON_API SessionHistoryEntryIdentity session_history_entry_identity(SessionHistoryEntryDescriptor const&);
 
 }
@@ -132,12 +116,6 @@ WEBCOMMON_API ErrorOr<void> encode(Encoder&, Web::HTML::SessionHistoryEntryDescr
 
 template<>
 WEBCOMMON_API ErrorOr<Web::HTML::SessionHistoryEntryDescriptor> decode(Decoder&);
-
-template<>
-WEBCOMMON_API ErrorOr<void> encode(Encoder&, Web::HTML::PendingSessionHistoryEntryDescriptor const&);
-
-template<>
-WEBCOMMON_API ErrorOr<Web::HTML::PendingSessionHistoryEntryDescriptor> decode(Decoder&);
 
 template<>
 WEBCOMMON_API ErrorOr<void> encode(Encoder&, Web::HTML::SessionHistoryEntryScrollPositionData const&);

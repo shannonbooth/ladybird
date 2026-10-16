@@ -57,39 +57,6 @@ SessionHistoryEntryIdentity session_history_entry_identity(SessionHistoryEntryDe
     };
 }
 
-PendingSessionHistoryEntryDescriptor create_pending_session_history_entry_descriptor(SessionHistoryEntryDescriptor entry)
-{
-    return {
-        .url = move(entry.url),
-        .document_state = move(entry.document_state),
-        .classic_history_api_state = move(entry.classic_history_api_state),
-        .navigation_api_state = move(entry.navigation_api_state),
-        .navigation_api_key = move(entry.navigation_api_key),
-        .navigation_api_id = move(entry.navigation_api_id),
-        .scroll_restoration_mode = entry.scroll_restoration_mode,
-        .scroll_position_data = move(entry.scroll_position_data),
-        .directive_state_id = entry.directive_state_id,
-        .directive_state_value = move(entry.directive_state_value),
-    };
-}
-
-SessionHistoryEntryDescriptor create_session_history_entry_descriptor(PendingSessionHistoryEntryDescriptor entry, i32 step)
-{
-    return {
-        .step = step,
-        .url = move(entry.url),
-        .document_state = move(entry.document_state),
-        .classic_history_api_state = move(entry.classic_history_api_state),
-        .navigation_api_state = move(entry.navigation_api_state),
-        .navigation_api_key = move(entry.navigation_api_key),
-        .navigation_api_id = move(entry.navigation_api_id),
-        .scroll_restoration_mode = entry.scroll_restoration_mode,
-        .scroll_position_data = move(entry.scroll_position_data),
-        .directive_state_id = entry.directive_state_id,
-        .directive_state_value = move(entry.directive_state_value),
-    };
-}
-
 }
 
 template<>
@@ -112,7 +79,7 @@ ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::SessionHistoryEntryDescri
 template<>
 ErrorOr<Web::HTML::SessionHistoryEntryDescriptor> IPC::decode(Decoder& decoder)
 {
-    auto step = TRY(decoder.decode<i32>());
+    auto step = TRY(decoder.decode<Optional<i32>>());
     auto url = TRY(decoder.decode<URL::URL>());
     auto document_state = TRY(decoder.decode<Web::HTML::SessionHistoryDocumentStateDescriptor>());
     auto classic_history_api_state = TRY(decoder.decode<Web::HTML::StorageSerializationRecord>());
@@ -136,39 +103,6 @@ ErrorOr<Web::HTML::SessionHistoryEntryDescriptor> IPC::decode(Decoder& decoder)
         .scroll_position_data = move(scroll_position_data),
         .directive_state_id = directive_state_id,
         .directive_state_value = move(directive_state_value),
-    };
-}
-
-template<>
-ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::PendingSessionHistoryEntryDescriptor const& entry)
-{
-    TRY(encoder.encode(entry.url));
-    TRY(encoder.encode(entry.document_state));
-    TRY(encoder.encode(entry.classic_history_api_state));
-    TRY(encoder.encode(entry.navigation_api_state));
-    TRY(encoder.encode(entry.navigation_api_key));
-    TRY(encoder.encode(entry.navigation_api_id));
-    TRY(encoder.encode(entry.scroll_restoration_mode));
-    TRY(encoder.encode(entry.scroll_position_data));
-    TRY(encoder.encode(entry.directive_state_id));
-    TRY(encoder.encode(entry.directive_state_value));
-    return {};
-}
-
-template<>
-ErrorOr<Web::HTML::PendingSessionHistoryEntryDescriptor> IPC::decode(Decoder& decoder)
-{
-    return Web::HTML::PendingSessionHistoryEntryDescriptor {
-        .url = TRY(decoder.decode<URL::URL>()),
-        .document_state = TRY(decoder.decode<Web::HTML::SessionHistoryDocumentStateDescriptor>()),
-        .classic_history_api_state = TRY(decoder.decode<Web::HTML::StorageSerializationRecord>()),
-        .navigation_api_state = TRY(decoder.decode<Web::HTML::StorageSerializationRecord>()),
-        .navigation_api_key = TRY(decoder.decode<Utf16String>()),
-        .navigation_api_id = TRY(decoder.decode<Utf16String>()),
-        .scroll_restoration_mode = TRY(decoder.decode<Web::HTML::ScrollRestorationMode>()),
-        .scroll_position_data = TRY(decoder.decode<Web::HTML::SessionHistoryEntryScrollPositionData>()),
-        .directive_state_id = TRY(decoder.decode<Web::HTML::CrossProcessId>()),
-        .directive_state_value = TRY(decoder.decode<Optional<String>>()),
     };
 }
 

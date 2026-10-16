@@ -109,7 +109,8 @@ static NonnullRefPtr<CanonicalDocumentState> document_state_from_descriptor(Web:
 
 static void set_entry_fields_from_descriptor(CanonicalSessionHistoryEntry& entry, Web::HTML::SessionHistoryEntryDescriptor const& descriptor)
 {
-    entry.step = descriptor.step;
+    if (descriptor.step.has_value())
+        entry.step = *descriptor.step;
     entry.url = descriptor.url;
     entry.classic_history_api_state = descriptor.classic_history_api_state;
     entry.navigation_api_state = descriptor.navigation_api_state;

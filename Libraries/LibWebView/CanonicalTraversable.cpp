@@ -1888,7 +1888,7 @@ void CanonicalTraversable::did_attempt_to_populate_the_history_entry_document(We
     navigation->state = CanonicalNavigation::Finalizing { move(loader) };
 
     // NB: Populating historyEntry's document saves state in the entry, which the page that populated it reports.
-    auto history_entry_descriptor = Web::HTML::create_session_history_entry_descriptor(parameters.history_entry, 0);
+    auto const& history_entry_descriptor = parameters.history_entry;
     if (!is_javascript_url_navigation) {
         if (!navigation->history_entry)
             return;

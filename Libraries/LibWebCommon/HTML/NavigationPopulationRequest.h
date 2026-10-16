@@ -50,7 +50,7 @@ struct NavigationStartRequest {
 // populate the pending session history entry's document.
 struct NavigationPopulationRequest {
     CrossProcessId navigable_id;
-    PendingSessionHistoryEntryDescriptor history_entry;
+    SessionHistoryEntryDescriptor history_entry;
     NavigationSourceSnapshot source_snapshot_params;
     TargetSnapshotParams target_snapshot_params;
     ContentSecurityPolicy::Directives::NavigationType csp_navigation_type;

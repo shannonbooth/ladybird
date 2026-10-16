@@ -111,37 +111,10 @@ static Web::HTML::SessionHistoryEntryDescriptor entry(i32 step, StringView url)
     return create_test_entry(step, parse_url(url));
 }
 
-static Web::HTML::PendingSessionHistoryEntryDescriptor pending_entry(Web::HTML::SessionHistoryEntryDescriptor entry)
+static Web::HTML::SessionHistoryEntryDescriptor pending_entry(Web::HTML::SessionHistoryEntryDescriptor entry)
 {
-    return {
-        .url = move(entry.url),
-        .document_state = move(entry.document_state),
-        .classic_history_api_state = move(entry.classic_history_api_state),
-        .navigation_api_state = move(entry.navigation_api_state),
-        .navigation_api_key = move(entry.navigation_api_key),
-        .navigation_api_id = move(entry.navigation_api_id),
-        .scroll_restoration_mode = entry.scroll_restoration_mode,
-        .scroll_position_data = move(entry.scroll_position_data),
-        .directive_state_id = entry.directive_state_id,
-        .directive_state_value = move(entry.directive_state_value),
-    };
-}
-
-static Web::HTML::SessionHistoryEntryDescriptor entry_with_step(Web::HTML::PendingSessionHistoryEntryDescriptor entry, i32 step)
-{
-    return {
-        .step = step,
-        .url = move(entry.url),
-        .document_state = move(entry.document_state),
-        .classic_history_api_state = move(entry.classic_history_api_state),
-        .navigation_api_state = move(entry.navigation_api_state),
-        .navigation_api_key = move(entry.navigation_api_key),
-        .navigation_api_id = move(entry.navigation_api_id),
-        .scroll_restoration_mode = entry.scroll_restoration_mode,
-        .scroll_position_data = move(entry.scroll_position_data),
-        .directive_state_id = entry.directive_state_id,
-        .directive_state_value = move(entry.directive_state_value),
-    };
+    entry.step = {};
+    return entry;
 }
 
 static NonnullRefPtr<WebView::CanonicalSessionHistoryEntry> canonical_entry(Web::HTML::SessionHistoryEntryDescriptor const& descriptor)
@@ -150,9 +123,9 @@ static NonnullRefPtr<WebView::CanonicalSessionHistoryEntry> canonical_entry(Web:
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-cross-document-navigation
-static Optional<i32> finalize_cross_document_navigation_for_testing(WebView::TraversableSessionHistory& history, WebView::CanonicalNavigable const& navigable, Web::HTML::PendingSessionHistoryEntryDescriptor pending_history_entry, Web::HTML::HistoryHandlingBehavior history_handling)
+static Optional<i32> finalize_cross_document_navigation_for_testing(WebView::TraversableSessionHistory& history, WebView::CanonicalNavigable const& navigable, Web::HTML::SessionHistoryEntryDescriptor pending_history_entry, Web::HTML::HistoryHandlingBehavior history_handling)
 {
-    auto history_entry = canonical_entry(entry_with_step(move(pending_history_entry), 0));
+    auto history_entry = canonical_entry(pending_history_entry);
     if (history_handling != Web::HTML::HistoryHandlingBehavior::Replace)
         return history.push_session_history_entry(navigable, move(history_entry));
 

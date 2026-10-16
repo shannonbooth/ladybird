@@ -520,7 +520,7 @@ void HistoryExecutor::run_ui_changing_navigable_history_job(CrossProcessId opera
             //     holds the entry as it is now. See https://github.com/whatwg/html/issues/9869.
             auto request = NavigationPopulationRequest {
                 .navigable_id = navigable->id(),
-                .history_entry = create_pending_session_history_entry_descriptor(create_session_history_entry_descriptor(*target_entry)),
+                .history_entry = create_session_history_entry_descriptor(*target_entry),
                 .source_snapshot_params = create_navigation_source_snapshot(*potentially_target_specific_source_snapshot_params),
                 .target_snapshot_params = target_snapshot_params,
                 .csp_navigation_type = ContentSecurityPolicy::Directives::Directive::NavigationType::Other,

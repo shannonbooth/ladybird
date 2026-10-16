@@ -99,7 +99,8 @@ NavigationPopulationRequest create_navigation_population_request(NavigationStart
     }
 
     // 6. Let historyEntry be a new session history entry, with its URL set to url and its document state set to documentState.
-    PendingSessionHistoryEntryDescriptor history_entry {
+    SessionHistoryEntryDescriptor history_entry {
+        .step = {},
         .url = move(url),
         .document_state = move(document_state),
         .classic_history_api_state = move(start_request.classic_history_api_state),
@@ -222,7 +223,7 @@ ErrorOr<Web::HTML::NavigationPopulationRequest> decode(Decoder& decoder)
 {
     return Web::HTML::NavigationPopulationRequest {
         .navigable_id = TRY(decoder.decode<Web::HTML::CrossProcessId>()),
-        .history_entry = TRY(decoder.decode<Web::HTML::PendingSessionHistoryEntryDescriptor>()),
+        .history_entry = TRY(decoder.decode<Web::HTML::SessionHistoryEntryDescriptor>()),
         .source_snapshot_params = TRY(decoder.decode<Web::HTML::NavigationSourceSnapshot>()),
         .target_snapshot_params = {
             .sandboxing_flags = TRY(decoder.decode<Web::HTML::SandboxingFlagSet>()),
