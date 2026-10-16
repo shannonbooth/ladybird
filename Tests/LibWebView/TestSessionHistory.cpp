@@ -288,6 +288,17 @@ static void expect_entry_state(Web::HTML::SessionHistoryEntryDescriptor const& e
     EXPECT_EQ(entry.scroll_restoration_mode, expected_scroll_restoration_mode);
 }
 
+static Web::HTML::SessionHistoryEntryUpdate entry_update(Web::HTML::SessionHistoryEntryDescriptor const& entry)
+{
+    return {
+        .entry_identity = Web::HTML::session_history_entry_identity(entry),
+        .navigation_api_state = entry.navigation_api_state,
+        .scroll_restoration_mode = entry.scroll_restoration_mode,
+        .scroll_position_data = entry.scroll_position_data,
+        .navigable_target_name = entry.document_state.navigable_target_name,
+    };
+}
+
 static void expect_entry_resource(Web::HTML::SessionHistoryEntryDescriptor const& entry, StringView expected_resource)
 {
     if (expected_resource == "post"sv) {
@@ -366,10 +377,9 @@ TEST_CASE(entry_updates_address_the_navigables_session_history_entries)
         entry(0, "https://child.example/0"sv, 3, 3, "child-0"sv, "child-id-0"sv, Web::HTML::ScrollRestorationMode::Auto),
         entry(2, "https://child.example/1"sv, 4, 4, "child-1"sv, "child-id-1"sv, Web::HTML::ScrollRestorationMode::Auto),
     };
-    auto updated_entry_identity = Web::HTML::SessionHistoryEntryIdentity {
-        .document_state_id = child_entries[1].document_state.id,
-        .navigation_api_id = child_entries[1].navigation_api_id,
-    };
+    auto update = entry_update(child_entries[1]);
+    update.navigation_api_state = state_record(9);
+    update.scroll_restoration_mode = Web::HTML::ScrollRestorationMode::Manual;
 
     // Both top-level entries belong to one document, so they share its document state and nested histories.
     Vector<Web::HTML::SessionHistoryEntryDescriptor> entries {
@@ -378,8 +388,7 @@ TEST_CASE(entry_updates_address_the_navigables_session_history_entries)
     };
     EXPECT(traversable.initialize_session_history_for_testing(move(entries), { 0, 1, 2 }, 2));
 
-    EXPECT(traversable.update_session_history_entry_navigation_api_state(child, updated_entry_identity, state_record(9)));
-    EXPECT(traversable.update_session_history_entry_scroll_restoration_mode(child, updated_entry_identity, Web::HTML::ScrollRestorationMode::Manual));
+    EXPECT(traversable.update_session_history_entry(child, update));
 
     auto copied_entries = traversable.session_history().entries();
     VERIFY(copied_entries.size() == 2);
@@ -392,7 +401,8 @@ TEST_CASE(entry_updates_address_the_navigables_session_history_entries)
     }
 
     // An entry of another navigable's session history entries is not addressable through this one.
-    EXPECT(!traversable.update_session_history_entry_navigation_api_state(traversable, updated_entry_identity, state_record(8)));
+    update.navigation_api_state = state_record(8);
+    EXPECT(!traversable.update_session_history_entry(traversable, update));
 }
 
 TEST_CASE(entry_updates_require_entry_and_document_state_identity)
@@ -406,18 +416,17 @@ TEST_CASE(entry_updates_require_entry_and_document_state_identity)
     current_entry.navigation_api_id = Utf16String::from_utf8("current-id"sv);
     EXPECT(traversable.initialize_session_history_for_testing({ move(current_entry) }, { 0 }, 0));
 
-    auto entry_identity = Web::HTML::SessionHistoryEntryIdentity {
-        .document_state_id = test_document_state_id(11),
-        .navigation_api_id = Utf16String::from_utf8("current-id"sv),
-    };
-    EXPECT(!traversable.update_session_history_entry_scroll_restoration_mode(traversable, entry_identity, Web::HTML::ScrollRestorationMode::Manual));
+    auto update = entry_update(traversable.session_history().current_entry().descriptor());
+    update.scroll_restoration_mode = Web::HTML::ScrollRestorationMode::Manual;
+    update.entry_identity.document_state_id = test_document_state_id(11);
+    EXPECT(!traversable.update_session_history_entry(traversable, update));
 
-    entry_identity.document_state_id = test_document_state_id(10);
-    entry_identity.navigation_api_id = Utf16String::from_utf8("other-id"sv);
-    EXPECT(!traversable.update_session_history_entry_scroll_restoration_mode(traversable, entry_identity, Web::HTML::ScrollRestorationMode::Manual));
+    update.entry_identity.document_state_id = test_document_state_id(10);
+    update.entry_identity.navigation_api_id = Utf16String::from_utf8("other-id"sv);
+    EXPECT(!traversable.update_session_history_entry(traversable, update));
 
-    entry_identity.navigation_api_id = Utf16String::from_utf8("current-id"sv);
-    EXPECT(traversable.update_session_history_entry_scroll_restoration_mode(traversable, entry_identity, Web::HTML::ScrollRestorationMode::Manual));
+    update.entry_identity.navigation_api_id = Utf16String::from_utf8("current-id"sv);
+    EXPECT(traversable.update_session_history_entry(traversable, update));
 
     auto const* updated_entry = &traversable.session_history().current_entry();
     EXPECT_EQ(updated_entry->scroll_restoration_mode, Web::HTML::ScrollRestorationMode::Manual);
@@ -444,13 +453,17 @@ TEST_CASE(queued_same_document_entries_are_addressed_by_identity)
     replacement_entry.navigation_api_key = Utf16String::from_utf8("shared-key"sv);
     replacement_entry.navigation_api_id = Utf16String::from_utf8("replacement-id"sv);
     replacement_entry.navigation_api_state = state_record(2);
+    auto replacement_update = entry_update(replacement_entry);
+    replacement_update.navigation_api_state = state_record(9);
+    replacement_update.scroll_restoration_mode = Web::HTML::ScrollRestorationMode::Manual;
+    replacement_update.navigable_target_name = Utf16String::from_utf8("updated-name"sv);
 
     auto enqueue_push = [&](Web::HTML::CrossProcessId operation_id, Web::HTML::SessionHistoryEntryDescriptor entry) {
         Web::FinalizeSameDocumentNavigationHistoryOperationParameters parameters {
             .navigable_id = traversable.id(),
             .target_entry = same_document_entry(move(entry)),
             .entry_to_replace = {},
-            .previous_entry_persisted_state = {},
+            .previous_entry_update = {},
             .history_handling = Web::HTML::HistoryHandlingBehavior::Push,
             .user_involvement = Web::HTML::UserNavigationInvolvement::None,
         };
@@ -459,13 +472,7 @@ TEST_CASE(queued_same_document_entries_are_addressed_by_identity)
     enqueue_push({ 8, 1 }, move(first_entry));
     enqueue_push({ 8, 2 }, move(replacement_entry));
 
-    auto replacement_identity = Web::HTML::SessionHistoryEntryIdentity {
-        .document_state_id = test_document_state_id(10),
-        .navigation_api_id = Utf16String::from_utf8("replacement-id"sv),
-    };
-    EXPECT(traversable.update_session_history_entry_navigation_api_state(traversable, replacement_identity, state_record(9)));
-    EXPECT(traversable.update_session_history_entry_scroll_restoration_mode(traversable, replacement_identity, Web::HTML::ScrollRestorationMode::Manual));
-    EXPECT(traversable.update_session_history_entry_document_state_navigable_target_name(traversable, replacement_identity, Utf16String::from_utf8("updated-name"sv)));
+    EXPECT(traversable.update_session_history_entry(traversable, move(replacement_update)));
 
     auto queued_entries = traversable.queued_same_document_session_history_entries(traversable);
     EXPECT_EQ(queued_entries.size(), 2uz);

@@ -810,44 +810,18 @@ RefPtr<CanonicalSessionHistoryEntry> CanonicalTraversable::session_history_entry
     return session_history_entry_named(navigable, [&](auto const& entry) { return entry.identity() == entry_identity; });
 }
 
-bool CanonicalTraversable::update_session_history_entry_navigation_api_state(CanonicalNavigable& navigable, Web::HTML::SessionHistoryEntryIdentity const& entry_identity, Web::HTML::StorageSerializationRecord navigation_api_state)
+bool CanonicalTraversable::update_session_history_entry(CanonicalNavigable& navigable, Web::HTML::SessionHistoryEntryUpdate update)
 {
-    auto entry = session_history_entry_named(navigable, entry_identity);
+    auto entry = session_history_entry_named(navigable, update.entry_identity);
     if (!entry)
         return false;
-    entry->navigation_api_state = move(navigation_api_state);
-    session_history_changed();
-    return true;
-}
-
-bool CanonicalTraversable::update_session_history_entry_scroll_restoration_mode(CanonicalNavigable& navigable, Web::HTML::SessionHistoryEntryIdentity const& entry_identity, Web::HTML::ScrollRestorationMode scroll_restoration_mode)
-{
-    auto entry = session_history_entry_named(navigable, entry_identity);
-    if (!entry)
-        return false;
-    entry->scroll_restoration_mode = scroll_restoration_mode;
-    session_history_changed();
-    return true;
-}
-
-bool CanonicalTraversable::update_session_history_entry_persisted_state(CanonicalNavigable& navigable, Web::HTML::SessionHistoryEntryPersistedState const& persisted_state)
-{
-    auto entry = session_history_entry_named(navigable, persisted_state.entry_identity);
-    if (!entry)
-        return false;
-    entry->scroll_position_data = persisted_state.scroll_position_data;
-    session_history_changed();
-    return true;
-}
-
-bool CanonicalTraversable::update_session_history_entry_document_state_navigable_target_name(CanonicalNavigable& navigable, Web::HTML::SessionHistoryEntryIdentity const& entry_identity, Utf16String navigable_target_name)
-{
-    auto entry = session_history_entry_named(navigable, entry_identity);
-    if (!entry)
-        return false;
-    entry->document_state->navigable_target_name = move(navigable_target_name);
+    entry->navigation_api_state = move(update.navigation_api_state);
+    entry->scroll_restoration_mode = update.scroll_restoration_mode;
+    entry->scroll_position_data = move(update.scroll_position_data);
+    auto target_name_changed = entry->document_state->navigable_target_name != update.navigable_target_name;
+    entry->document_state->navigable_target_name = move(update.navigable_target_name);
     // The navigable's target name is its active entry's document state's.
-    if (entry->document_state == navigable.active_session_history_entry()->document_state)
+    if (target_name_changed && entry->document_state == navigable.active_session_history_entry()->document_state)
         navigable.send_replicated_state();
     session_history_changed();
     return true;
@@ -2017,8 +1991,8 @@ void CanonicalTraversable::enqueue_history_operation(Web::HTML::CrossProcessId o
         //     can jump the queue ahead of the steps creating navigable's nested history, and then find no session
         //     history to hold newEntry.
         if (auto navigable = find(parameters.navigable_id); navigable.has_value()) {
-            if (parameters.previous_entry_persisted_state.has_value())
-                update_session_history_entry_persisted_state(*navigable, *parameters.previous_entry_persisted_state);
+            if (parameters.previous_entry_update.has_value())
+                update_session_history_entry(*navigable, *parameters.previous_entry_update);
             target_entry = session_history_entry_for(*navigable, parameters.target_entry);
             session_history_changed();
         }
@@ -2678,7 +2652,7 @@ void CanonicalTraversable::did_receive_changing_navigable_history_job_ready(WebC
     operation->algorithm->changing_navigable_job_completed(*changing_navigable, disposition);
 }
 
-void CanonicalTraversable::did_receive_changing_navigable_continuation_applied(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::HostedNavigableState> activated_navigable_state, Optional<Web::HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state)
+void CanonicalTraversable::did_receive_changing_navigable_continuation_applied(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::HostedNavigableState> activated_navigable_state, Optional<Web::HTML::SessionHistoryEntryUpdate> previous_entry_update)
 {
     if (!source_page.take_owed_reply({ OwedReply::Kind::ContinuationApplied, operation_id, navigable_id }))
         return;
@@ -2692,8 +2666,8 @@ void CanonicalTraversable::did_receive_changing_navigable_continuation_applied(W
             did_activate_history_entry(*operation, *changing_navigable, source_page, activated_navigable_state.release_value());
         else if (document)
             navigable.abandon_populated_document(changing_navigable->target_entry->document_state, *document);
-        if (previous_entry_persisted_state.has_value())
-            update_session_history_entry_persisted_state(navigable, *previous_entry_persisted_state);
+        if (previous_entry_update.has_value())
+            update_session_history_entry(navigable, previous_entry_update.release_value());
         // A replacement document's creation operation also applies a top-level continuation, but it runs before
         // the document has accepted the UI-owned history state. Only the browser traversal itself reaches the
         // observable top-level completion point here.

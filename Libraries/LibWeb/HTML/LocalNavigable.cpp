@@ -3833,7 +3833,7 @@ void LocalNavigable::navigate_to_a_fragment(URL::URL const& url, HistoryHandling
 
     save_persisted_state_to_active_session_history_entry();
     auto active_entry = active_session_history_entry();
-    auto previous_entry_persisted_state = create_session_history_entry_persisted_state(*active_entry);
+    auto previous_entry_update = create_session_history_entry_update(*active_entry);
 
     // 6. Let historyEntry be a new session history entry, with
     //      URL: url
@@ -3928,7 +3928,7 @@ void LocalNavigable::navigate_to_a_fragment(URL::URL const& url, HistoryHandling
     // Append the following session history synchronous navigation steps involving navigable to its traversable:
     // 1. Finalize a same-document navigation given traversable, navigable, historyEntry, entryToReplace,
     //    historyHandling, and userInvolvement.
-    page().history_executor().finalize_same_document_navigation(*this, history_entry, entry_to_replace, history_handling, user_involvement, move(previous_entry_persisted_state));
+    page().history_executor().finalize_same_document_navigation(*this, history_entry, entry_to_replace, history_handling, user_involvement, move(previous_entry_update));
 
     // FIXME: Invoke WebDriver BiDi fragment navigated with navigable and a new WebDriver BiDi navigation status whose
     //        id is navigationId, url is url, and status is "complete".
@@ -4337,7 +4337,7 @@ void perform_url_and_history_update_steps(DOM::Document& document, URL::URL new_
     // 2. Let activeEntry be navigable's active session history entry.
     auto active_entry = navigable->active_session_history_entry();
     navigable->save_persisted_state_to_active_session_history_entry();
-    auto previous_entry_persisted_state = create_session_history_entry_persisted_state(*active_entry);
+    auto previous_entry_update = create_session_history_entry_update(*active_entry);
 
     // https://wicg.github.io/scroll-to-text-fragment/#the-fragment-directive
     // Keep the directive in session history state while exposing only the stripped URL to the document.
@@ -4408,7 +4408,7 @@ void perform_url_and_history_update_steps(DOM::Document& document, URL::URL new_
     // 14. Append the following session history synchronous navigation steps involving navigable to traversable:
     // 1. Finalize a same-document navigation given traversable, navigable, newEntry, entryToReplace,
     //    historyHandling, and "none".
-    navigable->page().history_executor().finalize_same_document_navigation(*navigable, new_entry, entry_to_replace, history_handling, UserNavigationInvolvement::None, move(previous_entry_persisted_state));
+    navigable->page().history_executor().finalize_same_document_navigation(*navigable, new_entry, entry_to_replace, history_handling, UserNavigationInvolvement::None, move(previous_entry_update));
 
     // FIXME: Invoke WebDriver BiDi history updated with navigable.
 }

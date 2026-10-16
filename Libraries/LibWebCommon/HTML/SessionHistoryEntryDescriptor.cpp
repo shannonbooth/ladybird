@@ -189,19 +189,25 @@ ErrorOr<Web::HTML::SessionHistoryEntryScrollPositionData> IPC::decode(Decoder& d
 }
 
 template<>
-ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::SessionHistoryEntryPersistedState const& persisted_state)
+ErrorOr<void> IPC::encode(Encoder& encoder, Web::HTML::SessionHistoryEntryUpdate const& update)
 {
-    TRY(encoder.encode(persisted_state.entry_identity));
-    TRY(encoder.encode(persisted_state.scroll_position_data));
+    TRY(encoder.encode(update.entry_identity));
+    TRY(encoder.encode(update.navigation_api_state));
+    TRY(encoder.encode(update.scroll_restoration_mode));
+    TRY(encoder.encode(update.scroll_position_data));
+    TRY(encoder.encode(update.navigable_target_name));
     return {};
 }
 
 template<>
-ErrorOr<Web::HTML::SessionHistoryEntryPersistedState> IPC::decode(Decoder& decoder)
+ErrorOr<Web::HTML::SessionHistoryEntryUpdate> IPC::decode(Decoder& decoder)
 {
-    return Web::HTML::SessionHistoryEntryPersistedState {
+    return Web::HTML::SessionHistoryEntryUpdate {
         .entry_identity = TRY(decoder.decode<Web::HTML::SessionHistoryEntryIdentity>()),
+        .navigation_api_state = TRY(decoder.decode<Web::HTML::StorageSerializationRecord>()),
+        .scroll_restoration_mode = TRY(decoder.decode<Web::HTML::ScrollRestorationMode>()),
         .scroll_position_data = TRY(decoder.decode<Web::HTML::SessionHistoryEntryScrollPositionData>()),
+        .navigable_target_name = TRY(decoder.decode<Utf16String>()),
     };
 }
 

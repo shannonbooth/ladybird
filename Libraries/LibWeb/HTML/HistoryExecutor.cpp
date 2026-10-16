@@ -176,7 +176,7 @@ void HistoryExecutor::traverse_the_history_by_delta(int delta, DOM::Document& so
         });
 }
 
-void HistoryExecutor::finalize_same_document_navigation(GC::Ref<LocalNavigable> target_navigable, NonnullRefPtr<SessionHistoryEntry> target_entry, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior history_handling, UserNavigationInvolvement user_involvement, Optional<SessionHistoryEntryPersistedState> previous_entry_persisted_state)
+void HistoryExecutor::finalize_same_document_navigation(GC::Ref<LocalNavigable> target_navigable, NonnullRefPtr<SessionHistoryEntry> target_entry, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior history_handling, UserNavigationInvolvement user_involvement, Optional<SessionHistoryEntryUpdate> previous_entry_update)
 {
     if (target_navigable->has_been_destroyed())
         return;
@@ -193,7 +193,7 @@ void HistoryExecutor::finalize_same_document_navigation(GC::Ref<LocalNavigable> 
         .navigable_id = target_navigable->id(),
         .target_entry = create_same_document_navigation_entry(target_entry),
         .entry_to_replace = move(entry_to_replace_identity),
-        .previous_entry_persisted_state = move(previous_entry_persisted_state),
+        .previous_entry_update = move(previous_entry_update),
         .history_handling = history_handling,
         .user_involvement = user_involvement,
     };
@@ -666,9 +666,9 @@ Optional<HistoryExecutor::DequeuedChangingNavigableContinuation> HistoryExecutor
 
             activated_navigable_state = navigable->hosted_state();
         }
-        auto previous_entry_persisted_state = !update_only && previous_entry
-            ? create_session_history_entry_persisted_state(*previous_entry)
-            : Optional<SessionHistoryEntryPersistedState> {};
+        auto previous_entry_update = !update_only && previous_entry
+            ? create_session_history_entry_update(*previous_entry)
+            : Optional<SessionHistoryEntryUpdate> {};
 
         // 3. Let updateDocument be an algorithm step which performs update document for history step application given
         //    targetEntry's document, targetEntry, changingNavigableContinuation's update-only, scriptHistoryLength,
@@ -695,7 +695,7 @@ Optional<HistoryExecutor::DequeuedChangingNavigableContinuation> HistoryExecutor
         }
 
         // 6. Increment completedChangeJobs.
-        on_complete->function()(move(activated_navigable_state), move(previous_entry_persisted_state));
+        on_complete->function()(move(activated_navigable_state), move(previous_entry_update));
     });
 
     return DequeuedChangingNavigableContinuation { continuation, after_potential_unload };

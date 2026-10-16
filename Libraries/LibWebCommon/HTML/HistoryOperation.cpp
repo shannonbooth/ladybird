@@ -155,7 +155,7 @@ ErrorOr<void> IPC::encode(Encoder& encoder, Web::FinalizeSameDocumentNavigationH
     TRY(encoder.encode(parameters.navigable_id));
     TRY(encoder.encode(parameters.target_entry));
     TRY(encoder.encode(parameters.entry_to_replace));
-    TRY(encoder.encode(parameters.previous_entry_persisted_state));
+    TRY(encoder.encode(parameters.previous_entry_update));
     TRY(encoder.encode(parameters.history_handling));
     TRY(encoder.encode(parameters.user_involvement));
     return {};
@@ -168,7 +168,7 @@ ErrorOr<Web::FinalizeSameDocumentNavigationHistoryOperationParameters> IPC::deco
         .navigable_id = TRY(decoder.decode<Web::HTML::CrossProcessId>()),
         .target_entry = TRY(decoder.decode<Web::HTML::SameDocumentNavigationEntry>()),
         .entry_to_replace = TRY(decoder.decode<Optional<Web::HTML::SessionHistoryEntryIdentity>>()),
-        .previous_entry_persisted_state = TRY(decoder.decode<Optional<Web::HTML::SessionHistoryEntryPersistedState>>()),
+        .previous_entry_update = TRY(decoder.decode<Optional<Web::HTML::SessionHistoryEntryUpdate>>()),
         .history_handling = TRY(decoder.decode<Web::HTML::HistoryHandlingBehavior>()),
         .user_involvement = TRY(decoder.decode<Web::HTML::UserNavigationInvolvement>()),
     };

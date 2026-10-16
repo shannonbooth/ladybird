@@ -123,15 +123,14 @@ SessionHistoryEntryDescriptor create_session_history_entry_descriptor(SessionHis
     };
 }
 
-Optional<SessionHistoryEntryPersistedState> create_session_history_entry_persisted_state(SessionHistoryEntry const& entry)
+SessionHistoryEntryUpdate create_session_history_entry_update(SessionHistoryEntry const& entry)
 {
-    auto document_state = entry.document_state();
-    if (!document_state)
-        return {};
-
-    return SessionHistoryEntryPersistedState {
+    return {
         .entry_identity = session_history_entry_identity(entry),
+        .navigation_api_state = entry.navigation_api_state(),
+        .scroll_restoration_mode = entry.scroll_restoration_mode(),
         .scroll_position_data = entry.scroll_position_data(),
+        .navigable_target_name = entry.document_state()->navigable_target_name(),
     };
 }
 

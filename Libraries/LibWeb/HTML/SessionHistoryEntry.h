@@ -123,7 +123,7 @@ WEB_API SessionHistoryEntryDescriptor create_session_history_entry_descriptor(Se
 
 WEB_API SessionHistoryDocumentStateDescriptor create_session_history_document_state_descriptor(DocumentState const&);
 WEB_API PendingSessionHistoryEntryDescriptor create_pending_session_history_entry_descriptor(SessionHistoryEntry const&);
-WEB_API Optional<SessionHistoryEntryPersistedState> create_session_history_entry_persisted_state(SessionHistoryEntry const&);
+WEB_API SessionHistoryEntryUpdate create_session_history_entry_update(SessionHistoryEntry const&);
 WEB_API SessionHistoryEntryIdentity session_history_entry_identity(SessionHistoryEntry const&);
 
 // Document states already reconstructed from the UI process's descriptors, so entries that share a document state

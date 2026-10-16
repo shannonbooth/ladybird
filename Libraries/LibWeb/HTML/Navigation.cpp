@@ -57,7 +57,7 @@ static void report_navigation_api_state_update(DOM::Document& document, SessionH
     if (!navigable)
         return;
 
-    navigable->page().client().page_did_update_session_history_entry_navigation_api_state(navigable->id(), session_history_entry_identity(entry), entry.navigation_api_state());
+    navigable->page().client().page_did_update_session_history_entry(navigable->id(), create_session_history_entry_update(entry));
 }
 
 NavigationAPIMethodTracker::NavigationAPIMethodTracker(GC::Ref<Navigation> navigation,

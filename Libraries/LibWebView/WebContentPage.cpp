@@ -1584,20 +1584,22 @@ void WebContentPage::did_change_screen_wake_lock_state(Web::ScreenWakeLockState 
         view().did_change_screen_wake_lock_state({}, wake_lock_state);
 }
 
-void WebContentPage::did_update_session_history_entry_navigation_api_state(Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryIdentity entry_identity, Web::HTML::StorageSerializationRecord navigation_api_state)
+static bool is_valid_session_history_entry_update(Web::HTML::SessionHistoryEntryUpdate const& update)
 {
-    auto navigable = hosted_navigable(navigable_id);
-    if (!navigable.has_value())
-        return;
-    navigable->top_level_traversable().update_session_history_entry_navigation_api_state(*navigable, entry_identity, move(navigation_api_state));
+    return update.scroll_restoration_mode == Web::HTML::ScrollRestorationMode::Auto
+        || update.scroll_restoration_mode == Web::HTML::ScrollRestorationMode::Manual;
 }
 
-void WebContentPage::did_update_session_history_entry_document_state_navigable_target_name(Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryIdentity entry_identity, Utf16String navigable_target_name)
+void WebContentPage::did_update_session_history_entry(Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryUpdate update)
 {
     auto navigable = hosted_navigable(navigable_id);
     if (!navigable.has_value())
         return;
-    navigable->top_level_traversable().update_session_history_entry_document_state_navigable_target_name(*navigable, entry_identity, move(navigable_target_name));
+    if (!is_valid_session_history_entry_update(update)) {
+        client().did_misbehave("did_update_session_history_entry"sv, "invalid scroll restoration mode"sv);
+        return;
+    }
+    navigable->top_level_traversable().update_session_history_entry(*navigable, move(update));
 }
 
 void WebContentPage::did_set_session_history_entry_document_state_reload_pending(Web::HTML::CrossProcessId navigable_id, Utf16String navigation_api_key, bool reload_pending)
@@ -1633,6 +1635,10 @@ void WebContentPage::request_history_operation(Web::HTML::CrossProcessId operati
     // Only the process hosting a navigable's active document appends its synchronous navigation steps.
     if (auto const* same_document = parameters.get_pointer<Web::FinalizeSameDocumentNavigationHistoryOperationParameters>(); same_document && !hosted_navigable(same_document->navigable_id).has_value()) {
         async_complete_history_operation(operation_id, {}, traversable().session_history().size());
+        return;
+    }
+    if (auto const* same_document = parameters.get_pointer<Web::FinalizeSameDocumentNavigationHistoryOperationParameters>(); same_document && same_document->previous_entry_update.has_value() && !is_valid_session_history_entry_update(*same_document->previous_entry_update)) {
+        client().did_misbehave("request_history_operation"sv, "invalid scroll restoration mode"sv);
         return;
     }
     if (auto const* resume = parameters.get_pointer<Web::ResumeTraverseHistoryOperationParameters>(); resume && !traversable().session_history().get_the_used_step(resume->target_step).has_value()) {
@@ -1746,9 +1752,13 @@ void WebContentPage::request_child_navigable_unload(Web::HTML::CrossProcessId na
     traversable().did_receive_child_navigable_unload_request(*this, navigable_id);
 }
 
-void WebContentPage::changing_navigable_continuation_applied(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::HostedNavigableState> activated_navigable_state, Optional<Web::HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state)
+void WebContentPage::changing_navigable_continuation_applied(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::HostedNavigableState> activated_navigable_state, Optional<Web::HTML::SessionHistoryEntryUpdate> previous_entry_update)
 {
-    traversable().did_receive_changing_navigable_continuation_applied(*this, operation_id, navigable_id, move(activated_navigable_state), move(previous_entry_persisted_state));
+    if (previous_entry_update.has_value() && !is_valid_session_history_entry_update(*previous_entry_update)) {
+        client().did_misbehave("changing_navigable_continuation_applied"sv, "invalid scroll restoration mode"sv);
+        return;
+    }
+    traversable().did_receive_changing_navigable_continuation_applied(*this, operation_id, navigable_id, move(activated_navigable_state), move(previous_entry_update));
 }
 
 void WebContentPage::nonchanging_navigable_history_state_updated(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
@@ -2600,19 +2610,6 @@ void WebContentPage::did_request_primary_paste()
 void WebContentPage::did_update_primary_selection(String text)
 {
     Application::the().set_clipboard_text(move(text), Application::ClipboardType::Selection);
-}
-
-void WebContentPage::did_update_session_history_entry_scroll_restoration_mode(Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryIdentity entry_identity, Web::HTML::ScrollRestorationMode scroll_restoration_mode)
-{
-    auto navigable = hosted_navigable(navigable_id);
-    if (!navigable.has_value())
-        return;
-    if (scroll_restoration_mode != Web::HTML::ScrollRestorationMode::Auto
-        && scroll_restoration_mode != Web::HTML::ScrollRestorationMode::Manual) {
-        client().did_misbehave("did_update_session_history_entry_scroll_restoration_mode"sv, "invalid scroll restoration mode"sv);
-        return;
-    }
-    navigable->top_level_traversable().update_session_history_entry_scroll_restoration_mode(*navigable, entry_identity, scroll_restoration_mode);
 }
 
 void WebContentPage::did_request_webdriver_mouse_event(u64 request_id, Web::HTML::CrossProcessId local_root_id, Web::MouseEvent event)

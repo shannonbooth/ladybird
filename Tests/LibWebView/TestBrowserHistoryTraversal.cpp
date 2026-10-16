@@ -405,8 +405,10 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
 
     auto const& active_entry = restored_view->traversable().active_session_history_entry();
     VERIFY(active_entry);
-    auto invalid_mode = static_cast<Web::HTML::ScrollRestorationMode>(to_underlying(Web::HTML::ScrollRestorationMode::Manual) + 1);
-    stub.did_update_session_history_entry_scroll_restoration_mode(restored_view->page().id(), restored_view->traversable().id(), active_entry->identity(), invalid_mode);
+    Web::HTML::SessionHistoryEntryUpdate update;
+    update.entry_identity = active_entry->identity();
+    update.scroll_restoration_mode = static_cast<Web::HTML::ScrollRestorationMode>(to_underlying(Web::HTML::ScrollRestorationMode::Manual) + 1);
+    stub.did_update_session_history_entry(restored_view->page().id(), restored_view->traversable().id(), move(update));
     VERIFY(!client.is_open());
 
     outln("PASS: browser history traversal");

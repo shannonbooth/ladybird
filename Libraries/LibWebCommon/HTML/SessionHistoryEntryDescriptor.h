@@ -69,11 +69,14 @@ struct SessionHistoryEntryScrollPositionData {
     Optional<CSSPixelPoint> viewport_scroll_position;
 };
 
-struct SessionHistoryEntryPersistedState {
-    // AD-HOC: Persisted state crosses the process boundary separately from its entry, so retain the entry's full
-    // identity instead of relying on its Navigation API key, which replaceState() can share with another entry.
+// The fields of a session history entry and its document state that the process hosting the entry's document sets.
+struct SessionHistoryEntryUpdate {
+    // NB: The entry's full identity, as replaceState() can give two entries one Navigation API key.
     SessionHistoryEntryIdentity entry_identity;
+    StorageSerializationRecord navigation_api_state;
+    ScrollRestorationMode scroll_restoration_mode { ScrollRestorationMode::Auto };
     SessionHistoryEntryScrollPositionData scroll_position_data;
+    Utf16String navigable_target_name;
 };
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#session-history-entry
@@ -143,10 +146,10 @@ template<>
 WEBCOMMON_API ErrorOr<Web::HTML::SessionHistoryEntryScrollPositionData> decode(Decoder&);
 
 template<>
-WEBCOMMON_API ErrorOr<void> encode(Encoder&, Web::HTML::SessionHistoryEntryPersistedState const&);
+WEBCOMMON_API ErrorOr<void> encode(Encoder&, Web::HTML::SessionHistoryEntryUpdate const&);
 
 template<>
-WEBCOMMON_API ErrorOr<Web::HTML::SessionHistoryEntryPersistedState> decode(Decoder&);
+WEBCOMMON_API ErrorOr<Web::HTML::SessionHistoryEntryUpdate> decode(Decoder&);
 
 template<>
 WEBCOMMON_API ErrorOr<void> encode(Encoder&, Web::HTML::SessionHistoryDocumentStateDescriptor const&);
