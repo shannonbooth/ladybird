@@ -229,7 +229,7 @@ void HTMLOptionElement::update_nearest_select_element()
             old_select->update_selectedness();
 
         // 2. If newSelect is not null, then run the selectedness setting algorithm given newSelect.
-        if (new_select)
+        if (new_select && !new_select->can_skip_selectedness_update_for_inserted_option(*this))
             new_select->update_selectedness();
     }
 
