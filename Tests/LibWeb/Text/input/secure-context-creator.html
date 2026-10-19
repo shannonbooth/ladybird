@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<script src="include.js"></script>
+<script>
+    test(() => {
+        const securePopup = window.open();
+        println(`popup of secure creator: ${securePopup.isSecureContext}`);
+        securePopup.close();
+
+        internals.setEnvironmentsTopLevelURL("http://ladybird.org");
+        const insecurePopup = window.open();
+        println(`popup of insecure creator: ${insecurePopup.isSecureContext}`);
+        insecurePopup.close();
+
+        internals.setEnvironmentsTopLevelURL("data:text/html,");
+        println(`top-level data: document: ${isSecureContext}`);
+    });
+</script>

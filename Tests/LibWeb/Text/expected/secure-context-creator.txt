@@ -1,0 +1,3 @@
+popup of secure creator: true
+popup of insecure creator: false
+top-level data: document: false
