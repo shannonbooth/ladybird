@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<script src="include.js"></script>
+<script>
+    test(() => {
+        const relatedTargetGetter = Object.getOwnPropertyDescriptor(MouseEvent.prototype, "relatedTarget").get;
+        const dataTransferGetter = Object.getOwnPropertyDescriptor(InputEvent.prototype, "dataTransfer").get;
+
+        const receiver = new MouseEvent("x", { clientX: 1, clientY: 1 });
+        const holder = {};
+        Object.setPrototypeOf(receiver, holder);
+        Object.defineProperty(holder, "value", { get: relatedTargetGetter, configurable: true });
+        function valueOf(object) {
+            return object.value;
+        }
+        for (let i = 0; i < 3; ++i)
+            valueOf(receiver);
+
+        Object.defineProperty(holder, "value", { get: dataTransferGetter, configurable: true });
+        try {
+            valueOf(receiver);
+            println("FAIL: no exception");
+        } catch (e) {
+            println(e.name);
+        }
+
+        let typeErrors = 0;
+        for (let i = 0; i < 10000; ++i) {
+            try {
+                valueOf(receiver);
+            } catch (e) {
+                if (e instanceof TypeError)
+                    ++typeErrors;
+            }
+        }
+        println(typeErrors);
+
+        Object.defineProperty(holder, "value", { get: relatedTargetGetter, configurable: true });
+        println(valueOf(receiver) === null);
+    });
+</script>

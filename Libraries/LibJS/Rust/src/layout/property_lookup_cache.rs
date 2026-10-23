@@ -47,8 +47,9 @@ pub struct PropertyLookupCacheEntry {
     /// GetByValue, or 0 for the caches of named accesses like GetById, whose instruction determines the property. Like
     /// the cells above, the key is not kept alive by the cache.
     pub key: Cell<u64>,
-    /// For GetOwnProperty entries of named accesses: the accessor the property held when the interpreter last called
-    /// its getter through the entry, for JIT code to speculate on. Not kept alive either, and forgotten whenever the
+    /// For GetOwnProperty entries of named accesses, and for entries with direct_getter_validated: the accessor the
+    /// property held when the interpreter last called its getter through the entry, for JIT code to speculate on. A
+    /// validated direct getter is only the getter of this accessor. Not kept alive either, and forgotten whenever the
     /// entry changes. It also makes entries 64 bytes, so that JIT code finds an entry in the megamorphic tables by
     /// masking bits of its hash (see megamorphic_hash() of the bytecode executable).
     pub accessor: Cell<Option<Gc<Accessor>>>,

@@ -3172,6 +3172,8 @@ handler GetById(
 
         if flags has OBJECT_FLAG_IS_DIRECT_GETTER_FUNCTION {
             if property_cache.direct_getter_validated != 0 {
+                let accessor_pointer: u64 = alias(accessor);
+                guard property_cache.accessor == accessor_pointer else invoke_accessor_slow;
                 guard let result = load_direct_getter_value(function, receiver_object) else invoke_accessor_slow;
                 record_value_feedback(value_feedback, result);
                 store(dst, result);

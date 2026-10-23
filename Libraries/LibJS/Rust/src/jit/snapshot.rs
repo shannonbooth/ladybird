@@ -291,6 +291,22 @@ fn entry_accessor_function(slot: &PropertyLookupCacheEntry) -> Option<Gc<Functio
     if setter { accessor.setter() } else { accessor.getter() }
 }
 
+/// Whether the interpreter ran the direct getter of the accessor an entry calls through the entry.
+fn entry_validated_direct_getter(slot: &PropertyLookupCacheEntry) -> bool {
+    let entry = slot.get();
+    if !entry.direct_getter_validated {
+        return false;
+    }
+    let Some(validated_accessor) = slot.accessor.get() else {
+        return false;
+    };
+    match entry.entry_type {
+        PropertyLookupCacheEntryType::GetOwnProperty if entry.key == 0 => true,
+        _ => prototype_property_value(&entry)
+            .is_some_and(|value| value.is_accessor() && value.as_accessor() == validated_accessor),
+    }
+}
+
 /// Whether the property of an entry held an accessor: the accessor the interpreter last called the getter of for a
 /// GetOwnProperty entry, or the value its prototype holds in the property for entries of a prototype.
 fn entry_holds_accessor(slot: &PropertyLookupCacheEntry) -> bool {
@@ -431,7 +447,7 @@ impl SnapshotBuilder<'_> {
                         Some(Value::from_object(function.upcast::<Object>()).as_cell()),
                         caller,
                     ),
-                    native: self.native_accessor_target(function, cell, entry.direct_getter_validated),
+                    native: self.native_accessor_target(function, cell, entry_validated_direct_getter(slot)),
                 }
             });
             entries.push(PropertyCacheEntrySnapshot {

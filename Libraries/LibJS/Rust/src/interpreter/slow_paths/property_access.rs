@@ -178,6 +178,7 @@ pub fn get_by_id_cached_accessor(
             let completed_value = completed_holder.get_direct(completed.property_offset);
             if completed_value.is_accessor() && completed_value.as_accessor().getter() == Some(getter) {
                 completed_entry.direct_getter_validated.set(true);
+                completed_entry.accessor.set(Some(completed_value.as_accessor()));
             }
         }
     }

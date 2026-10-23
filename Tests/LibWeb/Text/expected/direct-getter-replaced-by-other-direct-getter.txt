@@ -1,0 +1,3 @@
+TypeError
+10000
+true
