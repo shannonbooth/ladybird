@@ -575,7 +575,6 @@ namespace Web::Fetch {
 
 class BodyMixin;
 class Headers;
-class HeadersIterator;
 class Request;
 class Response;
 

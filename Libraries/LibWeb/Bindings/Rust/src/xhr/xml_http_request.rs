@@ -47,6 +47,9 @@ use crate::domurl::url_search_params::URLSearchParams;
 use crate::fetch::body_init::{XMLHttpRequestBodyInit, safely_extract_body};
 use crate::fetch::infrastructure::fetch_controller::CppFetchController;
 use crate::fetch::infrastructure::http::bodies::CppBody;
+use crate::fetch::infrastructure::http::headers::{
+    is_forbidden_request_header, is_header_name, is_header_value, normalize,
+};
 use crate::fetch::infrastructure::http::requests::CppRequest;
 use crate::fetch::infrastructure::http::response_view::CppResponseView;
 use crate::file_api::blob::{AnyBlob, Blob};
@@ -73,14 +76,6 @@ unsafe extern "C" {
         bytes: *mut c_void,
         on_bytes: unsafe extern "C" fn(*mut c_void, ak::Span<'_, u8>),
     );
-    fn web_xhr_normalize_header_value(
-        value: ak::Span<'_, u8>,
-        bytes: *mut c_void,
-        on_bytes: unsafe extern "C" fn(*mut c_void, ak::Span<'_, u8>),
-    );
-    fn web_xhr_is_header_name(name: ak::Span<'_, u8>) -> bool;
-    fn web_xhr_is_header_value(value: ak::Span<'_, u8>) -> bool;
-    fn web_xhr_is_forbidden_request_header(name: ak::Span<'_, u8>, value: ak::Span<'_, u8>) -> bool;
     fn web_xhr_document_is_html_document(document: *mut c_void) -> bool;
     fn web_xhr_document_as_body(realm: *mut c_void, document: *mut c_void) -> *mut c_void;
     fn web_xhr_create_request(realm: *mut c_void, request: *const RequestAbi<'_>) -> *mut c_void;
@@ -1065,27 +1060,16 @@ impl XMLHttpRequest {
         let name = name.into_bytes();
 
         // 3. Normalize value.
-        let mut normalized_value = Vec::new();
-        // SAFETY: The value is lent for the call, and the normalized value outlives it.
-        unsafe {
-            web_xhr_normalize_header_value(
-                ak::Span::new(value.as_bytes()),
-                (&raw mut normalized_value).cast(),
-                on_bytes,
-            );
-        }
-        let value = normalized_value;
+        let value = normalize(value.as_bytes()).to_vec();
 
         // 4. If name is not a header name or value is not a header value, then throw a "SyntaxError" DOMException.
-        // SAFETY: The name is lent for the call.
-        if !unsafe { web_xhr_is_header_name(ak::Span::new(&name)) } {
+        if !is_header_name(&name) {
             return Err(Exception::Dom(
                 "SyntaxError",
                 Utf16String::from_ascii(b"Header name contains invalid characters."),
             ));
         }
-        // SAFETY: The value is lent for the call.
-        if !unsafe { web_xhr_is_header_value(ak::Span::new(&value)) } {
+        if !is_header_value(&value) {
             return Err(Exception::Dom(
                 "SyntaxError",
                 Utf16String::from_ascii(b"Header value contains invalid characters."),
@@ -1093,8 +1077,7 @@ impl XMLHttpRequest {
         }
 
         // 5. If (name, value) is a forbidden request-header, then return.
-        // SAFETY: The name and the value are lent for the call.
-        if unsafe { web_xhr_is_forbidden_request_header(ak::Span::new(&name), ak::Span::new(&value)) } {
+        if is_forbidden_request_header(&name, &value) {
             return Ok(());
         }
 

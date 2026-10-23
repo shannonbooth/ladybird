@@ -7,6 +7,8 @@
 //! The Fetch Standard, https://fetch.spec.whatwg.org/
 
 pub(crate) mod body_init;
+pub(crate) mod exports;
+pub(crate) mod headers;
 pub(crate) mod infrastructure;
 
 use core::ffi::c_void;

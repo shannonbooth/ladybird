@@ -7,5 +7,6 @@
 //! HTTP, https://fetch.spec.whatwg.org/#http
 
 pub(crate) mod bodies;
+pub(crate) mod headers;
 pub(crate) mod requests;
 pub(crate) mod response_view;

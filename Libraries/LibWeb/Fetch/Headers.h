@@ -7,13 +7,12 @@
 #pragma once
 
 #include <AK/HashMap.h>
-#include <AK/IterationDecision.h>
 #include <AK/String.h>
 #include <AK/Variant.h>
 #include <AK/Vector.h>
-#include <LibGC/Ptr.h>
 #include <LibHTTP/HeaderList.h>
-#include <LibWeb/Bindings/Wrappable.h>
+#include <LibWeb/Bindings/Headers.h>
+#include <LibWeb/Bindings/RustInterface.h>
 #include <LibWeb/Export.h>
 #include <LibWeb/WebIDL/ExceptionOr.h>
 
@@ -22,12 +21,13 @@ namespace Web::Fetch {
 using HeadersInit = Variant<Vector<Vector<String>>, OrderedHashMap<String, String>>;
 
 // https://fetch.spec.whatwg.org/#headers-class
-class Headers final : public Bindings::GCAllocatedWrappable {
-    WEB_WRAPPABLE(Headers, Bindings::GCAllocatedWrappable);
-    GC_DECLARE_ALLOCATOR(Headers);
+// The C++ side of a Headers object, which is implemented in Rust (Libraries/LibWeb/Bindings/Rust/src/fetch): what
+// fetching creates for its requests and responses, and changes.
+class WEB_API Headers final : public Bindings::RustInterfaceCell {
+    WEB_RUST_INTERFACE(Headers, headers)
 
 public:
-    enum class Guard {
+    enum class Guard : u8 {
         Immutable,
         Request,
         RequestNoCORS,
@@ -36,45 +36,14 @@ public:
     };
 
     [[nodiscard]] static GC::Ref<Headers> create(NonnullRefPtr<HTTP::HeaderList>);
-    static WebIDL::ExceptionOr<GC::Ref<Headers>> create_from_init(Optional<HeadersInit> const& init);
 
-    virtual ~Headers() override;
+    [[nodiscard]] NonnullRefPtr<HTTP::HeaderList> header_list() const;
 
-    [[nodiscard]] NonnullRefPtr<HTTP::HeaderList> const& header_list() const { return m_header_list; }
-    void set_header_list(NonnullRefPtr<HTTP::HeaderList> header_list) { m_header_list = move(header_list); }
-
-    [[nodiscard]] Guard guard() const { return m_guard; }
-    void set_guard(Guard guard) { m_guard = guard; }
+    [[nodiscard]] Guard guard() const;
+    void set_guard(Guard);
 
     WebIDL::ExceptionOr<void> fill(HeadersInit const&);
     WebIDL::ExceptionOr<void> append(HTTP::Header);
-
-    // JS API functions
-    WebIDL::ExceptionOr<void> append(String const& name, String const& value);
-    WebIDL::ExceptionOr<void> delete_(String const& name);
-    WebIDL::ExceptionOr<Optional<String>> get(String const& name);
-    [[nodiscard]] Vector<String> get_set_cookie();
-    WebIDL::ExceptionOr<bool> has(String const& name);
-    WebIDL::ExceptionOr<void> set(String const& name, String const& value);
-
-    using ForEachCallback = Function<IterationDecision(String const&, String const&)>;
-    void for_each(ForEachCallback);
-
-private:
-    friend class HeadersIterator;
-
-    explicit Headers(NonnullRefPtr<HTTP::HeaderList>);
-
-    WebIDL::ExceptionOr<bool> validate(HTTP::Header const&) const;
-    void remove_privileged_no_cors_request_headers();
-
-    // https://fetch.spec.whatwg.org/#concept-headers-header-list
-    // A Headers object has an associated header list (a header list), which is initially empty.
-    NonnullRefPtr<HTTP::HeaderList> m_header_list;
-
-    // https://fetch.spec.whatwg.org/#concept-headers-guard
-    // A Headers object also has an associated guard, which is a headers guard. A headers guard is "immutable", "request", "request-no-cors", "response" or "none".
-    Guard m_guard { Guard::None };
 };
 
 }

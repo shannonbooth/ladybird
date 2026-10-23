@@ -11,7 +11,6 @@
 #include <AK/ByteBuffer.h>
 #include <AK/Debug.h>
 #include <LibGC/Heap.h>
-#include <LibHTTP/Header.h>
 #include <LibHTTP/HeaderList.h>
 #include <LibHTTP/Method.h>
 #include <LibJS/HostClassBuilder.h>
@@ -71,10 +70,6 @@ bool web_rust_xhr_sync_send_is_over(void* sync_send);
 bool web_xhr_is_method(ReadonlyBytes method);
 bool web_xhr_is_forbidden_method(ReadonlyBytes method);
 void web_xhr_normalize_method(ReadonlyBytes method, void* bytes, void (*on_bytes)(void*, ReadonlyBytes));
-void web_xhr_normalize_header_value(ReadonlyBytes value, void* bytes, void (*on_bytes)(void*, ReadonlyBytes));
-bool web_xhr_is_header_name(ReadonlyBytes name);
-bool web_xhr_is_header_value(ReadonlyBytes value);
-bool web_xhr_is_forbidden_request_header(ReadonlyBytes name, ReadonlyBytes value);
 bool web_xhr_document_is_html_document(JSObject* document);
 Fetch::Infrastructure::Body* web_xhr_document_as_body(void* realm, JSObject* document);
 Fetch::Infrastructure::Request* web_xhr_create_request(void* realm, RequestABI const*);
@@ -113,26 +108,6 @@ void web_xhr_normalize_method(ReadonlyBytes method, void* bytes, void (*on_bytes
 {
     auto normalized_method = HTTP::normalize_method(StringView { method });
     on_bytes(bytes, normalized_method.bytes());
-}
-
-void web_xhr_normalize_header_value(ReadonlyBytes value, void* bytes, void (*on_bytes)(void*, ReadonlyBytes))
-{
-    on_bytes(bytes, HTTP::normalize_header_value(StringView { value }).bytes());
-}
-
-bool web_xhr_is_header_name(ReadonlyBytes name)
-{
-    return HTTP::is_header_name(StringView { name });
-}
-
-bool web_xhr_is_header_value(ReadonlyBytes value)
-{
-    return HTTP::is_header_value(StringView { value });
-}
-
-bool web_xhr_is_forbidden_request_header(ReadonlyBytes name, ReadonlyBytes value)
-{
-    return HTTP::is_forbidden_request_header({ ByteString { name }, ByteString { value } });
 }
 
 bool web_xhr_document_is_html_document(JSObject* document)

@@ -312,7 +312,6 @@ set(SOURCES
     Fetch/Fetching/RefCountedFlag.cpp
     Fetch/FetchMethod.cpp
     Fetch/Headers.cpp
-    Fetch/HeadersIterator.cpp
     Fetch/Infrastructure/FetchAlgorithms.cpp
     Fetch/Infrastructure/FetchController.cpp
     Fetch/Infrastructure/FetchControllerRegistry.cpp
