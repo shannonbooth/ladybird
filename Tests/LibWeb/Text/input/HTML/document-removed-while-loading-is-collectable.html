@@ -9,7 +9,11 @@
         // An expando preserves the document's wrapper for as long as the document itself lives.
         iframe.contentDocument.preserveWrapper = true;
         const weakDocument = new WeakRef(iframe.contentDocument);
+
+        // The removal destroys the document in the task that fires unload at its window.
+        const unload = new Promise(resolve => iframe.contentWindow.addEventListener("unload", () => resolve(), { once: true }));
         iframe.remove();
+        await unload;
         return weakDocument;
     }
 
