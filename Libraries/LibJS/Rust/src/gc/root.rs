@@ -133,6 +133,11 @@ impl<'vm, T: Trace + Clone + 'static> MarkedVec<'vm, T> {
         self.values.get()?.get().borrow().get(index).cloned()
     }
 
+    /// Resizes the list to `length` values, adding copies of `value`.
+    pub fn resize(&self, length: usize, value: T) {
+        self.rooted_values().borrow_mut().resize(length, value);
+    }
+
     pub fn set(&self, index: usize, value: T) {
         self.rooted_values().borrow_mut()[index] = value;
     }
