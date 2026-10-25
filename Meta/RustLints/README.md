@@ -11,6 +11,9 @@ plugin:
   type that implements `Trace`.
 - `untraced_gc_pointer`: a field marked `#[gc(untraced)]`, which `#[derive(Trace)]` skips, whose type can hold a GC
   pointer. A field whose cells something else keeps alive says what with `#[gc(untraced = "...")]`.
+- `gc_pointer_in_drop`: the `Drop` of a type that the crate's cells own, by value or through heap memory, dereferences a
+  `Gc`. Cells are dropped while the collector sweeps, when the cells they point to may be gone already. What needs other
+  cells belongs in `Finalize`, which runs while every cell that dies is intact.
 
 The check reads types after inference, so `let cells = make_cells();` is checked as `Vec<Gc<Cell>>`. Std containers
 need no list: a container owns its storage through a `PhantomData<T>` next to its pointer, and the lint treats that `T`
