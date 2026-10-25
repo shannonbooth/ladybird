@@ -14,6 +14,9 @@ plugin:
 - `gc_pointer_in_drop`: the `Drop` of a type that the crate's cells own, by value or through heap memory, dereferences a
   `Gc`. Cells are dropped while the collector sweeps, when the cells they point to may be gone already. What needs other
   cells belongs in `Finalize`, which runs while every cell that dies is intact.
+- `gc_container_in_untraced_type`: a type that does not implement `Trace` keeps a GC pointer in a field through heap
+  memory, an `Rc` or a `Box` included. Nothing traces its values wherever they are held: implement `Trace` for it, so
+  that its owner traces it, or tie it to a deferral.
 
 The check reads types after inference, so `let cells = make_cells();` is checked as `Vec<Gc<Cell>>`. Std containers
 need no list: a container owns its storage through a `PhantomData<T>` next to its pointer, and the lint treats that `T`
@@ -31,6 +34,8 @@ These pass:
   `DefersCollections` marker), and of the closures in it, which nothing collects while they live. A function's return
   value outlives the deferral, so it is checked; return a `Deferred` from `DeferGc::cover()` to tie it to the deferral.
   A guard bound in a body covers nothing, as it can be dropped while what it should cover lives on.
+- A struct with a field of a type that implements `DefersCollections`, a `&DeferGc` or a `Deferred`, which its values
+  cannot outlive.
 
 The lints find the types of the GC through the traits in `libjs_rust::gc::lint_markers` (and `Trace`, `GcCell` and
 `SweptAfterCollection`), and stop with an error if libjs_rust no longer has one, so that moving a type does not hide it.

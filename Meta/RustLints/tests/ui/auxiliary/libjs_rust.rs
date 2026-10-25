@@ -119,6 +119,7 @@ pub mod gc {
         pub unsafe trait DefersCollections {}
 
         unsafe impl DefersCollections for super::defer_gc::DeferGc<'_> {}
+        unsafe impl<T> DefersCollections for super::defer_gc::Deferred<'_, T> {}
     }
 
     pub mod weak {

@@ -42,3 +42,5 @@ pub unsafe trait DefersCollections {}
 
 // SAFETY: The heap defers collections from new() until drop().
 unsafe impl DefersCollections for DeferGc<'_> {}
+// SAFETY: The value cannot outlive the deferral it is tied to.
+unsafe impl<T> DefersCollections for Deferred<'_, T> {}

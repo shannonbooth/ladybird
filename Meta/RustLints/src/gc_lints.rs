@@ -60,11 +60,21 @@ declare_lint! {
     "GC pointer dereferenced while a cell is dropped"
 }
 
+declare_lint! {
+    /// A type that does not implement `Trace` keeps GC pointers in a field, in heap memory the collector does not
+    /// scan. Nothing traces a value of it, wherever it is held. Implement `Trace` for it, so that whatever holds it
+    /// traces it, or give it a `&DeferGc` field, which ties its values to a deferral.
+    pub GC_CONTAINER_IN_UNTRACED_TYPE,
+    Deny,
+    "GC pointers kept in heap memory by a type that is not traced"
+}
+
 pub static LINTS: &[&Lint] = &[
     GC_CONTAINER_ON_STACK,
     ROOT_IN_TRACED_TYPE,
     UNTRACED_GC_POINTER,
     GC_POINTER_IN_DROP,
+    GC_CONTAINER_IN_UNTRACED_TYPE,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -102,12 +112,20 @@ pub struct GcLints<'tcx> {
     defers_collections_types: FxHashSet<DefId>,
     /// The local types that cells of this crate own, which are dropped with them.
     types_in_cells: Option<FxHashSet<DefId>>,
+    /// Whether each type has a field that defers collections, which its values cannot outlive.
+    deferral_scoped: FxHashMap<DefId, bool>,
     reaches_gc_pointer: FxHashMap<Ty<'tcx>, bool>,
     reported_attributes: FxHashSet<Span>,
     enabled: bool,
 }
 
-impl_lint_pass!(GcLints<'_> => [GC_CONTAINER_ON_STACK, ROOT_IN_TRACED_TYPE, UNTRACED_GC_POINTER, GC_POINTER_IN_DROP]);
+impl_lint_pass!(GcLints<'_> => [
+    GC_CONTAINER_ON_STACK,
+    ROOT_IN_TRACED_TYPE,
+    UNTRACED_GC_POINTER,
+    GC_POINTER_IN_DROP,
+    GC_CONTAINER_IN_UNTRACED_TYPE,
+]);
 
 const LIBJS_CRATE: &str = "libjs_rust";
 
@@ -175,6 +193,7 @@ impl<'tcx> GcLints<'tcx> {
         let tcx = cx.tcx;
         let normalize = |ty| normalize(cx, ty);
         match ty.kind() {
+            ty::Adt(adt, _) if self.is_deferral_scoped(tcx, adt.did()) => Vec::new(),
             ty::Adt(adt, args) => match self.kind(tcx, adt.did()) {
                 Kind::GcPointer | Kind::Weak | Kind::DeferGc => Vec::new(),
                 // Everything a root holds is traced, but a root found inside one is still a root.
@@ -316,6 +335,26 @@ impl<'tcx> GcLints<'tcx> {
         }
         self.find(cx, ty, Target::UnscannedGcPointer, &mut Vec::new(), None)
             .map(|(_, container)| container)
+    }
+
+    /// Whether the type has a field that defers collections, like a `&DeferGc` or a `Deferred`, which its values
+    /// cannot outlive, so that nothing collects while one lives.
+    fn is_deferral_scoped(&mut self, tcx: TyCtxt<'_>, def_id: DefId) -> bool {
+        if let Some(&scoped) = self.deferral_scoped.get(&def_id) {
+            return scoped;
+        }
+        let adt = tcx.adt_def(def_id);
+        let scoped = adt.is_struct()
+            && adt.all_fields().any(|field| {
+                let ty = tcx.type_of(field.did).instantiate_identity().skip_normalization();
+                let held = match ty.kind() {
+                    ty::Ref(_, pointee, _) => *pointee,
+                    _ => ty,
+                };
+                matches!(held.kind(), ty::Adt(held, _) if self.defers_collections_types.contains(&held.did()))
+            });
+        self.deferral_scoped.insert(def_id, scoped);
+        scoped
     }
 
     fn is_defer_gc_reference(&mut self, tcx: TyCtxt<'_>, ty: Ty<'_>) -> bool {
@@ -649,8 +688,35 @@ impl<'tcx> LateLintPass<'tcx> for GcLints<'tcx> {
                 item.kind,
                 ItemKind::Struct(..) | ItemKind::Enum(..) | ItemKind::Union(..)
             )
-            || !self.traced_types.contains(&item.owner_id.to_def_id())
         {
+            return;
+        }
+        let def_id = item.owner_id.to_def_id();
+        if !self.traced_types.contains(&def_id) {
+            // NB: The GC's own types, like GcWeak, are what the markers say they are, whatever their fields hold.
+            if self.kind(cx.tcx, def_id) != Kind::Other || self.is_deferral_scoped(cx.tcx, def_id) {
+                return;
+            }
+            for field in cx.tcx.adt_def(def_id).all_fields() {
+                let ty = normalize(
+                    cx,
+                    cx.tcx.type_of(field.did).instantiate_identity().skip_normalization(),
+                );
+                if let Some(container) = self.unscanned_container(cx, ty) {
+                    let field_id = cx.tcx.local_def_id_to_hir_id(field.did.expect_local());
+                    self.emit(
+                        cx,
+                        GC_CONTAINER_IN_UNTRACED_TYPE,
+                        field_id,
+                        cx.tcx.def_span(field.did),
+                        with_forced_trimmed_paths!(format!(
+                            "'{}' does not implement Trace but keeps GC pointers in '{container}', which the \
+                             collector does not scan",
+                            cx.tcx.def_path_str(def_id)
+                        )),
+                    );
+                }
+            }
             return;
         }
         let tcx = cx.tcx;
