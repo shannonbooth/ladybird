@@ -17,6 +17,22 @@ plugin:
 - `gc_container_in_untraced_type`: a type that does not implement `Trace` keeps a GC pointer in a field through heap
   memory, an `Rc` or a `Box` included. Nothing traces its values wherever they are held: implement `Trace` for it, so
   that its owner traces it, or tie it to a deferral.
+- `gc_container_live_across_collection` and `gc_borrow_across_collection` (warnings, see below): a variable that
+  keeps GC pointers in unscanned heap memory still in use after a call that may collect garbage, and a `GcRefMut` or
+  `MarkedValuesMut` held across one.
+
+## Flow checks
+
+The last two lints read MIR. A call may collect if it reaches LibGC's allocation or collection, C++ (a foreign function
+outside the modules `gc_flow.rs` lists), a function pointer or a trait object while no deferral is held; functions of
+the checked crates are looked into as the instances each call makes of them, so a closure a caller passes is known
+where it runs, and functions of other crates only call the closures they are given. A variable is in use across a call
+while it or a reference derived from it is read later, or when the call gets such a reference. They need the MIR of
+the crates a crate depends on and calls as written, so the driver adds `-Zalways-encode-mir -Zinline-mir=no`.
+
+On the code before the fixes that came with these lints, they flagged 42 variables, among them the hazards those fixes
+address (the strings of `jit.exitSites`, the arguments of a RegExp replacer, the substrings of a split), where
+`gc_container_on_stack` flagged 145 locals, return values and iterators.
 
 The check reads types after inference, so `let cells = make_cells();` is checked as `Vec<Gc<Cell>>`. Std containers
 need no list: a container owns its storage through a `PhantomData<T>` next to its pointer, and the lint treats that `T`

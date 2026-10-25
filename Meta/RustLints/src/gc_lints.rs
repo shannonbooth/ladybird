@@ -22,6 +22,8 @@ use rustc_middle::ty::adjustment::{Adjust, DerefAdjustKind, PointerCoercion};
 use rustc_middle::ty::print::with_forced_trimmed_paths;
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_session::{declare_lint, impl_lint_pass};
+
+use crate::gc_flow::{GC_BORROW_ACROSS_COLLECTION, GC_CONTAINER_LIVE_ACROSS_COLLECTION};
 use rustc_span::{DesugaringKind, Span, Symbol};
 
 declare_lint! {
@@ -75,10 +77,12 @@ pub static LINTS: &[&Lint] = &[
     UNTRACED_GC_POINTER,
     GC_POINTER_IN_DROP,
     GC_CONTAINER_IN_UNTRACED_TYPE,
+    GC_CONTAINER_LIVE_ACROSS_COLLECTION,
+    GC_BORROW_ACROSS_COLLECTION,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Kind {
+pub(crate) enum Kind {
     /// `Gc<T>` or `Value`.
     GcPointer,
     /// A type that implements `KeepsAlive`, like `Root`, `MarkedVec` or `Deferred`: whatever these hold stays alive.
@@ -103,20 +107,22 @@ enum Target {
 
 #[derive(Default)]
 pub struct GcLints<'tcx> {
-    kinds: FxHashMap<DefId, Kind>,
-    traced_types: FxHashSet<DefId>,
-    cell_types: FxHashSet<DefId>,
-    swept_types: FxHashSet<DefId>,
-    gc_pointer_types: FxHashSet<DefId>,
-    keeps_alive_types: FxHashSet<DefId>,
-    defers_collections_types: FxHashSet<DefId>,
+    pub(crate) kinds: FxHashMap<DefId, Kind>,
+    pub(crate) traced_types: FxHashSet<DefId>,
+    pub(crate) cell_types: FxHashSet<DefId>,
+    pub(crate) swept_types: FxHashSet<DefId>,
+    pub(crate) gc_pointer_types: FxHashSet<DefId>,
+    pub(crate) keeps_alive_types: FxHashSet<DefId>,
+    pub(crate) defers_collections_types: FxHashSet<DefId>,
     /// The local types that cells of this crate own, which are dropped with them.
-    types_in_cells: Option<FxHashSet<DefId>>,
+    pub(crate) types_in_cells: Option<FxHashSet<DefId>>,
     /// Whether each type has a field that defers collections, which its values cannot outlive.
-    deferral_scoped: FxHashMap<DefId, bool>,
-    reaches_gc_pointer: FxHashMap<Ty<'tcx>, bool>,
-    reported_attributes: FxHashSet<Span>,
-    enabled: bool,
+    pub(crate) deferral_scoped: FxHashMap<DefId, bool>,
+    pub(crate) reaches_gc_pointer: FxHashMap<Ty<'tcx>, bool>,
+    pub(crate) reported_attributes: FxHashSet<Span>,
+    pub(crate) forbids_collections_types: FxHashSet<DefId>,
+    pub(crate) flow: crate::gc_flow::FlowState<'tcx>,
+    pub(crate) enabled: bool,
 }
 
 impl_lint_pass!(GcLints<'_> => [
@@ -125,6 +131,8 @@ impl_lint_pass!(GcLints<'_> => [
     UNTRACED_GC_POINTER,
     GC_POINTER_IN_DROP,
     GC_CONTAINER_IN_UNTRACED_TYPE,
+    GC_CONTAINER_LIVE_ACROSS_COLLECTION,
+    GC_BORROW_ACROSS_COLLECTION,
 ]);
 
 const LIBJS_CRATE: &str = "libjs_rust";
@@ -148,7 +156,7 @@ fn normalize<'tcx>(cx: &LateContext<'tcx>, ty: Ty<'tcx>) -> Ty<'tcx> {
 }
 
 impl<'tcx> GcLints<'tcx> {
-    fn kind(&mut self, tcx: TyCtxt<'_>, def_id: DefId) -> Kind {
+    pub(crate) fn kind(&mut self, tcx: TyCtxt<'_>, def_id: DefId) -> Kind {
         if self.swept_types.contains(&def_id) {
             return Kind::Weak;
         }
@@ -310,7 +318,7 @@ impl<'tcx> GcLints<'tcx> {
         ancestors[index]
     }
 
-    fn unscanned_container(&mut self, cx: &LateContext<'tcx>, ty: Ty<'tcx>) -> Option<Ty<'tcx>> {
+    pub(crate) fn unscanned_container(&mut self, cx: &LateContext<'tcx>, ty: Ty<'tcx>) -> Option<Ty<'tcx>> {
         let ty = normalize(cx, ty);
         // A traced type held by value, or alone in a Box or an Option, is a cell, or storage for one, on its way to
         // where it is traced, or out of there to be dropped: C++ constructs cells in place, so the plugin never sees
@@ -339,7 +347,7 @@ impl<'tcx> GcLints<'tcx> {
 
     /// Whether the type has a field that defers collections, like a `&DeferGc` or a `Deferred`, which its values
     /// cannot outlive, so that nothing collects while one lives.
-    fn is_deferral_scoped(&mut self, tcx: TyCtxt<'_>, def_id: DefId) -> bool {
+    pub(crate) fn is_deferral_scoped(&mut self, tcx: TyCtxt<'_>, def_id: DefId) -> bool {
         if let Some(&scoped) = self.deferral_scoped.get(&def_id) {
             return scoped;
         }
@@ -480,7 +488,14 @@ impl<'tcx> GcLints<'tcx> {
         self.types_in_cells(cx).contains(&did).then_some(did)
     }
 
-    fn emit(&mut self, cx: &LateContext<'_>, lint: &'static Lint, hir_id: HirId, span: Span, message: String) {
+    pub(crate) fn emit(
+        &mut self,
+        cx: &LateContext<'_>,
+        lint: &'static Lint,
+        hir_id: HirId,
+        span: Span,
+        message: String,
+    ) {
         let spec = cx.tcx.lint_level_spec_at_node(lint, hir_id);
         if (spec.is_allow() || spec.is_expect())
             && let LintLevelSource::Node {
@@ -564,6 +579,7 @@ impl<'tcx> LateLintPass<'tcx> for GcLints<'tcx> {
         let mut gc_pointer_types = FxHashSet::default();
         let mut keeps_alive_types = FxHashSet::default();
         let mut defers_collections_types = FxHashSet::default();
+        let mut forbids_collections_types = FxHashSet::default();
         collect("libjs_rust::gc::visitor::Trace", &mut traced_types);
         collect("libjs_rust::gc::class::GcCell", &mut cell_types);
         collect("libjs_rust::gc::weak::SweptAfterCollection", &mut swept_types);
@@ -573,12 +589,17 @@ impl<'tcx> LateLintPass<'tcx> for GcLints<'tcx> {
             "libjs_rust::gc::lint_markers::DefersCollections",
             &mut defers_collections_types,
         );
+        collect(
+            "libjs_rust::gc::lint_markers::ForbidsCollections",
+            &mut forbids_collections_types,
+        );
         self.traced_types = traced_types;
         self.cell_types = cell_types;
         self.swept_types = swept_types;
         self.gc_pointer_types = gc_pointer_types;
         self.keeps_alive_types = keeps_alive_types;
         self.defers_collections_types = defers_collections_types;
+        self.forbids_collections_types = forbids_collections_types;
     }
 
     fn check_pat(&mut self, cx: &LateContext<'tcx>, pat: &'tcx Pat<'tcx>) {
@@ -621,6 +642,7 @@ impl<'tcx> LateLintPass<'tcx> for GcLints<'tcx> {
         if !self.enabled {
             return;
         }
+        self.check_flow(cx, def_id);
         let output = match kind {
             FnKind::Closure => match cx
                 .tcx

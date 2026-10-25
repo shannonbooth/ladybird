@@ -86,8 +86,45 @@ pub mod gc {
         }
     }
 
+    pub mod capi {
+        unsafe extern "C" {
+            pub fn gc_heap_allocate_cell();
+            pub fn gc_heap_defer_gc();
+        }
+    }
+
+    pub mod gc_ref_cell {
+        pub struct GcRefCell<T>(pub core::cell::RefCell<T>);
+
+        impl<T> GcRefCell<T> {
+            pub fn borrow_mut(&self) -> GcRefMut<'_, T> {
+                GcRefMut(self.0.borrow_mut())
+            }
+        }
+
+        pub struct GcRefMut<'a, T>(pub core::cell::RefMut<'a, T>);
+
+        impl<T> core::ops::Deref for GcRefMut<'_, T> {
+            type Target = T;
+
+            fn deref(&self) -> &T {
+                &self.0
+            }
+        }
+
+        impl<T> core::ops::DerefMut for GcRefMut<'_, T> {
+            fn deref_mut(&mut self) -> &mut T {
+                &mut self.0
+            }
+        }
+    }
+
     pub mod defer_gc {
         pub struct DeferGc<'vm>(pub &'vm super::root::Vm);
+
+        impl Drop for DeferGc<'_> {
+            fn drop(&mut self) {}
+        }
 
         impl DeferGc<'_> {
             pub fn cover<T>(&self, value: T) -> Deferred<'_, T> {
@@ -119,6 +156,10 @@ pub mod gc {
         pub unsafe trait DefersCollections {}
 
         unsafe impl DefersCollections for super::defer_gc::DeferGc<'_> {}
+
+        pub trait ForbidsCollections {}
+
+        impl<T> ForbidsCollections for super::gc_ref_cell::GcRefMut<'_, T> {}
         unsafe impl<T> DefersCollections for super::defer_gc::Deferred<'_, T> {}
     }
 
@@ -138,6 +179,7 @@ pub mod gc {
 }
 
 pub use gc::defer_gc::{DeferGc, Deferred};
+pub use gc::gc_ref_cell::{GcRefCell, GcRefMut};
 pub use gc::root::{MarkedVec, Root, Vm};
 pub use gc::visitor::{Trace, Visitor};
 pub use gc::weak::GcWeak;

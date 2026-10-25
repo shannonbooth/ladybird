@@ -8,7 +8,8 @@
 //! does not hide it from them. The lints stop with an error if one of these traits is missing.
 
 use super::defer_gc::{DeferGc, Deferred};
-use super::root::{MarkedVec, Root};
+use super::gc_ref_cell::GcRefMut;
+use super::root::{MarkedValuesMut, MarkedVec, Root};
 use super::visitor::Trace;
 use crate::layout::cell::Gc;
 use crate::layout::value::Value;
@@ -44,3 +45,10 @@ pub unsafe trait DefersCollections {}
 unsafe impl DefersCollections for DeferGc<'_> {}
 // SAFETY: The value cannot outlive the deferral it is tied to.
 unsafe impl<T> DefersCollections for Deferred<'_, T> {}
+
+/// A mutable borrow of traced state, while which nothing may collect garbage: a collection that found the state borrowed
+/// would stop the process.
+pub trait ForbidsCollections {}
+
+impl<T: ?Sized> ForbidsCollections for GcRefMut<'_, T> {}
+impl<T> ForbidsCollections for MarkedValuesMut<'_, T> {}

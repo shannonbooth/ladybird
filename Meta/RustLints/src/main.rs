@@ -13,6 +13,7 @@ extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_errors;
 extern crate rustc_hir;
+extern crate rustc_index;
 extern crate rustc_infer;
 extern crate rustc_interface;
 extern crate rustc_lint;
@@ -21,6 +22,7 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_trait_selection;
 
+mod gc_flow;
 mod gc_lints;
 
 use std::path::Path;
@@ -59,6 +61,9 @@ fn main() -> ExitCode {
                 .into_iter()
                 .map(String::from),
         );
+        // The flow checks read the MIR of the functions a call reaches, also in the checked crates a crate depends on,
+        // and find calls where the source has them, which inlining would hide.
+        args.extend(["-Zalways-encode-mir", "-Zinline-mir=no"].into_iter().map(String::from));
         // For surveying a tree with hits: a deny would stop the crates that depend on the first crate with one.
         if std::env::var_os("LADYBIRD_RUST_LINTS_WARN").is_some() {
             for lint in gc_lints::LINTS {
