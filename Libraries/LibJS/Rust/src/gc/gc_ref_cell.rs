@@ -5,6 +5,7 @@
  */
 
 use core::cell::{Ref, RefCell, RefMut};
+use core::ops::{Deref, DerefMut};
 
 use super::visitor::{Trace, Visitor};
 
@@ -21,8 +22,8 @@ impl<T> GcRefCell<T> {
         self.0.borrow()
     }
 
-    pub fn borrow_mut(&self) -> RefMut<'_, T> {
-        self.0.borrow_mut()
+    pub fn borrow_mut(&self) -> GcRefMut<'_, T> {
+        GcRefMut(self.0.borrow_mut())
     }
 
     pub fn replace(&self, value: T) -> T {
@@ -44,5 +45,29 @@ unsafe impl<T: Trace> Trace for GcRefCell<T> {
             std::process::abort();
         };
         value.trace(visitor);
+    }
+}
+
+/// A mutable borrow of the state in a GcRefCell, while which nothing may collect garbage.
+pub struct GcRefMut<'a, T: ?Sized>(RefMut<'a, T>);
+
+impl<'a, T: ?Sized> GcRefMut<'a, T> {
+    /// Borrows a part of the state, as RefMut::map() does.
+    pub fn map<U: ?Sized>(borrow: Self, part: impl FnOnce(&mut T) -> &mut U) -> GcRefMut<'a, U> {
+        GcRefMut(RefMut::map(borrow.0, part))
+    }
+}
+
+impl<T: ?Sized> Deref for GcRefMut<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
+
+impl<T: ?Sized> DerefMut for GcRefMut<'_, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        &mut self.0
     }
 }

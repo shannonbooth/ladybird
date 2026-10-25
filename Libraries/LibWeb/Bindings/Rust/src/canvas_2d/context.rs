@@ -18,7 +18,7 @@ use libcompositing_rust::display_list::canvas_2d_recorder::{AlphaType, ColorSpac
 use libcompositing_rust::display_list::commands::{Canvas2DShadow, CanvasId};
 use libgfx_rust::path::Path;
 use libgfx_rust::{AffineTransform, Color, CompositingAndBlendingOperator, FloatRect, IntRect, IntSize, WindingRule};
-use libjs_rust::api::{ForeignCellSlot, Gc, GcRefCell, Realm, Trace, Visitor, Vm};
+use libjs_rust::api::{ForeignCellSlot, Gc, GcRefCell, GcRefMut, Realm, Trace, Visitor, Vm};
 
 use super::canvas::{Canvas, FontMetricsSource, FontSelection, ResolvedFont, StyleValue, parse_color};
 use super::drawing_state::{CanvasColor, DrawingState, FillOrStrokeStyle};
@@ -246,8 +246,8 @@ impl ContextState {
     }
 
     /// The current drawing state, to change it. Nothing may run script or collect garbage while the borrow lasts.
-    pub(crate) fn drawing_state_mut(&self) -> RefMut<'_, DrawingState> {
-        RefMut::map(self.states.borrow_mut(), |states| {
+    pub(crate) fn drawing_state_mut(&self) -> GcRefMut<'_, DrawingState> {
+        GcRefMut::map(self.states.borrow_mut(), |states| {
             states.last_mut().expect("a context has a current drawing state")
         })
     }

@@ -6,10 +6,10 @@
 
 //! Precise roots for values that live outside cells and outside the stack, where the collector would not find them.
 
-use core::cell::{OnceCell, Ref, RefCell, RefMut};
+use core::cell::{OnceCell, Ref, RefCell};
 use core::ops::{Deref, DerefMut};
 
-use super::gc_ref_cell::GcRefCell;
+use super::gc_ref_cell::{GcRefCell, GcRefMut};
 use super::visitor::{Trace, Visitor};
 use crate::interpreter::vm::Vm;
 
@@ -181,7 +181,7 @@ impl<T> Deref for MarkedValues<'_, T> {
 }
 
 /// The values of a MarkedVec, which stay alive while this lends them to change in place.
-pub struct MarkedValuesMut<'a, T>(Option<RefMut<'a, Vec<T>>>);
+pub struct MarkedValuesMut<'a, T>(Option<GcRefMut<'a, Vec<T>>>);
 
 impl<T> Deref for MarkedValuesMut<'_, T> {
     type Target = [T];
