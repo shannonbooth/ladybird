@@ -1,6 +1,7 @@
 # Rust GC lints
 
-A rustc driver that ports two LibJSGC clang plugin checks to the Rust crates that use libjs_rust's GC:
+A rustc driver with lints for the Rust crates that use libjs_rust's GC, the first two ported from the LibJSGC clang
+plugin:
 
 - `gc_container_on_stack` (`gc_pointer_container_on_stack` in C++): a local, parameter, return value or unsizing
   coercion whose type owns a `Gc<_>`, a `Value` or a reference to a `GcCell` through heap memory that the collector
@@ -8,6 +9,8 @@ A rustc driver that ports two LibJSGC clang plugin checks to the Rust crates tha
   captures one, a struct holding any of these, ...). Keep such lists in a `MarkedVec`, or lend them from one.
 - `root_in_traced_type` (`strong_root_fields_in_gc_allocated_types`): a field that holds a `Root` or `MarkedVec` in a
   type that implements `Trace`.
+- `untraced_gc_pointer`: a field marked `#[gc(untraced)]`, which `#[derive(Trace)]` skips, whose type can hold a GC
+  pointer. A field whose cells something else keeps alive says what with `#[gc(untraced = "...")]`.
 
 The check reads types after inference, so `let cells = make_cells();` is checked as `Vec<Gc<Cell>>`. Std containers
 need no list: a container owns its storage through a `PhantomData<T>` next to its pointer, and the lint treats that `T`
