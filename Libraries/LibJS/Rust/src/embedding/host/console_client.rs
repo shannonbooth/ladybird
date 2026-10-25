@@ -154,8 +154,8 @@ impl HostConsoleClient {
             return Ok(Value::UNDEFINED);
         };
 
-        // The views point into `arguments` and these copies, which all live until the printer returns. The values
-        // stay alive in the MarkedVec of `arguments`.
+        // The views point into `arguments`, these copies and the values lent from its MarkedVec, which all live until
+        // the printer returns.
         let trace_frames;
         let values;
         let printer_arguments = match &arguments {
@@ -179,7 +179,7 @@ impl HostConsoleClient {
                 }
             }
             PrinterArguments::Values(marked_values) => {
-                values = marked_values.to_vec();
+                values = marked_values.values();
                 JSConsolePrinterArguments {
                     kind: JS_CONSOLE_PRINTER_ARGUMENTS_VALUES,
                     label: JSUtf16View::of(Utf16View::EMPTY),
