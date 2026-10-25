@@ -16,11 +16,23 @@ use crate::layout::cell::Gc;
 /// collected. The startup layout check compares the offset with the one gc_get_layout() reports.
 pub(super) const WEAK_IMPL_POINTER_OFFSET: usize = 16;
 
+/// A type whose GC pointers do not keep their cells alive: wherever a value of it is, the pointers to cells that a
+/// collection frees are cleared before anything reads them. Ladybird's Rust GC lints accept such values in a Box or a
+/// Vec.
+///
+/// # Safety
+///
+/// Every value of the type must have its pointers to dead cells cleared after each collection.
+pub unsafe trait SweptAfterCollection {}
+
 /// A reference to a cell that does not keep it alive.
 pub struct GcWeak<T> {
     weak_impl: NonNull<GCWeakImpl>,
     _cell: PhantomData<Gc<T>>,
 }
+
+// SAFETY: LibGC clears the pointer of a weak impl once its cell is collected.
+unsafe impl<T> SweptAfterCollection for GcWeak<T> {}
 
 impl<T> GcWeak<T> {
     pub fn new(heap: &Heap, cell: Gc<T>) -> Self {
