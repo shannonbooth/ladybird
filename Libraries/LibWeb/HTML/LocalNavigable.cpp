@@ -758,6 +758,10 @@ void LocalNavigable::set_has_been_destroyed()
     cancel_hover_update_after_async_scroll();
     destroy_compositor_context();
     m_has_been_destroyed = true;
+    if (m_document_delaying_load_events_until_activation) {
+        m_document_delaying_load_events_until_activation = nullptr;
+        update_container_document_load_event_delay();
+    }
     DOM::Document::invalidate_full_activity();
     resolve_all_pending_async_scroll_operations();
     cancel_user_scroll_settlement();
@@ -833,6 +837,7 @@ void LocalNavigable::visit_edges(Cell::Visitor& visitor)
     visitor.visit(m_window_proxy_after_unload);
     visitor.visit(m_provisional_for);
     visitor.visit(m_input_method_composition_node);
+    visitor.visit(m_document_delaying_load_events_until_activation);
     m_event_handler.visit_edges(visitor);
 
     for (auto& parked : m_navigations_parked_for_population) {
@@ -899,10 +904,31 @@ bool LocalNavigable::delays_the_load_event_of_its_container() const
 void LocalNavigable::set_delaying_load_events(bool value)
 {
     m_is_delaying_load_events = value;
+    update_container_document_load_event_delay();
+}
 
+// AD-HOC: Step 2 of finalize a cross-document navigation stops delaying load events, but the container document would
+//         then see the displayed document until the navigation's document is activated, and an initial about:blank is
+//         ready for post-load tasks. So the navigation's document delays load events until it is activated.
+void LocalNavigable::delay_load_events_until_activation(DOM::Document& document)
+{
+    m_document_delaying_load_events_until_activation = document;
+    update_container_document_load_event_delay();
+}
+
+void LocalNavigable::stop_delaying_load_events_until_activation(DOM::Document const& document)
+{
+    if (m_document_delaying_load_events_until_activation.ptr() != &document)
+        return;
+    m_document_delaying_load_events_until_activation = nullptr;
+    update_container_document_load_event_delay();
+}
+
+void LocalNavigable::update_container_document_load_event_delay()
+{
     // The container document's load event waits on this flag where that document lives: through a delayer when the
     // document is here, and through the replicated state when it is in another process.
-    if (!value) {
+    if (!is_delaying_load_events()) {
         m_container_document_load_event_delayer.clear();
     } else if (auto document = container_document()) {
         m_container_document_load_event_delayer.emplace(*document);
@@ -912,9 +938,8 @@ void LocalNavigable::set_delaying_load_events(bool value)
     report_state_to_remote_container();
 }
 
-// AD-HOC: The spec leaves "is delaying load events" alone when a superseded navigation is dropped; we clear it there so
-//         a dropped navigation does not delay the load event forever. The flag is the navigable's, though, so only
-//         clear it when no newer navigation is ongoing: that one set it as it started and clears it as it ends.
+// AD-HOC: For a navigation that ends without reaching finalize a cross-document navigation, and without its ongoing
+//         navigation changing. A newer ongoing navigation owns the flag, so leave it alone then.
 void LocalNavigable::stop_delaying_load_events_for_navigation(Utf16String const& navigation_id)
 {
     if (auto const* ongoing_navigation_id = m_ongoing_navigation.get_pointer<Utf16String>(); ongoing_navigation_id && *ongoing_navigation_id != navigation_id)
@@ -971,7 +996,6 @@ void LocalNavigable::continue_navigation_at_population(NavigationPopulationReque
     auto navigation_params_or_error = create_navigation_params_from_descriptor(realm, *navigable, move(result.navigation_params));
     if (navigation_params_or_error.is_error()) {
         navigable->set_ongoing_navigation({});
-        navigable->set_delaying_load_events(false);
         page().client().navigation_population_failed(request.navigable_id, request.navigation_id);
         return;
     }
@@ -1005,7 +1029,6 @@ void LocalNavigable::continue_navigation_at_population(NavigationPopulationReque
         GC::create_function(navigable->heap(), [navigable, history_entry, history_handling = request.history_handling, navigation_id = request.navigation_id, user_involvement = request.user_involvement](GC::Ptr<PopulateSessionHistoryEntryDocumentOutput> output) mutable {
             // AD-HOC: This check is not in the spec but we should not continue navigation if ongoing navigation id has changed.
             if (navigable->ongoing_navigation() != navigation_id) {
-                navigable->stop_delaying_load_events_for_navigation(navigation_id);
                 navigable->page().client().navigation_population_failed(navigable->id(), navigation_id);
                 return;
             }
@@ -1014,7 +1037,6 @@ void LocalNavigable::continue_navigation_at_population(NavigationPopulationReque
                 // NB: The UI process ended the recorded load and its transaction when the download adopted this
                 //     population's response body.
                 navigable->set_ongoing_navigation({});
-                navigable->set_delaying_load_events(false);
                 return;
             }
 
@@ -1714,6 +1736,12 @@ void LocalNavigable::set_ongoing_navigation_without_informing_navigation_api(Var
 {
     if (m_ongoing_navigation == ongoing_navigation)
         return;
+
+    // AD-HOC: A navigation stops delaying load events once it is no longer navigable's ongoing navigation. The spec
+    //         only stops in finalize a cross-document navigation, which a navigation that ends otherwise never reaches.
+    //         See https://github.com/whatwg/html/issues/10252.
+    if (m_ongoing_navigation.has<Utf16String>() && m_is_delaying_load_events)
+        set_delaying_load_events(false);
 
     m_ongoing_navigation = ongoing_navigation;
 
@@ -3315,10 +3343,8 @@ void LocalNavigable::continue_navigation_after_population_dispatch(PreparedNavig
         set_delaying_load_events(false);
         return;
     }
-    if (ongoing_navigation() != navigation_id) {
-        stop_delaying_load_events_for_navigation(navigation_id);
+    if (ongoing_navigation() != navigation_id)
         return;
-    }
 
     if (!is_local_root()) {
         if (auto parent = this->parent(); parent && has_compositor_context()) {
@@ -3444,12 +3470,13 @@ void LocalNavigable::adopt_navigation_started_in_ui_process(Utf16String navigati
             iframe_element.stop_lazy_loading();
     }
 
-    // 15. If navigable's parent is non-null, then set navigable's is delaying load events to true.
-    if (parent())
-        set_delaying_load_events(true);
-
     // 19. Set the ongoing navigation for navigable to navigationId.
     set_ongoing_navigation(navigation_id);
+
+    // 15. If navigable's parent is non-null, then set navigable's is delaying load events to true.
+    // AD-HOC: After step 19, so the navigation stops delaying load events when it is no longer the ongoing navigation.
+    if (parent())
+        set_delaying_load_events(true);
 
     park_navigation_for_population(navigation_id, {});
 }
@@ -3619,10 +3646,6 @@ void LocalNavigable::begin_navigation(PreparedNavigation navigation)
         return;
     }
 
-    // 15. If navigable's parent is non-null, then set navigable's is delaying load events to true.
-    if (parent() != nullptr)
-        set_delaying_load_events(true);
-
     // 16. Let targetSnapshotParams be the result of snapshotting target snapshot params given navigable.
     auto target_snapshot_params = snapshot_target_snapshot_params(*this);
 
@@ -3644,6 +3667,12 @@ void LocalNavigable::begin_navigation(PreparedNavigation navigation)
 
     // 19. Set the ongoing navigation for navigable to navigationId.
     set_ongoing_navigation(navigation_id);
+
+    // 15. If navigable's parent is non-null, then set navigable's is delaying load events to true.
+    // AD-HOC: After steps 18 and 19, so the navigation stops delaying load events when it is no longer the ongoing
+    //         navigation. See https://github.com/whatwg/html/issues/10252.
+    if (parent() != nullptr)
+        set_delaying_load_events(true);
 
     // 20. If url's scheme is "javascript", then:
     if (url.scheme() == "javascript"sv) {
@@ -3797,7 +3826,6 @@ void LocalNavigable::run_navigation_unload_check(Utf16String const& navigation_i
             // NB: The UI process learns of the canceled check from the population-failure report and ends the
             //     recorded load itself.
             if (unload_prompt_canceled != CheckIfUnloadingIsCanceledResult::Continue) {
-                stop_delaying_load_events_for_navigation(navigation_id);
                 // AD-HOC: Step 2 ends with 'Abort these steps.', which leaves navigable's ongoing navigation as
                 //         navigationId: step 24 of navigate set it ('Set the ongoing navigation for navigable to
                 //         navigationId.'), and the canceled navigation runs nothing further that would reset it. 'Each
@@ -3822,7 +3850,6 @@ void LocalNavigable::run_navigation_unload_check(Utf16String const& navigation_i
             }
 
             if (ongoing_navigation() != navigation_id) {
-                stop_delaying_load_events_for_navigation(navigation_id);
                 completion_steps->function()(false);
                 return;
             }
@@ -3846,10 +3873,8 @@ bool LocalNavigable::resume_navigation_params_creation(Utf16String const& naviga
         set_delaying_load_events(false);
         return true;
     }
-    if (ongoing_navigation() != navigation_id) {
-        stop_delaying_load_events_for_navigation(navigation_id);
+    if (ongoing_navigation() != navigation_id)
         return true;
-    }
 
     if (pending->navigation.has_value()) {
         continue_navigation_after_population_dispatch(pending->navigation.release_value(), request.release_value());
@@ -4363,11 +4388,10 @@ void finalize_a_cross_document_navigation(GC::Ref<LocalNavigable> navigable, His
         return;
     }
 
-    if (!pending_document) {
-        // 2. Set navigable's is delaying load events to false.
-        // 3. If historyEntry's document is null, then return.
-        navigable->set_delaying_load_events(false);
-    }
+    // 2. Set navigable's is delaying load events to false.
+    if (pending_document && navigable->is_delaying_load_events())
+        navigable->delay_load_events_until_activation(*pending_document);
+    navigable->set_delaying_load_events(false);
 
     navigable->page().history_executor().request_history_operation(
         FinalizeCrossDocumentNavigationHistoryOperationParameters {
@@ -4383,11 +4407,10 @@ void finalize_a_cross_document_navigation(GC::Ref<LocalNavigable> navigable, His
             .pending_document = pending_document,
             .local_target_navigable_id = navigable->id(),
             .local_target_entry = history_entry,
-            .on_complete = GC::create_function(navigable->heap(), [navigable, navigation_id, has_document = !!pending_document] {
-                // AD-HOC: Step 2 runs as the navigation's document is activated. When the steps end without activating
-                //         it, the navigation is dropped, and stops delaying load events.
-                if (has_document && !navigable->has_been_destroyed() && navigable->is_delaying_load_events())
-                    navigable->stop_delaying_load_events_for_navigation(navigation_id);
+            .on_complete = GC::create_function(navigable->heap(), [navigable, pending_document] {
+                // NB: Steps that end without activating the document drop it.
+                if (pending_document)
+                    navigable->stop_delaying_load_events_until_activation(*pending_document);
 
                 // AD-HOC: Trigger a relayout in the container document for size negotiation with SVG documents.
                 if (auto container = navigable->container())

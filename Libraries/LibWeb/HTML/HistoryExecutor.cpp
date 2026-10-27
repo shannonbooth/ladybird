@@ -685,13 +685,8 @@ Optional<HistoryExecutor::DequeuedChangingNavigableContinuation> HistoryExecutor
         if (!update_only) {
             navigable->activate_history_entry(*target_entry, *resolved_document);
 
-            // https://html.spec.whatwg.org/multipage/browsing-the-web.html#finalize-a-cross-document-navigation
-            // 2. Set navigable's is delaying load events to false.
-            // AD-HOC: Not until the navigation's document is active. Before, the container document sees the displayed
-            //         document instead, and an initial about:blank is ready for post-load tasks, so nothing would delay
-            //         the container's load event.
             if (continuation->pending_document)
-                navigable->set_delaying_load_events(false);
+                navigable->stop_delaying_load_events_until_activation(*continuation->pending_document);
 
             activated_navigable_state = navigable->hosted_state();
         }

@@ -1,0 +1,2 @@
+Navigate event canceled
+Parent load event fired

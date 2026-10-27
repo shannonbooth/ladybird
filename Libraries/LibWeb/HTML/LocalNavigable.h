@@ -117,7 +117,9 @@ public:
 
     void set_delaying_load_events(bool value);
     void stop_delaying_load_events_for_navigation(Utf16String const& navigation_id);
-    bool is_delaying_load_events() const { return m_is_delaying_load_events; }
+    void delay_load_events_until_activation(DOM::Document&);
+    void stop_delaying_load_events_until_activation(DOM::Document const&);
+    bool is_delaying_load_events() const { return m_is_delaying_load_events || m_document_delaying_load_events_until_activation; }
 
     RefPtr<SessionHistoryEntry> active_session_history_entry() const;
     void set_active_session_history_entry(RefPtr<SessionHistoryEntry>);
@@ -445,6 +447,7 @@ protected:
 
 private:
     void record_rendering_invalidation();
+    void update_container_document_load_event_delay();
 
     // A rendering update's recording that flies beside the event loop, with what its frame is finished with.
     struct RecordingInFlight;
@@ -574,6 +577,8 @@ private:
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#delaying-load-events-mode
     bool m_is_delaying_load_events { false };
+    // A finalized navigation's document, which delays load events until it is activated.
+    GC::Ptr<DOM::Document> m_document_delaying_load_events_until_activation;
     Optional<DOM::DocumentLoadEventDelayer> m_container_document_load_event_delayer;
 
     NavigationObserver::NavigationObserversList m_navigation_observers;

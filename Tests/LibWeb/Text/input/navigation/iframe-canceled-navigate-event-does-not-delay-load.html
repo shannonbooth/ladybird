@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    asyncTest(done => {
+        window.addEventListener("load", () => {
+            println("Parent load event fired");
+            done();
+        });
+    });
+</script>
+<iframe srcdoc="<script>
+    navigation.onnavigate = event => {
+        event.preventDefault();
+        parent.println('Navigate event canceled');
+    };
+    onload = () => {
+        location.href = 'other.html';
+    };
+</script>"></iframe>
