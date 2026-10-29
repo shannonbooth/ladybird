@@ -470,13 +470,9 @@ public:
     {
         auto view = string.utf16_view();
         auto length = view.length_in_code_units();
-        encode((static_cast<u64>(length) << 1) | (view.has_ascii_storage() ? 1u : 0u));
-        if (view.has_ascii_storage()) {
-            m_data.append(view.ascii_bytes());
-        } else if (view.has_latin1_storage()) {
-            // FIXME: Serialize Latin-1 as one byte per code unit.
-            for (u8 code_unit : view.latin1_span())
-                append_little_endian(static_cast<u16>(code_unit));
+        encode((static_cast<u64>(length) << 1) | (view.has_latin1_storage() ? 1u : 0u));
+        if (view.has_latin1_storage()) {
+            m_data.append(view.latin1_span());
         } else if constexpr (AK::HostIsLittleEndian) {
             m_data.append(reinterpret_cast<u8 const*>(view.utf16_span().data()), length * sizeof(char16_t));
         } else {
@@ -594,7 +590,7 @@ public:
     {
         u64 header = 0;
         TRY(decode(header));
-        bool is_ascii = (header & 1) != 0;
+        bool has_latin1_storage = (header & 1) != 0;
         size_t length = TRY(host_size_from_stable_size(header >> 1));
         if (length == 0) {
             string = {};
@@ -602,15 +598,13 @@ public:
         }
         // Validate the byte count before try_resize(), which multiplies length without an overflow check.
         Checked<size_t> byte_count = length;
-        if (!is_ascii)
+        if (!has_latin1_storage)
             byte_count *= sizeof(u16);
         if (byte_count.has_overflow() || byte_count.value() > m_stream.remaining())
             return Error::from_string_literal("Truncated structured serialize storage record");
         auto bytes = TRY(read_bytes(byte_count.value()));
-        if (is_ascii) {
-            if (!StringView { bytes }.is_ascii())
-                return Error::from_string_literal("Invalid ASCII in structured serialize storage record");
-            string = Utf16String::from_ascii_without_validation(bytes);
+        if (has_latin1_storage) {
+            string = Utf16String::from_utf16(Utf16View::from_latin1(bytes, false));
             return {};
         }
         // The stream offset can be odd, so the bytes cannot be viewed as char16_t in place.
