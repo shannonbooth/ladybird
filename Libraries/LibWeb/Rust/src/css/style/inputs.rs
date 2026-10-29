@@ -1556,7 +1556,9 @@ impl RetainedState {
             .raws()
             .iter()
             .map(|raw| match unsafe { ak::utf16_string_units(raw) } {
-                ak::Utf16StringUnits::Ascii(units) => units.iter().copied().map(u16::from).collect(),
+                ak::Utf16StringUnits::Ascii(units) | ak::Utf16StringUnits::Latin1(units) => {
+                    units.iter().copied().map(u16::from).collect()
+                }
                 ak::Utf16StringUnits::Utf16(units) => units.to_vec(),
             })
             .collect();

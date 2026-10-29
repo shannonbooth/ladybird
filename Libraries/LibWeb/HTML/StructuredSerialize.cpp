@@ -472,7 +472,7 @@ public:
         auto length = view.length_in_code_units();
         encode((static_cast<u64>(length) << 1) | (view.has_ascii_storage() ? 1u : 0u));
         if (view.has_ascii_storage()) {
-            m_data.append(view.bytes());
+            m_data.append(view.ascii_bytes());
         } else if constexpr (AK::HostIsLittleEndian) {
             m_data.append(reinterpret_cast<u8 const*>(view.utf16_span().data()), length * sizeof(char16_t));
         } else {
