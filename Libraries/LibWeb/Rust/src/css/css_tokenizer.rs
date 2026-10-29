@@ -129,12 +129,12 @@ impl Default for TokenizerInput<'_> {
 impl TokenizerInput<'_> {
     /// # Safety
     /// Exactly one non-empty input pointer must identify `length` readable units.
-    pub(crate) unsafe fn from_raw_parts(ascii: *const u8, utf16: *const u16, length: usize) -> Option<Self> {
+    pub(crate) unsafe fn from_raw_parts(latin1: *const u8, utf16: *const u16, length: usize) -> Option<Self> {
         if length == 0 {
             return Some(Self::Latin1(&[]));
         }
-        match (ascii.is_null(), utf16.is_null()) {
-            (false, true) => Some(Self::Latin1(unsafe { ak::slice_from_raw_parts(ascii, length) })),
+        match (latin1.is_null(), utf16.is_null()) {
+            (false, true) => Some(Self::Latin1(unsafe { ak::slice_from_raw_parts(latin1, length) })),
             (true, false) => Some(Self::Utf16(unsafe { ak::slice_from_raw_parts(utf16, length) })),
             _ => None,
         }
@@ -469,21 +469,21 @@ pub(crate) enum ParserSource {
 
 #[derive(Debug)]
 pub(crate) enum SourceStorage {
-    Ascii(Box<[u8]>),
+    Latin1(Box<[u8]>),
     Utf16(Box<[u16]>),
 }
 
 impl SourceStorage {
     fn from_input(input: TokenizerInput<'_>) -> Self {
         match input {
-            TokenizerInput::Latin1(units) => Self::Ascii(units.into()),
+            TokenizerInput::Latin1(units) => Self::Latin1(units.into()),
             TokenizerInput::Utf16(units) => Self::Utf16(units.into()),
         }
     }
 
     fn as_input(&self) -> TokenizerInput<'_> {
         match self {
-            Self::Ascii(units) => TokenizerInput::Latin1(units),
+            Self::Latin1(units) => TokenizerInput::Latin1(units),
             Self::Utf16(units) => TokenizerInput::Utf16(units),
         }
     }
@@ -508,7 +508,7 @@ impl TextDetacher {
         walk(&mut detacher);
         for (storage, span, copy) in &mut detacher.sources {
             *copy = Some(Arc::new(match storage.as_ref() {
-                SourceStorage::Ascii(units) => SourceStorage::Ascii(units[span.clone()].into()),
+                SourceStorage::Latin1(units) => SourceStorage::Latin1(units[span.clone()].into()),
                 SourceStorage::Utf16(units) => SourceStorage::Utf16(units[span.clone()].into()),
             }));
         }
@@ -613,7 +613,7 @@ impl ParserSource {
             Self::Empty => ParserSourceIter::Empty,
             Self::Owned(source) => ParserSourceIter::Owned(source.iter()),
             Self::Shared { storage, range } => match storage.as_ref() {
-                SourceStorage::Ascii(source) => ParserSourceIter::Ascii(source[range.clone()].iter()),
+                SourceStorage::Latin1(source) => ParserSourceIter::Ascii(source[range.clone()].iter()),
                 SourceStorage::Utf16(source) => ParserSourceIter::Utf16(source[range.clone()].iter()),
             },
         }
@@ -624,7 +624,7 @@ impl ParserSource {
             Self::Empty => {}
             Self::Owned(source) => target.extend_from_slice(source),
             Self::Shared { storage, range } => match storage.as_ref() {
-                SourceStorage::Ascii(source) => target.extend(source[range.clone()].iter().copied().map(u16::from)),
+                SourceStorage::Latin1(source) => target.extend(source[range.clone()].iter().copied().map(u16::from)),
                 SourceStorage::Utf16(source) => target.extend_from_slice(&source[range.clone()]),
             },
         }
@@ -2405,7 +2405,7 @@ mod tests {
         let ParserSource::Shared { storage, range } = &ascii_tokens[0].source else {
             panic!("token source should use shared storage");
         };
-        assert!(matches!(storage.as_ref(), SourceStorage::Ascii(_)));
+        assert!(matches!(storage.as_ref(), SourceStorage::Latin1(_)));
         assert_eq!(range.clone(), 0..5);
 
         let utf16 = "café".encode_utf16().collect::<Vec<_>>();

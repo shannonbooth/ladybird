@@ -473,6 +473,10 @@ public:
         encode((static_cast<u64>(length) << 1) | (view.has_ascii_storage() ? 1u : 0u));
         if (view.has_ascii_storage()) {
             m_data.append(view.ascii_bytes());
+        } else if (view.has_latin1_storage()) {
+            // FIXME: Serialize Latin-1 as one byte per code unit.
+            for (u8 code_unit : view.latin1_span())
+                append_little_endian(static_cast<u16>(code_unit));
         } else if constexpr (AK::HostIsLittleEndian) {
             m_data.append(reinterpret_cast<u8 const*>(view.utf16_span().data()), length * sizeof(char16_t));
         } else {
