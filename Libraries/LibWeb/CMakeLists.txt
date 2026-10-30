@@ -574,7 +574,6 @@ set(SOURCES
     HTML/Location.cpp
     HTML/MediaError.cpp
     HTML/MediaTrackBase.cpp
-    HTML/MessageChannel.cpp
     HTML/MessageEvent.cpp
     HTML/MessagePort.cpp
     HTML/MimeType.cpp

@@ -763,7 +763,6 @@ class LocalNavigable;
 class LocalTraversableNavigable;
 class Location;
 class MediaError;
-class MessageChannel;
 class MessageEvent;
 class MessagePort;
 class MimeType;
