@@ -17,6 +17,8 @@
 
 namespace JS {
 
+class ScriptOrModule;
+
 class JS_API FunctionObject : public Object {
 public:
     // The runtime flags every object that has a [[Call]] internal method, including callable proxies.
@@ -24,6 +26,9 @@ public:
 
     // [[Realm]], which a bound function or a proxy does not have.
     Realm* realm() const;
+
+    // [[ScriptOrModule]], which only an ECMAScript function object has.
+    ScriptOrModule script_or_module() const;
 
     Utf16String name_for_call_stack() const;
 };

@@ -6,6 +6,7 @@
  */
 
 #include <LibJS/ObjectEmbeddingABIConversions.h>
+#include <LibJS/Runtime/ExecutionContext.h>
 #include <LibJS/Runtime/FunctionObject.h>
 
 namespace JS {
@@ -15,6 +16,11 @@ using namespace EmbeddingABI;
 Realm* FunctionObject::realm() const
 {
     return cell_from_abi<Realm>(js_function_realm(object_to_abi(*this)));
+}
+
+ScriptOrModule FunctionObject::script_or_module() const
+{
+    return bit_cast<ScriptOrModule>(js_function_script_or_module(object_to_abi(*this)));
 }
 
 Utf16String FunctionObject::name_for_call_stack() const

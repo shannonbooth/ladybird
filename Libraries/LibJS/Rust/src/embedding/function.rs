@@ -29,12 +29,14 @@ use crate::gc::foreign::ForeignCellSlot;
 use crate::gc::visitor::{Trace, Visitor};
 use crate::interpreter::vm::Vm;
 use crate::layout::cell::Gc;
+use crate::layout::execution_context::ScriptOrModule;
 use crate::layout::function_object::EcmascriptFunctionObject;
 use crate::layout::host_class::{JSCompletion, JSObject, JSPropertyKey, JSVM, JSValue};
 use crate::layout::value::Value;
 use crate::layout_forward::{RawNativeFunctionPointer, RawNativeFunctionResult};
 use crate::runtime::abstract_operations::{call, construct};
 use crate::runtime::completion::ThrowCompletionOr;
+use crate::runtime::ecmascript_function_object::as_ecmascript_function_object;
 use crate::runtime::function_constructor::compile_dynamic_function;
 use crate::runtime::native_function::{
     DirectGetterConfiguration, DirectGetterFunction, NativeFunction, RawNativeFunction,
@@ -279,6 +281,17 @@ pub unsafe extern "C" fn js_function_realm(function: *mut JSObject) -> *mut JSRe
     // SAFETY: See the module documentation.
     let function = unsafe { function_from_abi(function) };
     optional_cell_into_abi::<JSRealm>(function.realm())
+}
+
+/// The function's [[ScriptOrModule]], or an empty one for a function without one, such as a native or a bound
+/// function. Main thread only.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn js_function_script_or_module(function: *mut JSObject) -> JSScriptOrModule {
+    // SAFETY: See the module documentation.
+    let function = unsafe { function_from_abi(function) };
+    as_ecmascript_function_object(function)
+        .map_or(ScriptOrModule::Empty, |function| function.script_or_module())
+        .into()
 }
 
 /// The name of the function that call stacks show, which the caller owns. Main thread only.
