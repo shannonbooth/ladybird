@@ -1,0 +1,4 @@
+Listener, dispatchEvent(): message "Script error.", filename "", line 0, column 0, error null
+Event handler, click(): message "Script error.", filename "", line 0, column 0, error null
+Listener, posted message: message "Script error.", filename "", line 0, column 0, error null
+Timer: message "Script error.", filename "", line 0, column 0, error null

@@ -137,7 +137,8 @@ bool EventDispatcher::inner_invoke(Event& event, EventTarget::ClonedEventListene
         // If this throws an exception, then:
         if (result.is_error()) {
             // 1. Report exception for listener’s callback’s corresponding JavaScript object’s associated realm’s global object.
-            Bindings::report_exception_for_callback(callback, result.release_error().value());
+            auto* event_handler_callback = event.current_target()->event_handler_callback(*listener);
+            Bindings::report_exception_for_callback(callback, result.release_error().value(), event_handler_callback ? *event_handler_callback : callback);
 
             // 2. Set legacyOutputDidListenersThrowFlag if given. (Only used by IndexedDB currently)
             legacy_output_did_listeners_throw = true;

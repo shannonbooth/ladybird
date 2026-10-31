@@ -733,7 +733,7 @@ WebIDL::ExceptionOr<GC::Ref<Element>> create_element(Document& document, Utf16Fl
             if (upgrade_result.is_throw_completion()) {
                 // 1. Report exception for definition’s constructor’s corresponding JavaScript object’s associated
                 //    realm’s global object.
-                HTML::report_an_exception(HTML::relevant_global_object(definition->constructor().callback), upgrade_result.error_value());
+                HTML::report_an_exception(HTML::relevant_global_object(definition->constructor().callback), upgrade_result.error_value(), HTML::OmitError::No, HTML::script_of_callback(definition->constructor()));
 
                 // 2. Set result’s custom element state to "failed".
                 result->set_custom_element_state(CustomElementState::Failed);
@@ -762,7 +762,7 @@ WebIDL::ExceptionOr<GC::Ref<Element>> create_element(Document& document, Utf16Fl
             if (constructed_element.is_throw_completion()) {
                 // 1. Report exception for definition’s constructor’s corresponding JavaScript object’s associated
                 //    realm’s global object.
-                HTML::report_an_exception(HTML::relevant_global_object(definition->constructor().callback), constructed_element.error_value());
+                HTML::report_an_exception(HTML::relevant_global_object(definition->constructor().callback), constructed_element.error_value(), HTML::OmitError::No, HTML::script_of_callback(definition->constructor()));
 
                 // 2. Set result to the result of creating an element internal given document, HTMLUnknownElement,
                 //    localName, the HTML namespace, prefix, "failed", null, and registry.

@@ -319,7 +319,7 @@ void report_custom_element_upgrade_exception(HTML::CustomElementDefinition& cust
 {
     auto& callback = custom_element_definition.constructor();
     auto& realm = callback.callback->shape().realm();
-    HTML::report_an_exception(realm.global_object(), exception);
+    HTML::report_an_exception(realm.global_object(), exception, HTML::OmitError::No, HTML::script_of_callback(callback));
 }
 
 }

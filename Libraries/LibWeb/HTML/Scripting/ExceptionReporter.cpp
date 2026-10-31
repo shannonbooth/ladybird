@@ -8,6 +8,7 @@
 #include <LibJS/Console.h>
 #include <LibJS/Debugger.h>
 #include <LibJS/Runtime/ConsoleObject.h>
+#include <LibJS/Runtime/FunctionObject.h>
 #include <LibJS/Runtime/VM.h>
 #include <LibJS/Runtime/Value.h>
 #include <LibWeb/HTML/DedicatedWorkerGlobalScope.h>
@@ -21,6 +22,7 @@
 #include <LibWeb/HighResolutionTime/TimeOrigin.h>
 #include <LibWeb/Page/Page.h>
 #include <LibWeb/WebDriver/BiDi/BiDi.h>
+#include <LibWeb/WebIDL/CallbackType.h>
 #include <LibWeb/WebIDL/DOMException.h>
 
 namespace Web::HTML {
@@ -67,6 +69,22 @@ void report_exception_to_console(JS::Value value, JS::Realm& realm, ErrorInPromi
     console.report_exception("Error"_utf16, utf16_message, *error, error_in_promise == ErrorInPromise::Yes);
 }
 
+static Script* script_from_script_or_module(JS::ScriptOrModule const& script_or_module)
+{
+    return script_or_module.visit(
+        [](GC::Ref<JS::Script> const& js_script) { return script_from_host_defined(js_script->host_defined()); },
+        [](GC::Ref<JS::Module> const& module) { return script_from_host_defined(module->host_defined()); },
+        [](Empty const&) -> Script* { return nullptr; });
+}
+
+GC::Ptr<Script> script_of_callback(WebIDL::CallbackType const& callback)
+{
+    auto const* function = as_if<JS::FunctionObject>(*callback.callback);
+    if (!function)
+        return {};
+    return script_from_script_or_module(function->script_or_module());
+}
+
 // https://html.spec.whatwg.org/multipage/webappapis.html#report-an-exception
 void report_an_exception(JS::Object& global, JS::Value exception, OmitError omit_error, GC::Ptr<Script> script)
 {
@@ -91,16 +109,8 @@ void report_an_exception(JS::Object& global, JS::Value exception, Optional<Error
     //    running script (most notably during run a classic script).
     // NB: The running script's execution context is gone by the time its error gets reported, so callers that know
     //     the script pass it in.
-    if (!script) {
-        vm.get_active_script_or_module().visit(
-            [&](GC::Ref<JS::Script> const& js_script) {
-                script = script_from_host_defined(js_script->host_defined());
-            },
-            [&](GC::Ref<JS::Module> const& module) {
-                script = script_from_host_defined(module->host_defined());
-            },
-            [](auto const&) { });
-    }
+    if (!script)
+        script = script_from_script_or_module(vm.get_active_script_or_module());
 
     // NB: A parse error is created before its script runs, so take its location from the script.
     if (script && !script->parse_error().is_null() && script->parse_error() == exception) {

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        removeTestErrorHandler();
+
+        const server = httpTestServer();
+        const url = new URL(await server.createEcho("GET", "/callback-errors-from-cross-origin-script.js", {
+            status: 200,
+            headers: { "Content-Type": "text/javascript" },
+            body: `
+                const throwDetail = () => { throw new TypeError("script detail"); };
+                self.mutedTarget = new EventTarget();
+                mutedTarget.addEventListener("test", throwDetail);
+                self.mutedButton = document.createElement("button");
+                mutedButton.onclick = throwDetail;
+                addEventListener("message", throwDetail);
+                self.startMutedTimer = () => setTimeout(throwDetail);
+            `,
+        }));
+        url.hostname = uniqueLocalhostHostname("callback-errors");
+
+        await new Promise(resolve => {
+            const script = document.createElement("script");
+            script.src = url.href;
+            script.onload = resolve;
+            document.head.appendChild(script);
+        });
+
+        async function printError(label, dispatch) {
+            const error = new Promise(resolve => addEventListener("error", resolve, { once: true }));
+            dispatch();
+            const event = await error;
+            println(`${label}: message "${event.message}", filename "${event.filename}", line ${event.lineno}, column ${event.colno}, error ${event.error}`);
+        }
+
+        await printError("Listener, dispatchEvent()", () => mutedTarget.dispatchEvent(new Event("test")));
+        await printError("Event handler, click()", () => mutedButton.click());
+        await printError("Listener, posted message", () => postMessage("", "*"));
+        await printError("Timer", () => startMutedTimer());
+    });
+</script>

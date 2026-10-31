@@ -165,10 +165,10 @@ DOM::EventTarget* current_target_global(WebIDL::CallbackType& callback, DOM::Eve
     return HTML::window_from_global_object(this_value_realm(callback_realm, wrapper).global_object());
 }
 
-void report_exception_for_callback(WebIDL::CallbackType& callback, JS::Value exception)
+void report_exception_for_callback(WebIDL::CallbackType& callback, JS::Value exception, WebIDL::CallbackType& throwing_callback)
 {
     auto& realm = callback.callback->shape().realm();
-    HTML::report_an_exception(realm.global_object(), exception);
+    HTML::report_an_exception(realm.global_object(), exception, HTML::OmitError::No, HTML::script_of_callback(throwing_callback));
 }
 
 JS::Completion invoke_event_listener(WebIDL::CallbackType& callback, DOM::Event& event)
@@ -661,6 +661,17 @@ WebIDL::CallbackType* EventTarget::event_handler_attribute(Utf16FlyString const&
 
     // 3. Return the result of getting the current value of the event handler given eventTarget and name.
     return target->get_current_value_of_event_handler(name);
+}
+
+WebIDL::CallbackType* EventTarget::event_handler_callback(DOMEventListener const& listener) const
+{
+    if (!m_data)
+        return nullptr;
+    auto event_handler = m_data->event_handler_map.get(listener.type);
+    if (!event_handler.has_value() || (*event_handler)->listener.ptr() != &listener)
+        return nullptr;
+    auto const* callback = (*event_handler)->value.get_pointer<GC::Ptr<WebIDL::CallbackType>>();
+    return callback ? callback->ptr() : nullptr;
 }
 
 // https://html.spec.whatwg.org/multipage/webappapis.html#getting-the-current-value-of-the-event-handler

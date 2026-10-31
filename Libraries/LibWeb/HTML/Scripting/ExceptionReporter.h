@@ -10,6 +10,7 @@
 #include <LibGC/Ptr.h>
 #include <LibJS/Forward.h>
 #include <LibWeb/Export.h>
+#include <LibWeb/Forward.h>
 #include <LibWeb/HTML/ErrorInformation.h>
 
 namespace Web::HTML {
@@ -28,6 +29,7 @@ enum class OmitError {
 
 void report_exception_to_console(JS::Value, JS::Realm&, ErrorInPromise);
 WEB_API void report_exception(JS::Completion const&, JS::Realm&);
+GC::Ptr<Script> script_of_callback(WebIDL::CallbackType const&);
 void report_an_exception(JS::Object& global, JS::Value exception, OmitError = OmitError::No, GC::Ptr<Script> = {});
 void report_an_exception(JS::Object& global, JS::Value exception, Optional<ErrorInformation>, OmitError = OmitError::No, GC::Ptr<Script> = {});
 

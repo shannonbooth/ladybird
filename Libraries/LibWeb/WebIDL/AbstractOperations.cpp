@@ -387,7 +387,7 @@ JS::Completion invoke_callback(CallbackType& callback, Optional<JS::Value> this_
             // FIXME: 1. Assert: callable’s return type is undefined or any.
 
             // 2. Report an exception completion.[[Value]] for relevant realm’s global object.
-            HTML::report_an_exception(relevant_realm.global_object(), completion.release_value());
+            HTML::report_an_exception(relevant_realm.global_object(), completion.release_value(), HTML::OmitError::No, HTML::script_of_callback(callback));
 
             // 3. Return the unique undefined IDL value.
             return JS::js_undefined();
