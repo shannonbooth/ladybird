@@ -67,6 +67,12 @@ ErrorInformation extract_error_information(JS::VM& vm, JS::Value exception)
             }
         }
     }
+    // NB: Otherwise, if a throw statement threw it, take the location from there.
+    else if (auto throw_site = vm.take_throw_site_of(exception); throw_site.has_value()) {
+        attributes.filename = throw_site->filename();
+        attributes.lineno = throw_site->start.line;
+        attributes.colno = throw_site->start.column;
+    }
     // NB: Otherwise, we fall back to try and find the location of the invocation of the function itself.
     else {
         for (auto const& frame : vm.stack_trace()) {
