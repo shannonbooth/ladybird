@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    asyncTest(async done => {
+        const stream = new TextEncoderStream();
+        const reader = stream.readable.getReader();
+        reader.read().catch(() => {});
+        const writer = stream.writable.getWriter();
+        try {
+            await writer.write({
+                toString() {
+                    reader.cancel();
+                    return "a";
+                },
+            });
+            println("FAIL: write fulfilled");
+        } catch (error) {
+            println(`write rejected: ${error.name}`);
+        }
+        done();
+    });
+</script>

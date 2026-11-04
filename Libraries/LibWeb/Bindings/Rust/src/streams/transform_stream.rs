@@ -285,9 +285,10 @@ impl TransformStream {
     }
 
     // https://streams.spec.whatwg.org/#transformstream-enqueue
-    pub(crate) fn enqueue(this: Ref<Self>, vm: &Vm, chunk: Value) {
+    pub(crate) fn enqueue(this: Ref<Self>, vm: &Vm, chunk: Value) -> WebIdlResult<()> {
         // To enqueue the JavaScript value chunk into a TransformStream stream, perform
         // ! TransformStreamDefaultControllerEnqueue(stream.[[controller]], chunk).
+        // AD-HOC: Rethrow instead, as script that runs during an enqueue or a chunk conversion can cancel the readable.
         let controller = this
             .controller()
             .expect("a transform stream that is set up has a controller");
@@ -296,7 +297,6 @@ impl TransformStream {
             controller,
             chunk,
         )
-        .must();
     }
 }
 
