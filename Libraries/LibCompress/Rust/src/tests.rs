@@ -10,8 +10,8 @@ const FORMATS: [Format; 4] = [Format::Brotli, Format::Zlib, Format::Deflate, For
 
 fn compress(format: Format, data: &[u8]) -> Vec<u8> {
     let mut compressor = Compressor::new(format);
-    let mut compressed = compressor.compress(data).unwrap();
-    compressed.extend(compressor.finish().unwrap());
+    let mut compressed = compressor.compress(data);
+    compressed.extend(compressor.finish());
     compressed
 }
 
@@ -70,9 +70,9 @@ fn round_trip_in_pieces() {
         let mut compressor = Compressor::new(format);
         let mut compressed = Vec::new();
         for piece in data.chunks(777) {
-            compressed.extend(compressor.compress(piece).unwrap());
+            compressed.extend(compressor.compress(piece));
         }
-        compressed.extend(compressor.finish().unwrap());
+        compressed.extend(compressor.finish());
 
         let mut decompressor = Decompressor::new(format);
         let mut output = Vec::new();

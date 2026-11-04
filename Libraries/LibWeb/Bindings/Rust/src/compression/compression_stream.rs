@@ -7,16 +7,14 @@
 //! CompressionStream, https://compression.spec.whatwg.org/#compressionstream
 
 use core::cell::RefCell;
-use std::io;
 
-use ak::Utf16String;
 use libcompress_rust::{Compressor, Format};
 use libjs_rust::api::{EmbedderClass, EmbedderValue, Trace, Value};
 
 use crate::bindings::conversions::create_uint8_array;
 use crate::bindings::interface::Ref;
 use crate::bindings::interface::Wrappable;
-use crate::bindings::{CallContext, Exception, WebIdlResult};
+use crate::bindings::{CallContext, WebIdlResult};
 use crate::compression::buffer_source_of_chunk;
 use crate::streams::generic_transform_stream::{TransformSteps, create_and_set_up};
 use crate::streams::readable_stream::ReadableStream;
@@ -87,7 +85,7 @@ impl CompressionStream {
 #[gc(crate = libjs_rust)]
 struct CompressionContext {
     #[gc(untraced)]
-    compressor: RefCell<Compressor>,
+    compressor: RefCell<Option<Compressor>>,
 }
 
 static COMPRESSION_CONTEXT_CLASS: EmbedderClass<CompressionContext> = EmbedderClass::new("CompressionContext");
@@ -99,13 +97,9 @@ impl EmbedderValue for CompressionContext {
 impl CompressionContext {
     fn new(format: CompressionFormat) -> Self {
         Self {
-            compressor: RefCell::new(Compressor::new(format.into())),
+            compressor: RefCell::new(Some(Compressor::new(format.into()))),
         }
     }
-}
-
-fn compression_failed(step: &str, error: &io::Error) -> Exception {
-    Exception::TypeError(Utf16String::from_utf8(&format!("Unable to compress {step}: {error}")))
 }
 
 impl TransformSteps for CompressionContext {
@@ -115,9 +109,15 @@ impl TransformSteps for CompressionContext {
         let chunk = buffer_source_of_chunk(cx, chunk)?;
 
         // 2. Let buffer be the result of compressing chunk with cs's format and context.
+        let compress = |bytes: &[u8]| {
+            self.compressor
+                .borrow_mut()
+                .as_mut()
+                .expect("a transform stream transforms no chunk after its flush")
+                .compress(bytes)
+        };
         // SAFETY: Compressing neither runs script nor allocates a cell.
-        let buffer = unsafe { chunk.with_bytes(|bytes| self.compressor.borrow_mut().compress(bytes)) }
-            .map_err(|error| compression_failed("chunk", &error))?;
+        let buffer = unsafe { chunk.with_bytes(compress) };
 
         // 3. If buffer is empty, return.
         if buffer.is_empty() {
@@ -138,9 +138,9 @@ impl TransformSteps for CompressionContext {
         // 1. Let buffer be the result of compressing an empty input with cs's format and context, with the finish flag.
         let buffer = self
             .compressor
-            .borrow_mut()
-            .finish()
-            .map_err(|error| compression_failed("flush", &error))?;
+            .take()
+            .expect("a transform stream flushes once")
+            .finish();
 
         // 2. If buffer is empty, return.
         if buffer.is_empty() {
