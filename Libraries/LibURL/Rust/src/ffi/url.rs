@@ -7,6 +7,8 @@
 use crate::rust_panic::abort_on_panic;
 use std::ffi::c_void;
 
+use libtextcodec_rust::Encoding;
+
 use crate::url::BasicParseOptions;
 use crate::url::HostKind;
 use crate::url::State;
@@ -66,6 +68,15 @@ impl RustUrlByteSlice {
         }
         let bytes = unsafe { ak::slice_from_raw_parts(self.data, self.length) };
         Some(std::str::from_utf8(bytes).expect("URL strings should be valid UTF-8"))
+    }
+
+    /// The encoding that a null or valid label names.
+    ///
+    /// # Safety
+    /// As for borrow().
+    pub(crate) unsafe fn to_encoding(self) -> Option<Encoding> {
+        unsafe { self.borrow() }
+            .map(|label| Encoding::for_label(label.as_bytes()).expect("URL encoding should be a valid encoding label"))
     }
 }
 
@@ -166,7 +177,7 @@ pub unsafe extern "C" fn rust_url_basic_parse(
 ) -> bool {
     abort_on_panic(|| {
         let input = unsafe { input.borrow() };
-        let mut options = BasicParseOptions::new().encoding(unsafe { encoding.borrow() });
+        let mut options = BasicParseOptions::new().encoding(unsafe { encoding.to_encoding() });
         if let Some(base_url) = unsafe { base_url.as_ref() } {
             options = options.base_url(unsafe { base_url.borrow() });
         }
@@ -199,7 +210,7 @@ pub unsafe extern "C" fn rust_url_basic_parse_with_state_override(
 ) -> bool {
     abort_on_panic(|| {
         let input = unsafe { input.borrow() };
-        let encoding = unsafe { encoding.borrow() };
+        let encoding = unsafe { encoding.to_encoding() };
         let mut did_succeed = false;
         unsafe {
             modify_url(url, ctx, on_complete, |url| {

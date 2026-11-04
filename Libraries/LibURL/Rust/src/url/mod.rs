@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+use libtextcodec_rust::Encoding;
+
 pub mod form_urlencoded;
 mod host;
 mod input;
@@ -31,7 +33,7 @@ pub use self::types::UrlRef;
 #[derive(Debug, Default)]
 pub struct BasicParseOptions<'a> {
     base_url: Option<UrlRef<'a>>,
-    encoding: Option<&'a str>,
+    encoding: Option<Encoding>,
 }
 
 impl<'a> BasicParseOptions<'a> {
@@ -44,7 +46,7 @@ impl<'a> BasicParseOptions<'a> {
         self
     }
 
-    pub fn encoding(mut self, encoding: impl Into<Option<&'a str>>) -> Self {
+    pub fn encoding(mut self, encoding: impl Into<Option<Encoding>>) -> Self {
         self.encoding = encoding.into();
         self
     }
@@ -77,7 +79,7 @@ pub fn basic_parse_with_state_override<'a>(
     input: impl Into<UrlInput<'a>>,
     url: &mut Url,
     state_override: State,
-    encoding: Option<&str>,
+    encoding: Option<Encoding>,
 ) -> bool {
     parser::basic_parse_with_state_override(input.into(), url, state_override, encoding)
 }

@@ -16,7 +16,6 @@ mod rust_panic;
 mod ffi;
 pub mod origin;
 pub mod pattern;
-mod textcodec;
 pub mod url;
 
 pub use ffi::origin::FfiOrigin;

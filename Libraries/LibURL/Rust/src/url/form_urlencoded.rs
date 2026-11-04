@@ -4,11 +4,10 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-use encoding_rs::{Encoding, UTF_8};
+use libtextcodec_rust::Encoding;
 
 use super::UrlInput;
 use super::percent_encoding::{PercentEncodeSet, percent_decode_bytes, percent_encode_after_encoding_into};
-use crate::textcodec::get_output_encoding;
 
 // https://url.spec.whatwg.org/#concept-urlencoded-parser
 // The application/x-www-form-urlencoded parser takes a byte sequence input, and then runs these steps:
@@ -55,10 +54,10 @@ pub fn parse(input: &[u8]) -> Vec<(String, String)> {
 // The application/x-www-form-urlencoded serializer takes a list of name-value tuples tuples, with an optional encoding encoding (default UTF-8), and then runs these steps. They return an ASCII string.
 pub fn serialize<'a>(
     tuples: impl IntoIterator<Item = (UrlInput<'a>, UrlInput<'a>)>,
-    encoding: Option<&'static Encoding>,
+    encoding: Option<Encoding>,
 ) -> String {
     // 1. Set encoding to the result of getting an output encoding from encoding.
-    let encoding = get_output_encoding(encoding.unwrap_or(UTF_8));
+    let encoding = encoding.unwrap_or(Encoding::UTF_8).output_encoding();
 
     // 2. Let output be the empty string.
     let mut output = String::new();

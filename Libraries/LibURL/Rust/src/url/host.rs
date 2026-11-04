@@ -8,6 +8,7 @@ use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 
 use super::UrlInput;
+use libtextcodec_rust::utf8_decode_without_bom;
 use libunicode_rust::idna::ToAsciiOptions;
 
 fn idna_to_ascii(domain: UrlInput<'_>, options: ToAsciiOptions) -> Option<String> {
@@ -621,16 +622,8 @@ pub(crate) fn parse_host_into(input: UrlInput<'_>, is_opaque: bool, output: &mut
     // 4. Let domain be the result of running UTF-8 decode without BOM on the percent-decoding of input.
     let decoded;
     let domain = if input.find('%').is_some() {
-        let bytes = percent_decode_input(input);
-        let mut decoder = encoding_rs::UTF_8.new_decoder_without_bom_handling();
-        let capacity = decoder.max_utf16_buffer_length(bytes.len())?;
-        let mut units = vec![0; capacity];
-        let (result, read, written, _) = decoder.decode_to_utf16(&bytes, &mut units, true);
-        assert_eq!(result, encoding_rs::CoderResult::InputEmpty);
-        assert_eq!(read, bytes.len());
-        units.truncate(written);
-        decoded = units;
-        UrlInput::Utf16(&decoded)
+        decoded = utf8_decode_without_bom(&percent_decode_input(input)).into_owned();
+        UrlInput::Utf8(&decoded)
     } else {
         input
     };

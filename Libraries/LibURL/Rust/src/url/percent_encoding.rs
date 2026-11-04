@@ -4,11 +4,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-use encoding_rs::Encoding;
-use encoding_rs::UTF_8;
-
-use crate::textcodec::EncodeItem;
-use crate::textcodec::encode_into as textcodec_encode_into;
+use libtextcodec_rust::{EncodeItem, Encoding};
 
 #[allow(dead_code)]
 #[repr(u8)]
@@ -177,7 +173,7 @@ pub fn percent_decode_bytes(input: &[u8]) -> Vec<u8> {
 
 // https://url.spec.whatwg.org/#string-percent-encode-after-encoding
 pub(super) fn percent_encode_after_encoding_into(
-    encoding: &'static Encoding,
+    encoding: Encoding,
     input: super::UrlInput<'_>,
     set: PercentEncodeSet,
     space_as_plus: bool,
@@ -208,8 +204,8 @@ pub(super) fn percent_encode_after_encoding_into(
     };
 
     // OPTIMIZATION: The UTF-8 encoder turns each code point into its UTF-8 bytes and never reports an error, so skip
-    //               encoding_rs and copy the run of ASCII bytes that are appended unchanged in bulk.
-    if encoding == UTF_8 {
+    //               the encoder and copy the run of ASCII bytes that are appended unchanged in bulk.
+    if encoding == Encoding::UTF_8 {
         let mut remaining = input;
         while let Some(code_point) = remaining.first_code_point() {
             let unchanged_length = remaining.ascii_prefix_length(is_appended_unchanged);
@@ -237,15 +233,13 @@ pub(super) fn percent_encode_after_encoding_into(
         }
     };
     let did_succeed = match input {
-        super::UrlInput::Utf8(input) => textcodec_encode_into(encoding, input, on_item),
-        super::UrlInput::Latin1(input) => crate::textcodec::encode_utf16_into(
-            encoding,
-            &input.iter().map(|&byte| u16::from(byte)).collect::<Vec<_>>(),
-            on_item,
-        ),
-        super::UrlInput::Utf16(input) => crate::textcodec::encode_utf16_into(encoding, input, on_item),
+        super::UrlInput::Utf8(input) => encoding.encode_into(input, on_item),
+        super::UrlInput::Latin1(input) => {
+            encoding.encode_utf16_into(&input.iter().map(|&byte| u16::from(byte)).collect::<Vec<_>>(), on_item)
+        }
+        super::UrlInput::Utf16(input) => encoding.encode_utf16_into(input, on_item),
     };
-    assert!(did_succeed, "encoding_rs should encode into any output encoding");
+    assert!(did_succeed, "an encoder should encode into any output encoding");
 
     // 6. Return output.
 }

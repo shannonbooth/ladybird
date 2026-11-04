@@ -16,7 +16,7 @@ mod rust_panic;
 mod encoding;
 pub mod streaming_decoder;
 
-pub use encoding::Encoding;
+pub use encoding::{EncodeItem, Encoding, utf8_decode_without_bom};
 pub use streaming_decoder::{DecodingFailed, StreamingDecoder};
 
 use crate::rust_panic::abort_on_panic;
