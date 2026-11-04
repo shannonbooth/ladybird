@@ -7,7 +7,9 @@
 //! Decoding a stream of bytes with the decoders of the Encoding Standard, https://encoding.spec.whatwg.org/#encodings,
 //! which the encoding_rs crate implements.
 
-use encoding_rs::{CoderResult, Decoder, DecoderResult, Encoding};
+use encoding_rs::{CoderResult, Decoder, DecoderResult};
+
+use crate::Encoding;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct DecodingFailed;
@@ -15,7 +17,7 @@ pub struct DecodingFailed;
 /// The decoder of an encoding together with the error mode and the BOM handling that it decodes with, which keeps
 /// the bytes of a character that a chunk of a stream ended in until the next chunk.
 pub struct StreamingDecoder {
-    encoding: &'static Encoding,
+    encoding: &'static encoding_rs::Encoding,
     fatal: bool,
     ignore_bom: bool,
     bom_seen: bool,
@@ -23,18 +25,18 @@ pub struct StreamingDecoder {
 }
 
 impl StreamingDecoder {
-    pub fn new(encoding: &'static Encoding, fatal: bool, ignore_bom: bool) -> Self {
+    pub fn new(encoding: Encoding, fatal: bool, ignore_bom: bool) -> Self {
         Self {
-            encoding,
+            encoding: encoding.0,
             fatal,
             ignore_bom,
             bom_seen: false,
-            decoder: encoding.new_decoder_without_bom_handling(),
+            decoder: encoding.0.new_decoder_without_bom_handling(),
         }
     }
 
-    pub fn encoding(&self) -> &'static Encoding {
-        self.encoding
+    pub fn encoding(&self) -> Encoding {
+        Encoding(self.encoding)
     }
 
     pub fn fatal(&self) -> bool {
@@ -119,7 +121,7 @@ mod tests {
     use super::*;
 
     fn utf8_decoder(fatal: bool, ignore_bom: bool) -> StreamingDecoder {
-        StreamingDecoder::new(encoding_rs::UTF_8, fatal, ignore_bom)
+        StreamingDecoder::new(Encoding::UTF_8, fatal, ignore_bom)
     }
 
     fn utf16(string: &str) -> Vec<u16> {
@@ -167,7 +169,7 @@ mod tests {
         assert_eq!(decoder.decode(&[0x63], true), Ok(utf16("c")));
         assert_eq!(decoder.decode(&[0x64], false), Ok(utf16("d")));
 
-        let mut gb18030 = StreamingDecoder::new(encoding_rs::GB18030, true, false);
+        let mut gb18030 = StreamingDecoder::new(Encoding(encoding_rs::GB18030), true, false);
         assert_eq!(gb18030.decode(&[0x81, 0x30, 0xFF], true), Err(DecodingFailed));
         assert_eq!(gb18030.decode(&[], false), Ok(Vec::new()));
     }

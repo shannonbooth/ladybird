@@ -6,7 +6,7 @@
 
 use std::ffi::c_void;
 
-use encoding_rs::{Encoding, UTF_8};
+use encoding_rs::Encoding;
 
 use crate::ffi::url::{RustUrlByteSlice, RustUrlInput};
 use crate::rust_panic::abort_on_panic;
@@ -69,9 +69,7 @@ pub unsafe extern "C" fn rust_url_form_urlencoded_serialize(
         } else {
             unsafe { ak::slice_from_raw_parts(tuples, tuple_count) }
         };
-        let encoding = unsafe { encoding_label.borrow() }
-            .and_then(|label| Encoding::for_label(label.as_bytes()))
-            .unwrap_or(UTF_8);
+        let encoding = unsafe { encoding_label.borrow() }.and_then(|label| Encoding::for_label(label.as_bytes()));
         let serialization = form_urlencoded::serialize(
             tuples
                 .iter()

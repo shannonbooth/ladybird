@@ -9,9 +9,8 @@
 use core::cell::RefCell;
 
 use ak::Utf16String;
-use encoding_rs::Encoding;
 use libjs_rust::api::{EmbedderClass, EmbedderValue, PrimitiveString, Trace, Value};
-use libtextcodec_rust::{DecodingFailed, StreamingDecoder, encoding_for_label};
+use libtextcodec_rust::{DecodingFailed, Encoding, StreamingDecoder, encoding_for_label};
 
 use crate::bindings::conversions::{BufferSourceRules, UsvString, to_buffer_source};
 use crate::bindings::interface::Ref;
@@ -28,7 +27,7 @@ use crate::streams::writable_stream::WritableStream;
 pub(crate) struct TextDecoderStream {
     // https://encoding.spec.whatwg.org/#textdecoder-encoding
     #[gc(untraced)]
-    encoding: &'static Encoding,
+    encoding: Encoding,
     // https://encoding.spec.whatwg.org/#textdecoder-error-mode
     fatal: bool,
     // https://encoding.spec.whatwg.org/#textdecoder-ignore-bom-flag
@@ -53,7 +52,7 @@ impl TextDecoderStream {
         // 1. Let encoding be the result of getting an encoding from label.
         // 2. If encoding is failure or replacement, then throw a RangeError.
         let encoding = encoding_for_label(label.as_units())
-            .filter(|&encoding| encoding != encoding_rs::REPLACEMENT)
+            .filter(|&encoding| encoding != Encoding::REPLACEMENT)
             .ok_or_else(|| Exception::RangeError(Utf16String::from_ascii(b"Invalid encoding")))?;
 
         // 3. Let errorMode be "fatal" if options["fatal"] is true; otherwise "replacement".
@@ -62,10 +61,10 @@ impl TextDecoderStream {
     }
 
     // https://encoding.spec.whatwg.org/#set-up-a-text-decoder-stream
-    pub(crate) fn set_up(cx: &CallContext, encoding: &'static Encoding, fatal: bool, ignore_bom: bool) -> Self {
+    pub(crate) fn set_up(cx: &CallContext, encoding: Encoding, fatal: bool, ignore_bom: bool) -> Self {
         // 1. Assert: encoding is not replacement.
         assert!(
-            encoding != encoding_rs::REPLACEMENT,
+            encoding != Encoding::REPLACEMENT,
             "a text decoder stream has an encoding with a decoder"
         );
 

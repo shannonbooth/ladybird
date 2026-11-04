@@ -10,7 +10,7 @@ use core::cell::RefCell;
 
 use ak::Utf16String;
 use libjs_rust::api::Trace;
-use libtextcodec_rust::{DecodingFailed, StreamingDecoder, encoding_for_label};
+use libtextcodec_rust::{DecodingFailed, Encoding, StreamingDecoder, encoding_for_label};
 
 use crate::bindings::conversions::{BufferSource, UsvString};
 use crate::bindings::interface::Wrappable;
@@ -52,7 +52,7 @@ impl TextDecoder {
         // 1. Let encoding be the result of getting an encoding from label.
         // 2. If encoding is failure or replacement, then throw a RangeError.
         let encoding = encoding_for_label(label.as_units())
-            .filter(|&encoding| encoding != encoding_rs::REPLACEMENT)
+            .filter(|&encoding| encoding != Encoding::REPLACEMENT)
             .ok_or_else(|| Exception::RangeError(Utf16String::from_ascii(b"Invalid encoding")))?;
 
         // 3. Set this's encoding to encoding.

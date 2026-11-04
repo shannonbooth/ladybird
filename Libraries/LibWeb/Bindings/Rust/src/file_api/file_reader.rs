@@ -13,12 +13,11 @@ use core::ptr::NonNull;
 use std::time::{Duration, Instant};
 
 use ak::{Base64Alphabet, Utf16String, encode_base64};
-use encoding_rs::{Encoding, UTF_8};
 use libjs_rust::api::{
     ArrayBuffer, ArrayBufferShared, EmbedderCell, EmbedderClass, EmbedderValue, Gc, GcWeak, Must as _, PropertyKey,
     Realm, Trace, TypedArrayBase, TypedArrayKind, Value, Visitor, Vm,
 };
-use libtextcodec_rust::encoding_for_label;
+use libtextcodec_rust::{Encoding, encoding_for_label};
 use liburl_rust::url::ExcludeFragment;
 use libwebcommon_rust::mime_sniff::mime_type::MimeType;
 
@@ -182,7 +181,7 @@ pub(crate) fn package_data(
         }
         Type::Text => {
             // 1. Let encoding be failure.
-            let mut encoding: Option<&'static Encoding> = None;
+            let mut encoding: Option<Encoding> = None;
 
             // 2. If the encodingName is present, set encoding to the result of getting an encoding from encodingName.
             if let Some(encoding_name) = encoding_name {
@@ -209,7 +208,7 @@ pub(crate) fn package_data(
 
             // 4. If encoding is failure, then set encoding to UTF-8.
             // 5. Decode bytes using fallback encoding encoding, and return the result.
-            let (decoded, _, _) = encoding.unwrap_or(UTF_8).decode(&bytes);
+            let decoded = encoding.unwrap_or(Encoding::UTF_8).decode(&bytes);
             PackagedData::String(Utf16String::from_utf8(&decoded))
         }
         // Return bytes. The binding wrapper performs the ArrayBuffer allocation

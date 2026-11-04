@@ -13,15 +13,16 @@ mod rust_demangle;
 #[path = "../../../RustPanic.rs"]
 mod rust_panic;
 
+mod encoding;
 pub mod streaming_decoder;
 
+pub use encoding::Encoding;
 pub use streaming_decoder::{DecodingFailed, StreamingDecoder};
 
 use crate::rust_panic::abort_on_panic;
 use ak::Utf16StringUnits;
 use encoding_rs::CoderResult;
 use encoding_rs::EncoderResult;
-use encoding_rs::Encoding;
 use std::ffi::c_void;
 
 type FfiBytesFn = unsafe extern "C" fn(ctx: *mut c_void, data: *const u8, len: usize);
@@ -33,7 +34,7 @@ pub struct TextCodecRustStreamingDecoder {
 }
 
 /// Getting an encoding from a label, https://encoding.spec.whatwg.org/#concept-encoding-get
-pub fn encoding_for_label(label: Utf16StringUnits<'_>) -> Option<&'static Encoding> {
+pub fn encoding_for_label(label: Utf16StringUnits<'_>) -> Option<Encoding> {
     match label {
         Utf16StringUnits::Ascii(label) => Encoding::for_label(label),
         // NB: Every label is ASCII, so a label with any other code unit is not one.
@@ -115,7 +116,7 @@ pub unsafe extern "C" fn textcodec_rust_decode_to_utf8(
             let Some(input) = bytes_from_raw(input, input_len) else {
                 return false;
             };
-            let Some(encoding) = Encoding::for_label(label) else {
+            let Some(encoding) = encoding_rs::Encoding::for_label(label) else {
                 return false;
             };
 
@@ -180,7 +181,7 @@ pub unsafe extern "C" fn textcodec_rust_decoded_length_in_utf16_code_units(
             let Some(input) = bytes_from_raw(input, input_len) else {
                 return false;
             };
-            let Some(encoding) = Encoding::for_label(label) else {
+            let Some(encoding) = encoding_rs::Encoding::for_label(label) else {
                 return false;
             };
             if out_length.is_null() {
@@ -299,7 +300,7 @@ pub unsafe extern "C" fn textcodec_rust_encode_from_utf8(
             let Ok(input) = std::str::from_utf8(input) else {
                 return false;
             };
-            let Some(encoding) = Encoding::for_label(label) else {
+            let Some(encoding) = encoding_rs::Encoding::for_label(label) else {
                 return false;
             };
 

@@ -10,7 +10,6 @@ use core::cell::{self, Cell, RefCell};
 use core::ops::Deref;
 
 use ak::{Utf16String, Utf16StringUnits};
-use encoding_rs::UTF_8;
 use libjs_rust::api::Trace;
 use liburl_rust::url::form_urlencoded;
 
@@ -135,7 +134,7 @@ impl URLSearchParams {
         form_urlencoded::serialize(
             list.iter()
                 .map(|(name, value)| (url_input(name.units()), url_input(value.units()))),
-            UTF_8,
+            None,
         )
     }
 

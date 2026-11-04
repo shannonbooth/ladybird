@@ -13,6 +13,7 @@ use core::ptr::NonNull;
 
 use ak::{Utf16String, Utf16StringUnits};
 use libjs_rust::api::{MarkedVec, Trace};
+use libtextcodec_rust::Encoding;
 
 use super::file::File;
 use crate::bindings::conversions::{BufferSource, UsvString};
@@ -501,7 +502,7 @@ impl Blob {
 
         // 2. Let decoder be a new TextDecoderStream in this's relevant realm.
         // 3. Set up decoder with UTF-8.
-        let decoder = TextDecoderStream::set_up(cx, encoding_rs::UTF_8, false, false);
+        let decoder = TextDecoderStream::set_up(cx, Encoding::UTF_8, false, false);
 
         // 4. Return the result of calling stream, piped through decoder.
         Ok(ReadableStream::piped_through(

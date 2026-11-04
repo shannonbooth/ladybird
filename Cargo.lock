@@ -1950,7 +1950,6 @@ name = "libweb_bindings_rust"
 version = "0.1.0"
 dependencies = [
  "ak",
- "encoding_rs",
  "ladybird_allocator",
  "libcompositing_rust",
  "libcompress_rust",
