@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    async function compress(format, bytes) {
+        const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream(format));
+        return new Uint8Array(await new Response(stream).arrayBuffer());
+    }
+
+    async function outputChunkSizes(format, compressed) {
+        const decompressor = new DecompressionStream(format);
+        const writer = decompressor.writable.getWriter();
+        writer.write(compressed);
+        writer.close();
+        const reader = decompressor.readable.getReader();
+        const sizes = [];
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done)
+                return sizes;
+            sizes.push(value.byteLength);
+        }
+    }
+
+    async function cancelAfterFirstOutputChunk(compressed) {
+        const decompressor = new DecompressionStream("deflate");
+        const reader = decompressor.readable.getReader();
+        const writer = decompressor.writable.getWriter();
+        reader.read().catch(() => {});
+        Object.defineProperty(Object.prototype, "then", {
+            configurable: true,
+            get() {
+                delete Object.prototype.then;
+                reader.cancel();
+            },
+        });
+        try {
+            await writer.write(compressed);
+            return "write fulfilled";
+        } catch (error) {
+            return `write rejected with ${error.name}`;
+        }
+    }
+
+    asyncTest(async done => {
+        const input = new Uint8Array(200000).fill(0x61);
+        for (const format of ["deflate", "deflate-raw", "gzip", "brotli"])
+            println(`${format}: ${(await outputChunkSizes(format, await compress(format, input))).join(", ")}`);
+        println(`cancel after the first output chunk: ${await cancelAfterFirstOutputChunk(await compress("deflate", input))}`);
+        done();
+    });
+</script>

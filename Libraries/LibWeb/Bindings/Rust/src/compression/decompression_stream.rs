@@ -9,10 +9,10 @@
 use core::cell::RefCell;
 
 use ak::Utf16String;
-use libcompress_rust::{Decompressed, Decompressor};
-use libjs_rust::api::{EmbedderClass, EmbedderValue, Trace, Value};
+use libcompress_rust::Decompressor;
+use libjs_rust::api::{EmbedderClass, EmbedderValue, MarkedVec, Trace, Value};
 
-use crate::bindings::conversions::create_uint8_array;
+use crate::bindings::conversions::{BufferSource, create_uint8_array};
 use crate::bindings::interface::Ref;
 use crate::bindings::interface::Wrappable;
 use crate::bindings::{CallContext, Exception, WebIdlResult};
@@ -76,6 +76,16 @@ impl EmbedderValue for DecompressionContext {
     const CLASS: &'static EmbedderClass<Self> = &DECOMPRESSION_CONTEXT_CLASS;
 }
 
+/// The largest piece that the output of decompressing is split into.
+const OUTPUT_PIECE_SIZE: usize = 64 * 1024;
+
+/// The pieces that the output of decompressing some input splits into, and how many bytes at the end of the input the
+/// decompressor did not consume.
+struct Decompressed<'vm> {
+    arrays: MarkedVec<'vm, Value>,
+    unconsumed_input: usize,
+}
+
 impl DecompressionContext {
     fn new(format: CompressionFormat) -> Self {
         Self {
@@ -83,11 +93,34 @@ impl DecompressionContext {
         }
     }
 
-    fn decompress(&self, input: &[u8]) -> Result<Decompressed, String> {
-        self.decompressor
-            .borrow_mut()
-            .decompress(input)
-            .map_err(|error| error.to_string())
+    /// Decompresses the bytes of the chunk into Uint8Arrays. They are only enqueued afterwards, since enqueueing can
+    /// run script, which could change the bytes of the chunk.
+    fn decompress<'vm>(&self, cx: &'vm CallContext, chunk: &BufferSource) -> WebIdlResult<Decompressed<'vm>> {
+        let mut decompressor = self.decompressor.borrow_mut();
+        let mut piece = vec![0; OUTPUT_PIECE_SIZE];
+        let arrays = MarkedVec::new(cx.vm());
+        let mut consumed_input = 0;
+        loop {
+            // SAFETY: Decompressing neither runs script nor allocates a cell.
+            let (decompressed, input_length) = unsafe {
+                chunk.with_bytes(|input| {
+                    let decompressed = decompressor.decompress(&input[consumed_input..], &mut piece);
+                    (decompressed, input.len())
+                })
+            };
+            let decompressed = decompressed.map_err(|error| decompression_failed("chunk", &error.to_string()))?;
+            consumed_input += decompressed.consumed_input;
+            if decompressed.written_output > 0 {
+                let array = create_uint8_array(cx, &piece[..decompressed.written_output])?;
+                arrays.push(Value::from_object(array));
+            }
+            if decompressed.written_output < piece.len() {
+                return Ok(Decompressed {
+                    arrays,
+                    unconsumed_input: input_length - consumed_input,
+                });
+            }
+        }
     }
 
     fn has_reached_end_of_compressed_input(&self) -> bool {
@@ -107,21 +140,16 @@ impl TransformSteps for DecompressionContext {
 
         // 2. Let buffer be the result of decompressing chunk with ds's format and context. If this results in an error,
         //    then throw a TypeError.
-        // SAFETY: Decompressing neither runs script nor allocates a cell.
-        let decompressed = unsafe { chunk.with_bytes(|bytes| self.decompress(bytes)) }
-            .map_err(|error| decompression_failed("chunk", &error))?;
-        let buffer = decompressed.output;
-
         // 3. If buffer is empty, return.
         // AD-HOC: Skip steps 4 and 5 instead, so that step 6 also rejects a chunk that gives no output.
         //         See: https://github.com/whatwg/compression/issues/78
-        if !buffer.is_empty() {
-            // 4. Let arrays be the result of splitting buffer into one or more non-empty pieces and converting them
-            //    into Uint8Arrays.
-            let array = create_uint8_array(cx, &buffer)?;
+        // 4. Let arrays be the result of splitting buffer into one or more non-empty pieces and converting them
+        //    into Uint8Arrays.
+        let decompressed = self.decompress(cx, &chunk)?;
 
-            // 5. For each Uint8Array array of arrays, enqueue array in ds's transform.
-            TransformStream::enqueue(transform, cx.vm(), Value::from_object(array))?;
+        // 5. For each Uint8Array array of arrays, enqueue array in ds's transform.
+        for &array in decompressed.arrays.values().iter() {
+            TransformStream::enqueue(transform, cx.vm(), array)?;
         }
 
         // 6. If the end of the compressed input has been reached, and ds's context has not fully consumed chunk, then
@@ -136,24 +164,14 @@ impl TransformSteps for DecompressionContext {
     }
 
     // https://compression.spec.whatwg.org/#decompress-flush-and-enqueue
-    fn flush(&self, cx: &CallContext, transform: Ref<TransformStream>) -> WebIdlResult<()> {
+    fn flush(&self, _: &CallContext, _: Ref<TransformStream>) -> WebIdlResult<()> {
         // 1. Let buffer be the result of decompressing an empty input with ds's format and context, with the finish
         //    flag.
-        // NB: Each chunk gave all the output that the decoder could make of it, so an empty input gives no more.
-        let buffer = self
-            .decompress(&[])
-            .map_err(|error| decompression_failed("flush", &error))?
-            .output;
-
         // 2. If buffer is not empty:
-        if !buffer.is_empty() {
-            // 1. Let arrays be the result of splitting buffer into one or more non-empty pieces and converting them
-            //    into Uint8Arrays.
-            let array = create_uint8_array(cx, &buffer)?;
-
-            // 2. For each Uint8Array array of arrays, enqueue array in ds's transform.
-            TransformStream::enqueue(transform, cx.vm(), Value::from_object(array))?;
-        }
+        //     1. Let arrays be the result of splitting buffer into one or more non-empty pieces and converting them
+        //        into Uint8Arrays.
+        //     2. For each Uint8Array array of arrays, enqueue array in ds's transform.
+        // NB: Each chunk gave all the output that the decoder could make of it, so an empty input gives no more.
 
         // 3. If the end of the compressed input has not been reached, then throw a TypeError.
         if !self.has_reached_end_of_compressed_input() {

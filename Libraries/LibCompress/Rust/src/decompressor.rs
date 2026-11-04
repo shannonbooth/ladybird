@@ -20,17 +20,13 @@ enum Decoder {
     Flate(Decompress),
 }
 
-/// How much the output of a decoder grows by while it decompresses.
-const OUTPUT_GROWTH: usize = 16 * 1024;
-
 /// The window that gzip data is decoded with, the largest that the format allows.
 const GZIP_WINDOW_BITS: u8 = 15;
 
-/// What decompressing some input gave: the output, and how many bytes at the end of the input the decoder did not
-/// consume, which it leaves only once it has reached the end of the compressed data.
+/// What decompressing some input into some room for output did.
 pub struct Decompressed {
-    pub output: Vec<u8>,
-    pub unconsumed_input: usize,
+    pub consumed_input: usize,
+    pub written_output: usize,
 }
 
 /// The input is not data of the format, with the decoder's description of why.
@@ -73,86 +69,89 @@ impl Decompressor {
         self.has_reached_end
     }
 
-    /// Decompresses the next bytes of the data, giving all the output that the decoder can make of them and of what it
-    /// kept of the bytes before them. Bytes after the end of the compressed data are left unconsumed.
-    pub fn decompress(&mut self, input: &[u8]) -> Result<Decompressed, DecompressionFailed> {
-        let mut output = Vec::new();
-        let unconsumed = if self.has_reached_end {
-            input
-        } else {
-            match &mut self.decoder {
-                Decoder::Brotli(decoder) => decompress_brotli(decoder, input, &mut output, &mut self.has_reached_end)?,
-                Decoder::Flate(decoder) => decompress_flate(decoder, input, &mut output, &mut self.has_reached_end)?,
-            }
-        };
-        Ok(Decompressed {
-            output,
-            unconsumed_input: unconsumed.len(),
-        })
-    }
-}
-
-/// Returns the input that the decoder did not consume.
-fn decompress_brotli<'a>(
-    decoder: &mut BrotliDecoder,
-    input: &'a [u8],
-    output: &mut Vec<u8>,
-    has_reached_end: &mut bool,
-) -> Result<&'a [u8], DecompressionFailed> {
-    let mut available_in = input.len();
-    let mut input_offset = 0;
-    let mut total_out = 0;
-    loop {
-        let mut output_offset = output.len();
-        output.resize(output_offset + OUTPUT_GROWTH, 0);
-        let mut available_out = OUTPUT_GROWTH;
-        let result = BrotliDecompressStream(
-            &mut available_in,
-            &mut input_offset,
-            input,
-            &mut available_out,
-            &mut output_offset,
-            output,
-            &mut total_out,
-            decoder,
-        );
-        output.truncate(output_offset);
-        match result {
-            BrotliResult::NeedsMoreOutput => {}
-            BrotliResult::NeedsMoreInput => return Ok(&input[input_offset..]),
-            BrotliResult::ResultSuccess => {
-                *has_reached_end = true;
-                return Ok(&input[input_offset..]);
-            }
-            BrotliResult::ResultFailure => return Err(DecompressionFailed(format!("{:?}", decoder.error_code))),
+    /// Decompresses the next bytes of the data into the output, until the decoder runs out of input or of room for
+    /// output. It writes less than the room it is given only once it has given all that it can of the input and of what
+    /// it kept of the bytes before them. Bytes after the end of the compressed data are left unconsumed.
+    pub fn decompress(&mut self, input: &[u8], output: &mut [u8]) -> Result<Decompressed, DecompressionFailed> {
+        if self.has_reached_end {
+            return Ok(Decompressed {
+                consumed_input: 0,
+                written_output: 0,
+            });
+        }
+        match &mut self.decoder {
+            Decoder::Brotli(decoder) => decompress_brotli(decoder, input, output, &mut self.has_reached_end),
+            Decoder::Flate(decoder) => decompress_flate(decoder, input, output, &mut self.has_reached_end),
         }
     }
 }
 
-/// Returns the input that the decoder did not consume.
-fn decompress_flate<'a>(
-    decoder: &mut Decompress,
-    mut input: &'a [u8],
-    output: &mut Vec<u8>,
+fn decompress_brotli(
+    decoder: &mut BrotliDecoder,
+    input: &[u8],
+    output: &mut [u8],
     has_reached_end: &mut bool,
-) -> Result<&'a [u8], DecompressionFailed> {
+) -> Result<Decompressed, DecompressionFailed> {
+    let mut available_in = input.len();
+    let mut input_offset = 0;
+    let mut available_out = output.len();
+    let mut output_offset = 0;
+    let mut total_out = 0;
+    let result = BrotliDecompressStream(
+        &mut available_in,
+        &mut input_offset,
+        input,
+        &mut available_out,
+        &mut output_offset,
+        output,
+        &mut total_out,
+        decoder,
+    );
+    match result {
+        BrotliResult::NeedsMoreOutput | BrotliResult::NeedsMoreInput => {}
+        BrotliResult::ResultSuccess => *has_reached_end = true,
+        BrotliResult::ResultFailure => return Err(DecompressionFailed(format!("{:?}", decoder.error_code))),
+    }
+    Ok(Decompressed {
+        consumed_input: input_offset,
+        written_output: output_offset,
+    })
+}
+
+fn decompress_flate(
+    decoder: &mut Decompress,
+    input: &[u8],
+    output: &mut [u8],
+    has_reached_end: &mut bool,
+) -> Result<Decompressed, DecompressionFailed> {
+    let mut consumed_input = 0;
+    let mut written_output = 0;
     loop {
-        output.reserve(OUTPUT_GROWTH);
-        let total_in = decoder.total_in();
+        let (total_in, total_out) = (decoder.total_in(), decoder.total_out());
         let status = decoder
-            .decompress_vec(input, output, FlushDecompress::None)
+            .decompress(
+                &input[consumed_input..],
+                &mut output[written_output..],
+                FlushDecompress::None,
+            )
             .map_err(|error| DecompressionFailed(error.to_string()))?;
-        let consumed = usize::try_from(decoder.total_in() - total_in).expect("the decoder consumed some of the input");
-        input = &input[consumed..];
+        consumed_input +=
+            usize::try_from(decoder.total_in() - total_in).expect("a slice has fewer bytes than usize::MAX");
+        written_output +=
+            usize::try_from(decoder.total_out() - total_out).expect("a slice has fewer bytes than usize::MAX");
         match status {
             Status::StreamEnd => {
                 *has_reached_end = true;
-                return Ok(input);
+                break;
             }
             // NB: The decoder stops when it runs out of input or of room for its output, and fails to make progress
             //     with BufError, so it has given all it can of this input once it stops short of both.
-            Status::Ok if !input.is_empty() || output.len() == output.capacity() => {}
-            Status::Ok | Status::BufError => return Ok(input),
+            Status::Ok if consumed_input < input.len() && written_output < output.len() => {}
+            Status::Ok | Status::BufError => break,
         }
     }
+    Ok(Decompressed {
+        consumed_input,
+        written_output,
+    })
 }

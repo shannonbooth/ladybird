@@ -1,0 +1,5 @@
+deflate: 65536, 65536, 65536, 3392
+deflate-raw: 65536, 65536, 65536, 3392
+gzip: 65536, 65536, 65536, 3392
+brotli: 65536, 65536, 65536, 3392
+cancel after the first output chunk: write rejected with TypeError
