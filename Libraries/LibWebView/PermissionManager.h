@@ -20,6 +20,7 @@
 #include <LibURL/Origin.h>
 #include <LibWebCommon/Permissions/Permissions.h>
 #include <LibWebView/Export.h>
+#include <LibWebView/TabId.h>
 
 namespace WebView {
 
@@ -83,9 +84,9 @@ public:
     void reset_origin(URL::Origin const& top_level_origin);
     void record_prompt_outcome(Web::Permissions::PermissionName, URL::Origin const& top_level_origin, Web::Permissions::PromptOutcome);
 
-    // Each view reports the origin of the top-level document it shows, and if it's visible; one-time grants end by these.
-    void set_view_presence(u64 view_id, URL::Origin const& top_level_origin, bool visible);
-    void remove_view(u64 view_id);
+    // Tabs report their top-level origin and visibility; one-time grants end with the last tab for an origin.
+    void set_tab_presence(TabId tab_id, URL::Origin const& top_level_origin, bool visible);
+    void remove_tab(TabId tab_id);
 
     // What a site with no decision of its own gets: Prompt, or Denied when the user has turned the feature off.
     void set_global_default(Web::Permissions::PermissionName, Web::Permissions::EffectiveState);
@@ -124,7 +125,7 @@ private:
         bool is_empty() const { return !decision.has_value() && dismissals == 0 && ignores == 0 && !embargo_until.has_value(); }
     };
 
-    struct ViewPresence {
+    struct TabPresence {
         URL::Origin origin;
         bool visible { false };
     };
@@ -162,7 +163,7 @@ private:
     WeakPtr<PermissionManager> m_ordinary_session;
 
     Vector<Entry> m_entries;
-    HashMap<u64, ViewPresence> m_views;
+    HashMap<TabId, TabPresence> m_tabs;
     HashMap<String, u64> m_generations;
 
     Web::Permissions::EffectiveState m_geolocation_default { Web::Permissions::EffectiveState::Prompt };

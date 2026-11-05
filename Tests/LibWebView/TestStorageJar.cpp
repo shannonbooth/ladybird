@@ -94,8 +94,8 @@ TEST_CASE(storage_usage_counts_utf8_bytes_not_code_units)
 
 TEST_CASE(legacy_cloning_a_canonical_traversable_creates_an_independent_copy)
 {
-    WebView::CanonicalTraversable source { {}, initial_history_entry() };
-    WebView::CanonicalTraversable clone { {}, initial_history_entry() };
+    WebView::CanonicalTraversable source { {}, initial_history_entry(), WebView::BrowsingSession::create(WebView::IsPrivate::No) };
+    WebView::CanonicalTraversable clone { {}, initial_history_entry(), WebView::BrowsingSession::create(WebView::IsPrivate::No) };
 
     source.session_storage().set_item(WebView::StorageEndpointType::SessionStorage, "https://a.example"_string, "key"_utf16, "source"_utf16);
     source.session_storage().set_item(WebView::StorageEndpointType::SessionStorage, "https://b.example"_string, "other"_utf16, "preserved"_utf16);

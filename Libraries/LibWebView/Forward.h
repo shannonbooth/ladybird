@@ -67,6 +67,7 @@ class Translator;
 class StorageJar;
 class TraversableSessionHistory;
 class VideoDecoderServerControlClient;
+class UserAgentTopLevelTraversableSet;
 class ViewImplementation;
 class WebContentClient;
 class WebContentTestClient;

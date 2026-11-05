@@ -9,6 +9,7 @@
 #include <AK/kmalloc.h>
 #include <LibCore/Timer.h>
 #include <LibWebView/Settings.h>
+#include <LibWebView/TabId.h>
 #include <LibWebView/TabPerformanceStats.h>
 
 namespace WebView {
@@ -19,8 +20,8 @@ public:
 
     static TabPerformanceMonitor& the();
     bool enabled() const { return m_enabled; }
-    static void did_present(u64 view_id);
-    static void forget_view(u64 view_id);
+    static void did_present(TabId);
+    static void forget_tab(TabId);
     // Every RequestServer reports its clients' network use to the monitor.
     static void configure(Requests::RequestControlClient&);
 
@@ -31,7 +32,7 @@ private:
 
     bool m_enabled { false };
     RefPtr<Core::Timer> m_timer;
-    HashMap<u64, TabPerformanceAccumulator> m_tabs;
+    HashMap<TabId, TabPerformanceAccumulator> m_tabs;
 };
 
 }

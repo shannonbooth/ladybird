@@ -212,8 +212,7 @@ void WebDriverBiDi::set_enabled_events(Vector<String> const& event_names, HashMa
 String WebDriverBiDi::navigable_id(CanonicalNavigable const& navigable)
 {
     if (navigable.is_top_level_traversable()) {
-        if (auto view = static_cast<CanonicalTraversable const&>(navigable).view(); view.has_value() && !view->handle().is_empty())
-            return view->handle();
+        return static_cast<CanonicalTraversable const&>(navigable).handle();
     }
 
     // NB: This is how WebContent names a frame to WebDriver.
@@ -222,7 +221,7 @@ String WebDriverBiDi::navigable_id(CanonicalNavigable const& navigable)
 
 static bool is_top_level_traversable_of_a_window(ViewImplementation const& view)
 {
-    return !view.owner_view_id().has_value() && view.has_traversable() && !view.handle().is_empty();
+    return !view.owner_tab_id().has_value() && view.has_traversable() && !view.handle().is_empty();
 }
 
 static Vector<CanonicalTraversable&> all_top_level_traversables()
@@ -482,7 +481,7 @@ void WebDriverBiDi::navigable_created(CanonicalNavigable const& navigable, Optio
     if (opener_navigable.has_value())
         m_original_openers.set(navigable.id(), navigable_id(*opener_navigable));
 
-    // NB: A top-level traversable is named by the window handle of its view, which it does not have yet.
+    // NB: Keep reporting top-level context creation when its frontend is initialized.
     if (navigable.is_top_level_traversable())
         return;
 

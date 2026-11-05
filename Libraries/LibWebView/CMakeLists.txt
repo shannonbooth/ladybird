@@ -79,6 +79,7 @@ set(SOURCES
     TestTranslator.cpp
     Translator.cpp
     URL.cpp
+    UserAgentTopLevelTraversableSet.cpp
     UserAgent.cpp
     Utilities.cpp
     VideoDecoderServerControlClient.cpp

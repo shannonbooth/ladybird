@@ -52,8 +52,8 @@ static NonnullOwnPtr<PermissionManager> create_manager(FakeClock& clock, StringV
 static auto const maps = origin_of("https://maps.example.com/"sv);
 static auto const talk = origin_of("https://talk.example.org/"sv);
 
-static constexpr u64 first_view = 1;
-static constexpr u64 second_view = 2;
+static constexpr TabId first_tab { 1 };
+static constexpr TabId second_tab { 2 };
 
 TEST_CASE(allow_always_persists_across_reload)
 {
@@ -74,7 +74,7 @@ TEST_CASE(allow_once_is_not_persisted)
     auto path = persistence_path("allow-once"sv);
     {
         auto manager = PermissionManager::create_for_ordinary_session(path);
-        manager->set_view_presence(first_view, maps, true);
+        manager->set_tab_presence(first_tab, maps, true);
         manager->record_prompt_outcome(PermissionName::Geolocation, maps, PromptOutcome::AllowOnce);
         EXPECT(manager->effective_state(PermissionName::Geolocation, maps) == EffectiveState::Granted);
         EXPECT(manager->decision(PermissionName::Geolocation, maps) == PermissionDecision::AllowOnce);
@@ -176,13 +176,13 @@ TEST_CASE(one_time_expires_when_origin_absent)
 {
     FakeClock clock;
     auto manager = create_manager(clock, "one-time-absent"sv);
-    manager->set_view_presence(first_view, maps, true);
-    manager->set_view_presence(second_view, maps, false);
+    manager->set_tab_presence(first_tab, maps, true);
+    manager->set_tab_presence(second_tab, maps, false);
     manager->record_prompt_outcome(PermissionName::Geolocation, maps, PromptOutcome::AllowOnce);
 
-    manager->set_view_presence(first_view, talk, true);
+    manager->set_tab_presence(first_tab, talk, true);
     EXPECT(manager->effective_state(PermissionName::Geolocation, maps) == EffectiveState::Granted);
-    manager->remove_view(second_view);
+    manager->remove_tab(second_tab);
     EXPECT(manager->effective_state(PermissionName::Geolocation, maps) == EffectiveState::Prompt);
 }
 
@@ -190,14 +190,14 @@ TEST_CASE(one_time_expires_after_five_minutes_hidden)
 {
     FakeClock clock;
     auto manager = create_manager(clock, "one-time-hidden"sv);
-    manager->set_view_presence(first_view, maps, true);
+    manager->set_tab_presence(first_tab, maps, true);
     manager->record_prompt_outcome(PermissionName::Geolocation, maps, PromptOutcome::AllowOnce);
 
-    manager->set_view_presence(first_view, maps, false);
+    manager->set_tab_presence(first_tab, maps, false);
     clock.advance(AK::Duration::from_seconds(4 * 60));
     manager->run_expiry();
-    manager->set_view_presence(first_view, maps, true);
-    manager->set_view_presence(first_view, maps, false);
+    manager->set_tab_presence(first_tab, maps, true);
+    manager->set_tab_presence(first_tab, maps, false);
     clock.advance(AK::Duration::from_seconds(4 * 60));
     manager->run_expiry();
     EXPECT(manager->effective_state(PermissionName::Geolocation, maps) == EffectiveState::Granted);
@@ -211,7 +211,7 @@ TEST_CASE(one_time_expires_after_sixteen_hours_even_if_visible)
 {
     FakeClock clock;
     auto manager = create_manager(clock, "one-time-max"sv);
-    manager->set_view_presence(first_view, maps, true);
+    manager->set_tab_presence(first_tab, maps, true);
     manager->record_prompt_outcome(PermissionName::Microphone, maps, PromptOutcome::AllowOnce);
     clock.advance(AK::Duration::from_seconds(16 * 3600 - 1));
     manager->run_expiry();
@@ -226,10 +226,10 @@ TEST_CASE(next_deadline_reports_the_earliest_expiry)
     FakeClock clock;
     auto manager = create_manager(clock, "deadline"sv);
     EXPECT(!manager->next_deadline().has_value());
-    manager->set_view_presence(first_view, maps, true);
+    manager->set_tab_presence(first_tab, maps, true);
     manager->record_prompt_outcome(PermissionName::Geolocation, maps, PromptOutcome::AllowOnce);
     EXPECT(manager->next_deadline() == clock.now + AK::Duration::from_seconds(16 * 3600));
-    manager->set_view_presence(first_view, maps, false);
+    manager->set_tab_presence(first_tab, maps, false);
     EXPECT(manager->next_deadline() == clock.now + AK::Duration::from_seconds(5 * 60));
 }
 
@@ -431,10 +431,10 @@ TEST_CASE(hiding_a_one_time_site_reports_a_new_deadline)
     auto manager = create_manager(clock, "deadline-change"sv);
     int deadline_changes = 0;
     manager->on_deadlines_changed = [&] { ++deadline_changes; };
-    manager->set_view_presence(first_view, maps, true);
+    manager->set_tab_presence(first_tab, maps, true);
     manager->record_prompt_outcome(PermissionName::Geolocation, maps, PromptOutcome::AllowOnce);
     auto before = deadline_changes;
-    manager->set_view_presence(first_view, maps, false);
+    manager->set_tab_presence(first_tab, maps, false);
     EXPECT(deadline_changes > before);
 }
 

@@ -7,7 +7,7 @@
 #include <AK/HashTable.h>
 #include <LibRequests/RequestControlClient.h>
 #include <LibWebView/Application.h>
-#include <LibWebView/CanonicalNavigable.h>
+#include <LibWebView/CanonicalTraversable.h>
 #include <LibWebView/ProcessManager.h>
 #include <LibWebView/RequestServerManager.h>
 #include <LibWebView/TabPerformanceMonitor.h>
@@ -41,13 +41,12 @@ void TabPerformanceMonitor::configure(Requests::RequestControlClient& requests)
             return;
         auto now = MonotonicTime::now();
         for (auto const& entry : usage) {
-            Optional<u64> owner;
+            Optional<TabId> owner;
             WebContentClient::for_each_client([&](WebContentClient& client) {
                 if (client.pid() != entry.process_id)
                     return IterationDecision::Continue;
                 if (auto* page = client.page(entry.page_id)) {
-                    auto const& view = page->view();
-                    owner = view.owner_view_id().value_or(view.view_id());
+                    owner = page->traversable().performance_owner();
                 }
                 return IterationDecision::Break;
             });
@@ -59,10 +58,10 @@ void TabPerformanceMonitor::configure(Requests::RequestControlClient& requests)
     };
 }
 
-void TabPerformanceMonitor::forget_view(u64 view_id)
+void TabPerformanceMonitor::forget_tab(TabId tab_id)
 {
     if (s_monitor)
-        s_monitor->m_tabs.remove(view_id);
+        s_monitor->m_tabs.remove(tab_id);
 }
 
 TabPerformanceMonitor::TabPerformanceMonitor()
@@ -90,17 +89,17 @@ void TabPerformanceMonitor::config_variable_changed(ConfigVariableID id)
     sample();
 }
 
-void TabPerformanceMonitor::did_present(u64 view_id)
+void TabPerformanceMonitor::did_present(TabId tab_id)
 {
     if (s_monitor && s_monitor->m_enabled)
-        s_monitor->m_tabs.ensure(view_id).did_present(MonotonicTime::now());
+        s_monitor->m_tabs.ensure(tab_id).did_present(MonotonicTime::now());
 }
 
 void TabPerformanceMonitor::sample()
 {
-    HashMap<u64, HashMap<pid_t, Core::Platform::ProcessResourceUsage>> processes;
+    HashMap<TabId, HashMap<pid_t, Core::Platform::ProcessResourceUsage>> processes;
     Application::process_manager().for_each_process([&](Process& process) {
-        Optional<u64> owner;
+        Optional<TabId> owner;
         if (process.type() == ProcessType::WebContent) {
             if (auto client = process.client<WebContentClient>())
                 owner = client->exclusive_performance_owner();
@@ -114,12 +113,12 @@ void TabPerformanceMonitor::sample()
     });
     auto now = MonotonicTime::now();
     ViewImplementation::for_each_view([&](ViewImplementation& view) {
-        if (view.owner_view_id().has_value())
+        if (view.owner_tab_id().has_value())
             return IterationDecision::Continue;
         Optional<pid_t> top_level_process;
         if (auto page = view.traversable().display_page())
             top_level_process = page->client().pid();
-        auto stats = m_tabs.ensure(view.view_id()).sample(now, processes.ensure(view.view_id()), top_level_process);
+        auto stats = m_tabs.ensure(view.traversable().tab_id()).sample(now, processes.ensure(view.traversable().tab_id()), top_level_process);
         if (view.on_performance_stats)
             view.on_performance_stats(stats);
         return IterationDecision::Continue;

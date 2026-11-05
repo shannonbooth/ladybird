@@ -21,8 +21,8 @@ enum class IsPrivate : u8 {
     Yes,
 };
 
-// The ordinary session lives as long as the application. A private one is owned by its views and content processes,
-// and everything else holds it weakly, so nothing outliving them can bring one back.
+// The ordinary session lives as long as the application. A private session is owned by its traversables,
+// views and content processes, and stays alive until their work has finished.
 class WEBVIEW_API BrowsingSession
     : public RefCounted<BrowsingSession>
     , public Weakable<BrowsingSession> {

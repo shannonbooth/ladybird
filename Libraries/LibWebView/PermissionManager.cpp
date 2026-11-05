@@ -286,7 +286,7 @@ void PermissionManager::record_prompt_outcome(PermissionName name, URL::Origin c
 PermissionManager::OriginPresence PermissionManager::presence_of(URL::Origin const& origin) const
 {
     auto presence = OriginPresence::Absent;
-    for (auto const& it : m_views) {
+    for (auto const& it : m_tabs) {
         if (!it.value.origin.is_same_origin(origin))
             continue;
         if (it.value.visible)
@@ -332,16 +332,16 @@ bool PermissionManager::apply_presence()
     return changed;
 }
 
-void PermissionManager::set_view_presence(u64 view_id, URL::Origin const& origin, bool visible)
+void PermissionManager::set_tab_presence(TabId tab_id, URL::Origin const& origin, bool visible)
 {
-    m_views.set(view_id, { origin, visible });
+    m_tabs.set(tab_id, { origin, visible });
     if (apply_presence())
         did_change();
 }
 
-void PermissionManager::remove_view(u64 view_id)
+void PermissionManager::remove_tab(TabId tab_id)
 {
-    if (!m_views.remove(view_id))
+    if (!m_tabs.remove(tab_id))
         return;
     if (apply_presence())
         did_change();

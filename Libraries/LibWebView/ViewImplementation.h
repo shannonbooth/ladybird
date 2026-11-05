@@ -191,7 +191,7 @@ public:
 
     // A view that shows a page on behalf of another view, such as a Picture-in-Picture window, is part of that view's
     // tab rather than a tab or window of its own.
-    Optional<u64> owner_view_id() const { return m_owner_view_id; }
+    Optional<TabId> owner_tab_id() const;
 
     CanonicalTraversable& traversable() const;
     bool has_traversable() const { return m_top_level_traversable != nullptr; }
@@ -217,7 +217,7 @@ public:
     void set_favicon(Badge<WebContentPage>, Optional<Gfx::Bitmap const&> favicon) { set_favicon(favicon); }
     Optional<String> const& favicon_hash() const { return m_favicon_hash; }
 
-    String const& handle() const { return m_window_handle; }
+    String const& handle() const;
 
     void server_did_paint(Badge<WebContentPage>, i32 bitmap_id, Gfx::IntSize size, Gfx::IntRect damage_rect, double device_pixel_ratio);
 
@@ -741,7 +741,7 @@ protected:
 
     explicit ViewImplementation(IsPrivate = IsPrivate::No);
 
-    void set_owner_view(ViewImplementation const& owner_view) { m_owner_view_id = owner_view.view_id(); }
+    void set_owner_view(ViewImplementation const&);
 
     void did_update_url();
     void settle_permission_prompt(PermissionPromptRequest const&, Web::Permissions::PromptOutcome);
@@ -880,7 +880,7 @@ protected:
         OwnPtr<Gfx::SharedImageBuffer> shared_image_buffer;
     };
 
-    String m_window_handle;
+    bool m_webdriver_window_closed { false };
     SharedBitmap m_front_bitmap;
     Vector<SharedBitmap> m_other_bitmaps;
     bool m_has_usable_bitmap { false };
@@ -1214,7 +1214,7 @@ protected:
     // FIXME: Reconcile this ID with `page_id`. The latter is only unique per WebContent connection, whereas the view ID
     //        is required to be globally unique for Firefox DevTools.
     u64 m_view_id { 0 };
-    Optional<u64> m_owner_view_id;
+    Optional<TabId> m_pending_owner_tab_id;
 
     HashMap<u64, NavigationListener> m_navigation_listeners;
     u64 m_next_navigation_listener_id { 1 };

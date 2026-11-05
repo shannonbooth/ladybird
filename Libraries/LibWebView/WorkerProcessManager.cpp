@@ -837,25 +837,25 @@ void WorkerProcessManager::remove_owner(Web::HTML::WorkerAgentId agent_id, Owner
         remove_agent(agent_id, AgentRemovalCause::AgentTerminated);
 }
 
-Optional<u64> WorkerProcessManager::exclusive_performance_owner(pid_t pid) const
+Optional<TabId> WorkerProcessManager::exclusive_performance_owner(pid_t pid) const
 {
     HashTable<Web::HTML::WorkerAgentId> visiting;
-    Function<Optional<u64>(WorkerAgent const&)> resolve = [&](WorkerAgent const& agent) -> Optional<u64> {
+    Function<Optional<TabId>(WorkerAgent const&)> resolve = [&](WorkerAgent const& agent) -> Optional<TabId> {
         if (agent.closing || visiting.contains(agent.id))
             return {};
         visiting.set(agent.id);
         ScopeGuard remove_visit = [&] { visiting.remove(agent.id); };
-        Optional<u64> result;
+        Optional<TabId> result;
         for (auto const& owner : agent.owners) {
             auto id = owner.client.visit(
-                [&](WebContentOwner const& content) -> Optional<u64> {
+                [&](WebContentOwner const& content) -> Optional<TabId> {
                 if (!content.client)
                     return {};
                 auto* page = content.client->page(content.page_id);
                 if (!page)
                     return {};
-                return page->view().view_id(); },
-                [&](WebWorkerOwner const& worker) -> Optional<u64> {
+                return page->traversable().performance_owner(); },
+                [&](WebWorkerOwner const& worker) -> Optional<TabId> {
                 for (auto const& candidate : m_agents) {
                     if (candidate.value.client.ptr() == worker.client.ptr())
                         return resolve(candidate.value);

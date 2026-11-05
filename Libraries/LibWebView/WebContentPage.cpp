@@ -3183,7 +3183,7 @@ Messages::WebContentClient::DidRequestNewWebViewResponse WebContentPage::did_req
 
     // A Picture-in-Picture window is not chosen by web content, so it skips the rules for choosing a navigable.
     auto [traversable, window_type] = picture_in_picture_navigable.has_value()
-        ? CanonicalNavigable::ChosenTopLevelTraversable { CanonicalTraversable::create_a_new_top_level_traversable(root_navigable_id, {}, Web::HTML::create_initial_session_history_entry_descriptor(Application::the().allocate_ui_process_cross_process_id(), {}, {}), document_id), Web::HTML::WindowType::NewAndUnrestricted }
+        ? CanonicalNavigable::ChosenTopLevelTraversable { CanonicalTraversable::create_a_new_top_level_traversable(client().session(), root_navigable_id, {}, Web::HTML::create_initial_session_history_entry_descriptor(Application::the().allocate_ui_process_cross_process_id(), {}, {}), document_id), Web::HTML::WindowType::NewAndUnrestricted }
         : current_navigable->choose_a_new_top_level_traversable(*this, name, no_opener, move(current_document_base_url), root_navigable_id, document_id);
 
     auto new_page_id = Application::the().allocate_page_id();
@@ -3198,7 +3198,7 @@ Messages::WebContentClient::DidRequestNewWebViewResponse WebContentPage::did_req
 
     if (!traversable.view().has_value()) {
         client().discard_page_of_undisplayed_top_level_traversable(new_page_id);
-        CanonicalTraversable::remove_from_user_agent_top_level_traversable_set(traversable);
+        traversable.destroy();
         return { {}, {}, {}, {}, {}, {}, {}, Web::HTML::VisibilityState::Hidden, move(window_handle) };
     }
     traversable.represent_group_everywhere();

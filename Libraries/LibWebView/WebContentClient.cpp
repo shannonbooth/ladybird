@@ -258,7 +258,7 @@ WebContentPage& WebContentClient::open_initial_page_for_new_top_level_traversabl
 
     // A tab's first process creates its traversable, in the page that displays the tab.
     VERIFY(m_initial_top_level_history_entry.has_value());
-    auto& traversable = CanonicalTraversable::create_a_new_top_level_traversable(m_root_navigable_id, {}, m_initial_top_level_history_entry.release_value(), m_initial_top_level_document_id);
+    auto& traversable = CanonicalTraversable::create_a_new_top_level_traversable(session(), m_root_navigable_id, {}, m_initial_top_level_history_entry.release_value(), m_initial_top_level_document_id);
     auto& page = open_page_for_new_top_level_traversable(initial_page_id, traversable);
     page.async_set_browsing_context_group(traversable.active_browsing_context().group()->id());
     return page;
@@ -533,7 +533,7 @@ void WebContentClient::did_lose_process()
         if (page.displays_tab()) {
             auto const& view = page.view();
             lost.view_id = view.view_id();
-            lost.shows_crash_screen = !view.owner_view_id().has_value();
+            lost.shows_crash_screen = !view.owner_tab_id().has_value();
         }
         lost_pages.append(move(lost));
         return IterationDecision::Continue;
@@ -1154,10 +1154,10 @@ Messages::WebContentClient::RequestWebrtcClientConnectionResponse WebContentClie
     return handle.release_value();
 }
 
-Optional<u64> WebContentClient::exclusive_performance_owner() const
+Optional<TabId> WebContentClient::exclusive_performance_owner() const
 {
-    Optional<u64> owner;
-    auto add_owner = [&](u64 id) {
+    Optional<TabId> owner;
+    auto add_owner = [&](TabId id) {
         if (owner.has_value() && *owner != id)
             return false;
         owner = id;
@@ -1167,8 +1167,7 @@ Optional<u64> WebContentClient::exclusive_performance_owner() const
         auto const& page = it.value;
         if (!page->is_open())
             continue;
-        auto const& view = page->view();
-        if (!add_owner(view.owner_view_id().value_or(view.view_id())))
+        if (!add_owner(page->traversable().performance_owner()))
             return {};
     }
     return owner;
