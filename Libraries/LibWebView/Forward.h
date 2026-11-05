@@ -66,6 +66,7 @@ class StorageJar;
 class TraversableSessionHistory;
 class VideoDecoderServerControlClient;
 class UserAgentTopLevelTraversableSet;
+class TabUI;
 class ViewImplementation;
 class WebContentClient;
 class WebContentTestClient;

@@ -323,11 +323,11 @@ void WebContentClient::register_embedded_page(Web::PageId page_id, CanonicalTrav
         m_unassigned_initial_page_id.clear();
     Application::process_manager().cancel_forced_exit(child_id());
 
-    page.view().send_preferences_to_page(page);
+    page.ui().send_preferences_to_page(page);
     if (Application::browser_options().webdriver_browser_endpoint.has_value())
         Application::the().push_webdriver_session_config(page);
     page.async_set_has_focus(traversable.has_system_focus());
-    page.async_set_viewport_is_fullscreen(page.view().is_fullscreen());
+    page.async_set_viewport_is_fullscreen(page.ui().viewport_is_fullscreen());
     if (auto focused_navigable_id = traversable.focused_navigable_id(); focused_navigable_id.has_value())
         page.async_set_focused_navigable(*focused_navigable_id);
 }
@@ -343,7 +343,7 @@ Optional<Web::PageId> WebContentClient::page_id_for_traversable(CanonicalTravers
 
 void WebContentClient::unregister_embedded_page(Web::PageId page_id)
 {
-    if (auto* page = find_page(page_id); page && !(page->is_open() && page->displays_tab()))
+    if (auto* page = find_page(page_id); page && !(page->is_open() && page->hosts_top_level_document()))
         page->close();
     release_unneeded_representing_pages();
     close_server_if_unused();
@@ -359,7 +359,7 @@ bool WebContentClient::holds_part_of_a_tab_in_the_group_of(CanonicalTraversable 
         if (!page->is_open())
             continue;
         auto const& held = page->traversable();
-        if (!page->displays_tab() && !held.page_hosts_any(*page))
+        if (!page->hosts_top_level_document() && !held.page_hosts_any(*page))
             continue;
         if (held.active_browsing_context().group() == group)
             return true;
@@ -371,7 +371,7 @@ void WebContentClient::release_unneeded_representing_pages()
 {
     Vector<NonnullRefPtr<WebContentPage>> representing_pages;
     for_each_page([&](WebContentPage& page) {
-        if (!page.displays_tab() && page.traversable().is_representing_page(page))
+        if (!page.hosts_top_level_document() && page.traversable().is_representing_page(page))
             representing_pages.append(page);
         return IterationDecision::Continue;
     });
@@ -491,17 +491,17 @@ void WebContentClient::replay_compositor_view_state_after_reconnect(Badge<Applic
         return;
 
     for (auto& [page_id, page] : m_pages) {
-        if (!page->is_open() || !page->displays_tab())
+        if (!page->is_open() || !page->hosts_top_level_document())
             continue;
         auto context_id = Web::compositor_context_id_for_page(page_id);
-        if (!m_compositor_contexts.contains(context_id))
+        auto view = page->traversable().view();
+        if (!view.has_value() || !m_compositor_contexts.contains(context_id))
             continue;
-        auto& view = page->view();
-        Application::the().update_compositor_viewport(context_id, view.viewport_size().to_type<int>(), view.device_pixel_ratio());
-        Application::the().update_compositor_display_metadata(context_id, view.display_id(), view.maximum_frames_per_second());
-        Application::the().update_compositor_context_visibility(context_id, view.traversable().system_visibility_state());
-        Application::the().update_compositor_context_presents_from_cpu_memory(context_id, view.presents_from_cpu_memory());
-        view.update_ui_overlays();
+        Application::the().update_compositor_viewport(context_id, view->viewport_size().to_type<int>(), view->device_pixel_ratio());
+        Application::the().update_compositor_display_metadata(context_id, view->display_id(), view->maximum_frames_per_second());
+        Application::the().update_compositor_context_visibility(context_id, view->traversable().system_visibility_state());
+        Application::the().update_compositor_context_presents_from_cpu_memory(context_id, view->presents_from_cpu_memory());
+        view->update_ui_overlays();
     }
 }
 
@@ -530,10 +530,9 @@ void WebContentClient::did_lose_process()
     Vector<LostPage> lost_pages;
     for_each_page([&](WebContentPage& page) {
         LostPage lost { page, {} };
-        if (page.displays_tab()) {
-            auto const& view = page.view();
-            lost.view_id = view.view_id();
-            lost.shows_crash_screen = !view.owner_tab_id().has_value();
+        if (auto view = page.traversable().view(); view.has_value() && page.hosts_top_level_document()) {
+            lost.view_id = view->view_id();
+            lost.shows_crash_screen = !page.traversable().owner_tab_id().has_value();
         }
         lost_pages.append(move(lost));
         return IterationDecision::Continue;
@@ -995,9 +994,10 @@ bool WebContentClient::page_may_capture_audio(WebContentPage const& page) const
 {
     // The top-level document's origin, which a popup on about:blank has from its opener; only a file page is left with
     // an opaque one, and reads its own grant by URL.
-    auto origin = page.view().permission_origin();
+    auto const& traversable = page.traversable();
+    auto origin = traversable.active_document().top_level_origin().value_or(traversable.active_document_url().origin());
     if (origin.is_opaque())
-        return m_audio_capture_grants.contains(audio_capture_permission_key(page.view().url()));
+        return m_audio_capture_grants.contains(audio_capture_permission_key(traversable.active_document_url()));
     return session().permission_manager->effective_state(Web::Permissions::PermissionName::Microphone, origin) == Web::Permissions::EffectiveState::Granted;
 }
 
@@ -1026,13 +1026,14 @@ void WebContentClient::decide_audio_capture_request(u64 request_id)
     // Only a site the user allowed gets the system to ask the user, if it never has.
     // FIXME: The AudioServer doesn't say which page asked to capture, so a refusal is told in the tab of the first page
     //        that may capture, which needn't be the one that asked.
-    page->view().ensure_microphone_authorization([weak_self = make_weak_ptr<WebContentClient>(), request_id](bool authorized) {
+    page->ui().ensure_microphone_authorization(MicrophoneAuthorizationReply::create([weak_self = make_weak_ptr<WebContentClient>(), request_id](bool authorized) {
         auto self = weak_self.strong_ref();
         if (!self || !self->m_audio_server_client || !self->m_audio_server_client->is_open())
             return;
         // The user may have taken the permission away while the system asked.
         self->send_audio_capture_decision(request_id, authorized && self->audio_capture_permitted());
-    });
+    },
+        false));
 }
 
 void WebContentClient::send_audio_capture_decision(u64 request_id, bool allowed)

@@ -87,8 +87,9 @@ public:
     virtual Web::PageId routed_page_id() const override { return m_id; }
 
     CanonicalTraversable& traversable() const;
-    ViewImplementation& view() const;
-    bool displays_tab() const;
+    // Whoever shows the tab this page belongs to.
+    TabUI& ui() const;
+    bool hosts_top_level_document() const;
     String dump_process_tree() const;
     Optional<CanonicalNavigable&> hosted_navigable(Web::HTML::CrossProcessId) const;
     bool hosts_active_document_of(CanonicalNavigable const&) const;
@@ -208,11 +209,7 @@ private:
     Optional<CanonicalDocument&> document_with_hosted_environment(Web::HTML::EnvironmentId const& environment_id) const;
     StorageJar* storage_jar(Web::StorageAPI::StorageEndpointType) const;
     Optional<String> canonical_storage_key(Web::HTML::EnvironmentId const&) const;
-    struct ViewPosition {
-        ViewImplementation& view;
-        Gfx::IntPoint position;
-    };
-    Optional<ViewPosition> view_position(Web::HTML::CrossProcessId local_root_id, Gfx::IntPoint) const;
+    Optional<Gfx::IntPoint> tab_position(Web::HTML::CrossProcessId local_root_id, Gfx::IntPoint) const;
     void did_open_dialog(Web::PendingDialog, Utf16String const& message);
     RefPtr<DialogReply> open_dialog(Web::PendingDialog, Utf16String const& message);
     void maybe_record_history_visit_for_current_load(URL::URL const&, Optional<String> title, StringView reason);
@@ -250,7 +247,6 @@ private:
     virtual void did_inspect_accessibility_tree(u64 request_id, String accessibility_tree) override;
     virtual void did_get_accessibility_tree(Vector<AccessibilityNodeData> nodes) override;
     virtual void did_accessibility_focus_change(i64 focused_node_id) override;
-    virtual void did_get_hovered_node_id(Web::UniqueNodeID node_id) override;
     virtual void did_get_node_id_at_position(u64 request_id, Web::UniqueNodeID node_id) override;
     virtual void did_list_style_sheets(u64 request_id, Vector<Web::CSS::StyleSheetIdentifier> stylesheets) override;
     virtual void did_get_style_sheet_source(Web::CSS::StyleSheetIdentifier identifier, URL::URL base_url, Utf16String source) override;

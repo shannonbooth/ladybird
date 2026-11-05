@@ -1674,7 +1674,7 @@ void CanonicalNavigable::begin_evaluating_javascript_url(URL::URL const& url, Ut
         .state = CanonicalNavigation::EvaluatingJavaScriptURL {},
         .page = host,
     });
-    if (is_top_level_traversable() && host.displays_tab())
+    if (is_top_level_traversable() && host.hosts_top_level_document())
         host.begin_top_level_load(url);
 }
 

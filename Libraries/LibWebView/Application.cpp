@@ -2024,8 +2024,8 @@ void Application::handle_compositor_process_death()
     // Nothing will forward or hand back the input events the dead compositor still held.
     WebContentClient::for_each_client([](WebContentClient& client) {
         client.for_each_page([](WebContentPage& page) {
-            if (page.displays_tab())
-                page.view().discard_input_events_routed_through_lost_compositor({});
+            if (page.hosts_top_level_document())
+                page.ui().discard_input_events_routed_through_lost_compositor();
             return IterationDecision::Continue;
         });
         return IterationDecision::Continue;
@@ -2518,7 +2518,7 @@ OwnPtr<PictureInPictureWindow> Application::create_picture_in_picture_window(Web
         return {};
 
     // Every view in a headless browser is a HeadlessWebView.
-    auto& requesting_view = static_cast<HeadlessWebView&>(requesting_page.view());
+    auto& requesting_view = static_cast<HeadlessWebView&>(*requesting_page.traversable().view());
     return HeadlessWebView::create_picture_in_picture_window(requesting_view, traversable, video_size);
 }
 

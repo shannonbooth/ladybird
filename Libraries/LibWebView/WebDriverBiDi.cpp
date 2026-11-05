@@ -158,7 +158,7 @@ void WebDriverBiDi::push_session_state_for_client(WebContentClient& client) cons
     HashTable<String> hosted_traversables;
     client.for_each_page([&](WebContentPage& page) {
         auto& traversable = page.traversable();
-        if (page.displays_tab() || traversable.page_hosts_any(page)) {
+        if (page.hosts_top_level_document() || traversable.page_hosts_any(page)) {
             auto id = traversable.id();
             hosted_traversables.set(MUST(String::formatted("{}-{}", id.namespace_id, id.local_id)));
         }
@@ -1088,7 +1088,8 @@ void WebDriverBiDi::run_command(u64 command_id, String const& method, JsonValue 
                     }
                     on_complete(move(response));
                 });
-                blocked->page->view().run_webdriver_bidi_content_command(*blocked->page, content_command_id, blocked->navigable_id, method, params);
+                if (auto view = blocked->page->traversable().view(); view.has_value())
+                    view->run_webdriver_bidi_content_command(*blocked->page, content_command_id, blocked->navigable_id, method, params);
                 return;
             }
         }

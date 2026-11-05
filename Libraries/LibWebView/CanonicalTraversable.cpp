@@ -10,7 +10,6 @@
 #include <AK/TemporaryChange.h>
 #include <LibCore/EventLoop.h>
 #include <LibURL/Site.h>
-#include <LibWebCommon/Geolocation/GeolocationPositionErrorCode.h>
 #include <LibWebCommon/WebView/SiteIsolation.h>
 #include <LibWebView/Application.h>
 #include <LibWebView/CanonicalBrowsingContext.h>
@@ -22,6 +21,7 @@
 #include <LibWebView/PermissionManager.h>
 #include <LibWebView/StorageJar.h>
 #include <LibWebView/TabPerformanceMonitor.h>
+#include <LibWebView/TabUI.h>
 #include <LibWebView/UserAgentTopLevelTraversableSet.h>
 #include <LibWebView/ViewImplementation.h>
 #include <LibWebView/WebContentClient.h>
@@ -457,219 +457,11 @@ Optional<ViewImplementation&> CanonicalTraversable::view() const
     return *m_view;
 }
 
-bool CanonicalTraversable::has_open_dialog() const
-{
-    return m_view && m_view->has_open_dialog();
-}
-
-void CanonicalTraversable::request_alert(Utf16String const& message, NonnullRefPtr<DialogReply> reply)
+TabUI& CanonicalTraversable::ui() const
 {
     if (m_view)
-        m_view->request_alert({}, message, move(reply));
-    else
-        reply->cancel();
-}
-
-void CanonicalTraversable::request_confirm(Utf16String const& message, NonnullRefPtr<DialogReply> reply)
-{
-    if (m_view)
-        m_view->request_confirm({}, message, move(reply));
-    else
-        reply->cancel();
-}
-
-void CanonicalTraversable::request_prompt(Utf16String const& message, Utf16String const& default_value, NonnullRefPtr<DialogReply> reply)
-{
-    if (m_view)
-        m_view->request_prompt({}, message, default_value, move(reply));
-    else
-        reply->cancel();
-}
-
-void CanonicalTraversable::request_before_unload(String const& source, NonnullRefPtr<DialogReply> reply)
-{
-    if (m_view)
-        m_view->request_before_unload({}, source, move(reply));
-    else
-        reply->cancel();
-}
-
-void CanonicalTraversable::request_color_picker(Color color, NonnullRefPtr<ColorPickerReply> reply)
-{
-    if (m_view)
-        m_view->request_color_picker({}, color, move(reply));
-    else
-        reply->cancel();
-}
-
-void CanonicalTraversable::request_date_picker(Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, NonnullRefPtr<DatePickerReply> reply)
-{
-    if (m_view)
-        m_view->request_date_picker({}, input_type, value, minimum, maximum, move(reply));
-    else
-        reply->cancel();
-}
-
-void CanonicalTraversable::request_file_picker(Web::HTML::FileFilter const& filter, Web::HTML::AllowMultipleFiles allow_multiple_files, NonnullRefPtr<FilePickerReply> reply)
-{
-    if (m_view)
-        m_view->request_file_picker({}, filter, allow_multiple_files, move(reply));
-    else
-        reply->cancel();
-}
-
-void CanonicalTraversable::did_request_permission(Web::Permissions::PermissionName name)
-{
-    if (m_view)
-        m_view->did_request_permission({}, name);
-}
-
-void CanonicalTraversable::request_permission_prompt(PermissionPromptRequest request, NonnullRefPtr<PermissionPromptReply> reply)
-{
-    if (!m_view) {
-        reply->cancel();
-        return;
-    }
-    m_view->request_permission_prompt(move(request), [reply](Web::Permissions::PromptOutcome outcome) {
-        reply->complete(outcome);
-    });
-}
-
-MicrophoneAuthorization CanonicalTraversable::microphone_authorization() const
-{
-    return m_view ? m_view->microphone_authorization() : MicrophoneAuthorization::Denied;
-}
-
-void CanonicalTraversable::ensure_microphone_authorization(NonnullRefPtr<MicrophoneAuthorizationReply> reply)
-{
-    if (!m_view) {
-        reply->cancel();
-        return;
-    }
-    m_view->ensure_microphone_authorization([reply](bool authorized) {
-        reply->complete(authorized);
-    });
-}
-
-void CanonicalTraversable::show_microphone_denied_notice()
-{
-    if (m_view)
-        m_view->show_microphone_denied_notice();
-}
-
-void CanonicalTraversable::request_spell_check(Utf16String const& text, NonnullRefPtr<SpellCheckReply> reply)
-{
-    if (m_view)
-        m_view->request_spell_check({}, text, move(reply));
-    else
-        reply->cancel();
-}
-
-void CanonicalTraversable::request_writing_suggestion(Utf16String const& text, u32 caret_offset, NonnullRefPtr<WritingSuggestionReply> reply)
-{
-    if (m_view)
-        m_view->request_writing_suggestion({}, text, caret_offset, move(reply));
-    else
-        reply->cancel();
-}
-
-Web::Clipboard::SystemClipboardItem CanonicalTraversable::clipboard_item() const
-{
-    if (!m_view)
-        return {};
-    return m_view->clipboard_item();
-}
-
-void CanonicalTraversable::insert_clipboard_item(Web::Clipboard::SystemClipboardItem item)
-{
-    if (m_view)
-        m_view->insert_clipboard_item(move(item));
-}
-
-void CanonicalTraversable::restore_window()
-{
-    if (m_view && m_view->on_restore_window)
-        m_view->on_restore_window();
-}
-
-void CanonicalTraversable::reposition_window(Gfx::IntPoint position)
-{
-    if (m_view && m_view->on_reposition_window)
-        m_view->on_reposition_window(position);
-}
-
-void CanonicalTraversable::resize_window(Gfx::IntSize size)
-{
-    if (m_view && m_view->on_resize_window)
-        m_view->on_resize_window(size);
-}
-
-void CanonicalTraversable::maximize_window()
-{
-    if (m_view && m_view->on_maximize_window)
-        m_view->on_maximize_window();
-}
-
-void CanonicalTraversable::minimize_window()
-{
-    if (m_view && m_view->on_minimize_window)
-        m_view->on_minimize_window();
-}
-
-void CanonicalTraversable::request_fullscreen_window(WebContentPage& page)
-{
-    if (m_view && m_view->on_fullscreen_window)
-        m_view->on_fullscreen_window();
-    else
-        page.async_deny_fullscreen_window();
-}
-
-void CanonicalTraversable::exit_fullscreen_window()
-{
-    if (m_view && m_view->on_exit_fullscreen_window)
-        m_view->on_exit_fullscreen_window();
-}
-
-void CanonicalTraversable::fully_exit_fullscreen()
-{
-    if (m_view)
-        m_view->exit_fullscreen();
-}
-
-void CanonicalTraversable::request_geolocation_position(WebContentPage& page, u64 request_id, Web::HTML::CrossProcessId document_id)
-{
-    if (m_view && m_view->on_request_geolocation_position)
-        m_view->on_request_geolocation_position(page, request_id, document_id);
-    else
-        page.async_geolocation_position_response(request_id, {}, to_underlying(Web::Geolocation::GeolocationPositionErrorCode::PositionUnavailable));
-}
-
-void CanonicalTraversable::cancel_geolocation_position_request(WebContentPage& page, u64 request_id)
-{
-    if (m_view && m_view->on_cancel_geolocation_position_request)
-        m_view->on_cancel_geolocation_position_request(page, request_id);
-}
-
-void CanonicalTraversable::start_geolocation_position_watch(WebContentPage& page, u64 request_id, Web::HTML::CrossProcessId document_id)
-{
-    if (m_view && m_view->on_start_geolocation_position_watch)
-        m_view->on_start_geolocation_position_watch(page, request_id, document_id);
-    else
-        page.async_geolocation_position_response(request_id, {}, to_underlying(Web::Geolocation::GeolocationPositionErrorCode::PositionUnavailable));
-}
-
-void CanonicalTraversable::stop_geolocation_position_watch(WebContentPage& page, u64 request_id)
-{
-    if (m_view && m_view->on_stop_geolocation_position_watch)
-        m_view->on_stop_geolocation_position_watch(page, request_id);
-}
-
-void CanonicalTraversable::request_select_dropdown(Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items, NonnullRefPtr<SelectDropdownReply> reply)
-{
-    if (m_view)
-        m_view->request_select_dropdown({}, content_position, minimum_width, move(items), move(reply));
-    else
-        reply->cancel();
+        return *m_view;
+    return TabUI::no_ui();
 }
 
 void CanonicalTraversable::set_view(Badge<ViewImplementation>, ViewImplementation& view)

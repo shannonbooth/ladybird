@@ -1303,7 +1303,7 @@ OwnPtr<WebView::PictureInPictureWindow> Application::create_picture_in_picture_w
 {
     if (browser_options().headless_mode.has_value())
         return WebView::Application::create_picture_in_picture_window(requesting_page, traversable, video_size);
-    return Ladybird::create_picture_in_picture_window(traversable, requesting_page.view(), video_size);
+    return Ladybird::create_picture_in_picture_window(traversable, *requesting_page.traversable().view(), video_size);
 }
 
 // The window that shows this view in one of its tabs, if any.
@@ -1329,10 +1329,13 @@ NonnullOwnPtr<WebView::NotificationBackend> Application::create_notification_bac
 
 void Application::focus_page_from_notification(WebView::WebContentPage& page)
 {
-    auto* window = window_for_view(page.view());
+    auto view = page.traversable().view();
+    if (!view.has_value())
+        return;
+    auto* window = window_for_view(*view);
     if (!window)
         return;
-    window->activate_tab(window->tab_index(window->tab_for_view(page.view())));
+    window->activate_tab(window->tab_index(window->tab_for_view(*view)));
     window->bring_to_front();
 }
 

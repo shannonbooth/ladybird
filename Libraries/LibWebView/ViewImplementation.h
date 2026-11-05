@@ -84,6 +84,7 @@
 #include <LibWebView/Settings.h>
 #include <LibWebView/SpellChecker.h>
 #include <LibWebView/TabPerformanceStats.h>
+#include <LibWebView/TabUI.h>
 #include <LibWebView/WebContentClient.h>
 #include <LibWebView/WebContentPage.h>
 #include <LibWebView/WebDriverSessionConfig.h>
@@ -135,7 +136,8 @@ struct SitePermissionRow {
 };
 
 class WEBVIEW_API ViewImplementation
-    : public SettingsObserver
+    : public TabUI
+    , public SettingsObserver
     , public BookmarkStoreObserver
     , public Weakable<ViewImplementation> {
     friend class WebContentClient;
@@ -153,9 +155,9 @@ public:
 
     // Asks the user, unless an identical prompt is already up, in which case its answer goes to every request for it.
     void request_permission_prompt(PermissionPromptRequest, PermissionPromptCallback);
-    void set_next_permission_prompt_outcome_for_testing(Web::Permissions::PermissionName, Web::Permissions::PromptOutcome, bool held);
+    virtual void set_next_permission_prompt_outcome_for_testing(Web::Permissions::PermissionName, Web::Permissions::PromptOutcome, bool held) override;
     // Answers the held prompt once this many requests wait on it, since the requests arrive over another connection.
-    void release_held_permission_prompt_for_testing(u32 waiters);
+    virtual void release_held_permission_prompt_for_testing(u32 waiters) override;
     void reset_permission_prompts_for_testing();
 
     // The origin the view's permissions are kept for: its top-level document's, which an inherited about:blank keeps
@@ -166,24 +168,24 @@ public:
     // These act on the site given, which a panel showing it keeps even after the view moves on to another site.
     void set_site_permission(URL::Origin const&, Web::Permissions::PermissionName, Optional<PermissionDecision>);
     void reset_site_permissions(URL::Origin const&);
-    void did_request_permission(Badge<CanonicalTraversable>, Web::Permissions::PermissionName);
+    virtual void did_request_permission(Web::Permissions::PermissionName) override;
 
-    MicrophoneAuthorization microphone_authorization() const;
+    virtual MicrophoneAuthorization microphone_authorization() const override;
     // Calls back with whether the system lets the browser use the microphone, once the system has asked the user if it
     // never has. The user is told why when it doesn't.
     void ensure_microphone_authorization(Function<void(bool authorized)>);
     // Tells the user the system keeps the microphone from the browser, unless this tab has already shown them that for
     // the site it shows.
-    void show_microphone_denied_notice();
+    virtual void show_microphone_denied_notice() override;
     // The UI calls this each time a prompt comes up on screen.
     void did_show_permission_prompt(PermissionPromptRequest const&);
 
     // The system answers with answer when it's asked, which it is while authorization is NotDetermined. A held answer
     // waits for release_system_microphone_answer_for_testing().
-    void set_microphone_authorization_for_testing(MicrophoneAuthorization authorization, MicrophoneAuthorization answer, bool held);
-    void release_system_microphone_answer_for_testing();
-    u64 system_microphone_requests_for_testing() const;
-    u64 microphone_denied_notices_shown_for_testing() const { return m_microphone_denied_notices_shown; }
+    virtual void set_microphone_authorization_for_testing(MicrophoneAuthorization authorization, MicrophoneAuthorization answer, bool held) override;
+    virtual void release_system_microphone_answer_for_testing() override;
+    virtual u64 system_microphone_requests_for_testing() const override;
+    virtual u64 microphone_denied_notices_shown_for_testing() const override { return m_microphone_denied_notices_shown; }
 
     bool location_in_use() const { return m_location_in_use; }
 
@@ -210,7 +212,7 @@ public:
     void did_change_ongoing_navigation(Badge<CanonicalNavigable>);
     void did_change_active_document(Badge<CanonicalTraversable>);
 
-    void set_text_fragment_indication_visibility(Badge<WebContentPage>, bool);
+    virtual void set_text_fragment_indication_visibility(bool) override;
     // The URL of the tab's active document.
     URL::URL url() const;
     URL::URL const& displayed_url() const { return m_displayed_url; }
@@ -223,11 +225,11 @@ public:
 
     String const& handle() const;
 
-    void server_did_paint(Badge<WebContentPage>, i32 bitmap_id, Gfx::IntSize size, Gfx::IntRect damage_rect, double device_pixel_ratio);
+    virtual void server_did_paint(i32 bitmap_id, Gfx::IntSize size, Gfx::IntRect damage_rect, double device_pixel_ratio) override;
 
     void set_window_position(Gfx::IntPoint);
     void set_window_size(Gfx::IntSize);
-    void set_system_visibility_state(Web::HTML::VisibilityState);
+    virtual void set_system_visibility_state(Web::HTML::VisibilityState) override;
     // Whether the view shows its frames from CPU memory for now, so that the Compositor shares them there rather than
     // in GPU memory that the view would have to read back for every frame.
     void set_presents_from_cpu_memory(bool);
@@ -285,7 +287,7 @@ public:
     void zoom_in();
     void zoom_out();
     void set_zoom(double zoom_level);
-    void set_device_pixel_ratio_for_testing(WebContentPage&, double device_pixel_ratio);
+    virtual void set_device_pixel_ratio_for_testing(WebContentPage&, double device_pixel_ratio) override;
     void reset_zoom();
     double zoom_level() const { return m_zoom_level; }
     double device_pixel_ratio() const { return m_device_pixel_ratio; }
@@ -307,29 +309,28 @@ public:
     void enable_picture_in_picture_controls();
     void enqueue_input_event(Web::InputEvent);
     // The page reporting on an event must be the one handling it.
-    void did_finish_handling_input_event(Badge<WebContentPage>, WebContentPage const& reporting_page, u64 event_id, Web::EventResult event_result);
-    void did_forward_input_event(Badge<WebContentPage>, WebContentPage const& reporting_page, u64 event_id, WebContentPage& endpoint);
-    void did_forward_pinch_event(Badge<WebContentPage>, WebContentPage const& reporting_page, Web::PinchEvent const&, WebContentPage& endpoint);
+    virtual void did_finish_handling_input_event(WebContentPage const& reporting_page, u64 event_id, Web::EventResult event_result) override;
+    virtual void did_forward_input_event(WebContentPage const& reporting_page, u64 event_id, WebContentPage& endpoint) override;
+    virtual void did_forward_pinch_event(WebContentPage const& reporting_page, Web::PinchEvent const&, WebContentPage& endpoint) override;
     // Whether the page has yet to finish handling input that gives it user activation.
-    bool is_delivering_user_activation_to(WebContentPage const&) const;
+    virtual bool is_delivering_user_activation_to(WebContentPage const&) const override;
     // Consumes the activation of the earliest input giving the page activation that the page has yet to finish
     // handling, which leaves the input queued behind it the activation it gives.
-    void consume_user_activation_of_input_in_flight_to(Badge<WebContentPage>, WebContentPage const&);
+    virtual void consume_user_activation_of_input_in_flight_to(WebContentPage const&) override;
     // Consumes the activation of the input the page is handling, if that input gives activation.
-    void consume_user_activation_of_input_handled_by(Badge<WebContentPage>, WebContentPage const&);
+    virtual void consume_user_activation_of_input_handled_by(WebContentPage const&) override;
     // Opening a link in a new tab takes one key or mouse press the view delivered.
-    bool take_input_to_open_link_in_new_tab(Badge<WebContentPage>);
-    void did_lose_input_event_endpoint(Badge<WebContentPage>, WebContentPage&);
-    void did_consume_input_event_in_compositor(Badge<WebContentPage>, u64 event_id);
-    void did_not_dispatch_input_event_through_compositor(Badge<WebContentPage>, u64 event_id);
-    void did_dispatch_input_event_through_compositor(Badge<WebContentPage>, u64 event_id, bool performed_default_action);
-    void discard_input_events_routed_through_lost_compositor(Badge<Application>);
+    virtual bool take_input_to_open_link_in_new_tab() override;
+    virtual void did_lose_input_event_endpoint(WebContentPage&) override;
+    virtual void did_consume_input_event_in_compositor(u64 event_id) override;
+    virtual void did_not_dispatch_input_event_through_compositor(u64 event_id) override;
+    virtual void did_dispatch_input_event_through_compositor(u64 event_id, bool performed_default_action) override;
+    virtual void discard_input_events_routed_through_lost_compositor() override;
     size_t pending_input_event_count_for_testing() const { return m_pending_input_events.size(); }
-    void handle_external_url(Badge<WebContentPage>, URL::URL, URL::Origin, bool has_transient_activation);
-    void did_request_cursor_change(Badge<WebContentPage>, Gfx::Cursor);
-    void did_enter_tooltip_area(Badge<WebContentPage>, ByteString title);
-    void did_leave_tooltip_area(Badge<WebContentPage>);
-    void did_change_picture_in_picture_player_controls_visibility(Badge<WebContentPage>, bool shown);
+    virtual void did_request_cursor_change(Gfx::Cursor) override;
+    virtual void did_enter_tooltip_area(ByteString title) override;
+    virtual void did_leave_tooltip_area() override;
+    virtual void did_change_picture_in_picture_player_controls_visibility(bool shown) override;
     bool picture_in_picture_controls_are_shown_for_testing() const { return picture_in_picture_controls_are_shown(); }
     bool picture_in_picture_player_controls_are_shown_for_testing() const { return m_picture_in_picture_player_controls_shown; }
     Gfx::Cursor const& page_cursor_for_testing() const { return m_page_cursor; }
@@ -350,7 +351,7 @@ public:
     void set_preferred_contrast(Web::CSS::PreferredContrast);
     void set_preferred_motion(Web::CSS::PreferredMotion);
     // A page created to host documents of the tab in another process takes the preferences the view's page has.
-    void send_preferences_to_page(WebContentPage&);
+    virtual void send_preferences_to_page(WebContentPage&) override;
     void send_system_theme_to_page(WebContentPage&);
     // Sends the theme to every page hosting documents of the tab, including the pages of out-of-process iframes.
     void update_system_theme(Core::AnonymousBuffer const&);
@@ -380,7 +381,7 @@ public:
     void select_all();
     void undo();
     void redo();
-    void set_editing_history_state(bool can_undo, bool can_redo);
+    virtual void set_editing_history_state(bool can_undo, bool can_redo) override;
     bool can_undo() const { return m_can_undo; }
     bool can_redo() const { return m_can_redo; }
     void find_in_page(Utf16String const& query, CaseSensitivity = CaseSensitivity::CaseInsensitive, bool highlight_all_matches = false);
@@ -401,7 +402,6 @@ public:
     void request_accessibility_tree();
     void perform_accessibility_action(i64 node_id, String action);
     void perform_accessibility_text_action(i64 node_id, String action, i32 offset_start, i32 offset_end, String text);
-    void get_hovered_node_id();
     void start_node_picker(DevTools::DevToolsDelegate::OnNodePickerEvent);
     void stop_node_picker();
     void clear_node_picker();
@@ -422,8 +422,7 @@ public:
     void detach_debugger();
     void interrupt_debugger();
     void resume_debugger(DebuggerResumeMode);
-    void did_pause_debugger(Badge<WebContentPage>);
-    void did_resume_debugger(Badge<WebContentPage>);
+    virtual void did_resume_debugger() override;
     void update_debugger_blackboxing(Utf16String, Vector<DebuggerBlackboxRange>, DebuggerBlackboxingOperation);
     void set_debugger_breakpoint(DebuggerBreakpointLocation, DebuggerBreakpointOptions, DevTools::DevToolsDelegate::OnDebuggerBreakpointOperationComplete);
     void remove_debugger_breakpoint(DebuggerBreakpointLocation, DevTools::DevToolsDelegate::OnDebuggerBreakpointOperationComplete);
@@ -478,22 +477,11 @@ public:
 
     void paste_from_clipboard();
 
-    // Used by platform input methods to drive marked/preedit-text composition, and to query the on-screen caret
-    // position for placing IME overlays.
-    struct InputMethodState {
-        bool is_enabled { false };
-        i32 cursor_position { 0 };
-        i32 anchor_position { 0 };
-        Utf16String text_before_cursor;
-        Utf16String text_after_cursor;
-        Optional<Web::DevicePixelRect> caret_rect;
-    };
-
     void set_marked_text_from_input_method(Utf16String const& text);
     void commit_text_from_input_method(Utf16String const& text, i32 replacement_start = 0, i32 replacement_length = 0);
     void unmark_text_from_input_method();
     InputMethodState const& input_method_state() const { return m_input_method_state; }
-    void set_input_method_state(Badge<WebContentPage>, InputMethodState);
+    virtual void set_input_method_state(InputMethodState) override;
 
     Web::HTML::MuteState page_mute_state() const { return m_mute_state; }
     void toggle_page_mute_state();
@@ -503,16 +491,16 @@ public:
     void update_audibility(Badge<WebContentPage>) { update_audibility(); }
     Audio::Audibility audibility() const { return has_traversable() ? traversable().presentation().audibility() : Audio::Audibility::Inaudible; }
     u64 audibility_change_count() const { return has_traversable() ? traversable().presentation().audibility_change_count() : 0; }
-    void did_change_screen_wake_lock_state(Badge<WebContentPage>, Web::ScreenWakeLockState);
+    virtual void did_change_screen_wake_lock_state(Web::ScreenWakeLockState) override;
 
-    void did_reset_state_for_testing(Badge<WebContentPage>, Web::HTML::SessionHistoryEntryDescriptor);
-    bool capture_session_history_snapshot_for_testing(Badge<WebContentPage>);
-    bool restore_captured_session_history_snapshot_for_testing(Badge<WebContentPage>);
-    bool register_session_store_tab_for_testing(Badge<WebContentPage>);
-    String session_store_tab_state_for_testing(Badge<WebContentPage>) const;
+    virtual void did_reset_state_for_testing(Web::HTML::SessionHistoryEntryDescriptor) override;
+    virtual bool capture_session_history_snapshot_for_testing() override;
+    virtual bool restore_captured_session_history_snapshot_for_testing() override;
+    virtual bool register_session_store_tab_for_testing() override;
+    virtual String session_store_tab_state_for_testing() const override;
     void did_start_webdriver_navigation();
     void load_for_webdriver_navigation(URL::URL const&);
-    String ui_process_session_history_for_testing(Badge<WebContentPage>) const;
+    virtual String ui_process_session_history_for_testing() const override;
     JsonValue webdriver_session_history() const;
     void wait_for_webdriver_navigation_completion(Optional<u64> page_load_timeout, Function<void(Web::WebDriver::Response)>);
     void run_webdriver_content_command(u64 command_id, Web::WebDriver::SessionBrowsingContext, String const& name, JsonValue payload, Vector<String> arguments);
@@ -520,23 +508,23 @@ public:
     void run_webdriver_bidi_content_command(u64 command_id, Web::HTML::CrossProcessId navigable_id, String const& method, JsonValue params);
     void run_webdriver_bidi_content_command(WebContentPage&, u64 command_id, Web::HTML::CrossProcessId navigable_id, String const& method, JsonValue params);
     void run_webdriver_commands_waiting_for_a_document(Badge<CanonicalTraversable>);
-    void did_complete_webdriver_content_command(WebContentPage&, u64 command_id, Web::WebDriver::Response);
-    void did_set_webdriver_current_browsing_context(Badge<WebContentPage>, u64 command_id, Web::HTML::CrossProcessId navigable_id);
-    void enqueue_webdriver_mouse_event(Badge<WebContentPage>, Web::MouseEvent, Function<void()> on_handled);
-    void enqueue_pinch_event_for_testing(Badge<WebContentPage>, Web::PinchEvent);
+    virtual void did_complete_webdriver_content_command(WebContentPage&, u64 command_id, Web::WebDriver::Response) override;
+    virtual void did_set_webdriver_current_browsing_context(u64 command_id, Web::HTML::CrossProcessId navigable_id) override;
+    virtual void enqueue_webdriver_mouse_event(Web::MouseEvent, Function<void()> on_handled) override;
+    virtual void enqueue_pinch_event_for_testing(Web::PinchEvent) override;
     void did_lose_page(Badge<CanonicalTraversable>, WebContentPage&, WebContentProcessLost);
     void move_pending_webdriver_commands_to_new_host(Badge<CanonicalNavigable>, Web::HTML::CrossProcessId navigable_id, WebContentPage& old_host, WebContentPage& new_host);
     void set_webdriver_current_browsing_context_to_top_level();
     void switch_webdriver_to_parent_frame(Function<void(Web::WebDriver::Response)> on_complete);
-    void did_close_browsing_context(Badge<WebContentPage>);
+    virtual void did_close_browsing_context() override;
     void run_webdriver_user_prompt_handling(Function<void(Web::WebDriver::Response)> on_complete);
     static Optional<ViewImplementation&> find_view_by_handle(StringView);
-    void did_change_background_color(Badge<WebContentPage>, Gfx::Color);
+    virtual void did_change_background_color(Gfx::Color) override;
     Gfx::Color page_background_color() const { return m_page_background_color; }
 
-    void did_allocate_backing_stores(Badge<WebContentPage>, Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores);
-    void did_add_backing_stores(Badge<WebContentPage>, Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores);
-    void did_retire_backing_stores(Badge<WebContentPage>, ReadonlySpan<i32> bitmap_ids);
+    virtual void did_allocate_backing_stores(Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores) override;
+    virtual void did_add_backing_stores(Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores) override;
+    virtual void did_retire_backing_stores(ReadonlySpan<i32> bitmap_ids) override;
     void install_backing_stores(Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores);
 
     enum class ScreenshotType {
@@ -603,7 +591,6 @@ public:
     Function<void(DOMNodeProperties)> on_received_dom_node_properties;
     Function<void(Vector<AccessibilityNodeData>)> on_accessibility_tree_received;
     Function<void(i64)> on_accessibility_focus_changed;
-    Function<void(Web::UniqueNodeID)> on_received_hovered_node_id;
     Function<void(Mutation)> on_dom_mutation_received;
     Function<void(Web::CSS::StyleSheetIdentifier const&, URL::URL const&, Utf16String const&)> on_received_style_sheet_source;
     Function<void(Web::HTML::ScriptRegistryDescription)> on_devtools_source_available;
@@ -659,25 +646,25 @@ public:
     Menu& bookmark_context_menu() { return *m_bookmark_context_menu; }
     Menu& bookmark_folder_context_menu() { return *m_bookmark_folder_context_menu; }
 
-    void did_request_page_context_menu(Badge<WebContentPage>, WebContentPage& requesting_page, Gfx::IntPoint content_position, Web::ContextMenuForInputEventsTarget for_input_events_target, Optional<Utf16String> misspelled_word, Optional<u64> text_fragment_generation_id);
-    void activate_spelling_menu_action_for_testing(Badge<WebContentPage>, WebContentPage& requesting_page, Web::SpellingMenuActionForTesting, u32 guess_index);
+    virtual void did_request_page_context_menu(WebContentPage& requesting_page, Gfx::IntPoint content_position, Web::ContextMenuForInputEventsTarget for_input_events_target, Optional<Utf16String> misspelled_word, Optional<u64> text_fragment_generation_id) override;
+    virtual void activate_spelling_menu_action_for_testing(WebContentPage& requesting_page, Web::SpellingMenuActionForTesting, u32 guess_index) override;
 
-    void request_spell_check(Badge<CanonicalTraversable>, Utf16String const& text, NonnullRefPtr<SpellCheckReply>);
-    void request_writing_suggestion(Badge<CanonicalTraversable>, Utf16String const& text, u32 caret_offset, NonnullRefPtr<WritingSuggestionReply>);
+    virtual void request_spell_check(Utf16String const& text, NonnullRefPtr<SpellCheckReply>) override;
+    virtual void request_writing_suggestion(Utf16String const& text, u32 caret_offset, NonnullRefPtr<WritingSuggestionReply>) override;
     void reset_spell_checking();
-    void did_request_link_context_menu(Badge<WebContentPage>, Gfx::IntPoint content_position, Web::HTML::PreparedNavigationDescriptor, Optional<u64> text_fragment_generation_id);
-    void did_request_image_context_menu(Badge<WebContentPage>, Gfx::IntPoint content_position, Web::HTML::PreparedNavigationDescriptor, Optional<Gfx::ShareableBitmap> bitmap);
-    void did_request_media_context_menu(Badge<WebContentPage>, WebContentPage& requesting_page, Gfx::IntPoint content_position, Web::MediaContextMenu, Optional<Web::HTML::PreparedNavigationDescriptor>);
+    virtual void did_request_link_context_menu(Gfx::IntPoint content_position, Web::HTML::PreparedNavigationDescriptor, Optional<u64> text_fragment_generation_id) override;
+    virtual void did_request_image_context_menu(Gfx::IntPoint content_position, Web::HTML::PreparedNavigationDescriptor, Optional<Gfx::ShareableBitmap> bitmap) override;
+    virtual void did_request_media_context_menu(WebContentPage& requesting_page, Gfx::IntPoint content_position, Web::MediaContextMenu, Optional<Web::HTML::PreparedNavigationDescriptor>) override;
 
-    bool has_open_dialog() const;
-    void request_alert(Badge<CanonicalTraversable>, Utf16String const& message, NonnullRefPtr<DialogReply>);
-    void request_confirm(Badge<CanonicalTraversable>, Utf16String const& message, NonnullRefPtr<DialogReply>);
-    void request_prompt(Badge<CanonicalTraversable>, Utf16String const& message, Utf16String const& default_value, NonnullRefPtr<DialogReply>);
-    void request_before_unload(Badge<CanonicalTraversable>, String const& source, NonnullRefPtr<DialogReply>);
-    void request_color_picker(Badge<CanonicalTraversable>, Color, NonnullRefPtr<ColorPickerReply>);
-    void request_date_picker(Badge<CanonicalTraversable>, Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, NonnullRefPtr<DatePickerReply>);
-    void request_file_picker(Badge<CanonicalTraversable>, Web::HTML::FileFilter const&, Web::HTML::AllowMultipleFiles, NonnullRefPtr<FilePickerReply>);
-    void request_select_dropdown(Badge<CanonicalTraversable>, Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items, NonnullRefPtr<SelectDropdownReply>);
+    virtual bool has_open_dialog() const override;
+    virtual void request_alert(Utf16String const& message, NonnullRefPtr<DialogReply>) override;
+    virtual void request_confirm(Utf16String const& message, NonnullRefPtr<DialogReply>) override;
+    virtual void request_prompt(Utf16String const& message, Utf16String const& default_value, NonnullRefPtr<DialogReply>) override;
+    virtual void request_before_unload(String const& source, NonnullRefPtr<DialogReply>) override;
+    virtual void request_color_picker(Color, NonnullRefPtr<ColorPickerReply>) override;
+    virtual void request_date_picker(Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, NonnullRefPtr<DatePickerReply>) override;
+    virtual void request_file_picker(Web::HTML::FileFilter const&, Web::HTML::AllowMultipleFiles, NonnullRefPtr<FilePickerReply>) override;
+    virtual void request_select_dropdown(Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items, NonnullRefPtr<SelectDropdownReply>) override;
 
     Action& navigate_back_action() { return *m_navigate_back_action; }
     Action& navigate_forward_action() { return *m_navigate_forward_action; }
@@ -690,6 +677,62 @@ public:
     virtual Gfx::IntPoint to_content_position(Gfx::IntPoint widget_position) const = 0;
     virtual Gfx::IntPoint to_widget_position(Gfx::IntPoint content_position) const = 0;
 
+    // TabUI
+    virtual void did_request_set_prompt_text(Utf16String const&) override;
+    virtual void did_request_accept_dialog() override;
+    virtual void did_request_dismiss_dialog() override;
+    virtual void request_permission_prompt(PermissionPromptRequest, NonnullRefPtr<PermissionPromptReply>) override;
+    virtual void ensure_microphone_authorization(NonnullRefPtr<MicrophoneAuthorizationReply>) override;
+    virtual void request_geolocation_position(WebContentPage&, u64 request_id, Web::HTML::CrossProcessId document_id) override;
+    virtual void cancel_geolocation_position_request(WebContentPage&, u64 request_id) override;
+    virtual void start_geolocation_position_watch(WebContentPage&, u64 request_id, Web::HTML::CrossProcessId document_id) override;
+    virtual void stop_geolocation_position_watch(WebContentPage&, u64 request_id) override;
+    virtual void restore_window() override;
+    virtual void reposition_window(Gfx::IntPoint) override;
+    virtual void resize_window(Gfx::IntSize) override;
+    virtual void maximize_window() override;
+    virtual void minimize_window() override;
+    virtual void request_fullscreen_window(WebContentPage&) override;
+    virtual void exit_fullscreen_window() override;
+    virtual void fully_exit_fullscreen() override;
+    virtual Web::ViewportIsFullscreen viewport_is_fullscreen() const override { return m_is_fullscreen; }
+    virtual void did_request_refresh() override;
+    virtual void did_request_external_url(URL::URL, URL::Origin, bool has_transient_activation) override;
+    virtual void did_request_link_navigation(Web::HTML::PreparedNavigationDescriptor) override;
+    virtual void did_request_link_navigation_in_new_tab(Web::HTML::PreparedNavigationDescriptor, Web::HTML::ActivateTab) override;
+    virtual String did_request_new_web_view(Web::HTML::ActivateTab, Web::HTML::WebViewHints, CanonicalTraversable&) override;
+    virtual HistoryVisitTransition history_visit_transition_for_current_load() const override { return m_history_visit_transition_for_current_load; }
+    virtual void did_begin_top_level_load(URL::URL const&) override;
+    virtual void did_finish_top_level_load(URL::URL const&) override;
+    virtual void did_find_in_page(size_t current_match_index, Optional<size_t> total_match_count) override;
+    virtual void did_change_theme_color(Gfx::Color) override;
+    virtual void did_update_resource_count(i32 count_waiting) override;
+    virtual void did_request_tooltip_override(Gfx::IntPoint, ByteString const& title) override;
+    virtual void did_stop_tooltip_override() override;
+    virtual void did_hover_link(URL::URL const&) override;
+    virtual void did_unhover_link() override;
+    virtual void did_set_browser_zoom(double factor) override;
+    virtual void did_get_accessibility_tree(Vector<AccessibilityNodeData>) override;
+    virtual void did_change_accessibility_focus(i64 focused_node_id) override;
+    virtual void did_get_style_sheet_source(Web::CSS::StyleSheetIdentifier const&, URL::URL const& base_url, Utf16String const& source) override;
+    virtual void did_add_devtools_source(Web::HTML::ScriptRegistryDescription) override;
+    virtual void did_pause_debugger(DebuggerPause) override;
+    virtual void did_output_console_message(ConsoleOutput) override;
+    virtual void did_start_network_request(u64 request_id, URL::URL const&, ByteString const& method, Vector<HTTP::Header> const&, ByteBuffer body, Optional<String> initiator_type, String referrer_policy, bool is_navigation_request, Web::Fetch::Infrastructure::RequestPriority) override;
+    virtual void did_receive_network_response_headers(u64 request_id, u32 status_code, Optional<String> const& reason_phrase, Vector<HTTP::Header> const&, Requests::CacheState) override;
+    virtual void did_receive_network_response_body(u64 request_id, ByteBuffer) override;
+    virtual void did_finish_network_request(u64 request_id, u64 body_size, Requests::RequestTimingInfo const&, Optional<Requests::NetworkError> const&) override;
+    virtual void did_inspect_dom_node(DOMNodeProperties) override;
+    virtual void did_mutate_dom(Mutation) override;
+    virtual void did_update_indexed_database(JsonObject) override;
+    virtual void enqueue_key_event_for_testing(Web::KeyEvent) override;
+    virtual void did_finish_test(String const&) override;
+    virtual void did_set_test_timeout(double milliseconds) override;
+    virtual void did_receive_reference_test_metadata(JsonValue const&) override;
+    virtual void did_request_stop_loading_for_testing() override;
+    virtual void did_request_reload_for_testing(BypassCache) override;
+    virtual void did_request_traverse_history_by_delta_for_testing(int delta) override;
+
 protected:
     virtual void show_context_menu(Menu&, [[maybe_unused]] Gfx::IntPoint widget_position) { }
 
@@ -698,8 +741,8 @@ protected:
     void did_finish_history_traversal(Web::HTML::CrossProcessId operation_id);
     void did_commit_history_step();
 
-    virtual Web::Clipboard::SystemClipboardItem clipboard_item() const;
-    virtual void insert_clipboard_item(Web::Clipboard::SystemClipboardItem);
+    virtual Web::Clipboard::SystemClipboardItem clipboard_item() const override;
+    virtual void insert_clipboard_item(Web::Clipboard::SystemClipboardItem) override;
 
     virtual void did_accept_presented_backing_store(i32, Gfx::IntRect) { }
     // Lets the Compositor paint into a backing store again. A view whose frames something else still reads may wait
