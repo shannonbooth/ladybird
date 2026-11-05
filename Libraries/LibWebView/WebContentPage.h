@@ -90,6 +90,8 @@ public:
     // Whoever shows the tab this page belongs to.
     TabUI& ui() const;
     bool hosts_top_level_document() const;
+    // The tab's UI for the page hosting the top-level document, and the UI of an unshown tab for any other page.
+    TabUI& top_level_ui() const;
     String dump_process_tree() const;
     Optional<CanonicalNavigable&> hosted_navigable(Web::HTML::CrossProcessId) const;
     bool hosts_active_document_of(CanonicalNavigable const&) const;

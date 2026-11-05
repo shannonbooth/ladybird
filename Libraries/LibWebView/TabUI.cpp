@@ -18,77 +18,77 @@ TabUI& TabUI::no_ui()
     return *ui;
 }
 
-void TabUI::request_alert(Utf16String const&, NonnullRefPtr<DialogReply> reply)
+void TabUserRequests::request_alert(Utf16String const&, NonnullRefPtr<DialogReply> reply)
 {
     reply->cancel();
 }
 
-void TabUI::request_confirm(Utf16String const&, NonnullRefPtr<DialogReply> reply)
+void TabUserRequests::request_confirm(Utf16String const&, NonnullRefPtr<DialogReply> reply)
 {
     reply->cancel();
 }
 
-void TabUI::request_prompt(Utf16String const&, Utf16String const&, NonnullRefPtr<DialogReply> reply)
+void TabUserRequests::request_prompt(Utf16String const&, Utf16String const&, NonnullRefPtr<DialogReply> reply)
 {
     reply->cancel();
 }
 
-void TabUI::request_before_unload(String const&, NonnullRefPtr<DialogReply> reply)
+void TabUserRequests::request_before_unload(String const&, NonnullRefPtr<DialogReply> reply)
 {
     reply->cancel();
 }
 
-void TabUI::request_color_picker(Color, NonnullRefPtr<ColorPickerReply> reply)
+void TabUserRequests::request_color_picker(Color, NonnullRefPtr<ColorPickerReply> reply)
 {
     reply->cancel();
 }
 
-void TabUI::request_date_picker(Utf16String const&, Utf16String const&, Utf16String const&, Utf16String const&, NonnullRefPtr<DatePickerReply> reply)
+void TabUserRequests::request_date_picker(Utf16String const&, Utf16String const&, Utf16String const&, Utf16String const&, NonnullRefPtr<DatePickerReply> reply)
 {
     reply->cancel();
 }
 
-void TabUI::request_file_picker(Web::HTML::FileFilter const&, Web::HTML::AllowMultipleFiles, NonnullRefPtr<FilePickerReply> reply)
+void TabUserRequests::request_file_picker(Web::HTML::FileFilter const&, Web::HTML::AllowMultipleFiles, NonnullRefPtr<FilePickerReply> reply)
 {
     reply->cancel();
 }
 
-void TabUI::request_select_dropdown(Gfx::IntPoint, i32, Vector<Web::HTML::SelectItem>, NonnullRefPtr<SelectDropdownReply> reply)
+void TabUserRequests::request_select_dropdown(Gfx::IntPoint, i32, Vector<Web::HTML::SelectItem>, NonnullRefPtr<SelectDropdownReply> reply)
 {
     reply->cancel();
 }
 
-void TabUI::request_permission_prompt(PermissionPromptRequest, NonnullRefPtr<PermissionPromptReply> reply)
+void TabUserRequests::request_permission_prompt(PermissionPromptRequest, NonnullRefPtr<PermissionPromptReply> reply)
 {
     reply->cancel();
 }
 
-void TabUI::ensure_microphone_authorization(NonnullRefPtr<MicrophoneAuthorizationReply> reply)
+void TabUserRequests::ensure_microphone_authorization(NonnullRefPtr<MicrophoneAuthorizationReply> reply)
 {
     reply->cancel();
 }
 
-void TabUI::request_geolocation_position(WebContentPage& page, u64 request_id, Web::HTML::CrossProcessId)
+void TabUserRequests::request_geolocation_position(WebContentPage& page, u64 request_id, Web::HTML::CrossProcessId)
 {
     page.async_geolocation_position_response(request_id, {}, to_underlying(Web::Geolocation::GeolocationPositionErrorCode::PositionUnavailable));
 }
 
-void TabUI::start_geolocation_position_watch(WebContentPage& page, u64 request_id, Web::HTML::CrossProcessId)
+void TabUserRequests::start_geolocation_position_watch(WebContentPage& page, u64 request_id, Web::HTML::CrossProcessId)
 {
     page.async_geolocation_position_response(request_id, {}, to_underlying(Web::Geolocation::GeolocationPositionErrorCode::PositionUnavailable));
 }
 
-void TabUI::request_spell_check(Utf16String const&, NonnullRefPtr<SpellCheckReply> reply)
+void TabUserRequests::request_spell_check(Utf16String const&, NonnullRefPtr<SpellCheckReply> reply)
 {
     reply->cancel();
 }
 
-void TabUI::request_writing_suggestion(Utf16String const&, u32, NonnullRefPtr<WritingSuggestionReply> reply)
+void TabUserRequests::request_writing_suggestion(Utf16String const&, u32, NonnullRefPtr<WritingSuggestionReply> reply)
 {
     reply->cancel();
 }
 
-void TabUI::request_fullscreen_window(WebContentPage& page)
+void TabUserRequests::request_fullscreen_window(WebContentPage& page)
 {
     page.async_deny_fullscreen_window();
 }

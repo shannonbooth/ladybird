@@ -212,7 +212,6 @@ public:
     void did_change_ongoing_navigation(Badge<CanonicalNavigable>);
     void did_change_active_document(Badge<CanonicalTraversable>);
 
-    virtual void set_text_fragment_indication_visibility(bool) override;
     // The URL of the tab's active document.
     URL::URL url() const;
     URL::URL const& displayed_url() const { return m_displayed_url; }
@@ -491,7 +490,6 @@ public:
     void update_audibility(Badge<WebContentPage>) { update_audibility(); }
     Audio::Audibility audibility() const { return has_traversable() ? traversable().presentation().audibility() : Audio::Audibility::Inaudible; }
     u64 audibility_change_count() const { return has_traversable() ? traversable().presentation().audibility_change_count() : 0; }
-    virtual void did_change_screen_wake_lock_state(Web::ScreenWakeLockState) override;
 
     virtual void did_reset_state_for_testing(Web::HTML::SessionHistoryEntryDescriptor) override;
     virtual bool capture_session_history_snapshot_for_testing() override;
@@ -519,7 +517,6 @@ public:
     virtual void did_close_browsing_context() override;
     void run_webdriver_user_prompt_handling(Function<void(Web::WebDriver::Response)> on_complete);
     static Optional<ViewImplementation&> find_view_by_handle(StringView);
-    virtual void did_change_background_color(Gfx::Color) override;
     Gfx::Color page_background_color() const { return m_page_background_color; }
 
     virtual void did_allocate_backing_stores(Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores) override;
@@ -572,8 +569,6 @@ public:
     Function<void(Optional<Gfx::Bitmap const&>)> on_favicon_change;
     Function<void(Gfx::Cursor const&)> on_cursor_change;
     Function<void()> on_input_method_state_change;
-    Function<void(Gfx::IntPoint, ByteString const&)> on_request_tooltip_override;
-    Function<void()> on_stop_tooltip_override;
     Function<void(ByteString const&)> on_enter_tooltip_area;
     Function<void()> on_leave_tooltip_area;
     Function<void(ContentBlockingSnapshot const&)> on_content_blocking_change;
@@ -589,8 +584,6 @@ public:
     Function<void()> on_request_screenshot;
     Function<void()> on_request_dismiss_dialog;
     Function<void(DOMNodeProperties)> on_received_dom_node_properties;
-    Function<void(Vector<AccessibilityNodeData>)> on_accessibility_tree_received;
-    Function<void(i64)> on_accessibility_focus_changed;
     Function<void(Mutation)> on_dom_mutation_received;
     Function<void(Web::CSS::StyleSheetIdentifier const&, URL::URL const&, Utf16String const&)> on_received_style_sheet_source;
     Function<void(Web::HTML::ScriptRegistryDescription)> on_devtools_source_available;
@@ -602,7 +595,6 @@ public:
     Function<void(u64 request_id, u32 status_code, Optional<String> const&, Vector<HTTP::Header> const&, Requests::CacheState)> on_network_response_headers_received;
     Function<void(u64 request_id, ByteBuffer)> on_network_response_body_received;
     Function<void(u64 request_id, u64 body_size, Requests::RequestTimingInfo const&, Optional<Requests::NetworkError> const&)> on_network_request_finished;
-    Function<void(i32 count_waiting)> on_resource_status_change;
     Function<void()> on_restore_window;
     Function<void(Gfx::IntPoint)> on_reposition_window;
     Function<void(Gfx::IntSize)> on_resize_window;
@@ -612,10 +604,6 @@ public:
     Function<void()> on_exit_fullscreen_window;
     Function<void(Color current_color, NonnullRefPtr<ColorPickerReply>)> on_request_color_picker;
     Function<void(Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, NonnullRefPtr<DatePickerReply>)> on_request_date_picker;
-    Function<void(WebContentPage& requesting_page, u64 request_id, Web::HTML::CrossProcessId document_id)> on_request_geolocation_position;
-    Function<void(WebContentPage& requesting_page, u64 request_id)> on_cancel_geolocation_position_request;
-    Function<void(WebContentPage& requesting_page, u64 request_id, Web::HTML::CrossProcessId document_id)> on_start_geolocation_position_watch;
-    Function<void(WebContentPage& requesting_page, u64 request_id)> on_stop_geolocation_position_watch;
     Function<void(PermissionPromptRequest const&, PermissionPromptCallback)> on_request_permission;
     Function<void(PermissionPromptRequest const&)> on_cancel_permission_prompt;
     Function<void(bool)> on_location_in_use_change;
@@ -629,7 +617,6 @@ public:
     Function<void(double milliseconds)> on_set_test_timeout;
     Function<void(JsonValue)> on_reference_test_metadata;
     Function<void(size_t current_match_index, Optional<size_t> const& total_match_count)> on_find_in_page;
-    Function<void(Gfx::Color)> on_theme_color_change;
     Function<void(Gfx::Color)> on_page_background_color_change;
     Function<void(Audio::Audibility)> on_audibility_changed;
     Function<void(Web::ScreenWakeLockState)> on_screen_wake_lock_state_changed;
@@ -705,15 +692,9 @@ public:
     virtual void did_begin_top_level_load(URL::URL const&) override;
     virtual void did_finish_top_level_load(URL::URL const&) override;
     virtual void did_find_in_page(size_t current_match_index, Optional<size_t> total_match_count) override;
-    virtual void did_change_theme_color(Gfx::Color) override;
-    virtual void did_update_resource_count(i32 count_waiting) override;
-    virtual void did_request_tooltip_override(Gfx::IntPoint, ByteString const& title) override;
-    virtual void did_stop_tooltip_override() override;
     virtual void did_hover_link(URL::URL const&) override;
     virtual void did_unhover_link() override;
     virtual void did_set_browser_zoom(double factor) override;
-    virtual void did_get_accessibility_tree(Vector<AccessibilityNodeData>) override;
-    virtual void did_change_accessibility_focus(i64 focused_node_id) override;
     virtual void did_get_style_sheet_source(Web::CSS::StyleSheetIdentifier const&, URL::URL const& base_url, Utf16String const& source) override;
     virtual void did_add_devtools_source(Web::HTML::ScriptRegistryDescription) override;
     virtual void did_pause_debugger(DebuggerPause) override;
@@ -834,6 +815,8 @@ protected:
     void display_traversable(CanonicalTraversable&, Web::HTML::VisibilityState);
     void display_page_changed(RefPtr<WebContentPage> previous_page);
     void cancel_all_native_geolocation_requests();
+    Function<void(Core::GeolocationCoordinates)> make_geolocation_success_handler(WebContentPage&, u64 request_id, Web::HTML::CrossProcessId document_id, bool is_watch);
+    Function<void(Core::GeolocationError)> make_geolocation_error_handler(WebContentPage&, u64 request_id, bool is_watch);
     void send_geolocation_emulated_position(WebContentPage&);
     WebContentPage& focused_navigable_host() const;
     void reset_page_media_state();
@@ -919,7 +902,6 @@ protected:
     };
     Optional<BrowserUILoad> m_browser_ui_load;
     URL::URL m_displayed_url { URL::about_blank() };
-    bool m_text_fragment_indication_is_visible { false };
 
     struct CrashState {
         URL::URL failed_url;
@@ -1109,8 +1091,6 @@ protected:
     Optional<Web::HTML::CrossProcessId> m_webdriver_current_navigable_id;
     // https://w3c.github.io/webdriver/#dfn-current-parent-browsing-context
     Optional<Web::HTML::CrossProcessId> m_webdriver_current_parent_navigable_id;
-
-    Web::ScreenWakeLockState m_screen_wake_lock_state { Web::ScreenWakeLockState::Released };
 
     Web::HTML::MuteState m_mute_state { Web::HTML::MuteState::Unmuted };
 

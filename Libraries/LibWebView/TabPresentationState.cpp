@@ -13,6 +13,7 @@
 #include <LibWebView/FaviconStore.h>
 #include <LibWebView/HistoryStore.h>
 #include <LibWebView/TabPresentationState.h>
+#include <LibWebView/WebContentPage.h>
 
 namespace WebView {
 
@@ -137,6 +138,63 @@ void TabPresentationState::reset_blocked_resources()
     m_blocked_resources.clear();
     m_blocked_resource_counts.clear();
     changed(Change::ContentBlocking);
+}
+
+bool TabPresentationState::hosts_top_level_document(WebContentPage const& page) const
+{
+    return m_traversable.display_page() == &page;
+}
+
+void TabPresentationState::set_screen_wake_lock_state(Web::ScreenWakeLockState state)
+{
+    if (m_screen_wake_lock_state == state)
+        return;
+    m_screen_wake_lock_state = state;
+    changed(Change::ScreenWakeLock);
+}
+
+void TabPresentationState::set_text_fragment_indication_visible(bool visible)
+{
+    if (m_text_fragment_indication_is_visible == visible)
+        return;
+    m_text_fragment_indication_is_visible = visible;
+    changed(Change::TextFragmentIndication);
+}
+
+void TabPresentationState::did_change_theme_color(WebContentPage const& page, Gfx::Color color)
+{
+    if (!hosts_top_level_document(page) || m_theme_color == color)
+        return;
+    m_theme_color = color;
+    changed(Change::ThemeColor);
+}
+
+void TabPresentationState::did_change_background_color(WebContentPage const& page, Gfx::Color color)
+{
+    if (!hosts_top_level_document(page) || m_background_color == color)
+        return;
+    m_background_color = color;
+    changed(Change::BackgroundColor);
+}
+
+void TabPresentationState::did_update_resource_count(WebContentPage const& page, i32 count_waiting)
+{
+    if (!hosts_top_level_document(page) || m_resource_count == count_waiting)
+        return;
+    m_resource_count = count_waiting;
+    changed(Change::ResourceCount);
+}
+
+void TabPresentationState::did_change_screen_wake_lock_state(WebContentPage const& page, Web::ScreenWakeLockState state)
+{
+    if (hosts_top_level_document(page))
+        set_screen_wake_lock_state(state);
+}
+
+void TabPresentationState::did_change_text_fragment_indication_visibility(WebContentPage const& page, bool visible)
+{
+    if (hosts_top_level_document(page))
+        set_text_fragment_indication_visible(visible);
 }
 
 }

@@ -61,13 +61,12 @@
 
 namespace WebView {
 
-// What a tab's pages ask of and tell whoever shows the tab. A tab no view shows has this UI, which shows nothing: it
-// drops what it is told and gives the no-UI answer to what it is asked. The view overrides it.
-class WEBVIEW_API TabUI {
+// What a tab's pages ask of the user and the browser on the user's behalf. Without a view, nothing is shown and every
+// request gets its no-UI answer.
+class WEBVIEW_API TabUserRequests {
 public:
-    virtual ~TabUI() = default;
+    virtual ~TabUserRequests() = default;
 
-    // Requests for the user.
     virtual bool has_open_dialog() const { return false; }
     virtual void request_alert(Utf16String const& message, NonnullRefPtr<DialogReply>);
     virtual void request_confirm(Utf16String const& message, NonnullRefPtr<DialogReply>);
@@ -119,17 +118,18 @@ public:
     virtual void did_request_link_navigation_in_new_tab(Web::HTML::PreparedNavigationDescriptor, Web::HTML::ActivateTab) { }
     virtual String did_request_new_web_view(Web::HTML::ActivateTab, Web::HTML::WebViewHints, CanonicalTraversable&) { return {}; }
     virtual void did_close_browsing_context() { }
+};
 
-    // The document the tab shows.
+// What a tab's pages tell whoever displays the tab: its document, the view's surface and the input sent through it.
+// Without a view, nothing is displayed and these are dropped.
+class WEBVIEW_API TabDisplay {
+public:
+    virtual ~TabDisplay() = default;
+
     virtual HistoryVisitTransition history_visit_transition_for_current_load() const { return HistoryVisitTransition::Link; }
     virtual void did_begin_top_level_load(URL::URL const&) { }
     virtual void did_finish_top_level_load(URL::URL const&) { }
     virtual void did_find_in_page(size_t, Optional<size_t>) { }
-    virtual void set_text_fragment_indication_visibility(bool) { }
-    virtual void did_change_theme_color(Gfx::Color) { }
-    virtual void did_change_background_color(Gfx::Color) { }
-    virtual void did_change_screen_wake_lock_state(Web::ScreenWakeLockState) { }
-    virtual void did_update_resource_count(i32) { }
     virtual void did_change_picture_in_picture_player_controls_visibility(bool) { }
 
     // The view's surface and input.
@@ -166,10 +166,15 @@ public:
     virtual void did_hover_link(URL::URL const&) { }
     virtual void did_unhover_link() { }
     virtual void did_set_browser_zoom(double) { }
-
-    // DevTools and assistive technology.
     virtual void did_get_accessibility_tree(Vector<AccessibilityNodeData>) { }
     virtual void did_change_accessibility_focus(i64) { }
+};
+
+// What a tab's pages tell the tools that drive and inspect the tab: DevTools, WebDriver and tests.
+class WEBVIEW_API TabAutomation {
+public:
+    virtual ~TabAutomation() = default;
+
     virtual void did_get_style_sheet_source(Web::CSS::StyleSheetIdentifier const&, URL::URL const&, Utf16String const&) { }
     virtual void did_add_devtools_source(Web::HTML::ScriptRegistryDescription) { }
     virtual void did_pause_debugger(DebuggerPause) { }
@@ -183,7 +188,6 @@ public:
     virtual void did_mutate_dom(Mutation) { }
     virtual void did_update_indexed_database(JsonObject) { }
 
-    // Automation and tests.
     virtual void did_set_webdriver_current_browsing_context(u64, Web::HTML::CrossProcessId) { }
     virtual void did_complete_webdriver_content_command(WebContentPage&, u64, Web::WebDriver::Response) { }
     virtual void enqueue_webdriver_mouse_event(Web::MouseEvent, Function<void()> on_handled) { on_handled(); }
@@ -204,13 +208,22 @@ public:
     virtual void did_request_reload_for_testing(BypassCache) { }
     virtual void did_request_traverse_history_by_delta_for_testing(int) { }
     virtual void did_reset_state_for_testing(Web::HTML::SessionHistoryEntryDescriptor) { }
-    virtual String ui_process_session_history_for_testing() const { return {}; }
+    virtual String ui_process_session_history_for_testing() const { return "{}"_string; }
     virtual bool capture_session_history_snapshot_for_testing() { return false; }
     virtual bool restore_captured_session_history_snapshot_for_testing() { return false; }
     virtual bool register_session_store_tab_for_testing() { return false; }
-    virtual String session_store_tab_state_for_testing() const { return {}; }
+    virtual String session_store_tab_state_for_testing() const { return "{}"_string; }
+};
 
-    // The UI of a tab no view shows.
+// Everything a tab's pages may tell or ask whoever shows the tab. The view overrides it. A tab no view shows has the
+// base behaviour, which shows nothing.
+class WEBVIEW_API TabUI
+    : public TabUserRequests
+    , public TabDisplay
+    , public TabAutomation {
+public:
+    virtual ~TabUI() override = default;
+
     static TabUI& no_ui();
 };
 

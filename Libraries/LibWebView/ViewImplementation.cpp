@@ -229,6 +229,20 @@ void ViewImplementation::display_traversable(CanonicalTraversable& traversable, 
         case TabPresentationState::Change::ContentBlocking:
             notify_content_blocking_changed();
             break;
+        case TabPresentationState::Change::BackgroundColor:
+            if (auto color = state.background_color(); color.has_value())
+                set_page_background_color(*color);
+            break;
+        case TabPresentationState::Change::ScreenWakeLock:
+            if (on_screen_wake_lock_state_changed)
+                on_screen_wake_lock_state_changed(state.screen_wake_lock_state());
+            break;
+        case TabPresentationState::Change::TextFragmentIndication:
+            update_displayed_url();
+            break;
+        case TabPresentationState::Change::ThemeColor:
+        case TabPresentationState::Change::ResourceCount:
+            break;
         }
     };
     for (auto change : { TabPresentationState::Change::Title, TabPresentationState::Change::URL, TabPresentationState::Change::Favicon, TabPresentationState::Change::Loading, TabPresentationState::Change::Audibility, TabPresentationState::Change::ContentBlocking })
@@ -420,13 +434,14 @@ void ViewImplementation::update_displayed_url()
         if (auto position = raw_fragment->find(":~:"sv); position.has_value())
             displayed_url_without_fragment_directive.set_fragment(raw_fragment->substring_view(0, *position));
     }
-    if (!m_text_fragment_indication_is_visible)
+    auto text_fragment_indication_is_visible = m_top_level_traversable && traversable().presentation().text_fragment_indication_is_visible();
+    if (!text_fragment_indication_is_visible)
         displayed_url = displayed_url_without_fragment_directive;
 
     if (m_top_level_traversable) {
         auto const& current_entry = traversable().session_history().current_entry();
         if (current_entry.url == displayed_url_without_fragment_directive)
-            displayed_url = display_url_for_session_history_entry(current_entry.descriptor(), m_text_fragment_indication_is_visible);
+            displayed_url = display_url_for_session_history_entry(current_entry.descriptor(), text_fragment_indication_is_visible);
     }
 
     if (m_displayed_url == displayed_url)
@@ -434,14 +449,6 @@ void ViewImplementation::update_displayed_url()
     m_displayed_url = move(displayed_url);
     if (on_url_change)
         on_url_change(m_displayed_url);
-}
-
-void ViewImplementation::set_text_fragment_indication_visibility(bool visible)
-{
-    if (m_text_fragment_indication_is_visible == visible)
-        return;
-    m_text_fragment_indication_is_visible = visible;
-    update_displayed_url();
 }
 
 Utf16String const& ViewImplementation::title() const
@@ -578,7 +585,7 @@ void ViewImplementation::load(Web::HTML::PreparedNavigationDescriptor navigation
     m_last_stopped_navigation.clear();
     if (navigation.url.scheme() != "javascript"sv) {
         if (navigation.url.fragment().has_value() && navigation.url.fragment()->contains(":~:"sv))
-            m_text_fragment_indication_is_visible = true;
+            traversable().presentation().set_text_fragment_indication_visible(true);
         m_browser_ui_load = BrowserUILoad { navigation.navigation_id, navigation.url };
     }
     traversable().begin_navigation(move(navigation));
@@ -2862,21 +2869,7 @@ void ViewImplementation::reset_page_media_state()
 {
     update_audibility();
 
-    if (m_screen_wake_lock_state != Web::ScreenWakeLockState::Released) {
-        m_screen_wake_lock_state = Web::ScreenWakeLockState::Released;
-        if (on_screen_wake_lock_state_changed)
-            on_screen_wake_lock_state_changed(m_screen_wake_lock_state);
-    }
-}
-
-void ViewImplementation::did_change_screen_wake_lock_state(Web::ScreenWakeLockState wake_lock_state)
-{
-    if (m_screen_wake_lock_state == wake_lock_state)
-        return;
-
-    m_screen_wake_lock_state = wake_lock_state;
-    if (on_screen_wake_lock_state_changed)
-        on_screen_wake_lock_state_changed(m_screen_wake_lock_state);
+    traversable().presentation().set_screen_wake_lock_state(Web::ScreenWakeLockState::Released);
 }
 
 bool ViewImplementation::needs_beforeunload_check() const
@@ -2888,11 +2881,6 @@ bool ViewImplementation::needs_beforeunload_check() const
             needs_beforeunload_check = true;
     });
     return needs_beforeunload_check;
-}
-
-void ViewImplementation::did_change_background_color(Gfx::Color color)
-{
-    set_page_background_color(color);
 }
 
 void ViewImplementation::set_page_background_color_to_system_canvas(bool dark)
@@ -3051,148 +3039,155 @@ void ViewImplementation::initialize_tab(Web::HTML::VisibilityState system_visibi
     languages_changed();
     content_settings_changed();
     geolocation_settings_changed();
+}
 
-    using GeolocationErrorCode = Web::Geolocation::GeolocationPositionErrorCode;
+using GeolocationErrorCode = Web::Geolocation::GeolocationPositionErrorCode;
 
-    auto geolocation_error_code = [](Core::GeolocationError const& error) {
-        switch (error.type) {
-        case Core::GeolocationError::Type::PermissionDenied:
-            return GeolocationErrorCode::PermissionDenied;
-        case Core::GeolocationError::Type::Timeout:
-            return GeolocationErrorCode::Timeout;
-        case Core::GeolocationError::Type::PositionUnavailable:
-            return GeolocationErrorCode::PositionUnavailable;
+static GeolocationErrorCode geolocation_error_code(Core::GeolocationError const& error)
+{
+    switch (error.type) {
+    case Core::GeolocationError::Type::PermissionDenied:
+        return GeolocationErrorCode::PermissionDenied;
+    case Core::GeolocationError::Type::Timeout:
+        return GeolocationErrorCode::Timeout;
+    case Core::GeolocationError::Type::PositionUnavailable:
+        return GeolocationErrorCode::PositionUnavailable;
+    }
+    VERIFY_NOT_REACHED();
+}
+
+Function<void(Core::GeolocationCoordinates)> ViewImplementation::make_geolocation_success_handler(WebContentPage& request_page, u64 request_id, Web::HTML::CrossProcessId document_id, bool is_watch)
+{
+    auto weak_this = make_weak_ptr();
+    auto key = GeolocationRequestKey { request_page, request_id };
+
+    return [weak_this, request_page = NonnullRefPtr<WebContentPage>(request_page), request_id, document_id, key, is_watch](Core::GeolocationCoordinates coords) {
+        auto* view = weak_this.ptr();
+        if (!view || !request_page->is_open())
+            return;
+        ScopeGuard update_location_in_use = [view] { view->update_location_in_use(); };
+
+        if (is_watch) {
+            if (!view->m_geolocation_watch_ids.contains(key))
+                return;
+        } else if (!view->m_geolocation_position_request_ids.remove(key)) {
+            return;
+        } else {
+            view->m_geolocation_request_documents.remove(key);
         }
-        VERIFY_NOT_REACHED();
-    };
 
-    auto make_geolocation_success_handler = [this](WebContentPage& request_page, u64 request_id, Web::HTML::CrossProcessId document_id, bool is_watch) {
-        auto weak_this = make_weak_ptr();
-        auto key = GeolocationRequestKey { request_page, request_id };
-
-        return [weak_this, request_page = NonnullRefPtr<WebContentPage>(request_page), request_id, document_id, key, is_watch](Core::GeolocationCoordinates coords) {
-            auto* view = weak_this.ptr();
-            if (!view || !request_page->is_open())
-                return;
-            ScopeGuard update_location_in_use = [view] { view->update_location_in_use(); };
-
-            if (is_watch) {
-                if (!view->m_geolocation_watch_ids.contains(key))
-                    return;
-            } else if (!view->m_geolocation_position_request_ids.remove(key)) {
-                return;
-            } else {
-                view->m_geolocation_request_documents.remove(key);
-            }
-
-            // The permission is checked again for every position, since the user may have taken it away meanwhile.
-            if (!Application::the().sites_can_ask_for_location() || !request_page->document_may_use(document_id, Web::Permissions::PermissionName::Geolocation)) {
-                if (auto provider_watch_id = view->m_geolocation_watch_ids.take(key); provider_watch_id.has_value())
-                    Application::the().stop_watching_geolocation_position(*provider_watch_id);
-                view->m_geolocation_request_documents.remove(key);
-                request_page->async_geolocation_position_response(request_id, {}, to_underlying(GeolocationErrorCode::PermissionDenied));
-                return;
-            }
-
-            request_page->async_geolocation_position_response(request_id,
-                { coords.latitude, coords.longitude, coords.accuracy, coords.altitude, coords.altitude_accuracy, coords.heading, coords.speed }, {});
-        };
-    };
-
-    auto make_geolocation_error_handler = [this, geolocation_error_code](WebContentPage& request_page, u64 request_id, bool is_watch) {
-        auto weak_this = make_weak_ptr();
-        auto key = GeolocationRequestKey { request_page, request_id };
-
-        return [weak_this, request_page = NonnullRefPtr<WebContentPage>(request_page), request_id, key, is_watch, geolocation_error_code](Core::GeolocationError error) {
-            auto* view = weak_this.ptr();
-            if (!view || !request_page->is_open())
-                return;
-            ScopeGuard update_location_in_use = [view] { view->update_location_in_use(); };
-
-            if (is_watch) {
-                if (!view->m_geolocation_watch_ids.contains(key))
-                    return;
-            } else if (!view->m_geolocation_position_request_ids.remove(key)) {
-                return;
-            } else {
-                view->m_geolocation_request_documents.remove(key);
-            }
-
-            auto code = geolocation_error_code(error);
-            if (is_watch && code == GeolocationErrorCode::PermissionDenied) {
-                auto provider_watch_id = view->m_geolocation_watch_ids.take(key);
-                if (provider_watch_id.has_value())
-                    Application::the().stop_watching_geolocation_position(*provider_watch_id);
-                view->m_geolocation_request_documents.remove(key);
-            }
-
-            request_page->async_geolocation_position_response(request_id, {}, to_underlying(code));
-        };
-    };
-
-    on_request_geolocation_position = [this, geolocation_error_code, make_geolocation_success_handler, make_geolocation_error_handler](WebContentPage& requesting_page, u64 request_id, Web::HTML::CrossProcessId document_id) {
-        ScopeGuard update_location_in_use = [this] { this->update_location_in_use(); };
-        if (!Application::the().sites_can_ask_for_location()) {
-            requesting_page.async_geolocation_position_response(request_id, {}, to_underlying(GeolocationErrorCode::PermissionDenied));
+        // The permission is checked again for every position, since the user may have taken it away meanwhile.
+        if (!Application::the().sites_can_ask_for_location() || !request_page->document_may_use(document_id, Web::Permissions::PermissionName::Geolocation)) {
+            if (auto provider_watch_id = view->m_geolocation_watch_ids.take(key); provider_watch_id.has_value())
+                Application::the().stop_watching_geolocation_position(*provider_watch_id);
+            view->m_geolocation_request_documents.remove(key);
+            request_page->async_geolocation_position_response(request_id, {}, to_underlying(GeolocationErrorCode::PermissionDenied));
             return;
         }
 
-        if (auto previous_provider_request_id = m_geolocation_position_request_ids.take({ requesting_page, request_id }); previous_provider_request_id.has_value())
-            Application::the().cancel_geolocation_position_request(*previous_provider_request_id);
+        request_page->async_geolocation_position_response(request_id,
+            { coords.latitude, coords.longitude, coords.accuracy, coords.altitude, coords.altitude_accuracy, coords.heading, coords.speed }, {});
+    };
+}
 
-        auto provider_request_id = Application::the().request_geolocation_position(
-            make_geolocation_success_handler(requesting_page, request_id, document_id, false),
-            make_geolocation_error_handler(requesting_page, request_id, false));
-        if (provider_request_id.is_error()) {
-            requesting_page.async_geolocation_position_response(request_id, {}, to_underlying(geolocation_error_code(provider_request_id.error())));
+Function<void(Core::GeolocationError)> ViewImplementation::make_geolocation_error_handler(WebContentPage& request_page, u64 request_id, bool is_watch)
+{
+    auto weak_this = make_weak_ptr();
+    auto key = GeolocationRequestKey { request_page, request_id };
+
+    return [weak_this, request_page = NonnullRefPtr<WebContentPage>(request_page), request_id, key, is_watch](Core::GeolocationError error) {
+        auto* view = weak_this.ptr();
+        if (!view || !request_page->is_open())
             return;
+        ScopeGuard update_location_in_use = [view] { view->update_location_in_use(); };
+
+        if (is_watch) {
+            if (!view->m_geolocation_watch_ids.contains(key))
+                return;
+        } else if (!view->m_geolocation_position_request_ids.remove(key)) {
+            return;
+        } else {
+            view->m_geolocation_request_documents.remove(key);
         }
 
-        m_geolocation_position_request_ids.set({ requesting_page, request_id }, provider_request_id.release_value());
-        m_geolocation_request_documents.set({ requesting_page, request_id }, document_id);
-    };
-
-    on_cancel_geolocation_position_request = [this](WebContentPage& requesting_page, u64 request_id) {
-        ScopeGuard update_location_in_use = [this] { this->update_location_in_use(); };
-        auto provider_request_id = m_geolocation_position_request_ids.take({ requesting_page, request_id });
-        if (!provider_request_id.has_value())
-            return;
-        Application::the().cancel_geolocation_position_request(*provider_request_id);
-        m_geolocation_request_documents.remove({ requesting_page, request_id });
-    };
-
-    on_start_geolocation_position_watch = [this, geolocation_error_code, make_geolocation_success_handler, make_geolocation_error_handler](WebContentPage& requesting_page, u64 request_id, Web::HTML::CrossProcessId document_id) {
-        ScopeGuard update_location_in_use = [this] { this->update_location_in_use(); };
-        if (!Application::the().sites_can_ask_for_location()) {
-            requesting_page.async_geolocation_position_response(request_id, {}, to_underlying(GeolocationErrorCode::PermissionDenied));
-            return;
+        auto code = geolocation_error_code(error);
+        if (is_watch && code == GeolocationErrorCode::PermissionDenied) {
+            auto provider_watch_id = view->m_geolocation_watch_ids.take(key);
+            if (provider_watch_id.has_value())
+                Application::the().stop_watching_geolocation_position(*provider_watch_id);
+            view->m_geolocation_request_documents.remove(key);
         }
 
-        if (auto previous_provider_watch_id = m_geolocation_watch_ids.take({ requesting_page, request_id }); previous_provider_watch_id.has_value())
-            Application::the().stop_watching_geolocation_position(*previous_provider_watch_id);
-
-        auto provider_watch_id = Application::the().start_watching_geolocation_position(
-            make_geolocation_success_handler(requesting_page, request_id, document_id, true),
-            make_geolocation_error_handler(requesting_page, request_id, true));
-
-        if (provider_watch_id.is_error()) {
-            requesting_page.async_geolocation_position_response(request_id, {}, to_underlying(geolocation_error_code(provider_watch_id.error())));
-            return;
-        }
-
-        m_geolocation_watch_ids.set({ requesting_page, request_id }, provider_watch_id.release_value());
-        m_geolocation_request_documents.set({ requesting_page, request_id }, document_id);
+        request_page->async_geolocation_position_response(request_id, {}, to_underlying(code));
     };
+}
 
-    on_stop_geolocation_position_watch = [this](WebContentPage& requesting_page, u64 request_id) {
-        ScopeGuard update_location_in_use = [this] { this->update_location_in_use(); };
-        auto provider_watch_id = m_geolocation_watch_ids.take({ requesting_page, request_id });
-        if (!provider_watch_id.has_value())
-            return;
+void ViewImplementation::request_geolocation_position(WebContentPage& page, u64 request_id, Web::HTML::CrossProcessId document_id)
+{
+    ScopeGuard update_location_in_use = [this] { this->update_location_in_use(); };
+    if (!Application::the().sites_can_ask_for_location()) {
+        page.async_geolocation_position_response(request_id, {}, to_underlying(GeolocationErrorCode::PermissionDenied));
+        return;
+    }
 
-        Application::the().stop_watching_geolocation_position(*provider_watch_id);
-        m_geolocation_request_documents.remove({ requesting_page, request_id });
-    };
+    if (auto previous_provider_request_id = m_geolocation_position_request_ids.take({ page, request_id }); previous_provider_request_id.has_value())
+        Application::the().cancel_geolocation_position_request(*previous_provider_request_id);
+
+    auto provider_request_id = Application::the().request_geolocation_position(
+        make_geolocation_success_handler(page, request_id, document_id, false),
+        make_geolocation_error_handler(page, request_id, false));
+    if (provider_request_id.is_error()) {
+        page.async_geolocation_position_response(request_id, {}, to_underlying(geolocation_error_code(provider_request_id.error())));
+        return;
+    }
+
+    m_geolocation_position_request_ids.set({ page, request_id }, provider_request_id.release_value());
+    m_geolocation_request_documents.set({ page, request_id }, document_id);
+}
+
+void ViewImplementation::cancel_geolocation_position_request(WebContentPage& page, u64 request_id)
+{
+    ScopeGuard update_location_in_use = [this] { this->update_location_in_use(); };
+    auto provider_request_id = m_geolocation_position_request_ids.take({ page, request_id });
+    if (!provider_request_id.has_value())
+        return;
+    Application::the().cancel_geolocation_position_request(*provider_request_id);
+    m_geolocation_request_documents.remove({ page, request_id });
+}
+
+void ViewImplementation::start_geolocation_position_watch(WebContentPage& page, u64 request_id, Web::HTML::CrossProcessId document_id)
+{
+    ScopeGuard update_location_in_use = [this] { this->update_location_in_use(); };
+    if (!Application::the().sites_can_ask_for_location()) {
+        page.async_geolocation_position_response(request_id, {}, to_underlying(GeolocationErrorCode::PermissionDenied));
+        return;
+    }
+
+    if (auto previous_provider_watch_id = m_geolocation_watch_ids.take({ page, request_id }); previous_provider_watch_id.has_value())
+        Application::the().stop_watching_geolocation_position(*previous_provider_watch_id);
+
+    auto provider_watch_id = Application::the().start_watching_geolocation_position(
+        make_geolocation_success_handler(page, request_id, document_id, true),
+        make_geolocation_error_handler(page, request_id, true));
+
+    if (provider_watch_id.is_error()) {
+        page.async_geolocation_position_response(request_id, {}, to_underlying(geolocation_error_code(provider_watch_id.error())));
+        return;
+    }
+
+    m_geolocation_watch_ids.set({ page, request_id }, provider_watch_id.release_value());
+    m_geolocation_request_documents.set({ page, request_id }, document_id);
+}
+
+void ViewImplementation::stop_geolocation_position_watch(WebContentPage& page, u64 request_id)
+{
+    ScopeGuard update_location_in_use = [this] { this->update_location_in_use(); };
+    auto provider_watch_id = m_geolocation_watch_ids.take({ page, request_id });
+    if (!provider_watch_id.has_value())
+        return;
+
+    Application::the().stop_watching_geolocation_position(*provider_watch_id);
+    m_geolocation_request_documents.remove({ page, request_id });
 }
 
 void ViewImplementation::cancel_all_native_geolocation_requests()
@@ -5589,34 +5584,6 @@ void ViewImplementation::ensure_microphone_authorization(NonnullRefPtr<Microphon
     });
 }
 
-void ViewImplementation::request_geolocation_position(WebContentPage& page, u64 request_id, Web::HTML::CrossProcessId document_id)
-{
-    if (on_request_geolocation_position)
-        on_request_geolocation_position(page, request_id, document_id);
-    else
-        TabUI::request_geolocation_position(page, request_id, document_id);
-}
-
-void ViewImplementation::cancel_geolocation_position_request(WebContentPage& page, u64 request_id)
-{
-    if (on_cancel_geolocation_position_request)
-        on_cancel_geolocation_position_request(page, request_id);
-}
-
-void ViewImplementation::start_geolocation_position_watch(WebContentPage& page, u64 request_id, Web::HTML::CrossProcessId document_id)
-{
-    if (on_start_geolocation_position_watch)
-        on_start_geolocation_position_watch(page, request_id, document_id);
-    else
-        TabUI::start_geolocation_position_watch(page, request_id, document_id);
-}
-
-void ViewImplementation::stop_geolocation_position_watch(WebContentPage& page, u64 request_id)
-{
-    if (on_stop_geolocation_position_watch)
-        on_stop_geolocation_position_watch(page, request_id);
-}
-
 void ViewImplementation::restore_window()
 {
     if (on_restore_window)
@@ -5652,7 +5619,7 @@ void ViewImplementation::request_fullscreen_window(WebContentPage& page)
     if (on_fullscreen_window)
         on_fullscreen_window();
     else
-        TabUI::request_fullscreen_window(page);
+        TabUserRequests::request_fullscreen_window(page);
 }
 
 void ViewImplementation::exit_fullscreen_window()
@@ -5729,30 +5696,6 @@ void ViewImplementation::did_find_in_page(size_t current_match_index, Optional<s
         on_find_in_page(current_match_index, total_match_count);
 }
 
-void ViewImplementation::did_change_theme_color(Gfx::Color color)
-{
-    if (on_theme_color_change)
-        on_theme_color_change(color);
-}
-
-void ViewImplementation::did_update_resource_count(i32 count_waiting)
-{
-    if (on_resource_status_change)
-        on_resource_status_change(count_waiting);
-}
-
-void ViewImplementation::did_request_tooltip_override(Gfx::IntPoint position, ByteString const& title)
-{
-    if (on_request_tooltip_override)
-        on_request_tooltip_override(to_widget_position(position), title);
-}
-
-void ViewImplementation::did_stop_tooltip_override()
-{
-    if (on_stop_tooltip_override)
-        on_stop_tooltip_override();
-}
-
 void ViewImplementation::did_hover_link(URL::URL const& url)
 {
     if (on_link_hover)
@@ -5768,18 +5711,6 @@ void ViewImplementation::did_unhover_link()
 void ViewImplementation::did_set_browser_zoom(double factor)
 {
     set_zoom(factor);
-}
-
-void ViewImplementation::did_get_accessibility_tree(Vector<AccessibilityNodeData> nodes)
-{
-    if (on_accessibility_tree_received)
-        on_accessibility_tree_received(move(nodes));
-}
-
-void ViewImplementation::did_change_accessibility_focus(i64 focused_node_id)
-{
-    if (on_accessibility_focus_changed)
-        on_accessibility_focus_changed(focused_node_id);
 }
 
 void ViewImplementation::did_get_style_sheet_source(Web::CSS::StyleSheetIdentifier const& identifier, URL::URL const& base_url, Utf16String const& source)

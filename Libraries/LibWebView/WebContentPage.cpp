@@ -198,6 +198,12 @@ bool WebContentPage::hosts_top_level_document() const
     return traversable().display_page() == this;
 }
 
+// Only the page hosting the top-level document speaks for the tab. Any other page is not shown.
+TabUI& WebContentPage::top_level_ui() const
+{
+    return hosts_top_level_document() ? ui() : TabUI::no_ui();
+}
+
 String WebContentPage::dump_process_tree() const
 {
     StringBuilder builder;
@@ -514,9 +520,7 @@ void WebContentPage::maybe_record_history_visit_for_current_load(URL::URL const&
 
     // Title and favicon updates already give us a useful history entry, so
     // do not wait for did_finish_loading() on pages that never reach it.
-    auto transition = HistoryVisitTransition::Link;
-    if (hosts_top_level_document())
-        transition = ui().history_visit_transition_for_current_load();
+    auto transition = top_level_ui().history_visit_transition_for_current_load();
     client().session().history_store->record_visit(url, move(title), UnixDateTime::now(), transition);
     m_history_recorded_url_for_current_load = normalized_url.release_value();
 }
@@ -1026,15 +1030,12 @@ void WebContentPage::did_set_device_pixel_ratio_for_testing(double device_pixel_
 
 void WebContentPage::did_find_in_page(size_t current_match_index, Optional<size_t> total_match_count)
 {
-    if (hosts_top_level_document()) {
-        ui().did_find_in_page(current_match_index, total_match_count);
-    }
+    top_level_ui().did_find_in_page(current_match_index, total_match_count);
 }
 
 void WebContentPage::did_request_refresh()
 {
-    if (hosts_top_level_document())
-        ui().did_request_refresh();
+    top_level_ui().did_request_refresh();
 }
 
 void WebContentPage::did_request_cursor_change(Gfx::Cursor cursor)
@@ -1053,15 +1054,12 @@ void WebContentPage::did_update_editing_history_state(bool can_undo, bool can_re
 
 void WebContentPage::did_set_text_fragment_indication_visibility(bool visible)
 {
-    if (hosts_top_level_document())
-        ui().set_text_fragment_indication_visibility(visible);
+    traversable().presentation().did_change_text_fragment_indication_visibility(*this, visible);
 }
 
 void WebContentPage::did_request_tooltip_override(Gfx::IntPoint position, ByteString title)
 {
-    if (hosts_top_level_document()) {
-        ui().did_request_tooltip_override(position, title);
-    }
+    top_level_ui().did_request_tooltip_override(position, title);
 }
 
 void WebContentPage::did_stop_tooltip_override()
@@ -1205,16 +1203,12 @@ void WebContentPage::did_inspect_accessibility_tree(u64 request_id, String acces
 
 void WebContentPage::did_get_accessibility_tree(Vector<AccessibilityNodeData> nodes)
 {
-    if (hosts_top_level_document()) {
-        ui().did_get_accessibility_tree(move(nodes));
-    }
+    top_level_ui().did_get_accessibility_tree(move(nodes));
 }
 
 void WebContentPage::did_accessibility_focus_change(i64 focused_node_id)
 {
-    if (hosts_top_level_document()) {
-        ui().did_change_accessibility_focus(focused_node_id);
-    }
+    top_level_ui().did_change_accessibility_focus(focused_node_id);
 }
 
 void WebContentPage::did_get_node_id_at_position(u64 request_id, Web::UniqueNodeID node_id)
@@ -1231,9 +1225,7 @@ void WebContentPage::did_list_style_sheets(u64 request_id, Vector<Web::CSS::Styl
 
 void WebContentPage::did_get_style_sheet_source(Web::CSS::StyleSheetIdentifier identifier, URL::URL base_url, Utf16String source)
 {
-    if (hosts_top_level_document()) {
-        ui().did_get_style_sheet_source(identifier, base_url, source);
-    }
+    top_level_ui().did_get_style_sheet_source(identifier, base_url, source);
 }
 
 void WebContentPage::did_list_devtools_sources(u64 request_id, Vector<Web::HTML::ScriptRegistryDescription> sources)
@@ -1255,22 +1247,17 @@ void WebContentPage::did_get_devtools_source(u64 request_id, Web::HTML::ScriptRe
 
 void WebContentPage::did_add_devtools_source(Web::HTML::ScriptRegistryDescription source)
 {
-    if (hosts_top_level_document()) {
-        ui().did_add_devtools_source(move(source));
-    }
+    top_level_ui().did_add_devtools_source(move(source));
 }
 
 void WebContentPage::did_pause_debugger(DebuggerPause pause)
 {
-    if (hosts_top_level_document()) {
-        ui().did_pause_debugger(move(pause));
-    }
+    top_level_ui().did_pause_debugger(move(pause));
 }
 
 void WebContentPage::did_resume_debugger()
 {
-    if (hosts_top_level_document())
-        ui().did_resume_debugger();
+    top_level_ui().did_resume_debugger();
 }
 
 void WebContentPage::did_complete_debugger_breakpoint_operation(u64 request_id, Optional<String> error)
@@ -1332,9 +1319,7 @@ void WebContentPage::did_execute_js_console_input(u64 request_id, DebuggerValue 
 
 void WebContentPage::did_output_js_console_message(ConsoleOutput console_output)
 {
-    if (hosts_top_level_document()) {
-        ui().did_output_console_message(move(console_output));
-    }
+    top_level_ui().did_output_console_message(move(console_output));
 }
 
 void WebContentPage::did_block_resource(URL::URL url, String kind)
@@ -1344,23 +1329,17 @@ void WebContentPage::did_block_resource(URL::URL url, String kind)
 
 void WebContentPage::did_start_network_request(u64 request_id, URL::URL url, ByteString method, Vector<HTTP::Header> request_headers, ByteBuffer request_body, Optional<String> initiator_type, String referrer_policy, bool is_navigation_request, Web::Fetch::Infrastructure::RequestPriority priority)
 {
-    if (hosts_top_level_document()) {
-        ui().did_start_network_request(request_id, url, method, request_headers, move(request_body), move(initiator_type), move(referrer_policy), is_navigation_request, priority);
-    }
+    top_level_ui().did_start_network_request(request_id, url, method, request_headers, move(request_body), move(initiator_type), move(referrer_policy), is_navigation_request, priority);
 }
 
 void WebContentPage::did_receive_network_response_body(u64 request_id, ByteBuffer data)
 {
-    if (hosts_top_level_document()) {
-        ui().did_receive_network_response_body(request_id, move(data));
-    }
+    top_level_ui().did_receive_network_response_body(request_id, move(data));
 }
 
 void WebContentPage::did_finish_network_request(u64 request_id, u64 body_size, Requests::RequestTimingInfo timing_info, Optional<Requests::NetworkError> network_error)
 {
-    if (hosts_top_level_document()) {
-        ui().did_finish_network_request(request_id, body_size, timing_info, network_error);
-    }
+    top_level_ui().did_finish_network_request(request_id, body_size, timing_info, network_error);
 }
 
 void WebContentPage::did_request_set_prompt_text(Utf16String message)
@@ -1512,9 +1491,7 @@ void WebContentPage::webdriver_bidi_navigation_event(Web::HTML::CrossProcessId n
 
 void WebContentPage::did_update_resource_count(i32 count_waiting)
 {
-    if (hosts_top_level_document()) {
-        ui().did_update_resource_count(count_waiting);
-    }
+    traversable().presentation().did_update_resource_count(*this, count_waiting);
 }
 
 // Only WebDriver's window commands and the internals object of a test ask for a change to the window.
@@ -2127,15 +2104,12 @@ void WebContentPage::did_update_input_method_state(Optional<Web::DevicePixelRect
 
 void WebContentPage::did_change_theme_color(Gfx::Color color)
 {
-    if (hosts_top_level_document()) {
-        ui().did_change_theme_color(color);
-    }
+    traversable().presentation().did_change_theme_color(*this, color);
 }
 
 void WebContentPage::did_change_background_color(Gfx::Color color)
 {
-    if (hosts_top_level_document())
-        ui().did_change_background_color(color);
+    traversable().presentation().did_change_background_color(*this, color);
 }
 
 // NB: The system clipboard belongs to the user, so a page reaches it only right after the user's own input to it, as
@@ -2158,8 +2132,7 @@ void WebContentPage::set_audibility(Audio::Audibility audibility)
 
 void WebContentPage::did_change_screen_wake_lock_state(Web::ScreenWakeLockState wake_lock_state)
 {
-    if (hosts_top_level_document())
-        ui().did_change_screen_wake_lock_state(wake_lock_state);
+    traversable().presentation().did_change_screen_wake_lock_state(*this, wake_lock_state);
 }
 
 void WebContentPage::did_start_using_gamepads()
@@ -2397,9 +2370,7 @@ void WebContentPage::did_inspect_dom_tree(u64 request_id, String dom_tree)
 
 void WebContentPage::did_inspect_dom_node(DOMNodeProperties properties)
 {
-    if (hosts_top_level_document()) {
-        ui().did_inspect_dom_node(move(properties));
-    }
+    top_level_ui().did_inspect_dom_node(move(properties));
 }
 
 void WebContentPage::did_finish_editing_dom_node(u64 request_id, Optional<Web::UniqueNodeID> node_id)
@@ -2415,9 +2386,7 @@ void WebContentPage::did_finish_editing_dom_node(u64 request_id, Optional<Web::U
 
 void WebContentPage::did_mutate_dom(Mutation mutation)
 {
-    if (hosts_top_level_document()) {
-        ui().did_mutate_dom(move(mutation));
-    }
+    top_level_ui().did_mutate_dom(move(mutation));
 }
 
 void WebContentPage::did_get_dom_node_html(u64 request_id, String html)
@@ -2440,15 +2409,12 @@ void WebContentPage::did_complete_js_console_input(u64 request_id, Optional<Vect
 
 void WebContentPage::did_receive_network_response_headers(u64 request_id, u32 status_code, Optional<String> reason_phrase, Vector<HTTP::Header> response_headers, Requests::CacheState cache_state)
 {
-    if (hosts_top_level_document()) {
-        ui().did_receive_network_response_headers(request_id, status_code, reason_phrase, response_headers, cache_state);
-    }
+    top_level_ui().did_receive_network_response_headers(request_id, status_code, reason_phrase, response_headers, cache_state);
 }
 
 void WebContentPage::did_update_indexed_database(String update)
 {
-    if (hosts_top_level_document())
-        ui().did_update_indexed_database(parse_json(update, "IndexedDB update"sv));
+    top_level_ui().did_update_indexed_database(parse_json(update, "IndexedDB update"sv));
 }
 
 void WebContentPage::did_request_clipboard_entries(u64 request_id)
@@ -3201,8 +3167,7 @@ void WebContentPage::did_close_browsing_context()
     close();
     client().unregister_embedded_page(m_id);
 
-    if (hosts_top_level_document())
-        ui().did_close_browsing_context();
+    top_level_ui().did_close_browsing_context();
 }
 
 void WebContentPage::did_complete_close_preflight(u64 request_id, bool approved)
@@ -3355,20 +3320,17 @@ void WebContentPage::rtc_transform_encoded_audio_frame(Web::HTML::WorkerAgentId 
 
 void WebContentPage::did_finish_test(String text)
 {
-    if (hosts_top_level_document())
-        ui().did_finish_test(text);
+    top_level_ui().did_finish_test(text);
 }
 
 void WebContentPage::did_set_test_timeout(double milliseconds)
 {
-    if (hosts_top_level_document())
-        ui().did_set_test_timeout(milliseconds);
+    top_level_ui().did_set_test_timeout(milliseconds);
 }
 
 void WebContentPage::did_receive_reference_test_metadata(JsonValue metadata)
 {
-    if (hosts_top_level_document())
-        ui().did_receive_reference_test_metadata(metadata);
+    top_level_ui().did_receive_reference_test_metadata(metadata);
 }
 
 void WebContentPage::did_simulate_worker_request_server_connection_loss()
@@ -3382,9 +3344,7 @@ void WebContentPage::did_simulate_worker_request_server_connection_loss()
 
 Messages::WebContentTestClient::DidRequestUiProcessSessionHistoryForTestingResponse WebContentPage::did_request_ui_process_session_history_for_testing()
 {
-    if (hosts_top_level_document())
-        return { ui().ui_process_session_history_for_testing() };
-    return { "{}"_string };
+    return { top_level_ui().ui_process_session_history_for_testing() };
 }
 
 Messages::WebContentTestClient::DidRequestSiteIsolationProcessTreeForTestingResponse WebContentPage::did_request_site_isolation_process_tree_for_testing()
@@ -3414,21 +3374,18 @@ void WebContentPage::did_request_crash_of_remote_frame_processes_for_testing()
 // The tab's Stop and Reload buttons.
 void WebContentPage::did_request_stop_loading_for_testing()
 {
-    if (hosts_top_level_document())
-        ui().did_request_stop_loading_for_testing();
+    top_level_ui().did_request_stop_loading_for_testing();
 }
 
 void WebContentPage::did_request_reload_for_testing(bool bypass_cache)
 {
-    if (hosts_top_level_document())
-        ui().did_request_reload_for_testing(bypass_cache ? BypassCache::Yes : BypassCache::No);
+    top_level_ui().did_request_reload_for_testing(bypass_cache ? BypassCache::Yes : BypassCache::No);
 }
 
 // The tab's Back and Forward buttons, which traverse the history with no source document.
 void WebContentPage::did_request_traverse_history_by_delta_for_testing(i32 delta)
 {
-    if (hosts_top_level_document())
-        ui().did_request_traverse_history_by_delta_for_testing(delta);
+    top_level_ui().did_request_traverse_history_by_delta_for_testing(delta);
 }
 
 void WebContentPage::reset_state_for_testing()
@@ -3442,8 +3399,7 @@ void WebContentPage::reset_state_for_testing()
 
 void WebContentPage::did_reset_state_for_testing(Web::HTML::SessionHistoryEntryDescriptor active_entry)
 {
-    if (hosts_top_level_document())
-        ui().did_reset_state_for_testing(move(active_entry));
+    top_level_ui().did_reset_state_for_testing(move(active_entry));
 }
 
 void WebContentPage::reset_gamepad_access_for_testing()
@@ -3453,23 +3409,17 @@ void WebContentPage::reset_gamepad_access_for_testing()
 
 Messages::WebContentTestClient::DidRequestCaptureSessionHistorySnapshotForTestingResponse WebContentPage::did_request_capture_session_history_snapshot_for_testing()
 {
-    if (hosts_top_level_document())
-        return { ui().capture_session_history_snapshot_for_testing() };
-    return { false };
+    return { top_level_ui().capture_session_history_snapshot_for_testing() };
 }
 
 Messages::WebContentTestClient::DidRequestRestoreSessionHistorySnapshotForTestingResponse WebContentPage::did_request_restore_session_history_snapshot_for_testing()
 {
-    if (hosts_top_level_document())
-        return { ui().restore_captured_session_history_snapshot_for_testing() };
-    return { false };
+    return { top_level_ui().restore_captured_session_history_snapshot_for_testing() };
 }
 
 Messages::WebContentTestClient::DidRequestRegisterSessionStoreTabForTestingResponse WebContentPage::did_request_register_session_store_tab_for_testing()
 {
-    if (hosts_top_level_document())
-        return { ui().register_session_store_tab_for_testing() };
-    return { false };
+    return { top_level_ui().register_session_store_tab_for_testing() };
 }
 
 // A document populated for a navigable is one the browser process created for it, and has not made active yet.
@@ -3487,9 +3437,7 @@ Messages::WebContentTestClient::DidRequestHasPopulatedDocumentForTestingResponse
 
 Messages::WebContentTestClient::DidRequestSessionStoreTabStateForTestingResponse WebContentPage::did_request_session_store_tab_state_for_testing()
 {
-    if (hosts_top_level_document())
-        return { ui().session_store_tab_state_for_testing() };
-    return { "{}"_string };
+    return { top_level_ui().session_store_tab_state_for_testing() };
 }
 
 // https://w3c.github.io/FileAPI/#add-an-entry

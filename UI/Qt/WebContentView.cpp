@@ -245,88 +245,6 @@ WebContentView::WebContentView(QWidget* window, Optional<WebView::CanonicalTrave
     QAccessible::installActivationObserver(this);
 #endif
 
-    on_accessibility_tree_received = [this](auto nodes) {
-        m_accessibility_manager->update_tree(AK::move(nodes));
-
-#if defined(Q_OS_MACOS)
-        // Only the first tree for a page announces the load. WebContent rebuilds the tree on DOM mutations too, and
-        // announcing each of those would move VoiceOver's cursor back to the top of the page while the user is reading
-        // it. Same gate as the AT-SPI focus post in the branch below.
-        // NB: A page load never moves the keyboard focus, with or without an assistive technology. For example, a new
-        //     tab's location editor keeps the focus while the new tab page loads.
-        auto const announce_load = !m_posted_initial_accessibility_focus && m_accessibility_manager && !m_accessibility_manager->is_empty();
-        if (announce_load)
-            m_posted_initial_accessibility_focus = true;
-        // An assistive technology that turned up mid-page got no focused element from its first queries: The first tree
-        // has AppKit look the focus up again — if the page has the keyboard focus (update_accessibility_tree() checks).
-        auto const report_focus = m_report_accessibility_focus_with_next_tree && m_accessibility_manager && !m_accessibility_manager->is_empty();
-        if (report_focus)
-            m_report_accessibility_focus_with_next_tree = false;
-        QTimer::singleShot(100, this, [this, announce_load, report_focus] {
-            update_accessibility_tree(this, announce_load, report_focus);
-        });
-#elif !defined(Q_OS_WIN)
-        // Prune interfaces for nodes no longer in the tree.
-        QList<i64> stale_ids;
-        for (auto it = m_accessibility_elements.begin(); it != m_accessibility_elements.end(); ++it) {
-            if (!it.value()->isValid())
-                stale_ids.append(it.key());
-        }
-        for (auto id : stale_ids) {
-            auto* iface = m_accessibility_elements.take(id);
-            QAccessible::deleteAccessibleInterface(QAccessible::uniqueId(iface));
-        }
-
-        // An assistive technology that turned up mid-page found no tree to take the focus from: Tell it where the focus
-        // is now that there's one — if the page has the keyboard focus at all.
-        if (m_report_accessibility_focus_with_next_tree && m_accessibility_manager && !m_accessibility_manager->is_empty()) {
-            m_report_accessibility_focus_with_next_tree = false;
-            if (hasFocus())
-                announce_accessibility_focus();
-        }
-
-        // Post a Focus AT-SPI2 event on the document root the first time a tree arrives. This is what lets Orca's
-        // browse-mode commands (H/K/L structural nav) work on page load — without the user having to Tab/click into the
-        // page first. The event is posted unconditionally — even when the address bar has Qt focus — because our Orca
-        // script re-suspends browse-mode commands when it later sees a focus event for an editable chrome widget. So if
-        // the user explicitly focuses the address bar (Ctrl+L, mouse click), typing there still works. Firing this on
-        // every subsequent tree update would be wrong: it would re-focus the document root while the user is
-        // mid-navigation — causing Orca to re-present the current structural-nav target.
-        if (!m_posted_initial_accessibility_focus && m_accessibility_manager && !m_accessibility_manager->is_empty()) {
-            m_posted_initial_accessibility_focus = true;
-            QTimer::singleShot(1000, this, [this] {
-                notify_accessibility_focus_on_document_root();
-            });
-        }
-#endif
-    };
-
-    on_accessibility_focus_changed = [this](i64 node_id) {
-        if (m_accessibility_manager->is_empty())
-            return;
-        m_accessibility_manager->set_focused_node(node_id);
-#if defined(Q_OS_MACOS)
-        Ladybird::post_accessibility_focus_changed(this, node_id);
-#elif !defined(Q_OS_WIN)
-        // Focus leaving every element lands on the document root, as in Gecko, WebKit, and Blink. Post that the way the
-        // load-time focus is posted, so a hidden tab's page can't pull Orca to its root.
-        if (auto const* root = m_accessibility_manager->root(); root && node_id == root->id) {
-            notify_accessibility_focus_on_document_root();
-            return;
-        }
-        // A hidden tab's element focus stays quiet too: its page can still call focus() (from a timer, e.g.), and
-        // posting that would pull Orca into a tab the user isn't looking at, through an interface hideEvent() had
-        // deregistered. The tree keeps the focus, and focusInEvent() re-announces it once the tab is back.
-        if (!isVisible())
-            return;
-        auto* iface = accessibility_interface_for_node(node_id);
-        if (iface) {
-            QAccessibleEvent focus_event(iface, QAccessible::Focus);
-            QAccessible::updateAccessibility(&focus_event);
-        }
-#endif
-    };
-
 #if defined(Q_OS_MACOS)
     m_accessibility_manager->on_live_region_changed = [](auto text, auto live_value) {
         Ladybird::post_accessibility_announcement(text, live_value);
@@ -376,24 +294,6 @@ WebContentView::WebContentView(QWidget* window, Optional<WebView::CanonicalTrave
         show_appkit_dictionary_lookup(*this, lookup, position);
     };
 #endif
-
-    on_request_tooltip_override = [this](auto position, auto const& tooltip) {
-        m_tooltip_override = true;
-        if (m_tooltip_hover_timer.isActive())
-            m_tooltip_hover_timer.stop();
-
-        auto tooltip_without_carriage_return = tooltip.contains("\r"sv)
-            ? tooltip.replace("\r\n"sv, "\n"sv, ReplaceMode::All).replace("\r"sv, "\n"sv, ReplaceMode::All)
-            : tooltip;
-        QToolTip::showText(
-            mapToGlobal(QPoint(position.x(), position.y())),
-            qstring_from_ak_string(tooltip_without_carriage_return),
-            this);
-    };
-
-    on_stop_tooltip_override = [this]() {
-        m_tooltip_override = false;
-    };
 
     on_enter_tooltip_area = [this](auto const& tooltip) {
         m_tooltip_text = tooltip.contains("\r"sv)
@@ -458,6 +358,111 @@ WebContentView::~WebContentView()
     // A view can be destroyed without a hide event, so deregister the accessibility interfaces here too.
     deregister_accessibility_interfaces();
 #endif
+}
+
+void WebContentView::did_get_accessibility_tree(Vector<WebView::AccessibilityNodeData> nodes)
+{
+    m_accessibility_manager->update_tree(AK::move(nodes));
+
+#if defined(Q_OS_MACOS)
+    // Only the first tree for a page announces the load. WebContent rebuilds the tree on DOM mutations too, and
+    // announcing each of those would move VoiceOver's cursor back to the top of the page while the user is reading
+    // it. Same gate as the AT-SPI focus post in the branch below.
+    // NB: A page load never moves the keyboard focus, with or without an assistive technology. For example, a new
+    //     tab's location editor keeps the focus while the new tab page loads.
+    auto const announce_load = !m_posted_initial_accessibility_focus && m_accessibility_manager && !m_accessibility_manager->is_empty();
+    if (announce_load)
+        m_posted_initial_accessibility_focus = true;
+    // An assistive technology that turned up mid-page got no focused element from its first queries: The first tree
+    // has AppKit look the focus up again — if the page has the keyboard focus (update_accessibility_tree() checks).
+    auto const report_focus = m_report_accessibility_focus_with_next_tree && m_accessibility_manager && !m_accessibility_manager->is_empty();
+    if (report_focus)
+        m_report_accessibility_focus_with_next_tree = false;
+    QTimer::singleShot(100, this, [this, announce_load, report_focus] {
+        update_accessibility_tree(this, announce_load, report_focus);
+    });
+#elif !defined(Q_OS_WIN)
+    // Prune interfaces for nodes no longer in the tree.
+    QList<i64> stale_ids;
+    for (auto it = m_accessibility_elements.begin(); it != m_accessibility_elements.end(); ++it) {
+        if (!it.value()->isValid())
+            stale_ids.append(it.key());
+    }
+    for (auto id : stale_ids) {
+        auto* iface = m_accessibility_elements.take(id);
+        QAccessible::deleteAccessibleInterface(QAccessible::uniqueId(iface));
+    }
+
+    // An assistive technology that turned up mid-page found no tree to take the focus from: Tell it where the focus
+    // is now that there's one — if the page has the keyboard focus at all.
+    if (m_report_accessibility_focus_with_next_tree && m_accessibility_manager && !m_accessibility_manager->is_empty()) {
+        m_report_accessibility_focus_with_next_tree = false;
+        if (hasFocus())
+            announce_accessibility_focus();
+    }
+
+    // Post a Focus AT-SPI2 event on the document root the first time a tree arrives. This is what lets Orca's
+    // browse-mode commands (H/K/L structural nav) work on page load — without the user having to Tab/click into the
+    // page first. The event is posted unconditionally — even when the address bar has Qt focus — because our Orca
+    // script re-suspends browse-mode commands when it later sees a focus event for an editable chrome widget. So if
+    // the user explicitly focuses the address bar (Ctrl+L, mouse click), typing there still works. Firing this on
+    // every subsequent tree update would be wrong: it would re-focus the document root while the user is
+    // mid-navigation — causing Orca to re-present the current structural-nav target.
+    if (!m_posted_initial_accessibility_focus && m_accessibility_manager && !m_accessibility_manager->is_empty()) {
+        m_posted_initial_accessibility_focus = true;
+        QTimer::singleShot(1000, this, [this] {
+            notify_accessibility_focus_on_document_root();
+        });
+    }
+#endif
+}
+
+void WebContentView::did_change_accessibility_focus(i64 node_id)
+{
+    if (m_accessibility_manager->is_empty())
+        return;
+    m_accessibility_manager->set_focused_node(node_id);
+#if defined(Q_OS_MACOS)
+    Ladybird::post_accessibility_focus_changed(this, node_id);
+#elif !defined(Q_OS_WIN)
+    // Focus leaving every element lands on the document root, as in Gecko, WebKit, and Blink. Post that the way the
+    // load-time focus is posted, so a hidden tab's page can't pull Orca to its root.
+    if (auto const* root = m_accessibility_manager->root(); root && node_id == root->id) {
+        notify_accessibility_focus_on_document_root();
+        return;
+    }
+    // A hidden tab's element focus stays quiet too: its page can still call focus() (from a timer, e.g.), and
+    // posting that would pull Orca into a tab the user isn't looking at, through an interface hideEvent() had
+    // deregistered. The tree keeps the focus, and focusInEvent() re-announces it once the tab is back.
+    if (!isVisible())
+        return;
+    auto* iface = accessibility_interface_for_node(node_id);
+    if (iface) {
+        QAccessibleEvent focus_event(iface, QAccessible::Focus);
+        QAccessible::updateAccessibility(&focus_event);
+    }
+#endif
+}
+
+void WebContentView::did_request_tooltip_override(Gfx::IntPoint content_position, ByteString const& tooltip)
+{
+    auto position = to_widget_position(content_position);
+    m_tooltip_override = true;
+    if (m_tooltip_hover_timer.isActive())
+        m_tooltip_hover_timer.stop();
+
+    auto tooltip_without_carriage_return = tooltip.contains("\r"sv)
+        ? tooltip.replace("\r\n"sv, "\n"sv, ReplaceMode::All).replace("\r"sv, "\n"sv, ReplaceMode::All)
+        : tooltip;
+    QToolTip::showText(
+        mapToGlobal(QPoint(position.x(), position.y())),
+        qstring_from_ak_string(tooltip_without_carriage_return),
+        this);
+}
+
+void WebContentView::did_stop_tooltip_override()
+{
+    m_tooltip_override = false;
 }
 
 void WebContentView::prepare_for_window_move()
@@ -1109,7 +1114,7 @@ void WebContentView::focusInEvent(QFocusEvent*)
     update_page_focus();
 #if !defined(Q_OS_MACOS) && !defined(Q_OS_WIN)
     // Notify Orca that the document now has focus. This handles the case where the user navigates from the address bar
-    // to the document area by tabbing or clicking. The 1000ms timer in on_accessibility_tree_received skips this
+    // to the document area by tabbing or clicking. The 1000ms timer in did_get_accessibility_tree skips this
     // notification when another widget had focus — so we do it here instead.
     announce_accessibility_focus();
 #endif

@@ -142,6 +142,10 @@ public:
 
 #if !defined(LADYBIRD_QT_USE_RHI_WIDGET)
     virtual void paintEvent(QPaintEvent*) override;
+    virtual void did_get_accessibility_tree(Vector<WebView::AccessibilityNodeData>) override;
+    virtual void did_change_accessibility_focus(i64 node_id) override;
+    virtual void did_request_tooltip_override(Gfx::IntPoint content_position, ByteString const& tooltip) override;
+    virtual void did_stop_tooltip_override() override;
 #endif
     virtual void resizeEvent(QResizeEvent*) override;
     virtual void leaveEvent(QEvent* event) override;
