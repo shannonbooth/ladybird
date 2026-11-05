@@ -89,7 +89,6 @@ Optional<ViewImplementation&> ViewImplementation::find_view_by_id(u64 id)
 ViewImplementation::ViewImplementation(IsPrivate is_private)
     : m_is_private(is_private)
     , m_session(Application::session_for_new_view(is_private))
-    , m_document_cookie_version_buffer(Core::create_shared_version_buffer())
     , m_view_id(s_view_count++)
 {
     all_views().set(m_view_id, this);
@@ -1630,10 +1629,7 @@ void ViewImplementation::send_preferences_to_page(WebContentPage& page)
 
 void ViewImplementation::notify_cookies_changed(HashTable<String> const& changed_domains, ReadonlySpan<HTTP::Cookie::Cookie> page_cookies, ReadonlySpan<HTTP::Cookie::Cookie> host_cookies)
 {
-    for (auto const& domain : changed_domains) {
-        if (auto document_index = m_document_cookie_version_indices.get(domain); document_index.has_value())
-            Core::increment_shared_version(m_document_cookie_version_buffer, *document_index);
-    }
+    traversable().increment_document_cookie_versions(changed_domains);
 
     if (!page_cookies.is_empty())
         page().async_cookies_changed(page_cookies);
@@ -1685,33 +1681,6 @@ u64 ViewImplementation::add_indexed_database_change_listener(DevTools::DevToolsD
 void ViewImplementation::remove_indexed_database_change_listener(u64 listener_id)
 {
     m_indexed_database_change_listeners.remove(listener_id);
-}
-
-ErrorOr<Core::SharedVersionIndex> ViewImplementation::ensure_document_cookie_version_index(Badge<WebContentPage>, String const& domain)
-{
-    return m_document_cookie_version_indices.try_ensure(domain, [&]() -> ErrorOr<Core::SharedVersionIndex> {
-        Core::SharedVersionIndex document_index = m_document_cookie_version_indices.size();
-
-        if (!Core::initialize_shared_version(m_document_cookie_version_buffer, document_index)) {
-            dbgln("Reached maximum document cookie version count for {}, cannot create new version for {}", url(), domain);
-            return Error::from_string_literal("Reached maximum document cookie version count");
-        }
-
-        return document_index;
-    });
-}
-
-Optional<Core::SharedVersion> ViewImplementation::document_cookie_version(URL::URL const& url) const
-{
-    auto domain = HTTP::Cookie::canonicalize_domain(url);
-    if (!domain.has_value())
-        return {};
-
-    auto document_index = m_document_cookie_version_indices.get(*domain);
-    if (!document_index.has_value())
-        return {};
-
-    return Core::get_shared_version(m_document_cookie_version_buffer, *document_index);
 }
 
 NonnullRefPtr<Core::Promise<ByteString>> ViewImplementation::selected_text()
@@ -3526,7 +3495,7 @@ void ViewImplementation::prepare_page_for_navigable(WebContentPage& page)
     page.async_set_has_focus(traversable().has_system_focus());
     if (auto focused_navigable_id = traversable().focused_navigable_id(); focused_navigable_id.has_value())
         page.async_set_focused_navigable(*focused_navigable_id);
-    page.async_set_document_cookie_version_buffer(m_document_cookie_version_buffer);
+    page.async_set_document_cookie_version_buffer(traversable().document_cookie_version_buffer());
     if (m_debugger_is_attached)
         page.async_attach_debugger();
     // The page's sound plays while it hosts the tab's documents, unless the tab is muted.
