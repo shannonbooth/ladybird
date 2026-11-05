@@ -477,15 +477,6 @@ public:
     void set_is_fullscreen(Web::ViewportIsFullscreen is_fullscreen);
     Web::ViewportIsFullscreen is_fullscreen() const { return m_is_fullscreen; }
 
-    void alert_closed();
-    void before_unload_closed(bool accepted);
-    void confirm_closed(bool accepted);
-    void prompt_closed(Optional<Utf16String> const& response);
-    void color_picker_update(Optional<Color> picked_color, Web::HTML::ColorPickerUpdateState state);
-    void date_picker_closed(Optional<Utf16String> picked_value);
-    void file_picker_closed(Vector<Web::HTML::SelectedFile> selected_files);
-    void select_dropdown_closed(Optional<u32> const& selected_item_id);
-
     void paste_from_clipboard();
 
     // Used by platform input methods to drive marked/preedit-text composition, and to query the on-screen caret
@@ -541,7 +532,6 @@ public:
     void did_close_browsing_context(Badge<WebContentPage>);
     void run_webdriver_user_prompt_handling(Function<void(Web::WebDriver::Response)> on_complete);
     void did_complete_webdriver_user_prompt_handling(Badge<WebContentPage>, u64 request_id, Web::WebDriver::Response);
-    void did_open_user_prompt(Badge<WebContentPage>);
     static Optional<ViewImplementation&> find_view_by_handle(StringView);
     void did_change_background_color(Badge<WebContentPage>, Gfx::Color);
     Gfx::Color page_background_color() const { return m_page_background_color; }
@@ -604,10 +594,10 @@ public:
     Function<void(ByteString const&)> on_enter_tooltip_area;
     Function<void()> on_leave_tooltip_area;
     Function<void(ContentBlockingSnapshot const&)> on_content_blocking_change;
-    Function<void(Utf16String const& message)> on_request_alert;
-    Function<void(String const& source, Function<void(bool)> on_complete)> on_request_before_unload;
-    Function<void(Utf16String const& message)> on_request_confirm;
-    Function<void(Utf16String const& message, Utf16String const& default_)> on_request_prompt;
+    Function<void(Utf16String const& message, NonnullRefPtr<DialogReply>)> on_request_alert;
+    Function<void(String const& source, NonnullRefPtr<DialogReply>)> on_request_before_unload;
+    Function<void(Utf16String const& message, NonnullRefPtr<DialogReply>)> on_request_confirm;
+    Function<void(Utf16String const& message, Utf16String const& default_, NonnullRefPtr<DialogReply>)> on_request_prompt;
     Function<void(Utf16String const& message)> on_request_set_prompt_text;
     Function<void()> on_before_browser_initiated_navigation;
     Function<void(URL::URL const&, URL::Origin const&, ExternalURLHandler const&, Function<void(bool)>)> on_request_external_url_confirmation;
@@ -652,8 +642,8 @@ public:
     Function<void()> on_minimize_window;
     Function<void()> on_fullscreen_window;
     Function<void()> on_exit_fullscreen_window;
-    Function<void(Color current_color)> on_request_color_picker;
-    Function<void(Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum)> on_request_date_picker;
+    Function<void(Color current_color, NonnullRefPtr<ColorPickerReply>)> on_request_color_picker;
+    Function<void(Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, NonnullRefPtr<DatePickerReply>)> on_request_date_picker;
     Function<void(WebContentPage& requesting_page, u64 request_id, Web::HTML::CrossProcessId document_id)> on_request_geolocation_position;
     Function<void(WebContentPage& requesting_page, u64 request_id)> on_cancel_geolocation_position_request;
     Function<void(WebContentPage& requesting_page, u64 request_id, Web::HTML::CrossProcessId document_id)> on_start_geolocation_position_watch;
@@ -661,8 +651,8 @@ public:
     Function<void(PermissionPromptRequest const&, PermissionPromptCallback)> on_request_permission;
     Function<void(PermissionPromptRequest const&)> on_cancel_permission_prompt;
     Function<void(bool)> on_location_in_use_change;
-    Function<void(Web::HTML::FileFilter const& accepted_file_types, Web::HTML::AllowMultipleFiles)> on_request_file_picker;
-    Function<void(Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items)> on_request_select_dropdown;
+    Function<void(Web::HTML::FileFilter const& accepted_file_types, Web::HTML::AllowMultipleFiles, NonnullRefPtr<FilePickerReply>)> on_request_file_picker;
+    Function<void(Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items, NonnullRefPtr<SelectDropdownReply>)> on_request_select_dropdown;
     Function<void(Web::KeyEvent const&)> on_finish_handling_key_event;
     Function<void(Web::MouseEvent const&, Web::EventResult)> on_finish_handling_mouse_event;
     Function<void(Compositing::PictureInPictureControl)> on_picture_in_picture_control_activated;
@@ -699,10 +689,15 @@ public:
     void did_request_image_context_menu(Badge<WebContentPage>, Gfx::IntPoint content_position, Web::HTML::PreparedNavigationDescriptor, Optional<Gfx::ShareableBitmap> bitmap);
     void did_request_media_context_menu(Badge<WebContentPage>, WebContentPage& requesting_page, Gfx::IntPoint content_position, Web::MediaContextMenu, Optional<Web::HTML::PreparedNavigationDescriptor>);
 
-    void did_request_color_picker(Badge<WebContentPage>, WebContentPage& requesting_page, Color current_color);
-    void did_request_date_picker(Badge<WebContentPage>, WebContentPage& requesting_page, Utf16String input_type, Utf16String value, Utf16String minimum, Utf16String maximum);
-    void did_request_file_picker(Badge<WebContentPage>, WebContentPage& requesting_page, Web::HTML::FileFilter const& accepted_file_types, Web::HTML::AllowMultipleFiles);
-    void did_request_select_dropdown(Badge<WebContentPage>, WebContentPage& requesting_page, Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items);
+    bool has_open_dialog() const;
+    void request_alert(Badge<CanonicalTraversable>, Utf16String const& message, NonnullRefPtr<DialogReply>);
+    void request_confirm(Badge<CanonicalTraversable>, Utf16String const& message, NonnullRefPtr<DialogReply>);
+    void request_prompt(Badge<CanonicalTraversable>, Utf16String const& message, Utf16String const& default_value, NonnullRefPtr<DialogReply>);
+    void request_before_unload(Badge<CanonicalTraversable>, String const& source, NonnullRefPtr<DialogReply>);
+    void request_color_picker(Badge<CanonicalTraversable>, Color, NonnullRefPtr<ColorPickerReply>);
+    void request_date_picker(Badge<CanonicalTraversable>, Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, NonnullRefPtr<DatePickerReply>);
+    void request_file_picker(Badge<CanonicalTraversable>, Web::HTML::FileFilter const&, Web::HTML::AllowMultipleFiles, NonnullRefPtr<FilePickerReply>);
+    void request_select_dropdown(Badge<CanonicalTraversable>, Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items, NonnullRefPtr<SelectDropdownReply>);
 
     Action& navigate_back_action() { return *m_navigate_back_action; }
     Action& navigate_forward_action() { return *m_navigate_forward_action; }
@@ -1132,10 +1127,11 @@ protected:
 
     Web::ViewportIsFullscreen m_is_fullscreen { Web::ViewportIsFullscreen::No };
 
-    RefPtr<WebContentPage> m_color_picker_page;
-    RefPtr<WebContentPage> m_date_picker_page;
-    RefPtr<WebContentPage> m_file_picker_page;
-    RefPtr<WebContentPage> m_select_dropdown_page;
+    RefPtr<DialogReply> m_dialog_reply;
+    RefPtr<ColorPickerReply> m_color_picker_reply;
+    RefPtr<DatePickerReply> m_date_picker_reply;
+    RefPtr<FilePickerReply> m_file_picker_reply;
+    RefPtr<SelectDropdownReply> m_select_dropdown_reply;
 
     static constexpr size_t MAX_SPELLING_GUESSES = 5;
     void update_context_menu_misspelling(Optional<Utf16String> misspelled_word);

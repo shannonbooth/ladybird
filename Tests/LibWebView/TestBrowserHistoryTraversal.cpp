@@ -373,9 +373,9 @@ TEST_CASE(browser_history_traversal)
                 ++reload_url_loads_finished;
         };
         size_t navigate_events = 0;
-        reload_view->on_request_alert = [&](auto const&) {
+        reload_view->on_request_alert = [&](auto const&, auto reply) {
             ++navigate_events;
-            reload_view->alert_closed();
+            reply->complete(true, {});
         };
         reload_view->load(reload_url);
         Core::EventLoop::current().spin_until([&] { return reload_url_loads_finished == 1; });

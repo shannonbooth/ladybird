@@ -106,7 +106,8 @@ void TestWebView::did_receive_screenshot(Badge<WebView::WebContentPage>, Gfx::Sh
 void TestWebView::on_test_complete(TestCompletion completion)
 {
     m_pending_screenshot.clear();
-    m_pending_dialog = Web::PendingDialog::None;
+    if (auto reply = move(m_pending_dialog_reply))
+        reply->cancel();
     m_pending_prompt_text.clear();
     m_is_fullscreen = Web::ViewportIsFullscreen::No;
 

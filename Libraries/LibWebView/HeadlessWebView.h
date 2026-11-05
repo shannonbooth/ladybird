@@ -70,7 +70,7 @@ protected:
     Core::AnonymousBuffer m_theme;
     Web::DevicePixelSize m_viewport_size;
 
-    Web::PendingDialog m_pending_dialog { Web::PendingDialog::None };
+    RefPtr<DialogReply> m_pending_dialog_reply;
     Optional<Utf16String> m_pending_prompt_text;
 
     // When restoring from fullscreen, we need to know to what dimension.

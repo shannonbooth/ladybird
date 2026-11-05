@@ -57,9 +57,9 @@ static void test_crash_overlay(bool bidi_reload_only)
 
     auto evaluate = [&](StringView source) {
         Optional<JsonValue> result;
-        view->on_request_alert = [&](Utf16String const& value) {
+        view->on_request_alert = [&](Utf16String const& value, auto reply) {
             result = MUST(JsonValue::from_string(value.to_utf8()));
-            view->alert_closed();
+            reply->complete(true, {});
         };
         view->run_javascript(MUST(String::formatted("alert(JSON.stringify(({}) ?? null))", source)));
         Core::EventLoop::current().spin_until([&] { return result.has_value(); });

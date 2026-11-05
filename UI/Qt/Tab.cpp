@@ -403,40 +403,51 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
         return m_javascript_dialogs_shown_by_document++ > 0 ? JavaScriptDialog::OfferToBlockFurtherDialogs::Yes : JavaScriptDialog::OfferToBlockFurtherDialogs::No;
     };
 
-    view().on_request_alert = [this, javascript_dialog_title, offer_to_block_further_dialogs](auto const& message) {
+    auto hold_javascript_dialog_reply = [this](NonnullRefPtr<WebView::DialogReply> reply) {
+        reply->on_cancel = [dialog = QPointer { m_javascript_dialog }] {
+            if (dialog)
+                dialog->dismiss();
+        };
+        m_javascript_dialog_reply = AK::move(reply);
+    };
+
+    view().on_request_alert = [this, javascript_dialog_title, offer_to_block_further_dialogs, hold_javascript_dialog_reply](auto const& message, auto reply) {
         if (m_suppress_javascript_dialogs_until_navigation || m_javascript_dialogs_blocked_for_document) {
-            view().alert_closed();
+            reply->complete(false, {});
             return;
         }
         hide_hover_label();
+        hold_javascript_dialog_reply(AK::move(reply));
         m_javascript_dialog->set_title_icon(tab_icon());
         m_javascript_dialog->show_alert(javascript_dialog_title(), qstring_from_utf16_string(message), offer_to_block_further_dialogs());
     };
 
-    view().on_request_before_unload = [this](auto const& source, auto on_complete) {
+    view().on_request_before_unload = [this, hold_javascript_dialog_reply](auto const& source, auto reply) {
         hide_hover_label();
-        m_before_unload_completion = AK::move(on_complete);
+        hold_javascript_dialog_reply(AK::move(reply));
         m_window->raise_for_close_prompt();
         m_javascript_dialog->set_title_icon(tab_icon());
         m_javascript_dialog->show_before_unload(qstring_from_ak_string(source));
     };
 
-    view().on_request_confirm = [this, javascript_dialog_title, offer_to_block_further_dialogs](auto const& message) {
+    view().on_request_confirm = [this, javascript_dialog_title, offer_to_block_further_dialogs, hold_javascript_dialog_reply](auto const& message, auto reply) {
         if (m_suppress_javascript_dialogs_until_navigation || m_javascript_dialogs_blocked_for_document) {
-            view().confirm_closed(false);
+            reply->complete(false, {});
             return;
         }
         hide_hover_label();
+        hold_javascript_dialog_reply(AK::move(reply));
         m_javascript_dialog->set_title_icon(tab_icon());
         m_javascript_dialog->show_confirm(javascript_dialog_title(), qstring_from_utf16_string(message), offer_to_block_further_dialogs());
     };
 
-    view().on_request_prompt = [this, javascript_dialog_title, offer_to_block_further_dialogs](auto const& message, auto const& default_) {
+    view().on_request_prompt = [this, javascript_dialog_title, offer_to_block_further_dialogs, hold_javascript_dialog_reply](auto const& message, auto const& default_, auto reply) {
         if (m_suppress_javascript_dialogs_until_navigation || m_javascript_dialogs_blocked_for_document) {
-            view().prompt_closed({});
+            reply->complete(false, {});
             return;
         }
         hide_hover_label();
+        hold_javascript_dialog_reply(AK::move(reply));
         m_javascript_dialog->set_title_icon(tab_icon());
         m_javascript_dialog->show_prompt(javascript_dialog_title(), qstring_from_utf16_string(message), qstring_from_utf16_string(default_), offer_to_block_further_dialogs());
     };
@@ -448,30 +459,12 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
     m_javascript_dialog->on_complete = [this](auto type, bool accepted, auto const& prompt_text) {
         if (m_javascript_dialog->blocks_further_dialogs())
             m_javascript_dialogs_blocked_for_document = true;
-        switch (type) {
-        case JavaScriptDialog::Type::Alert:
-            view().alert_closed();
-            break;
-        case JavaScriptDialog::Type::BeforeUnload: {
-            auto on_complete = AK::move(m_before_unload_completion);
-            VERIFY(on_complete);
-            on_complete(accepted);
-            if (!accepted) {
-                if (!m_preserve_close_retry_state_on_dialog_dismissal)
-                    m_already_requested_close = false;
-                m_suppress_javascript_dialogs_until_navigation = false;
-            }
-            break;
-        }
-        case JavaScriptDialog::Type::Confirm:
-            view().confirm_closed(accepted);
-            break;
-        case JavaScriptDialog::Type::Prompt:
-            if (accepted)
-                view().prompt_closed(utf16_string_from_qstring(prompt_text));
-            else
-                view().prompt_closed({});
-            break;
+        if (auto reply = AK::move(m_javascript_dialog_reply))
+            reply->complete(accepted, utf16_string_from_qstring(prompt_text));
+        if (type == JavaScriptDialog::Type::BeforeUnload && !accepted) {
+            if (!m_preserve_close_retry_state_on_dialog_dismissal)
+                m_already_requested_close = false;
+            m_suppress_javascript_dialogs_until_navigation = false;
         }
     };
 
@@ -484,28 +477,6 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
         m_suppress_javascript_dialogs_until_navigation = false;
         m_javascript_dialog->reset();
 
-        // Close pickers owned by the crashed renderer with their completion signals disconnected; they
-        // must not reply to its replacement.
-        if (m_color_picker_dialog) {
-            auto* dialog = m_color_picker_dialog.data();
-            m_color_picker_dialog = nullptr;
-            QObject::disconnect(dialog, nullptr, this, nullptr);
-            dialog->close();
-            dialog->deleteLater();
-        }
-        if (m_date_picker_dialog) {
-            auto* dialog = m_date_picker_dialog.data();
-            m_date_picker_dialog = nullptr;
-            QObject::disconnect(dialog, nullptr, this, nullptr);
-            dialog->close();
-            dialog->deleteLater();
-        }
-        if (m_file_picker_dialog) {
-            auto* dialog = m_file_picker_dialog.data();
-            m_file_picker_dialog = nullptr;
-            QObject::disconnect(dialog, nullptr, this, nullptr);
-            dialog->close();
-        }
         if (m_external_url_confirmation_dialog)
             m_external_url_confirmation_dialog->close();
         m_permission_prompts.ignore_all();
@@ -588,33 +559,37 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
         m_javascript_dialog->dismiss();
     };
 
-    view().on_request_color_picker = [this](Color current_color) {
-        m_color_picker_dialog = new QColorDialog(QColor(current_color.red(), current_color.green(), current_color.blue()), &view());
+    view().on_request_color_picker = [this](Color current_color, auto reply) {
+        auto* dialog = new QColorDialog(QColor(current_color.red(), current_color.green(), current_color.blue()), &view());
+        m_color_picker_dialog = dialog;
 
-        auto& dialog = *m_color_picker_dialog;
-        dialog.setWindowTitle("Ladybird");
-        dialog.setOption(QColorDialog::ShowAlphaChannel, false);
-        QObject::connect(&dialog, &QColorDialog::currentColorChanged, this, [this](QColor const& color) {
-            view().color_picker_update(Color(color.red(), color.green(), color.blue()), Web::HTML::ColorPickerUpdateState::Update);
+        dialog->setWindowTitle("Ladybird");
+        dialog->setOption(QColorDialog::ShowAlphaChannel, false);
+        QObject::connect(dialog, &QColorDialog::currentColorChanged, this, [reply](QColor const& color) {
+            reply->update(Color(color.red(), color.green(), color.blue()));
         });
 
-        QObject::connect(m_color_picker_dialog, &QDialog::finished, this, [this](auto result) {
-            if (result == QDialog::Accepted) {
-                auto& dialog = *m_color_picker_dialog;
-                view().color_picker_update(Color(dialog.selectedColor().red(), dialog.selectedColor().green(), dialog.selectedColor().blue()), Web::HTML::ColorPickerUpdateState::Closed);
-            } else {
-                view().color_picker_update({}, Web::HTML::ColorPickerUpdateState::Closed);
-            }
+        QObject::connect(dialog, &QDialog::finished, this, [this, reply, dialog](auto result) {
+            if (result == QDialog::Accepted)
+                reply->complete(Color(dialog->selectedColor().red(), dialog->selectedColor().green(), dialog->selectedColor().blue()));
+            else
+                reply->complete({});
 
-            m_color_picker_dialog = nullptr;
+            if (m_color_picker_dialog == dialog)
+                m_color_picker_dialog = nullptr;
+            dialog->deleteLater();
         });
+        reply->on_cancel = [dialog = QPointer { dialog }] {
+            if (dialog)
+                dialog->close();
+        };
 
-        m_color_picker_dialog->open();
+        dialog->open();
     };
 
-    view().on_request_date_picker = [this](Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum) {
+    view().on_request_date_picker = [this](Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, auto reply) {
         if (m_date_picker_dialog) {
-            view().date_picker_closed({});
+            reply->complete({});
             return;
         }
 
@@ -699,7 +674,7 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
         QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
         layout->addWidget(buttons);
 
-        QObject::connect(dialog, &QDialog::finished, this, [this, dialog, calendar, time_edit, type, time_format](int result) {
+        QObject::connect(dialog, &QDialog::finished, this, [this, reply, dialog, calendar, time_edit, type, time_format](int result) {
             Optional<Utf16String> picked_value;
             if (result == QDialog::Accepted) {
                 QString picked;
@@ -724,13 +699,17 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
             }
             m_date_picker_dialog = nullptr;
             dialog->deleteLater();
-            view().date_picker_closed(AK::move(picked_value));
+            reply->complete(AK::move(picked_value));
         });
+        reply->on_cancel = [dialog = QPointer { dialog }] {
+            if (dialog)
+                dialog->close();
+        };
 
         dialog->open();
     };
 
-    view().on_request_file_picker = [this](auto const& accepted_file_types, auto allow_multiple_files) {
+    view().on_request_file_picker = [this](auto const& accepted_file_types, auto allow_multiple_files, auto reply) {
         QStringList accepted_file_filters;
         QMimeDatabase mime_database;
 
@@ -782,7 +761,7 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
         dialog->setAttribute(Qt::WA_DeleteOnClose);
         dialog->setFileMode(allow_multiple ? QFileDialog::ExistingFiles : QFileDialog::ExistingFile);
 
-        QObject::connect(dialog, &QDialog::finished, this, [this, dialog = QPointer<QFileDialog> { dialog }](int result) {
+        QObject::connect(dialog, &QDialog::finished, this, [this, reply, dialog = QPointer<QFileDialog> { dialog }](int result) {
             Vector<Web::HTML::SelectedFile> selected_files;
 
             if (dialog && result == QDialog::Accepted) {
@@ -798,8 +777,12 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
 
             if (m_file_picker_dialog == dialog)
                 m_file_picker_dialog = nullptr;
-            view().file_picker_closed(std::move(selected_files));
+            reply->complete(std::move(selected_files));
         });
+        reply->on_cancel = [dialog = QPointer<QFileDialog> { dialog }] {
+            if (dialog)
+                dialog->close();
+        };
 
         dialog->open();
     };

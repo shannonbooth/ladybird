@@ -262,7 +262,7 @@ private:
     WebView::TabPerformanceStats m_performance_stats;
 
     JavaScriptDialog* m_javascript_dialog { nullptr };
-    Function<void(bool)> m_before_unload_completion;
+    RefPtr<WebView::DialogReply> m_javascript_dialog_reply;
     QPointer<QColorDialog> m_color_picker_dialog;
     QPointer<QDialog> m_date_picker_dialog;
     QPointer<QFileDialog> m_file_picker_dialog;
