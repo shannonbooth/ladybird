@@ -123,7 +123,6 @@ ViewImplementation::~ViewImplementation()
     on_url_change = nullptr;
     on_location_in_use_change = nullptr;
     on_audibility_changed = nullptr;
-    answer_pending_console_input_completions();
     // Stop routing to this view before destroying its traversable and revoking its one-time permissions.
     all_views().remove(m_view_id);
     if (m_top_level_traversable)
@@ -1727,40 +1726,45 @@ void ViewImplementation::remove_indexed_database_change_listener(u64 listener_id
     m_indexed_database_change_listeners.remove(listener_id);
 }
 
+static Error page_closed_before_replying()
+{
+    return Error::from_string_literal("The page closed before replying");
+}
+
+// The page the request goes to answers it, or the callback gets the fallback once that page closes.
+template<typename Callback, typename Fallback>
+static u64 expect_reply(WebContentPage& page, Callback on_complete, Fallback fallback)
+{
+    return page.expect_reply_from_renderer(ReplyFor<Callback>::create(move(on_complete), move(fallback)));
+}
+
+// A reply that settles the promise, which is rejected if the page closes first.
+template<typename T>
+static u64 expect_reply_settling(WebContentPage& page, NonnullRefPtr<Core::Promise<T>> promise)
+{
+    return page.expect_reply_from_renderer(PendingReply<ErrorOr<T>>::create([promise](ErrorOr<T> result) {
+        if (result.is_error())
+            promise->reject(result.release_error());
+        else
+            promise->resolve(result.release_value());
+    },
+        Error::from_string_literal("The page closed before completing a selection request")));
+}
+
 NonnullRefPtr<Core::Promise<ByteString>> ViewImplementation::selected_text()
 {
     auto promise = Core::Promise<ByteString>::construct();
-    auto request_id = m_next_selection_request_id++;
-    m_pending_selected_text_requests.set(request_id, promise);
     auto& host = focused_navigable_host();
-    host.async_get_selected_text(request_id);
+    host.async_get_selected_text(expect_reply_settling(host, promise));
     return promise;
-}
-
-void ViewImplementation::did_receive_selected_text(Badge<WebContentPage>, u64 request_id, ByteString selection)
-{
-    auto promise = m_pending_selected_text_requests.take(request_id);
-    if (!promise.has_value())
-        return;
-    promise.value()->resolve(move(selection));
 }
 
 NonnullRefPtr<Core::Promise<ByteString>> ViewImplementation::cut_selected_text()
 {
     auto promise = Core::Promise<ByteString>::construct();
-    auto request_id = m_next_selection_request_id++;
-    m_pending_cut_selected_text_requests.set(request_id, promise);
     auto& host = focused_navigable_host();
-    host.async_cut_selected_text(request_id);
+    host.async_cut_selected_text(expect_reply_settling(host, promise));
     return promise;
-}
-
-void ViewImplementation::did_cut_selected_text(Badge<WebContentPage>, u64 request_id, ByteString selection)
-{
-    auto promise = m_pending_cut_selected_text_requests.take(request_id);
-    if (!promise.has_value())
-        return;
-    promise.value()->resolve(move(selection));
 }
 
 NonnullRefPtr<Core::Promise<Optional<String>>> ViewImplementation::selected_text_with_whitespace_collapsed()
@@ -1776,10 +1780,8 @@ NonnullRefPtr<Core::Promise<Optional<String>>> ViewImplementation::selected_text
 NonnullRefPtr<Core::Promise<Optional<DictionaryLookup>>> ViewImplementation::selected_text_for_dictionary_lookup()
 {
     auto promise = Core::Promise<Optional<DictionaryLookup>>::construct();
-    auto request_id = m_next_selection_request_id++;
-    m_pending_selected_text_for_lookup_requests.set(request_id, promise);
     auto& host = focused_navigable_host();
-    host.async_get_selected_text_for_lookup(request_id);
+    host.async_get_selected_text_for_lookup(expect_reply_settling(host, promise));
 
     return promise->map<Optional<DictionaryLookup>>([](auto& lookup) -> Optional<DictionaryLookup> {
         if (!lookup.has_value())
@@ -1795,33 +1797,15 @@ NonnullRefPtr<Core::Promise<Optional<DictionaryLookup>>> ViewImplementation::sel
     });
 }
 
-void ViewImplementation::did_receive_selected_text_for_lookup(Badge<WebContentPage>, u64 request_id, Optional<DictionaryLookup> lookup)
-{
-    auto promise = m_pending_selected_text_for_lookup_requests.take(request_id);
-    if (!promise.has_value())
-        return;
-    promise.value()->resolve(move(lookup));
-}
-
 NonnullRefPtr<Core::Promise<bool>> ViewImplementation::select_word_for_dictionary_lookup(Gfx::IntPoint widget_position)
 {
     auto promise = Core::Promise<bool>::construct();
-    auto request_id = m_next_selection_request_id++;
-    m_pending_select_word_for_dictionary_lookup_requests.set(request_id, promise);
 
     // The word is selected in the page the lookup then asks for the selection, in the viewport of its local root.
     auto& host = focused_navigable_host();
     auto position = to_content_position(widget_position).to_type<Web::DevicePixels>() - traversable().focused_navigable_host_offset();
-    host.async_select_word_for_dictionary_lookup(request_id, position);
+    host.async_select_word_for_dictionary_lookup(expect_reply_settling(host, promise), position);
     return promise;
-}
-
-void ViewImplementation::did_select_word_for_dictionary_lookup(Badge<WebContentPage>, u64 request_id, bool selected)
-{
-    auto promise = m_pending_select_word_for_dictionary_lookup_requests.take(request_id);
-    if (!promise.has_value())
-        return;
-    promise.value()->resolve(selected);
 }
 
 bool ViewImplementation::look_up_selected_text_at(Gfx::IntPoint widget_position)
@@ -1905,7 +1889,16 @@ void ViewImplementation::get_source()
 {
     if (!can_view_source())
         return;
-    page().async_get_source();
+    auto reply = PendingReply<Optional<String>>::create([](Optional<String> html) {
+        if (!html.has_value())
+            return;
+        if (auto new_tab = Application::the().open_blank_new_tab(Web::HTML::ActivateTab::Yes); new_tab.has_value()) {
+            new_tab->did_start_showing_page_source();
+            new_tab->load_html(*html);
+        }
+    },
+        {});
+    page().async_get_source(page().expect_reply_from_renderer(move(reply)));
 }
 
 bool ViewImplementation::can_view_source() const
@@ -1947,19 +1940,20 @@ void ViewImplementation::update_view_source_action()
     Application::the().update_view_source_action();
 }
 
-void ViewImplementation::inspect_dom_tree()
+void ViewImplementation::inspect_dom_tree(DevTools::DevToolsDelegate::OnTabInspectionComplete on_complete)
 {
-    page().async_inspect_dom_tree();
+    page().async_inspect_dom_tree(expect_reply(page(), move(on_complete), page_closed_before_replying()));
 }
 
-void ViewImplementation::inspect_storage(Web::StorageAPI::StorageEndpointType storage_endpoint, u64 request_id)
+void ViewImplementation::inspect_storage(Web::StorageAPI::StorageEndpointType storage_endpoint, DevTools::DevToolsDelegate::OnStorageItemsReceived on_complete)
 {
+    auto request_id = page().expect_reply_from_renderer(ReplyFor<DevTools::DevToolsDelegate::OnStorageItemsReceived>::create(move(on_complete), page_closed_before_replying()));
     page().async_inspect_storage(storage_endpoint, request_id);
 }
 
-void ViewImplementation::inspect_accessibility_tree()
+void ViewImplementation::inspect_accessibility_tree(DevTools::DevToolsDelegate::OnAccessibilityTreeInspectionComplete on_complete)
 {
-    page().async_inspect_accessibility_tree();
+    page().async_inspect_accessibility_tree(expect_reply(page(), move(on_complete), page_closed_before_replying()));
 }
 
 void ViewImplementation::request_accessibility_tree()
@@ -1988,7 +1982,7 @@ void ViewImplementation::start_node_picker(DevTools::DevToolsDelegate::OnNodePic
 {
     m_node_picker_active = true;
     m_node_picker_hovered_node_id.clear();
-    m_pending_node_picker_requests.clear();
+    cancel_node_picker_hit_tests();
     m_on_node_picker_event = move(on_node_picker_event);
 }
 
@@ -1999,7 +1993,7 @@ void ViewImplementation::stop_node_picker()
 
     clear_node_picker();
     m_node_picker_active = false;
-    m_pending_node_picker_requests.clear();
+    cancel_node_picker_hit_tests();
     m_on_node_picker_event = nullptr;
 }
 
@@ -2042,34 +2036,29 @@ void ViewImplementation::request_node_picker_hit_test(NodePickerRequestType type
     if (!m_node_picker_active)
         return;
 
-    auto request_id = m_next_node_hit_test_request_id++;
-    m_pending_node_picker_requests.set(request_id, type);
-    page().async_get_node_id_at_position(request_id, position);
+    // A cancelled hit test answers nothing.
+    auto reply = NodeHitTestReply::create([weak_this = make_weak_ptr(), type](Optional<Web::UniqueNodeID> node_id) {
+        if (auto* view = weak_this.ptr(); view && node_id.has_value())
+            view->did_receive_node_picker_hit_test(type, *node_id);
+    },
+        {});
+    m_node_picker_hit_tests.remove_all_matching([](auto const& reply) { return !reply->is_pending(); });
+    m_node_picker_hit_tests.append(reply);
+    page().async_get_node_id_at_position(page().expect_reply_from_renderer(move(reply)), position);
 }
 
-void ViewImplementation::did_receive_node_hit_test(u64 request_id, Web::UniqueNodeID node_id)
+void ViewImplementation::cancel_node_picker_hit_tests()
 {
-    if (request_id == m_inspect_element_hit_test_request_id) {
-        m_inspect_element_hit_test_request_id.clear();
-        if (node_id != 0)
-            m_inspect_element_node_id = node_id;
-
-        // The user chose Inspect Element before the hit test came back.
-        if (exchange(m_inspect_element_activated_before_hit_test, false) && m_inspect_element_node_id.has_value() && on_inspect_element_request)
-            on_inspect_element_request(*m_inspect_element_node_id);
-        return;
-    }
-
-    did_receive_node_picker_hit_test(request_id, node_id);
+    for (auto& reply : exchange(m_node_picker_hit_tests, {}))
+        reply->cancel();
 }
 
-void ViewImplementation::did_receive_node_picker_hit_test(u64 request_id, Web::UniqueNodeID node_id)
+void ViewImplementation::did_receive_node_picker_hit_test(NodePickerRequestType request_type, Web::UniqueNodeID node_id)
 {
-    auto request_type = m_pending_node_picker_requests.take(request_id);
-    if (!request_type.has_value() || !m_node_picker_active)
+    if (!m_node_picker_active)
         return;
 
-    if (*request_type == NodePickerRequestType::Hovered) {
+    if (request_type == NodePickerRequestType::Hovered) {
         if (node_id == m_node_picker_hovered_node_id.value_or(0))
             return;
 
@@ -2086,7 +2075,7 @@ void ViewImplementation::did_receive_node_picker_hit_test(u64 request_id, Web::U
         return;
 
     DevTools::DevToolsDelegate::NodePickerEvent::Type event_type;
-    switch (*request_type) {
+    switch (request_type) {
     case NodePickerRequestType::Hovered:
         event_type = DevTools::DevToolsDelegate::NodePickerEvent::Type::Hovered;
         break;
@@ -2109,32 +2098,30 @@ void ViewImplementation::inspect_dom_node(Web::UniqueNodeID node_id, DOMNodeProp
     page().async_inspect_dom_node(property_type, node_id, pseudo_element, move(options));
 }
 
-void ViewImplementation::inspect_grid_layouts(Web::UniqueNodeID root_node_id)
+void ViewImplementation::inspect_grid_layouts(Web::UniqueNodeID root_node_id, DevTools::DevToolsDelegate::OnGridLayoutsReceived on_complete)
 {
-    page().async_inspect_grid_layouts(root_node_id);
+    page().async_inspect_grid_layouts(expect_reply(page(), move(on_complete), JsonArray {}), root_node_id);
 }
 
-void ViewImplementation::inspect_current_grid(Web::UniqueNodeID node_id)
+void ViewImplementation::inspect_current_grid(Web::UniqueNodeID node_id, DevTools::DevToolsDelegate::OnCurrentGridReceived on_complete)
 {
-    page().async_inspect_current_grid(node_id);
+    page().async_inspect_current_grid(expect_reply(page(), move(on_complete), Optional<JsonObject> {}), node_id);
 }
 
-void ViewImplementation::inspect_current_flexbox(Web::UniqueNodeID node_id, bool only_look_at_parents)
+void ViewImplementation::inspect_current_flexbox(Web::UniqueNodeID node_id, bool only_look_at_parents, DevTools::DevToolsDelegate::OnCurrentFlexboxReceived on_complete)
 {
-    page().async_inspect_current_flexbox(node_id, only_look_at_parents);
+    page().async_inspect_current_flexbox(expect_reply(page(), move(on_complete), Optional<JsonObject> {}), node_id, only_look_at_parents);
 }
 
 void ViewImplementation::inspect_indexed_database_storage(DevTools::DevToolsDelegate::OnIndexedDBInspectionComplete on_complete)
 {
-    auto request_id = m_next_indexed_database_inspection_request_id++;
-    m_pending_indexed_database_inspection_requests.set(request_id, move(on_complete));
+    auto request_id = page().expect_reply_from_renderer(ReplyFor<DevTools::DevToolsDelegate::OnIndexedDBInspectionComplete>::create(move(on_complete), page_closed_before_replying()));
     page().async_inspect_indexed_database_storage(request_id);
 }
 
 void ViewImplementation::inspect_indexed_database_objects(String const& host, Optional<JsonArray> names, JsonObject options, DevTools::DevToolsDelegate::OnIndexedDBInspectionComplete on_complete)
 {
-    auto request_id = m_next_indexed_database_inspection_request_id++;
-    m_pending_indexed_database_inspection_requests.set(request_id, move(on_complete));
+    auto request_id = page().expect_reply_from_renderer(ReplyFor<DevTools::DevToolsDelegate::OnIndexedDBInspectionComplete>::create(move(on_complete), page_closed_before_replying()));
     if (names.has_value())
         page().async_inspect_indexed_database_objects(request_id, host, JsonValue { names.release_value() }, JsonValue { move(options) });
     else
@@ -2143,49 +2130,31 @@ void ViewImplementation::inspect_indexed_database_objects(String const& host, Op
 
 void ViewImplementation::delete_indexed_database(String const& host, String const& name, DevTools::DevToolsDelegate::OnIndexedDBInspectionComplete on_complete)
 {
-    auto request_id = m_next_indexed_database_inspection_request_id++;
-    m_pending_indexed_database_inspection_requests.set(request_id, move(on_complete));
+    auto request_id = page().expect_reply_from_renderer(ReplyFor<DevTools::DevToolsDelegate::OnIndexedDBInspectionComplete>::create(move(on_complete), page_closed_before_replying()));
     page().async_delete_indexed_database(request_id, host, name);
 }
 
 void ViewImplementation::clear_indexed_database_object_store(String const& host, String const& name, DevTools::DevToolsDelegate::OnIndexedDBInspectionComplete on_complete)
 {
-    auto request_id = m_next_indexed_database_inspection_request_id++;
-    m_pending_indexed_database_inspection_requests.set(request_id, move(on_complete));
+    auto request_id = page().expect_reply_from_renderer(ReplyFor<DevTools::DevToolsDelegate::OnIndexedDBInspectionComplete>::create(move(on_complete), page_closed_before_replying()));
     page().async_clear_indexed_database_object_store(request_id, host, name);
 }
 
 void ViewImplementation::delete_indexed_database_record(String const& host, String const& name, DevTools::DevToolsDelegate::OnIndexedDBInspectionComplete on_complete)
 {
-    auto request_id = m_next_indexed_database_inspection_request_id++;
-    m_pending_indexed_database_inspection_requests.set(request_id, move(on_complete));
+    auto request_id = page().expect_reply_from_renderer(ReplyFor<DevTools::DevToolsDelegate::OnIndexedDBInspectionComplete>::create(move(on_complete), page_closed_before_replying()));
     page().async_delete_indexed_database_record(request_id, host, name);
-}
-
-void ViewImplementation::did_receive_indexed_database_inspection(u64 request_id, JsonObject result)
-{
-    auto callback = m_pending_indexed_database_inspection_requests.take(request_id);
-    if (!callback.has_value())
-        return;
-
-    if (result.has_string("error"sv)) {
-        (*callback)(Error::from_string_literal("IndexedDB operation failed"));
-        return;
-    }
-
-    (*callback)(move(result));
 }
 
 void ViewImplementation::retrieve_devtools_sources(DevTools::DevToolsDelegate::OnSourcesReceived on_complete)
 {
-    auto request_id = m_next_devtools_sources_request_id++;
-    on_received_devtools_sources.set(request_id, move(on_complete));
+    auto request_id = page().expect_reply_from_renderer(ReplyFor<DevTools::DevToolsDelegate::OnSourcesReceived>::create(move(on_complete), page_closed_before_replying()));
     page().async_list_devtools_sources(request_id);
 }
 
-void ViewImplementation::request_devtools_source(Web::HTML::ScriptRegistryIdentifier const& source_id)
+void ViewImplementation::request_devtools_source(Web::HTML::ScriptRegistryIdentifier const& source_id, DevTools::DevToolsDelegate::OnSourceReceived on_complete)
 {
-    page().async_request_devtools_source(source_id);
+    page().async_request_devtools_source(expect_reply(page(), move(on_complete), page_closed_before_replying()), source_id);
 }
 
 void ViewImplementation::attach_debugger(DevTools::DevToolsDelegate::OnDebuggerPaused on_paused, DevTools::DevToolsDelegate::OnDebuggerResumed on_resumed)
@@ -2220,27 +2189,17 @@ void ViewImplementation::resume_debugger(DebuggerResumeMode mode)
     page().async_resume_debugger(mode);
 }
 
-template<typename Callback, typename ErrorFactory>
-static void fail_pending_debugger_request_map(HashMap<u64, Callback>& requests, HashTable<u64>* cancelled_requests, ErrorFactory make_error)
-{
-    auto requests_to_fail = move(requests);
-    requests = {};
-
-    for (auto& request : requests_to_fail) {
-        if (cancelled_requests)
-            cancelled_requests->set(request.key);
-        request.value(make_error());
-    }
-}
-
 void ViewImplementation::fail_pending_debugger_requests()
 {
-    auto make_error = [] { return Error::from_string_literal("WebContent process was replaced"); };
-    fail_pending_debugger_request_map(m_pending_debugger_breakpoint_requests, nullptr, make_error);
-    fail_pending_debugger_request_map(m_pending_debugger_environments_requests, &m_cancelled_debugger_environments_requests, make_error);
-    fail_pending_debugger_request_map(m_pending_debugger_evaluation_requests, &m_cancelled_debugger_evaluation_requests, [] { return "WebContent process was replaced"_string; });
-    fail_pending_debugger_request_map(m_pending_debugger_object_properties_requests, &m_cancelled_debugger_object_properties_requests, [] { return "WebContent process was replaced"_string; });
-    fail_pending_debugger_request_map(m_pending_debugger_source_positions_requests, &m_cancelled_debugger_source_positions_requests, make_error);
+    for (auto& reply : exchange(m_debugger_replies, {}))
+        reply->cancel();
+}
+
+u64 ViewImplementation::expect_debugger_reply(NonnullRefPtr<PendingReplyBase> reply)
+{
+    m_debugger_replies.remove_all_matching([](auto const& reply) { return !reply->is_pending(); });
+    m_debugger_replies.append(reply);
+    return page().expect_reply_from_renderer(move(reply));
 }
 
 void ViewImplementation::did_pause_debugger(Badge<WebContentPage>)
@@ -2485,80 +2444,51 @@ void ViewImplementation::update_debugger_blackboxing(Utf16String url, Vector<Deb
 
 void ViewImplementation::set_debugger_breakpoint(DebuggerBreakpointLocation location, DebuggerBreakpointOptions options, DevTools::DevToolsDelegate::OnDebuggerBreakpointOperationComplete on_complete)
 {
-    auto request_id = m_next_debugger_breakpoint_request_id++;
-    m_pending_debugger_breakpoint_requests.set(request_id, move(on_complete));
+    auto request_id = expect_debugger_reply(ReplyFor<DevTools::DevToolsDelegate::OnDebuggerBreakpointOperationComplete>::create(move(on_complete), page_closed_before_replying()));
     page().async_set_debugger_breakpoint(request_id, move(location), move(options));
 }
 
 void ViewImplementation::remove_debugger_breakpoint(DebuggerBreakpointLocation location, DevTools::DevToolsDelegate::OnDebuggerBreakpointOperationComplete on_complete)
 {
-    auto request_id = m_next_debugger_breakpoint_request_id++;
-    m_pending_debugger_breakpoint_requests.set(request_id, move(on_complete));
+    auto request_id = expect_debugger_reply(ReplyFor<DevTools::DevToolsDelegate::OnDebuggerBreakpointOperationComplete>::create(move(on_complete), page_closed_before_replying()));
     page().async_remove_debugger_breakpoint(request_id, move(location));
-}
-
-void ViewImplementation::did_complete_debugger_breakpoint_operation(u64 request_id, Optional<String> error)
-{
-    auto callback = m_pending_debugger_breakpoint_requests.take(request_id);
-    if (!callback.has_value())
-        return;
-
-    if (error.has_value()) {
-        (*callback)(Error::from_string_literal("Debugger breakpoint operation failed"));
-        return;
-    }
-
-    (*callback)({});
 }
 
 void ViewImplementation::retrieve_debugger_environments(u64 frame_id, DevTools::DevToolsDelegate::OnDebuggerEnvironmentsReceived on_complete)
 {
-    auto request_id = m_next_debugger_environments_request_id++;
-    m_pending_debugger_environments_requests.set(request_id, move(on_complete));
+    auto request_id = expect_debugger_reply(ReplyFor<DevTools::DevToolsDelegate::OnDebuggerEnvironmentsReceived>::create(move(on_complete), page_closed_before_replying()));
     page().async_get_debugger_environments(request_id, frame_id);
 }
 
 void ViewImplementation::evaluate_javascript_in_debugger_frame(u64 frame_id, String const& source_text, DevTools::DevToolsDelegate::OnDebuggerEvaluationComplete on_complete)
 {
-    auto request_id = m_next_debugger_evaluation_request_id++;
-    m_pending_debugger_evaluation_requests.set(request_id, move(on_complete));
+    auto request_id = expect_debugger_reply(ReplyFor<DevTools::DevToolsDelegate::OnDebuggerEvaluationComplete>::create(move(on_complete), "The page closed before replying"_string));
     page().async_evaluate_javascript_in_debugger_frame(request_id, frame_id, Utf16String::from_utf8(source_text));
 }
 
 void ViewImplementation::retrieve_debugger_object_properties(u64 object_id, DebuggerObjectScope scope, DevTools::DevToolsDelegate::OnDebuggerObjectPropertiesReceived on_complete)
 {
-    auto request_id = m_next_debugger_object_properties_request_id++;
-    m_pending_debugger_object_properties_requests.set(request_id, move(on_complete));
+    auto request_id = expect_debugger_reply(ReplyFor<DevTools::DevToolsDelegate::OnDebuggerObjectPropertiesReceived>::create(move(on_complete), "The page closed before replying"_string));
     page().async_get_debugger_object_properties(request_id, object_id, scope);
 }
 
 void ViewImplementation::retrieve_debugger_source_positions(Web::HTML::ScriptRegistryIdentifier source_id, DevTools::DevToolsDelegate::OnDebuggerSourcePositionsReceived on_complete)
 {
-    auto request_id = m_next_debugger_source_positions_request_id++;
-    m_pending_debugger_source_positions_requests.set(request_id, move(on_complete));
+    auto request_id = expect_debugger_reply(ReplyFor<DevTools::DevToolsDelegate::OnDebuggerSourcePositionsReceived>::create(move(on_complete), page_closed_before_replying()));
     page().async_get_debugger_source_positions(request_id, source_id);
-}
-
-// A DevTools client waits for the answer to each console input completion request before the next, so a request that
-// its page can no longer answer gets no completions instead.
-void ViewImplementation::answer_pending_console_input_completions()
-{
-    auto pending_console_input_completions = move(on_completed_js_console_input);
-    for (auto& pending : pending_console_input_completions)
-        pending.value(DevTools::DevToolsDelegate::ConsoleInputCompletion {});
 }
 
 void ViewImplementation::complete_js_console_input(String const& input, DevTools::DevToolsDelegate::OnConsoleInputCompleted on_complete)
 {
-    auto request_id = m_next_js_console_completion_request_id++;
-    on_completed_js_console_input.set(request_id, move(on_complete));
+    // A DevTools client waits for the answer to each console input completion request before the next, so a request
+    // that its page can no longer answer gets no completions instead.
+    auto request_id = page().expect_reply_from_renderer(ReplyFor<DevTools::DevToolsDelegate::OnConsoleInputCompleted>::create(move(on_complete), DevTools::DevToolsDelegate::ConsoleInputCompletion {}));
     page().async_complete_js_console_input(request_id, input);
 }
 
 void ViewImplementation::resolve_dom_node_url(Optional<Web::UniqueNodeID> node_id, String const& url, DevTools::DevToolsDelegate::OnResolvedURLReceived on_complete)
 {
-    auto request_id = m_next_resolve_dom_node_url_request_id++;
-    on_resolved_dom_node_url.set(request_id, move(on_complete));
+    auto request_id = page().expect_reply_from_renderer(ReplyFor<DevTools::DevToolsDelegate::OnResolvedURLReceived>::create(move(on_complete), page_closed_before_replying()));
     page().async_resolve_dom_node_url(request_id, node_id, url);
 }
 
@@ -2623,69 +2553,69 @@ void ViewImplementation::did_disconnect_devtools_client()
     page().async_set_has_devtools_client(false);
 }
 
-void ViewImplementation::get_dom_node_inner_html(Web::UniqueNodeID node_id)
+void ViewImplementation::get_dom_node_inner_html(Web::UniqueNodeID node_id, DevTools::DevToolsDelegate::OnDOMNodeHTMLReceived on_complete)
 {
-    page().async_get_dom_node_inner_html(node_id);
+    page().async_get_dom_node_inner_html(expect_reply(page(), move(on_complete), page_closed_before_replying()), node_id);
 }
 
-void ViewImplementation::get_dom_node_outer_html(Web::UniqueNodeID node_id)
+void ViewImplementation::get_dom_node_outer_html(Web::UniqueNodeID node_id, DevTools::DevToolsDelegate::OnDOMNodeHTMLReceived on_complete)
 {
-    page().async_get_dom_node_outer_html(node_id);
+    page().async_get_dom_node_outer_html(expect_reply(page(), move(on_complete), page_closed_before_replying()), node_id);
 }
 
-void ViewImplementation::set_dom_node_outer_html(Web::UniqueNodeID node_id, String const& html)
+void ViewImplementation::set_dom_node_outer_html(Web::UniqueNodeID node_id, String const& html, DevTools::DevToolsDelegate::OnDOMNodeEditComplete on_complete)
 {
-    page().async_set_dom_node_outer_html(node_id, html);
+    page().async_set_dom_node_outer_html(expect_reply(page(), move(on_complete), page_closed_before_replying()), node_id, html);
 }
 
-void ViewImplementation::set_dom_node_text(Web::UniqueNodeID node_id, String const& text)
+void ViewImplementation::set_dom_node_text(Web::UniqueNodeID node_id, String const& text, DevTools::DevToolsDelegate::OnDOMNodeEditComplete on_complete)
 {
-    page().async_set_dom_node_text(node_id, text);
+    page().async_set_dom_node_text(expect_reply(page(), move(on_complete), page_closed_before_replying()), node_id, text);
 }
 
-void ViewImplementation::set_dom_node_tag(Web::UniqueNodeID node_id, Utf16FlyString const& name)
+void ViewImplementation::set_dom_node_tag(Web::UniqueNodeID node_id, Utf16FlyString const& name, DevTools::DevToolsDelegate::OnDOMNodeEditComplete on_complete)
 {
-    page().async_set_dom_node_tag(node_id, name);
+    page().async_set_dom_node_tag(expect_reply(page(), move(on_complete), page_closed_before_replying()), node_id, name);
 }
 
-void ViewImplementation::add_dom_node_attributes(Web::UniqueNodeID node_id, ReadonlySpan<Attribute> attributes)
+void ViewImplementation::add_dom_node_attributes(Web::UniqueNodeID node_id, ReadonlySpan<Attribute> attributes, DevTools::DevToolsDelegate::OnDOMNodeEditComplete on_complete)
 {
-    page().async_add_dom_node_attributes(node_id, attributes);
+    page().async_add_dom_node_attributes(expect_reply(page(), move(on_complete), page_closed_before_replying()), node_id, attributes);
 }
 
-void ViewImplementation::replace_dom_node_attribute(Web::UniqueNodeID node_id, Utf16FlyString const& name, ReadonlySpan<Attribute> replacement_attributes)
+void ViewImplementation::replace_dom_node_attribute(Web::UniqueNodeID node_id, Utf16FlyString const& name, ReadonlySpan<Attribute> replacement_attributes, DevTools::DevToolsDelegate::OnDOMNodeEditComplete on_complete)
 {
-    page().async_replace_dom_node_attribute(node_id, name, replacement_attributes);
+    page().async_replace_dom_node_attribute(expect_reply(page(), move(on_complete), page_closed_before_replying()), node_id, name, replacement_attributes);
 }
 
-void ViewImplementation::create_child_element(Web::UniqueNodeID node_id)
+void ViewImplementation::create_child_element(Web::UniqueNodeID node_id, DevTools::DevToolsDelegate::OnDOMNodeEditComplete on_complete)
 {
-    page().async_create_child_element(node_id);
+    page().async_create_child_element(expect_reply(page(), move(on_complete), page_closed_before_replying()), node_id);
 }
 
-void ViewImplementation::create_child_text_node(Web::UniqueNodeID node_id)
+void ViewImplementation::create_child_text_node(Web::UniqueNodeID node_id, DevTools::DevToolsDelegate::OnDOMNodeEditComplete on_complete)
 {
-    page().async_create_child_text_node(node_id);
+    page().async_create_child_text_node(expect_reply(page(), move(on_complete), page_closed_before_replying()), node_id);
 }
 
-void ViewImplementation::insert_dom_node_before(Web::UniqueNodeID node_id, Web::UniqueNodeID parent_node_id, Optional<Web::UniqueNodeID> sibling_node_id)
+void ViewImplementation::insert_dom_node_before(Web::UniqueNodeID node_id, Web::UniqueNodeID parent_node_id, Optional<Web::UniqueNodeID> sibling_node_id, DevTools::DevToolsDelegate::OnDOMNodeEditComplete on_complete)
 {
-    page().async_insert_dom_node_before(node_id, parent_node_id, sibling_node_id);
+    page().async_insert_dom_node_before(expect_reply(page(), move(on_complete), page_closed_before_replying()), node_id, parent_node_id, sibling_node_id);
 }
 
-void ViewImplementation::clone_dom_node(Web::UniqueNodeID node_id)
+void ViewImplementation::clone_dom_node(Web::UniqueNodeID node_id, DevTools::DevToolsDelegate::OnDOMNodeEditComplete on_complete)
 {
-    page().async_clone_dom_node(node_id);
+    page().async_clone_dom_node(expect_reply(page(), move(on_complete), page_closed_before_replying()), node_id);
 }
 
-void ViewImplementation::remove_dom_node(Web::UniqueNodeID node_id)
+void ViewImplementation::remove_dom_node(Web::UniqueNodeID node_id, DevTools::DevToolsDelegate::OnDOMNodeEditComplete on_complete)
 {
-    page().async_remove_dom_node(node_id);
+    page().async_remove_dom_node(expect_reply(page(), move(on_complete), page_closed_before_replying()), node_id);
 }
 
-void ViewImplementation::list_style_sheets()
+void ViewImplementation::list_style_sheets(DevTools::DevToolsDelegate::OnStyleSheetsReceived on_complete)
 {
-    page().async_list_style_sheets();
+    page().async_list_style_sheets(expect_reply(page(), move(on_complete), page_closed_before_replying()));
 }
 
 void ViewImplementation::request_style_sheet_source(Web::CSS::StyleSheetIdentifier const& identifier)
@@ -2752,9 +2682,9 @@ void ViewImplementation::run_javascript(String const& js_source)
     page().async_run_javascript(js_source);
 }
 
-void ViewImplementation::js_console_input(String const& js_source)
+void ViewImplementation::js_console_input(String const& js_source, DevTools::DevToolsDelegate::OnScriptEvaluationComplete on_complete)
 {
-    page().async_js_console_input(js_source);
+    page().async_js_console_input(expect_reply(page(), move(on_complete), page_closed_before_replying()), js_source);
 }
 
 void ViewImplementation::exit_fullscreen()
@@ -3523,25 +3453,9 @@ void ViewImplementation::did_change_display_page(Badge<CanonicalNavigable>, RefP
 // The tab is displayed by the page hosting its document from now on.
 void ViewImplementation::display_page_changed(RefPtr<WebContentPage> previous_page)
 {
-    auto new_page_id = page().id();
-    Vector<u64> stale_close_preflight_requests;
-    for (auto const& [request_id, request] : m_pending_close_preflight_requests) {
-        if (request.page_id != new_page_id)
-            stale_close_preflight_requests.append(request_id);
-    }
-    for (auto request_id : stale_close_preflight_requests) {
-        if (auto request = m_pending_close_preflight_requests.take(request_id); request.has_value())
-            request->on_complete(false);
-    }
-
-    // Screenshot and page info requests went to the outgoing page, so only it could answer them.
-    if (auto pending_screenshot = move(m_pending_screenshot))
-        pending_screenshot->reject(Error::from_string_literal("The displayed page changed before taking the screenshot"));
-    if (auto pending_info_request = move(m_pending_info_request))
-        pending_info_request->reject(Error::from_string_literal("The displayed page changed before sending its info"));
-
-    // So did console input completion requests.
-    answer_pending_console_input_completions();
+    // Requests went to the outgoing page, so only it could answer them.
+    if (previous_page)
+        previous_page->cancel_replies_from_renderer();
 
     auto& page = this->page();
     if (previous_page) {
@@ -3640,15 +3554,6 @@ void ViewImplementation::did_lose_page(Badge<CanonicalTraversable>, WebContentPa
         m_pending_webdriver_commands.remove(command_id);
         m_webdriver_commands_waiting_for_a_document.remove(command_id);
         complete_webdriver_input_command(command_id, Web::WebDriver::Error::from_code(Web::WebDriver::ErrorCode::UnknownError, "Input host was lost while executing the command"sv));
-    }
-    Vector<u64> lost_close_preflight_requests;
-    for (auto const& [request_id, request] : m_pending_close_preflight_requests) {
-        if (request.page_id == page.id())
-            lost_close_preflight_requests.append(request_id);
-    }
-    for (auto request_id : lost_close_preflight_requests) {
-        if (auto request = m_pending_close_preflight_requests.take(request_id); request.has_value())
-            request->on_complete(false);
     }
 
     // NB: The view fails the commands of its own page when it recovers from its process's crash.
@@ -4744,14 +4649,26 @@ static void report_saved_screenshot(Core::Promise<LexicalPath>& screenshot)
         });
 }
 
+static u64 expect_screenshot(WebContentPage& page, NonnullRefPtr<Core::Promise<LexicalPath>> promise)
+{
+    return page.expect_reply_from_renderer(ScreenshotReply::create([promise](ErrorOr<Gfx::ShareableBitmap> screenshot) {
+        if (screenshot.is_error()) {
+            promise->reject(screenshot.release_error());
+            return;
+        }
+        write_screenshot(screenshot.value().bitmap())
+            ->when_resolved([promise](auto const& path) {
+                promise->resolve(path);
+            })
+            .when_rejected([promise](auto& error) {
+                promise->reject(move(error));
+            });
+    },
+        Error::from_string_literal("The page closed before taking the screenshot")));
+}
+
 NonnullRefPtr<Core::Promise<LexicalPath>> ViewImplementation::take_screenshot(ScreenshotType type)
 {
-    if (m_pending_screenshot) {
-        // For simplicity, only allow taking one screenshot at a time for now. Revisit if we need
-        // to allow spamming screenshot requests for some reason.
-        return Core::Promise<LexicalPath>::rejected(Error::from_string_literal("A screenshot request is already in progress"));
-    }
-
     switch (type) {
     case ScreenshotType::Visible: {
         RefPtr<Gfx::Bitmap> visible_bitmap;
@@ -4773,8 +4690,7 @@ NonnullRefPtr<Core::Promise<LexicalPath>> ViewImplementation::take_screenshot(Sc
     }
 
     auto promise = Core::Promise<LexicalPath>::construct();
-    m_pending_screenshot = promise;
-    page().async_take_document_screenshot();
+    page().async_take_document_screenshot(expect_screenshot(page(), promise));
     return promise;
 }
 
@@ -4792,71 +4708,26 @@ void ViewImplementation::save_screenshot(Gfx::Bitmap const& bitmap)
 NonnullRefPtr<Core::Promise<LexicalPath>> ViewImplementation::take_dom_node_screenshot(Web::UniqueNodeID node_id)
 {
     auto promise = Core::Promise<LexicalPath>::construct();
-
-    if (m_pending_screenshot) {
-        // For simplicity, only allow taking one screenshot at a time for now. Revisit if we need
-        // to allow spamming screenshot requests for some reason.
-        promise->reject(Error::from_string_literal("A screenshot request is already in progress"));
-        return promise;
-    }
-
-    m_pending_screenshot = promise;
-    page().async_take_dom_node_screenshot(node_id);
-
+    page().async_take_dom_node_screenshot(expect_screenshot(page(), promise), node_id);
     return promise;
-}
-
-void ViewImplementation::did_receive_screenshot(Badge<WebContentPage>, Gfx::ShareableBitmap const& screenshot)
-{
-    // A renderer answers a screenshot request; any other screenshot it sends is misbehavior.
-    if (!m_pending_screenshot) {
-        page().client().did_misbehave("did_take_screenshot"sv, "no screenshot was requested"sv);
-        return;
-    }
-
-    write_screenshot(screenshot.bitmap())
-        ->when_resolved([pending_screenshot = m_pending_screenshot](auto const& path) {
-            pending_screenshot->resolve(path);
-        })
-        .when_rejected([pending_screenshot = m_pending_screenshot](auto& error) {
-            pending_screenshot->reject(move(error));
-        });
-
-    m_pending_screenshot = nullptr;
 }
 
 NonnullRefPtr<Core::Promise<String>> ViewImplementation::request_internal_page_info(PageInfoType type)
 {
     auto promise = Core::Promise<String>::construct();
-
-    if (m_pending_info_request) {
-        // For simplicity, only allow one info request at a time for now.
-        promise->reject(Error::from_string_literal("A page info request is already in progress"));
-        return promise;
-    }
-
-    m_pending_info_request = promise;
-    page().async_request_internal_page_info(type);
-
+    auto reply = PageInfoReply::create([promise](ErrorOr<Optional<Core::AnonymousBuffer>> info) {
+        if (info.is_error()) {
+            promise->reject(info.release_error());
+            return;
+        }
+        if (!info.value().has_value())
+            promise->resolve("(no page)"_string);
+        else
+            promise->resolve(String::from_utf8_with_replacement_character(StringView { info.value()->bytes() }));
+    },
+        Error::from_string_literal("The page closed before sending its info"));
+    page().async_request_internal_page_info(page().expect_reply_from_renderer(move(reply)), type);
     return promise;
-}
-
-void ViewImplementation::did_receive_internal_page_info(Badge<WebContentPage>, PageInfoType, Optional<Core::AnonymousBuffer> const& info)
-{
-    // A renderer answers a page info request; any other page info it sends is misbehavior.
-    if (!m_pending_info_request) {
-        page().client().did_misbehave("did_get_internal_page_info"sv, "no page info was requested"sv);
-        return;
-    }
-
-    String info_string;
-    if (!info.has_value()) {
-        info_string = "(no page)"_string;
-    } else {
-        info_string = String::from_utf8_with_replacement_character(StringView { info->bytes() });
-    }
-    m_pending_info_request->resolve(move(info_string));
-    m_pending_info_request = nullptr;
 }
 
 ErrorOr<LexicalPath> ViewImplementation::dump_gc_graph()
@@ -4911,7 +4782,7 @@ void ViewImplementation::initialize_context_menus()
     // Shown only while a DevTools client is attached to this tab — the element is the one under the cursor when the
     // context menu opened, so a page that changes while the menu is open still has the element the user clicked on.
     m_inspect_element_action = Action::create("Inspect Element"sv, ActionID::InspectElement, [this]() {
-        if (m_inspect_element_hit_test_request_id.has_value())
+        if (m_inspect_element_hit_test && m_inspect_element_hit_test->is_pending())
             m_inspect_element_activated_before_hit_test = true;
         else if (m_inspect_element_node_id.has_value() && on_inspect_element_request)
             on_inspect_element_request(*m_inspect_element_node_id);
@@ -5230,17 +5101,6 @@ void ViewImplementation::request_context_menu_dictionary_lookup(Function<void(Op
 void ViewImplementation::reject_pending_selection_requests()
 {
     ++m_context_menu_request_id;
-
-    auto reject_requests = [](auto& requests) {
-        auto pending_requests = move(requests);
-        for (auto& request : pending_requests)
-            request.value->reject(Error::from_string_literal("WebContent was replaced before completing a selection request"));
-    };
-
-    reject_requests(m_pending_selected_text_requests);
-    reject_requests(m_pending_selected_text_for_lookup_requests);
-    reject_requests(m_pending_select_word_for_dictionary_lookup_requests);
-    reject_requests(m_pending_cut_selected_text_requests);
 }
 
 SpellChecker::DocumentTag ViewImplementation::spell_document_tag()
@@ -5404,40 +5264,53 @@ void ViewImplementation::activate_spelling_menu_action_for_testing(Badge<WebCont
 
 void ViewImplementation::request_text_fragment_url(Optional<u64> generation_id)
 {
+    if (auto previous_reply = move(m_text_fragment_url_reply))
+        previous_reply->cancel();
     m_text_fragment_url.clear();
-    m_pending_text_fragment_url_request_id.clear();
     m_copy_link_to_highlight_action->set_enabled(false);
     m_copy_link_to_highlight_action->set_visible(generation_id.has_value());
     if (!generation_id.has_value())
         return;
 
-    auto request_id = m_next_text_fragment_url_request_id++;
-    m_pending_text_fragment_url_request_id = request_id;
-    page().client().async_generate_text_fragment_url(page().id(), request_id, *generation_id);
-}
-
-void ViewImplementation::did_generate_text_fragment_url(u64 request_id, Optional<URL::URL> url)
-{
-    if (!m_pending_text_fragment_url_request_id.has_value() || *m_pending_text_fragment_url_request_id != request_id)
-        return;
-    m_pending_text_fragment_url_request_id.clear();
-    m_text_fragment_url = move(url);
-    m_copy_link_to_highlight_action->set_enabled(m_text_fragment_url.has_value());
+    // A cancelled request answers nothing.
+    auto reply = PendingReply<Optional<Optional<URL::URL>>>::create([weak_this = make_weak_ptr()](Optional<Optional<URL::URL>> url) {
+        auto* view = weak_this.ptr();
+        if (!view || !url.has_value())
+            return;
+        view->m_text_fragment_url = url.release_value();
+        view->m_copy_link_to_highlight_action->set_enabled(view->m_text_fragment_url.has_value());
+    },
+        {});
+    m_text_fragment_url_reply = reply;
+    page().client().async_generate_text_fragment_url(page().id(), page().expect_reply_from_renderer(move(reply)), *generation_id);
 }
 
 void ViewImplementation::prepare_inspect_element_action(Gfx::IntPoint content_position)
 {
     m_inspect_element_node_id.clear();
-    m_inspect_element_hit_test_request_id.clear();
+    if (auto previous_hit_test = move(m_inspect_element_hit_test))
+        previous_hit_test->cancel();
     m_inspect_element_activated_before_hit_test = false;
 
     m_inspect_element_action->set_visible(static_cast<bool>(on_inspect_element_request));
     if (!on_inspect_element_request)
         return;
 
-    auto request_id = m_next_node_hit_test_request_id++;
-    m_inspect_element_hit_test_request_id = request_id;
-    page().async_get_node_id_at_position(request_id, { content_position.x(), content_position.y() });
+    // A cancelled hit test answers nothing.
+    auto reply = NodeHitTestReply::create([weak_this = make_weak_ptr()](Optional<Web::UniqueNodeID> node_id) {
+        auto* view = weak_this.ptr();
+        if (!view || !node_id.has_value())
+            return;
+        if (*node_id != 0)
+            view->m_inspect_element_node_id = *node_id;
+
+        // The user chose Inspect Element before the hit test came back.
+        if (exchange(view->m_inspect_element_activated_before_hit_test, false) && view->m_inspect_element_node_id.has_value() && view->on_inspect_element_request)
+            view->on_inspect_element_request(*view->m_inspect_element_node_id);
+    },
+        {});
+    m_inspect_element_hit_test = reply;
+    page().async_get_node_id_at_position(page().expect_reply_from_renderer(move(reply)), { content_position.x(), content_position.y() });
 }
 
 void ViewImplementation::did_request_page_context_menu(Badge<WebContentPage>, WebContentPage& requesting_page, Gfx::IntPoint content_position, Web::ContextMenuForInputEventsTarget for_input_events_target, Optional<Utf16String> misspelled_word, Optional<u64> text_fragment_generation_id)
@@ -5663,16 +5536,9 @@ void ViewImplementation::force_close()
 
 void ViewImplementation::request_close_preflight(Function<void(bool)> on_complete)
 {
-    auto request_id = m_next_close_preflight_request_id++;
-    auto page_id = page().id();
-    m_pending_close_preflight_requests.set(request_id, { page_id, move(on_complete) });
+    // A page that closes or stops displaying the tab first does not approve.
+    auto request_id = page().expect_reply_from_renderer(ClosePreflightReply::create(move(on_complete), false));
     page().async_request_close_preflight(request_id);
-}
-
-void ViewImplementation::did_complete_close_preflight(Badge<WebContentPage>, u64 request_id, bool approved)
-{
-    if (auto request = m_pending_close_preflight_requests.take(request_id); request.has_value())
-        request->on_complete(approved);
 }
 
 Function<void()> ViewImplementation::prepare_for_close_without_prompting()

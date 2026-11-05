@@ -129,7 +129,7 @@ public:
     void initialize_js_console(Web::DOM::Document& document);
     GC::Ptr<WebContentConsoleClient> attach_js_console(Web::DOM::Document&);
     void for_each_devtools_console_client(Function<void(DevToolsConsoleClient&)> const&);
-    void js_console_input(StringView js_source);
+    void js_console_input(u64 request_id, StringView js_source);
     Optional<Web::HTML::ConsoleInputCompletion> complete_js_console_input(StringView input);
     void did_execute_js_console_input(WebView::DebuggerValue const&);
     ErrorOr<WebView::DebuggerObjectProperties> console_object_properties(u64 object_id);
@@ -152,7 +152,7 @@ public:
     virtual Web::Compositor::CompositorHost* compositor_host() override;
     virtual Web::Compositor::CompositorHost const* compositor_host() const override;
 
-    void queue_screenshot_task(Optional<Web::UniqueNodeID> node_id);
+    void queue_screenshot_task(u64 request_id, Optional<Web::UniqueNodeID> node_id);
     void send_current_needs_beforeunload_check();
     void set_ongoing_navigation(Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id);
     void navigate_to_a_fragment(Web::HTML::CrossProcessId navigable_id, URL::URL const&, Web::HTML::HistoryHandlingBehavior, Web::HTML::UserNavigationInvolvement, Utf16String navigation_id);
@@ -416,7 +416,7 @@ private:
     virtual void page_did_mutate_dom(Utf16FlyString const& type, Web::DOM::Node const& target, Web::DOM::NodeList& added_nodes, Web::DOM::NodeList& removed_nodes, GC::Ptr<Web::DOM::Node> previous_sibling, GC::Ptr<Web::DOM::Node> next_sibling, Optional<Utf16FlyString> const& attribute_name) override;
     virtual void flush_pending_dom_mutations() override;
     virtual void page_did_change_accessibility_tree() override;
-    virtual void page_did_take_screenshot(Gfx::ShareableBitmap const& screenshot) override;
+    virtual void page_did_take_screenshot(u64 request_id, Gfx::ShareableBitmap const& screenshot) override;
     virtual void received_message_from_web_ui(Utf16String const& name, JS::Value data) override;
     virtual void page_did_block_resource(URL::URL const&, StringView kind) override;
     virtual void page_did_start_network_request(u64 request_id, URL::URL const&, ByteString const&, Vector<HTTP::Header> const&, ReadonlyBytes, Optional<String>, String const& referrer_policy, bool is_navigation_request, Web::Fetch::Infrastructure::Request::Priority) override;
@@ -471,6 +471,7 @@ private:
     RefPtr<WebUIConnection> m_web_ui;
 
     GC::Ptr<WebContentConsoleClient> m_top_level_document_console_client;
+    Optional<u64> m_js_console_input_request_id;
 
     RefPtr<Core::Timer> m_frame_timer;
     FrameTimerPurpose m_frame_timer_purpose { FrameTimerPurpose::Inactive };

@@ -309,9 +309,14 @@ TEST_CASE(browser_history_traversal)
     cookie_jar.set_cookie(cookie_url, cookie, HTTP::Cookie::Source::Http, {});
     VERIFY(cookie_jar.get_named_cookie(cookie_url, cookie.name).has_value());
     auto& stub = static_cast<WebContentClientStub&>(client);
-    auto new_tab_requests = app->new_tab_requests();
-    stub.did_get_highlighted_source(popup_page_id, {});
-    VERIFY(app->new_tab_requests() == ++new_tab_requests);
+    size_t sources_received = 0;
+    auto source_request_id = popup->page().expect_reply_from_renderer(WebView::PendingReply<Optional<String>>::create([&](auto source) {
+        if (source.has_value())
+            ++sources_received;
+    },
+        {}));
+    stub.did_get_highlighted_source(popup_page_id, source_request_id, {});
+    VERIFY(sources_received == 1);
     VERIFY(stub.did_request_cookie(popup_page_id, {}, cookie_url, HTTP::Cookie::Source::Http).cookie().cookie == "page-lifecycle=preserved"sv);
     stub.did_request_delete_all_cookies(popup_page_id, 0, cookie_url);
     VERIFY(!cookie_jar.get_named_cookie(cookie_url, cookie.name).has_value());
@@ -326,16 +331,16 @@ TEST_CASE(browser_history_traversal)
     stub.did_request_delete_all_cookies(popup_page_id, 0, cookie_url);
     VERIFY(cookie_jar.get_named_cookie(cookie_url, cookie.name).has_value());
     VERIFY(stub.did_request_cookie(popup_page_id, {}, cookie_url, HTTP::Cookie::Source::Http).cookie().cookie.is_empty());
-    stub.did_get_highlighted_source(popup_page_id, {});
-    VERIFY(app->new_tab_requests() == new_tab_requests);
+    stub.did_get_highlighted_source(popup_page_id, source_request_id, {});
+    VERIFY(sources_received == 1);
     static_cast<WebContentClientStub&>(client).did_close_browsing_context(popup_page_id);
     VERIFY(client.may_act_for_page(popup_page_id));
     VERIFY(!client.may_act_for_page(0));
     stub.did_request_delete_all_cookies(popup_page_id, 0, cookie_url);
     VERIFY(cookie_jar.get_named_cookie(cookie_url, cookie.name).has_value());
     VERIFY(stub.did_request_cookie(popup_page_id, {}, cookie_url, HTTP::Cookie::Source::Http).cookie().cookie.is_empty());
-    stub.did_get_highlighted_source(popup_page_id, {});
-    VERIFY(app->new_tab_requests() == new_tab_requests);
+    stub.did_get_highlighted_source(popup_page_id, source_request_id, {});
+    VERIFY(sources_received == 1);
 
     // Rejecting a popup must not authorize an ID that was never assigned to a page.
     Web::PageId rejected_page_id = 0;

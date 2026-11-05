@@ -121,6 +121,9 @@ struct PermissionPromptRequest {
 };
 
 using PermissionPromptCallback = Function<void(Web::Permissions::PromptOutcome)>;
+using NodeHitTestReply = PendingReply<Optional<Web::UniqueNodeID>>;
+using ScreenshotReply = PendingReply<ErrorOr<Gfx::ShareableBitmap>>;
+using PageInfoReply = PendingReply<ErrorOr<Optional<Core::AnonymousBuffer>>>;
 
 // One permission as the site information panel shows it for the site a view shows.
 struct SitePermissionRow {
@@ -373,10 +376,6 @@ public:
     NonnullRefPtr<Core::Promise<Optional<String>>> selected_text_with_whitespace_collapsed();
     NonnullRefPtr<Core::Promise<Optional<DictionaryLookup>>> selected_text_for_dictionary_lookup();
     bool look_up_selected_text_at(Gfx::IntPoint widget_position);
-    void did_receive_selected_text(Badge<WebContentPage>, u64 request_id, ByteString selection);
-    void did_receive_selected_text_for_lookup(Badge<WebContentPage>, u64 request_id, Optional<DictionaryLookup> lookup);
-    void did_select_word_for_dictionary_lookup(Badge<WebContentPage>, u64 request_id, bool selected);
-    void did_cut_selected_text(Badge<WebContentPage>, u64 request_id, ByteString selection);
     void select_all();
     void undo();
     void redo();
@@ -395,9 +394,9 @@ public:
     bool can_report_website_issue() const;
     void report_website_issue();
 
-    void inspect_dom_tree();
-    void inspect_storage(Web::StorageAPI::StorageEndpointType, u64 request_id);
-    void inspect_accessibility_tree();
+    void inspect_dom_tree(DevTools::DevToolsDelegate::OnTabInspectionComplete);
+    void inspect_storage(Web::StorageAPI::StorageEndpointType, DevTools::DevToolsDelegate::OnStorageItemsReceived);
+    void inspect_accessibility_tree(DevTools::DevToolsDelegate::OnAccessibilityTreeInspectionComplete);
     void request_accessibility_tree();
     void perform_accessibility_action(i64 node_id, String action);
     void perform_accessibility_text_action(i64 node_id, String action, i32 offset_start, i32 offset_end, String text);
@@ -412,11 +411,11 @@ public:
     void node_picker_cancel();
 
     void inspect_dom_node(Web::UniqueNodeID node_id, DOMNodeProperties::Type, Optional<Web::CSS::PseudoElement> pseudo_element, JsonValue options = {});
-    void inspect_grid_layouts(Web::UniqueNodeID root_node_id);
-    void inspect_current_grid(Web::UniqueNodeID node_id);
-    void inspect_current_flexbox(Web::UniqueNodeID node_id, bool only_look_at_parents);
+    void inspect_grid_layouts(Web::UniqueNodeID root_node_id, DevTools::DevToolsDelegate::OnGridLayoutsReceived);
+    void inspect_current_grid(Web::UniqueNodeID node_id, DevTools::DevToolsDelegate::OnCurrentGridReceived);
+    void inspect_current_flexbox(Web::UniqueNodeID node_id, bool only_look_at_parents, DevTools::DevToolsDelegate::OnCurrentFlexboxReceived);
     void retrieve_devtools_sources(DevTools::DevToolsDelegate::OnSourcesReceived);
-    void request_devtools_source(Web::HTML::ScriptRegistryIdentifier const&);
+    void request_devtools_source(Web::HTML::ScriptRegistryIdentifier const&, DevTools::DevToolsDelegate::OnSourceReceived);
     void attach_debugger(DevTools::DevToolsDelegate::OnDebuggerPaused, DevTools::DevToolsDelegate::OnDebuggerResumed);
     void configure_debugger(DebuggerConfiguration);
     void detach_debugger();
@@ -427,7 +426,6 @@ public:
     void update_debugger_blackboxing(Utf16String, Vector<DebuggerBlackboxRange>, DebuggerBlackboxingOperation);
     void set_debugger_breakpoint(DebuggerBreakpointLocation, DebuggerBreakpointOptions, DevTools::DevToolsDelegate::OnDebuggerBreakpointOperationComplete);
     void remove_debugger_breakpoint(DebuggerBreakpointLocation, DevTools::DevToolsDelegate::OnDebuggerBreakpointOperationComplete);
-    void did_complete_debugger_breakpoint_operation(u64 request_id, Optional<String> error);
     void retrieve_debugger_environments(u64 frame_id, DevTools::DevToolsDelegate::OnDebuggerEnvironmentsReceived);
     void evaluate_javascript_in_debugger_frame(u64 frame_id, String const&, DevTools::DevToolsDelegate::OnDebuggerEvaluationComplete);
     void retrieve_debugger_object_properties(u64 object_id, DebuggerObjectScope, DevTools::DevToolsDelegate::OnDebuggerObjectPropertiesReceived);
@@ -447,20 +445,20 @@ public:
     void did_connect_devtools_client();
     void did_disconnect_devtools_client();
     void start_sending_console_output(bool messages, bool errors);
-    void get_dom_node_inner_html(Web::UniqueNodeID node_id);
-    void get_dom_node_outer_html(Web::UniqueNodeID node_id);
-    void set_dom_node_outer_html(Web::UniqueNodeID node_id, String const& html);
-    void set_dom_node_text(Web::UniqueNodeID node_id, String const& text);
-    void set_dom_node_tag(Web::UniqueNodeID node_id, Utf16FlyString const& name);
-    void add_dom_node_attributes(Web::UniqueNodeID node_id, ReadonlySpan<Attribute> attributes);
-    void replace_dom_node_attribute(Web::UniqueNodeID node_id, Utf16FlyString const& name, ReadonlySpan<Attribute> replacement_attributes);
-    void create_child_element(Web::UniqueNodeID node_id);
-    void create_child_text_node(Web::UniqueNodeID node_id);
-    void insert_dom_node_before(Web::UniqueNodeID node_id, Web::UniqueNodeID parent_node_id, Optional<Web::UniqueNodeID> sibling_node_id);
-    void clone_dom_node(Web::UniqueNodeID node_id);
-    void remove_dom_node(Web::UniqueNodeID node_id);
+    void get_dom_node_inner_html(Web::UniqueNodeID node_id, DevTools::DevToolsDelegate::OnDOMNodeHTMLReceived);
+    void get_dom_node_outer_html(Web::UniqueNodeID node_id, DevTools::DevToolsDelegate::OnDOMNodeHTMLReceived);
+    void set_dom_node_outer_html(Web::UniqueNodeID node_id, String const& html, DevTools::DevToolsDelegate::OnDOMNodeEditComplete);
+    void set_dom_node_text(Web::UniqueNodeID node_id, String const& text, DevTools::DevToolsDelegate::OnDOMNodeEditComplete);
+    void set_dom_node_tag(Web::UniqueNodeID node_id, Utf16FlyString const& name, DevTools::DevToolsDelegate::OnDOMNodeEditComplete);
+    void add_dom_node_attributes(Web::UniqueNodeID node_id, ReadonlySpan<Attribute> attributes, DevTools::DevToolsDelegate::OnDOMNodeEditComplete);
+    void replace_dom_node_attribute(Web::UniqueNodeID node_id, Utf16FlyString const& name, ReadonlySpan<Attribute> replacement_attributes, DevTools::DevToolsDelegate::OnDOMNodeEditComplete);
+    void create_child_element(Web::UniqueNodeID node_id, DevTools::DevToolsDelegate::OnDOMNodeEditComplete);
+    void create_child_text_node(Web::UniqueNodeID node_id, DevTools::DevToolsDelegate::OnDOMNodeEditComplete);
+    void insert_dom_node_before(Web::UniqueNodeID node_id, Web::UniqueNodeID parent_node_id, Optional<Web::UniqueNodeID> sibling_node_id, DevTools::DevToolsDelegate::OnDOMNodeEditComplete);
+    void clone_dom_node(Web::UniqueNodeID node_id, DevTools::DevToolsDelegate::OnDOMNodeEditComplete);
+    void remove_dom_node(Web::UniqueNodeID node_id, DevTools::DevToolsDelegate::OnDOMNodeEditComplete);
 
-    void list_style_sheets();
+    void list_style_sheets(DevTools::DevToolsDelegate::OnStyleSheetsReceived);
     void request_style_sheet_source(Web::CSS::StyleSheetIdentifier const&);
 
     void did_block_resource(Badge<WebContentPage>, URL::URL const&, StringView kind);
@@ -471,7 +469,7 @@ public:
     void debug_request(ByteString const& request, ByteString const& argument = {});
 
     void run_javascript(String const&);
-    void js_console_input(String const&);
+    void js_console_input(String const&, DevTools::DevToolsDelegate::OnScriptEvaluationComplete);
     void exit_fullscreen();
 
     void set_is_fullscreen(Web::ViewportIsFullscreen is_fullscreen);
@@ -549,16 +547,13 @@ public:
     void take_and_save_screenshot(ScreenshotType);
     void save_screenshot(Gfx::Bitmap const&);
     NonnullRefPtr<Core::Promise<LexicalPath>> take_dom_node_screenshot(Web::UniqueNodeID);
-    virtual void did_receive_screenshot(Badge<WebContentPage>, Gfx::ShareableBitmap const&);
 
     NonnullRefPtr<Core::Promise<String>> request_internal_page_info(PageInfoType);
-    void did_receive_internal_page_info(Badge<WebContentPage>, PageInfoType, Optional<Core::AnonymousBuffer> const&);
 
     ErrorOr<LexicalPath> dump_gc_graph();
 
     void request_close();
     void request_close_preflight(Function<void(bool)> on_complete);
-    void did_complete_close_preflight(Badge<WebContentPage>, u64 request_id, bool approved);
     Function<void()> prepare_for_close_without_prompting();
     void force_close();
     Function<void()> prepare_for_immediate_close();
@@ -605,29 +600,15 @@ public:
     Function<void()> on_request_website_issue_report;
     Function<void()> on_request_screenshot;
     Function<void()> on_request_dismiss_dialog;
-    Function<void(JsonObject)> on_received_dom_tree;
     Function<void(DOMNodeProperties)> on_received_dom_node_properties;
-    HashMap<u64, Function<void(ErrorOr<Vector<DevTools::DevToolsDelegate::StorageItem>>)>> on_received_storage_items;
-    Function<void(JsonArray)> on_received_grid_layouts;
-    Function<void(Optional<JsonObject>)> on_received_current_grid;
-    Function<void(Optional<JsonObject>)> on_received_current_flexbox;
-    Function<void(JsonObject)> on_received_accessibility_tree;
     Function<void(Vector<AccessibilityNodeData>)> on_accessibility_tree_received;
     Function<void(i64)> on_accessibility_focus_changed;
     Function<void(Web::UniqueNodeID)> on_received_hovered_node_id;
     Function<void(Mutation)> on_dom_mutation_received;
-    Function<void(Optional<Web::UniqueNodeID> const& node_id)> on_finished_editing_dom_node;
-    Function<void(String)> on_received_dom_node_html;
-    Function<void(Vector<Web::CSS::StyleSheetIdentifier>)> on_received_style_sheet_list;
     Function<void(Web::CSS::StyleSheetIdentifier const&, URL::URL const&, Utf16String const&)> on_received_style_sheet_source;
-    HashMap<u64, DevTools::DevToolsDelegate::OnSourcesReceived> on_received_devtools_sources;
-    HashMap<Web::HTML::ScriptRegistryIdentifier, Function<void(Optional<Web::HTML::ScriptRegistryContent>)>> on_received_devtools_source;
-    HashMap<u64, DevTools::DevToolsDelegate::OnResolvedURLReceived> on_resolved_dom_node_url;
-    HashMap<u64, DevTools::DevToolsDelegate::OnConsoleInputCompleted> on_completed_js_console_input;
     Function<void(Web::HTML::ScriptRegistryDescription)> on_devtools_source_available;
     DevTools::DevToolsDelegate::OnDebuggerPaused on_debugger_paused;
     DevTools::DevToolsDelegate::OnDebuggerResumed on_debugger_resumed;
-    Function<void(DebuggerValue)> on_received_js_console_result;
     Function<void(ConsoleOutput)> on_console_message;
     Function<void(Web::UniqueNodeID)> on_inspect_element_request;
     Function<void(u64 request_id, URL::URL const&, ByteString const&, Vector<HTTP::Header> const&, ByteBuffer, Optional<String>, String, bool, Web::Fetch::Infrastructure::RequestPriority)> on_network_request_started;
@@ -685,7 +666,6 @@ public:
     void request_writing_suggestion(Badge<CanonicalTraversable>, Utf16String const& text, u32 caret_offset, NonnullRefPtr<WritingSuggestionReply>);
     void reset_spell_checking();
     void did_request_link_context_menu(Badge<WebContentPage>, Gfx::IntPoint content_position, Web::HTML::PreparedNavigationDescriptor, Optional<u64> text_fragment_generation_id);
-    void did_generate_text_fragment_url(u64 request_id, Optional<URL::URL>);
     void did_request_image_context_menu(Badge<WebContentPage>, Gfx::IntPoint content_position, Web::HTML::PreparedNavigationDescriptor, Optional<Gfx::ShareableBitmap> bitmap);
     void did_request_media_context_menu(Badge<WebContentPage>, WebContentPage& requesting_page, Gfx::IntPoint content_position, Web::MediaContextMenu, Optional<Web::HTML::PreparedNavigationDescriptor>);
 
@@ -780,6 +760,7 @@ protected:
 
     void handle_resize();
     void fail_pending_debugger_requests();
+    u64 expect_debugger_reply(NonnullRefPtr<PendingReplyBase>);
     void set_debugger_paused(bool);
     bool handle_picture_in_picture_controls_mouse_event(Web::MouseEvent const&);
     void set_picture_in_picture_controls_shown(bool);
@@ -932,18 +913,11 @@ protected:
 
     RefPtr<Action> m_copy_link_to_highlight_action;
     Optional<URL::URL> m_text_fragment_url;
-    u64 m_next_text_fragment_url_request_id { 1 };
-    Optional<u64> m_pending_text_fragment_url_request_id;
-
-    u64 m_next_selection_request_id { 1 };
-    HashMap<u64, NonnullRefPtr<Core::Promise<ByteString>>> m_pending_selected_text_requests;
-    HashMap<u64, NonnullRefPtr<Core::Promise<Optional<DictionaryLookup>>>> m_pending_selected_text_for_lookup_requests;
-    HashMap<u64, NonnullRefPtr<Core::Promise<bool>>> m_pending_select_word_for_dictionary_lookup_requests;
-    HashMap<u64, NonnullRefPtr<Core::Promise<ByteString>>> m_pending_cut_selected_text_requests;
+    RefPtr<PendingReplyBase> m_text_fragment_url_reply;
 
     void prepare_inspect_element_action(Gfx::IntPoint content_position);
     RefPtr<Action> m_inspect_element_action;
-    Optional<u64> m_inspect_element_hit_test_request_id;
+    RefPtr<PendingReplyBase> m_inspect_element_hit_test;
     Optional<Web::UniqueNodeID> m_inspect_element_node_id;
     bool m_inspect_element_activated_before_hit_test { false };
 
@@ -1048,17 +1022,8 @@ protected:
     size_t m_crash_count = 0;
     RefPtr<Core::Timer> m_repeated_crash_timer;
 
-    RefPtr<Core::Promise<LexicalPath>> m_pending_screenshot;
-    RefPtr<Core::Promise<String>> m_pending_info_request;
-
     u64 m_next_webdriver_user_prompt_request_id { 0 };
     HashMap<u64, Function<void(Web::WebDriver::Response)>> m_pending_webdriver_user_prompt_requests;
-    u64 m_next_close_preflight_request_id { 0 };
-    struct PendingClosePreflightRequest {
-        Web::PageId page_id;
-        Function<void(bool)> on_complete;
-    };
-    HashMap<u64, PendingClosePreflightRequest> m_pending_close_preflight_requests;
     enum class WebDriverProtocol : u8 {
         Classic,
         BiDi,
@@ -1178,28 +1143,8 @@ protected:
 
     HashMap<u64, DevTools::DevToolsDelegate::OnStorageChange> m_storage_change_listeners;
     u64 m_next_storage_change_listener_id { 1 };
-    u64 m_next_devtools_sources_request_id { 1 };
-    u64 m_next_debugger_breakpoint_request_id { 1 };
-    u64 m_next_debugger_environments_request_id { 1 };
-    u64 m_next_debugger_evaluation_request_id { 1 };
-    u64 m_next_debugger_object_properties_request_id { 1 };
-    u64 m_next_debugger_source_positions_request_id { 1 };
-    u64 m_next_resolve_dom_node_url_request_id { 1 };
-    void answer_pending_console_input_completions();
-    u64 m_next_js_console_completion_request_id { 1 };
 
-    HashMap<u64, DevTools::DevToolsDelegate::OnDebuggerBreakpointOperationComplete> m_pending_debugger_breakpoint_requests;
-    HashMap<u64, DevTools::DevToolsDelegate::OnDebuggerEnvironmentsReceived> m_pending_debugger_environments_requests;
-    HashMap<u64, DevTools::DevToolsDelegate::OnDebuggerEvaluationComplete> m_pending_debugger_evaluation_requests;
-    HashMap<u64, DevTools::DevToolsDelegate::OnDebuggerObjectPropertiesReceived> m_pending_debugger_object_properties_requests;
-    HashMap<u64, DevTools::DevToolsDelegate::OnDebuggerSourcePositionsReceived> m_pending_debugger_source_positions_requests;
-    HashTable<u64> m_cancelled_debugger_environments_requests;
-    HashTable<u64> m_cancelled_debugger_evaluation_requests;
-    HashTable<u64> m_cancelled_debugger_object_properties_requests;
-    HashTable<u64> m_cancelled_debugger_source_positions_requests;
-
-    HashMap<u64, DevTools::DevToolsDelegate::OnIndexedDBInspectionComplete> m_pending_indexed_database_inspection_requests;
-    u64 m_next_indexed_database_inspection_request_id { 1 };
+    Vector<NonnullRefPtr<PendingReplyBase>> m_debugger_replies;
 
     // FIXME: Reconcile this ID with `page_id`. The latter is only unique per WebContent connection, whereas the view ID
     //        is required to be globally unique for Firefox DevTools.
@@ -1215,14 +1160,12 @@ protected:
         Previewed,
     };
     void request_node_picker_hit_test(NodePickerRequestType, Web::DevicePixelPoint);
-    void did_receive_node_hit_test(u64 request_id, Web::UniqueNodeID);
-    void did_receive_node_picker_hit_test(u64 request_id, Web::UniqueNodeID);
-    void did_receive_indexed_database_inspection(u64 request_id, JsonObject);
+    void did_receive_node_picker_hit_test(NodePickerRequestType, Web::UniqueNodeID);
+    void cancel_node_picker_hit_tests();
 
     bool m_node_picker_active { false };
     Optional<Web::UniqueNodeID> m_node_picker_hovered_node_id;
-    u64 m_next_node_hit_test_request_id { 1 };
-    HashMap<u64, NodePickerRequestType> m_pending_node_picker_requests;
+    Vector<NonnullRefPtr<PendingReplyBase>> m_node_picker_hit_tests;
     DevTools::DevToolsDelegate::OnNodePickerEvent m_on_node_picker_event;
 
     bool m_devtools_connected { false };

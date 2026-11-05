@@ -163,17 +163,17 @@ endpoint WebContentServer routed by Web::PageId page_id
     gamepad_states_changed() =|
 
     debug_request(Web::PageId page_id, ByteString request, ByteString argument) =|
-    get_source(Web::PageId page_id) =|
-    inspect_dom_tree(Web::PageId page_id) =|
+    get_source(Web::PageId page_id, u64 request_id) =|
+    inspect_dom_tree(Web::PageId page_id, u64 request_id) =|
     inspect_storage(Web::PageId page_id, Web::StorageAPI::StorageEndpointType storage_endpoint, u64 request_id) =|
     storage_area_changed(Web::StorageAPI::StorageAreaId area_id, Optional<Utf16String> key, Optional<Utf16String> old_value, Optional<Utf16String> new_value, String url) =|
     storage_area_write_acknowledged(Web::StorageAPI::StorageAreaId area_id) =|
     storage_area_write_refused(Web::StorageAPI::StorageAreaId area_id, Vector<Utf16String> keys, Vector<Utf16String> values) =|
     storage_area_reset(Web::StorageAPI::StorageAreaId area_id, Vector<Utf16String> keys, Vector<Utf16String> values) =|
     inspect_dom_node(Web::PageId page_id, WebView::DOMNodeProperties::Type property_type, Web::UniqueNodeID node_id, Optional<Web::CSS::PseudoElement> pseudo_element, JsonValue options) =|
-    inspect_grid_layouts(Web::PageId page_id, Web::UniqueNodeID root_node_id) =|
-    inspect_current_grid(Web::PageId page_id, Web::UniqueNodeID node_id) =|
-    inspect_current_flexbox(Web::PageId page_id, Web::UniqueNodeID node_id, bool only_look_at_parents) =|
+    inspect_grid_layouts(Web::PageId page_id, u64 request_id, Web::UniqueNodeID root_node_id) =|
+    inspect_current_grid(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id) =|
+    inspect_current_flexbox(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, bool only_look_at_parents) =|
     inspect_indexed_database_storage(Web::PageId page_id, u64 request_id) =|
     inspect_indexed_database_objects(Web::PageId page_id, u64 request_id, String host, JsonValue names, JsonValue options) =|
     delete_indexed_database(Web::PageId page_id, u64 request_id, String host, String name) =|
@@ -185,21 +185,21 @@ endpoint WebContentServer routed by Web::PageId page_id
     clear_flexbox_highlight(Web::PageId page_id, Web::UniqueNodeID node_id) =|
     highlight_grid(Web::PageId page_id, Web::UniqueNodeID node_id, JsonValue options) =|
     clear_grid_highlight(Web::PageId page_id, Web::UniqueNodeID node_id) =|
-    inspect_accessibility_tree(Web::PageId page_id) =|
+    inspect_accessibility_tree(Web::PageId page_id, u64 request_id) =|
     request_accessibility_tree(Web::PageId page_id) =|
     perform_accessibility_action(Web::PageId page_id, i64 node_id, String action) =|
     perform_accessibility_text_action(Web::PageId page_id, i64 node_id, String action, i32 offset_start, i32 offset_end, String text) =|
     get_hovered_node_id(Web::PageId page_id) =|
     get_node_id_at_position(Web::PageId page_id, u64 request_id, Web::DevicePixelPoint position) =|
 
-    js_console_input(Web::PageId page_id, String js_source) =|
+    js_console_input(Web::PageId page_id, u64 request_id, String js_source) =|
     complete_js_console_input(Web::PageId page_id, u64 request_id, String input) =|
     run_javascript(Web::PageId page_id, String js_source) =|
 
-    list_style_sheets(Web::PageId page_id) =|
+    list_style_sheets(Web::PageId page_id, u64 request_id) =|
     request_style_sheet_source(Web::PageId page_id, Web::CSS::StyleSheetIdentifier identifier) =|
     list_devtools_sources(Web::PageId page_id, u64 request_id) =|
-    request_devtools_source(Web::PageId page_id, Web::HTML::ScriptRegistryIdentifier source_id) =|
+    request_devtools_source(Web::PageId page_id, u64 request_id, Web::HTML::ScriptRegistryIdentifier source_id) =|
     attach_debugger(Web::PageId page_id) =|
     configure_debugger(Web::PageId page_id, WebView::DebuggerConfiguration configuration) =|
     detach_debugger(Web::PageId page_id) =|
@@ -217,23 +217,23 @@ endpoint WebContentServer routed by Web::PageId page_id
     set_listen_for_dom_mutations(Web::PageId page_id, bool listen_for_dom_mutations) =|
     set_has_devtools_client(Web::PageId page_id, bool has_devtools_client) =|
     start_sending_console_output(Web::PageId page_id, bool messages, bool errors) =|
-    get_dom_node_inner_html(Web::PageId page_id, Web::UniqueNodeID node_id) =|
-    get_dom_node_outer_html(Web::PageId page_id, Web::UniqueNodeID node_id) =|
-    set_dom_node_outer_html(Web::PageId page_id, Web::UniqueNodeID node_id, String html) =|
-    set_dom_node_text(Web::PageId page_id, Web::UniqueNodeID node_id, String text) =|
-    set_dom_node_tag(Web::PageId page_id, Web::UniqueNodeID node_id, Utf16FlyString name) =|
-    add_dom_node_attributes(Web::PageId page_id, Web::UniqueNodeID node_id, Vector<WebView::Attribute> attributes) =|
-    replace_dom_node_attribute(Web::PageId page_id, Web::UniqueNodeID node_id, Utf16FlyString name, Vector<WebView::Attribute> replacement_attributes) =|
-    create_child_element(Web::PageId page_id, Web::UniqueNodeID node_id) =|
-    create_child_text_node(Web::PageId page_id, Web::UniqueNodeID node_id) =|
-    insert_dom_node_before(Web::PageId page_id, Web::UniqueNodeID node_id, Web::UniqueNodeID parent_node_id, Optional<Web::UniqueNodeID> sibling_node_id) =|
-    clone_dom_node(Web::PageId page_id, Web::UniqueNodeID node_id) =|
-    remove_dom_node(Web::PageId page_id, Web::UniqueNodeID node_id) =|
+    get_dom_node_inner_html(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id) =|
+    get_dom_node_outer_html(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id) =|
+    set_dom_node_outer_html(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, String html) =|
+    set_dom_node_text(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, String text) =|
+    set_dom_node_tag(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, Utf16FlyString name) =|
+    add_dom_node_attributes(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, Vector<WebView::Attribute> attributes) =|
+    replace_dom_node_attribute(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, Utf16FlyString name, Vector<WebView::Attribute> replacement_attributes) =|
+    create_child_element(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id) =|
+    create_child_text_node(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id) =|
+    insert_dom_node_before(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, Web::UniqueNodeID parent_node_id, Optional<Web::UniqueNodeID> sibling_node_id) =|
+    clone_dom_node(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id) =|
+    remove_dom_node(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id) =|
 
-    take_document_screenshot(Web::PageId page_id) =|
-    take_dom_node_screenshot(Web::PageId page_id, Web::UniqueNodeID node_id) =|
+    take_document_screenshot(Web::PageId page_id, u64 request_id) =|
+    take_dom_node_screenshot(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id) =|
 
-    request_internal_page_info(Web::PageId page_id, WebView::PageInfoType type) =|
+    request_internal_page_info(Web::PageId page_id, u64 request_id, WebView::PageInfoType type) =|
 
     get_selected_text(Web::PageId page_id, u64 request_id) =|
     generate_text_fragment_url(Web::PageId page_id, u64 request_id, u64 generation_id) =|

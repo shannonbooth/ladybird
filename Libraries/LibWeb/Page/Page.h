@@ -186,7 +186,7 @@ public:
     void focused_navigable_changed_in_another_page(HTML::CrossProcessId);
     void navigable_document_destroyed(Badge<DOM::Document>, HTML::LocalNavigable&);
 
-    void queue_screenshot_task(Optional<UniqueNodeID> node_id);
+    void queue_screenshot_task(u64 request_id, Optional<UniqueNodeID> node_id);
     void process_screenshot_requests();
 
     CSSPixelPoint device_to_css_point(DevicePixelPoint) const;
@@ -544,6 +544,7 @@ private:
     GC::Ref<PictureInPicture::PictureInPictureController> m_picture_in_picture_controller;
 
     struct ScreenshotTask {
+        u64 request_id { 0 };
         Optional<UniqueNodeID> node_id;
     };
     Queue<ScreenshotTask> m_screenshot_tasks;
@@ -993,7 +994,7 @@ public:
     virtual void flush_pending_dom_mutations() { }
     virtual void page_did_change_accessibility_tree() { }
 
-    virtual void page_did_take_screenshot(Gfx::ShareableBitmap const&) { }
+    virtual void page_did_take_screenshot(u64, Gfx::ShareableBitmap const&) { }
 
     virtual void received_message_from_web_ui([[maybe_unused]] Utf16String const& name, [[maybe_unused]] JS::Value data) { }
 

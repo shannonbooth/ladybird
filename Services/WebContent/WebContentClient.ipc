@@ -144,28 +144,28 @@ endpoint WebContentClient routed by Web::PageId page_id
     did_request_set_prompt_text(Web::PageId page_id, Utf16String message) =|
     did_request_accept_dialog(Web::PageId page_id) =|
     did_request_dismiss_dialog(Web::PageId page_id) =|
-    did_get_highlighted_source(Web::PageId page_id, String html) =|
+    did_get_highlighted_source(Web::PageId page_id, u64 request_id, String html) =|
 
-    did_inspect_dom_tree(Web::PageId page_id, String dom_tree) =|
+    did_inspect_dom_tree(Web::PageId page_id, u64 request_id, String dom_tree) =|
     did_inspect_storage(Web::PageId page_id, u64 request_id, String storage_items) =|
     did_inspect_dom_node(Web::PageId page_id, WebView::DOMNodeProperties properties) =|
-    did_inspect_grid_layouts(Web::PageId page_id, String grid_layouts) =|
-    did_inspect_current_grid(Web::PageId page_id, String grid_layout) =|
-    did_inspect_current_flexbox(Web::PageId page_id, String flexbox_layout) =|
+    did_inspect_grid_layouts(Web::PageId page_id, u64 request_id, String grid_layouts) =|
+    did_inspect_current_grid(Web::PageId page_id, u64 request_id, String grid_layout) =|
+    did_inspect_current_flexbox(Web::PageId page_id, u64 request_id, String flexbox_layout) =|
     did_inspect_indexed_database(Web::PageId page_id, u64 request_id, String result) =|
-    did_inspect_accessibility_tree(Web::PageId page_id, String accessibility_tree) =|
+    did_inspect_accessibility_tree(Web::PageId page_id, u64 request_id, String accessibility_tree) =|
     did_get_accessibility_tree(Web::PageId page_id, Vector<WebView::AccessibilityNodeData> nodes) =|
     did_accessibility_focus_change(Web::PageId page_id, i64 focused_node_id) =|
     did_get_hovered_node_id(Web::PageId page_id, Web::UniqueNodeID node_id) =|
     did_get_node_id_at_position(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id) =|
-    did_finish_editing_dom_node(Web::PageId page_id, Optional<Web::UniqueNodeID> node_id) =|
+    did_finish_editing_dom_node(Web::PageId page_id, u64 request_id, Optional<Web::UniqueNodeID> node_id) =|
     did_mutate_dom(Web::PageId page_id, WebView::Mutation mutation) =|
-    did_get_dom_node_html(Web::PageId page_id, String html) =|
+    did_get_dom_node_html(Web::PageId page_id, u64 request_id, String html) =|
 
-    did_list_style_sheets(Web::PageId page_id, Vector<Web::CSS::StyleSheetIdentifier> style_sheets) =|
+    did_list_style_sheets(Web::PageId page_id, u64 request_id, Vector<Web::CSS::StyleSheetIdentifier> style_sheets) =|
     did_get_style_sheet_source(Web::PageId page_id, Web::CSS::StyleSheetIdentifier identifier, URL::URL base_url, Utf16String source) =|
     did_list_devtools_sources(Web::PageId page_id, u64 request_id, Vector<Web::HTML::ScriptRegistryDescription> sources) =|
-    did_get_devtools_source(Web::PageId page_id, Web::HTML::ScriptRegistryIdentifier source_id, Optional<Web::HTML::ScriptRegistryContent> source) =|
+    did_get_devtools_source(Web::PageId page_id, u64 request_id, Web::HTML::ScriptRegistryIdentifier source_id, Optional<Web::HTML::ScriptRegistryContent> source) =|
     did_add_devtools_source(Web::PageId page_id, Web::HTML::ScriptRegistryDescription source) =|
     did_pause_debugger(Web::PageId page_id, WebView::DebuggerPause pause) =|
     did_resume_debugger(Web::PageId page_id) =|
@@ -176,9 +176,9 @@ endpoint WebContentClient routed by Web::PageId page_id
     did_get_debugger_source_positions(Web::PageId page_id, u64 request_id, Vector<WebView::DebuggerSourcePosition> positions) =|
     did_resolve_dom_node_url(Web::PageId page_id, u64 request_id, String resolved_url) =|
 
-    did_take_screenshot(Web::PageId page_id, Gfx::ShareableBitmap screenshot) =|
+    did_take_screenshot(Web::PageId page_id, u64 request_id, Gfx::ShareableBitmap screenshot) =|
 
-    did_get_internal_page_info(Web::PageId page_id, WebView::PageInfoType type, Optional<Core::AnonymousBuffer> info) =|
+    did_get_internal_page_info(Web::PageId page_id, u64 request_id, WebView::PageInfoType type, Optional<Core::AnonymousBuffer> info) =|
 
     did_get_selected_text(Web::PageId page_id, u64 request_id, ByteString selection) =|
     did_get_selected_text_for_lookup(Web::PageId page_id, u64 request_id, Optional<WebView::DictionaryLookup> lookup) =|
@@ -300,7 +300,7 @@ endpoint WebContentClient routed by Web::PageId page_id
     gamepad_play_effect(Web::Gamepad::GamepadHandle handle, Web::Gamepad::GamepadEffect effect) =|
     gamepad_stop_effects(Web::Gamepad::GamepadHandle handle) =|
 
-    did_execute_js_console_input(Web::PageId page_id, WebView::DebuggerValue result) =|
+    did_execute_js_console_input(Web::PageId page_id, u64 request_id, WebView::DebuggerValue result) =|
     did_complete_js_console_input(Web::PageId page_id, u64 request_id, Optional<Vector<String>> matches, String match_prop) =|
     did_output_js_console_message(Web::PageId page_id, WebView::ConsoleOutput console_output) =|
 

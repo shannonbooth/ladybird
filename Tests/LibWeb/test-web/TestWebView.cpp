@@ -88,19 +88,19 @@ NonnullRefPtr<Core::Promise<RefPtr<Gfx::Bitmap const>>> TestWebView::take_screen
     VERIFY(!m_pending_screenshot);
 
     m_pending_screenshot = Core::Promise<RefPtr<Gfx::Bitmap const>>::construct();
-    page().async_take_document_screenshot();
+    auto reply = WebView::ScreenshotReply::create([weak_this = make_weak_ptr<TestWebView>()](ErrorOr<Gfx::ShareableBitmap> screenshot) {
+        // NOTE: The screenshot may arrive after a timeout already completed the test and cleared m_pending_screenshot.
+        auto* view = weak_this.ptr();
+        if (!view || !view->m_pending_screenshot || screenshot.is_error())
+            return;
+
+        auto pending_screenshot = move(view->m_pending_screenshot);
+        pending_screenshot->resolve(screenshot.value().bitmap());
+    },
+        Error::from_string_literal("The page closed before taking the screenshot"));
+    page().async_take_document_screenshot(page().expect_reply_from_renderer(move(reply)));
 
     return *m_pending_screenshot;
-}
-
-void TestWebView::did_receive_screenshot(Badge<WebView::WebContentPage>, Gfx::ShareableBitmap const& screenshot)
-{
-    // NOTE: The screenshot may arrive after a timeout already completed the test and cleared m_pending_screenshot.
-    if (!m_pending_screenshot)
-        return;
-
-    auto pending_screenshot = move(m_pending_screenshot);
-    pending_screenshot->resolve(screenshot.bitmap());
 }
 
 void TestWebView::on_test_complete(TestCompletion completion)

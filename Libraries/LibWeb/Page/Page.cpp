@@ -288,9 +288,9 @@ void Page::navigable_document_destroyed(Badge<DOM::Document>, HTML::LocalNavigab
         m_mouse_event_tracking_navigable = nullptr;
 }
 
-void Page::queue_screenshot_task(Optional<UniqueNodeID> node_id)
+void Page::queue_screenshot_task(u64 request_id, Optional<UniqueNodeID> node_id)
 {
-    m_screenshot_tasks.enqueue({ node_id });
+    m_screenshot_tasks.enqueue({ request_id, node_id });
     local_traversable()->set_needs_repaint();
     client().request_frame();
 }
@@ -315,23 +315,23 @@ void Page::process_screenshot_requests()
                 return dom_node->layout_node(read);
             }();
             if (!layout_node || !Painting::has_committed_box(*layout_node)) {
-                client.page_did_take_screenshot({});
+                client.page_did_take_screenshot(task.request_id, {});
                 continue;
             }
             auto rect = enclosing_device_rect(Painting::border_box_rect_of_fragments(*layout_node));
             auto bitmap_or_error = Gfx::Bitmap::create_shareable(Gfx::BitmapFormat::BGRA8888, Gfx::AlphaType::Premultiplied, rect.size().to_type<int>());
             if (bitmap_or_error.is_error()) {
-                client.page_did_take_screenshot({});
+                client.page_did_take_screenshot(task.request_id, {});
                 continue;
             }
             auto bitmap = bitmap_or_error.release_value();
             HTML::PaintConfig paint_config { .canvas_fill_rect = rect.to_type<int>() };
-            navigable->render_screenshot(bitmap, paint_config, [bitmap, &client](auto result) {
+            navigable->render_screenshot(bitmap, paint_config, [bitmap, &client, request_id = task.request_id](auto result) {
                 if (result == Compositor::ScreenshotResult::Failed) {
-                    client.page_did_take_screenshot({});
+                    client.page_did_take_screenshot(request_id, {});
                     return;
                 }
-                client.page_did_take_screenshot(bitmap->to_shareable_bitmap());
+                client.page_did_take_screenshot(request_id, bitmap->to_shareable_bitmap());
             });
         } else {
             Layout::ForcedReadScope read { *navigable->active_document() };
@@ -342,17 +342,17 @@ void Page::process_screenshot_requests()
             auto rect = enclosing_device_rect(scrollable_overflow_rect.value());
             auto bitmap_or_error = Gfx::Bitmap::create_shareable(Gfx::BitmapFormat::BGRA8888, Gfx::AlphaType::Premultiplied, rect.size().to_type<int>());
             if (bitmap_or_error.is_error()) {
-                client.page_did_take_screenshot({});
+                client.page_did_take_screenshot(task.request_id, {});
                 continue;
             }
             auto bitmap = bitmap_or_error.release_value();
             HTML::PaintConfig paint_config { .paint_overlay = true, .canvas_fill_rect = rect.to_type<int>() };
-            navigable->render_screenshot(bitmap, paint_config, [bitmap, &client](auto result) {
+            navigable->render_screenshot(bitmap, paint_config, [bitmap, &client, request_id = task.request_id](auto result) {
                 if (result == Compositor::ScreenshotResult::Failed) {
-                    client.page_did_take_screenshot({});
+                    client.page_did_take_screenshot(request_id, {});
                     return;
                 }
-                client.page_did_take_screenshot(bitmap->to_shareable_bitmap());
+                client.page_did_take_screenshot(request_id, bitmap->to_shareable_bitmap());
             });
         }
     }

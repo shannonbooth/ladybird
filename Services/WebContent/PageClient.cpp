@@ -10,6 +10,7 @@
 #include <AK/JsonObjectSerializer.h>
 #include <AK/JsonValue.h>
 #include <AK/Math.h>
+#include <AK/TemporaryChange.h>
 #include <AK/Utf16FlyString.h>
 #include <AK/Utf16String.h>
 #include <AK/Utf16StringBuilder.h>
@@ -2338,9 +2339,9 @@ void PageClient::send_dom_mutation(Web::DOM::Node const& target, WebView::Mutati
     schedule_accessibility_tree_update();
 }
 
-void PageClient::page_did_take_screenshot(Gfx::ShareableBitmap const& screenshot)
+void PageClient::page_did_take_screenshot(u64 request_id, Gfx::ShareableBitmap const& screenshot)
 {
-    client().async_did_take_screenshot(m_id, screenshot);
+    client().async_did_take_screenshot(m_id, request_id, screenshot);
 }
 
 WebDriverConnection& PageClient::ensure_webdriver_session()
@@ -2541,7 +2542,8 @@ void PageClient::initialize_js_console(Web::DOM::Document& document)
 
 void PageClient::did_execute_js_console_input(WebView::DebuggerValue const& result)
 {
-    client().async_did_execute_js_console_input(m_id, result);
+    if (m_js_console_input_request_id.has_value())
+        client().async_did_execute_js_console_input(m_id, *m_js_console_input_request_id, result);
 }
 
 // An object of a console result is in the top-level document's console, but a logged one is in the console of whichever
@@ -2558,10 +2560,12 @@ ErrorOr<WebView::DebuggerObjectProperties> PageClient::console_object_properties
     return console_client->properties_for_object(object_id);
 }
 
-void PageClient::js_console_input(StringView js_source)
+void PageClient::js_console_input(u64 request_id, StringView js_source)
 {
-    if (m_top_level_document_console_client)
-        m_top_level_document_console_client->handle_input(js_source);
+    if (!m_top_level_document_console_client)
+        return;
+    TemporaryChange request_id_change { m_js_console_input_request_id, Optional<u64> { request_id } };
+    m_top_level_document_console_client->handle_input(js_source);
 }
 
 Optional<Web::HTML::ConsoleInputCompletion> PageClient::complete_js_console_input(StringView input)
@@ -2750,9 +2754,9 @@ Web::Compositor::CompositorHost const* PageClient::compositor_host() const
     return m_owner.compositor_host();
 }
 
-void PageClient::queue_screenshot_task(Optional<Web::UniqueNodeID> node_id)
+void PageClient::queue_screenshot_task(u64 request_id, Optional<Web::UniqueNodeID> node_id)
 {
-    page().queue_screenshot_task(node_id);
+    page().queue_screenshot_task(request_id, node_id);
 }
 
 }
