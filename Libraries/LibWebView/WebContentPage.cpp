@@ -1531,8 +1531,8 @@ void WebContentPage::did_consume_user_activation(Web::HTML::UserActivationConsum
 
 void WebContentPage::webdriver_user_prompt_handling_complete(u64 request_id, Web::WebDriver::Response response)
 {
-    if (displays_tab())
-        view().did_complete_webdriver_user_prompt_handling({}, request_id, move(response));
+    if (auto reply = take_reply_from_renderer<WebDriverResponseReply>(request_id))
+        reply->complete(move(response));
 }
 
 void WebContentPage::webdriver_did_set_current_browsing_context(u64 command_id, Web::HTML::CrossProcessId navigable_id)

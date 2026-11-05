@@ -124,6 +124,7 @@ using PermissionPromptCallback = Function<void(Web::Permissions::PromptOutcome)>
 using NodeHitTestReply = PendingReply<Optional<Web::UniqueNodeID>>;
 using ScreenshotReply = PendingReply<ErrorOr<Gfx::ShareableBitmap>>;
 using PageInfoReply = PendingReply<ErrorOr<Optional<Core::AnonymousBuffer>>>;
+using WebDriverResponseReply = PendingReply<Web::WebDriver::Response>;
 
 // One permission as the site information panel shows it for the site a view shows.
 struct SitePermissionRow {
@@ -529,7 +530,6 @@ public:
     void switch_webdriver_to_parent_frame(Function<void(Web::WebDriver::Response)> on_complete);
     void did_close_browsing_context(Badge<WebContentPage>);
     void run_webdriver_user_prompt_handling(Function<void(Web::WebDriver::Response)> on_complete);
-    void did_complete_webdriver_user_prompt_handling(Badge<WebContentPage>, u64 request_id, Web::WebDriver::Response);
     static Optional<ViewImplementation&> find_view_by_handle(StringView);
     void did_change_background_color(Badge<WebContentPage>, Gfx::Color);
     Gfx::Color page_background_color() const { return m_page_background_color; }
@@ -1022,8 +1022,7 @@ protected:
     size_t m_crash_count = 0;
     RefPtr<Core::Timer> m_repeated_crash_timer;
 
-    u64 m_next_webdriver_user_prompt_request_id { 0 };
-    HashMap<u64, Function<void(Web::WebDriver::Response)>> m_pending_webdriver_user_prompt_requests;
+    Vector<NonnullRefPtr<WebDriverResponseReply>> m_webdriver_user_prompt_replies;
     enum class WebDriverProtocol : u8 {
         Classic,
         BiDi,

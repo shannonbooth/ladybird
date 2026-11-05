@@ -3739,9 +3739,8 @@ void ViewImplementation::did_close_browsing_context(Badge<WebContentPage>)
             webdriver_bidi->top_level_traversable_did_close(window_handle);
     }
 
-    auto pending_user_prompt_requests = move(m_pending_webdriver_user_prompt_requests);
-    for (auto& request : pending_user_prompt_requests)
-        request.value(Web::WebDriver::Error::from_code(Web::WebDriver::ErrorCode::NoSuchWindow, "Window closed while handling user prompts"sv));
+    for (auto& reply : exchange(m_webdriver_user_prompt_replies, {}))
+        reply->complete(Web::WebDriver::Error::from_code(Web::WebDriver::ErrorCode::NoSuchWindow, "Window closed while handling user prompts"sv));
 
     auto pending_commands = move(m_pending_webdriver_commands);
     fail_webdriver_content_commands_after_window_close(pending_commands);
@@ -3766,15 +3765,11 @@ void ViewImplementation::run_webdriver_user_prompt_handling(Function<void(Web::W
         return;
     }
 
-    auto request_id = m_next_webdriver_user_prompt_request_id++;
-    m_pending_webdriver_user_prompt_requests.set(request_id, move(on_complete));
-    page().async_run_webdriver_user_prompt_handling(request_id);
-}
-
-void ViewImplementation::did_complete_webdriver_user_prompt_handling(Badge<WebContentPage>, u64 request_id, Web::WebDriver::Response response)
-{
-    if (auto on_complete = m_pending_webdriver_user_prompt_requests.take(request_id); on_complete.has_value())
-        on_complete.value()(move(response));
+    // A page that goes away first, such as a crashed one, handled no prompts.
+    auto reply = WebDriverResponseReply::create(move(on_complete), Web::WebDriver::Error::from_code(Web::WebDriver::ErrorCode::UnknownError, "The page closed while handling user prompts"sv));
+    m_webdriver_user_prompt_replies.remove_all_matching([](auto const& reply) { return !reply->is_pending(); });
+    m_webdriver_user_prompt_replies.append(reply);
+    page().async_run_webdriver_user_prompt_handling(page().expect_reply_from_renderer(move(reply)));
 }
 
 Optional<ViewImplementation&> ViewImplementation::find_view_by_handle(StringView handle)
@@ -4116,10 +4111,6 @@ void ViewImplementation::handle_web_content_process_crash()
     set_loading_state(false);
     traversable().clear_ongoing_navigation();
     traversable().clear_active_document_load();
-
-    auto pending_user_prompt_requests = move(m_pending_webdriver_user_prompt_requests);
-    for (auto& request : pending_user_prompt_requests)
-        request.value(Web::WebDriver::Error::from_code(Web::WebDriver::ErrorCode::UnknownError, "WebContent crashed while handling user prompts"sv));
 
     discard_webdriver_input_commands(true);
     auto pending_commands = move(m_pending_webdriver_commands);
