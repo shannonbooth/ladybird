@@ -7,8 +7,10 @@ Implementation status in `codex/tab-ownership` (2026-11-05):
   owner tab identity, worker/performance attribution, and one-time permission lifetime.
 - WebDriver listing/routing without a view still needs Part F.6. Close notifications remain at the existing sites,
   as required until F.8. `destroy()` currently only performs set removal; its full E.2 algorithm is still pending.
-- Parts F.4–F.9 and the independent Part G work are not implemented.
-- Validation: built LibWebView and the standalone `TestTraversableOwnership` target; its tests pass.
+- Part F.4 implemented: traversable-owned presentation, frontend observation, retained title/favicon/loading,
+  and aggregated audibility and blocked-resource totals.
+- Parts F.5–F.9 and the independent Part G work are not implemented.
+- Validation: built LibWebView and the standalone `TestTraversableOwnership` target; all five ownership/presentation tests pass.
 
 Status: 2026-11-05. The branch is `history-population-request-in-ui`, based on upstream `9a3e6df0f14`. Nothing is pushed.
 Revision 2 takes in review points 1–6 (destruction ordering, bounded close, request tokens, WebDriver identity, the

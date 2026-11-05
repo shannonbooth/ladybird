@@ -212,10 +212,10 @@ public:
     URL::URL const& displayed_url() const { return m_displayed_url; }
 
     void set_title(Badge<WebContentPage>, Utf16String title) { set_title(move(title)); }
-    Utf16String const& title() const { return m_title; }
+    Utf16String const& title() const;
 
     void set_favicon(Badge<WebContentPage>, Optional<Gfx::Bitmap const&> favicon) { set_favicon(favicon); }
-    Optional<String> const& favicon_hash() const { return m_favicon_hash; }
+    Optional<String> const& favicon_hash() const;
 
     String const& handle() const;
 
@@ -246,7 +246,7 @@ public:
     void reload(BypassCache = BypassCache::No);
     void reload_for_webdriver_bidi(BypassCache, Utf16String navigation_id);
     void stop_loading();
-    bool is_loading() const { return m_is_loading; }
+    bool is_loading() const { return has_traversable() && traversable().presentation().is_loading(); }
 
     bool crash_overlay_active() const { return m_crash_state.has_value(); }
     String crash_overlay_failed_url() const;
@@ -511,10 +511,8 @@ public:
     // The tab is audible while the AudioServer has recently heard any page of it, and for a while after a page leaves it
     // while heard. A page lost along with its process doesn't leave.
     void update_audibility(Badge<WebContentPage>) { update_audibility(); }
-    void did_release_page(Badge<CanonicalTraversable>, WebContentPage const& page) { page_left(page); }
-    void did_close_page(Badge<WebContentPage>, Web::PageId page_id) { m_audibility_hold.page_closed(page_id); }
-    Audio::Audibility audibility() const { return m_audibility; }
-    u64 audibility_change_count() const { return m_audibility_change_count; }
+    Audio::Audibility audibility() const { return has_traversable() ? traversable().presentation().audibility() : Audio::Audibility::Inaudible; }
+    u64 audibility_change_count() const { return has_traversable() ? traversable().presentation().audibility_change_count() : 0; }
     void did_change_screen_wake_lock_state(Badge<WebContentPage>, Web::ScreenWakeLockState);
 
     void did_reset_state_for_testing(Badge<WebContentPage>, Web::HTML::SessionHistoryEntryDescriptor);
@@ -821,7 +819,6 @@ protected:
     WebContentPage& focused_navigable_host() const;
     void reset_page_media_state();
     void update_audibility();
-    void page_left(WebContentPage const&);
 
     // A navigation to make again on reload: one the user stopped before its document was activated, or one a crash cut
     // short. It's made again from the source it was first made from, when it has one (a javascript: URL has none).
@@ -904,8 +901,6 @@ protected:
     Optional<BrowserUILoad> m_browser_ui_load;
     URL::URL m_displayed_url { URL::about_blank() };
     bool m_text_fragment_indication_is_visible { false };
-    Utf16String m_title;
-    Optional<String> m_favicon_hash;
 
     struct CrashState {
         URL::URL failed_url;
@@ -1038,7 +1033,6 @@ protected:
 
     bool m_can_undo { false };
     bool m_can_redo { false };
-    bool m_is_loading { false };
     // WebDriver's observation of the top-level navigation completion state. The navigation itself is the
     // canonical traversable's ongoing navigation record.
     struct WebDriverNavigationObservation {
@@ -1114,10 +1108,6 @@ protected:
     // https://w3c.github.io/webdriver/#dfn-current-parent-browsing-context
     Optional<Web::HTML::CrossProcessId> m_webdriver_current_parent_navigable_id;
 
-    Audio::Audibility m_audibility { Audio::Audibility::Inaudible };
-    u64 m_audibility_change_count { 0 };
-    AudibilityHold m_audibility_hold;
-    RefPtr<Core::Timer> m_audibility_hold_timer;
     Web::ScreenWakeLockState m_screen_wake_lock_state { Web::ScreenWakeLockState::Released };
 
     Web::HTML::MuteState m_mute_state { Web::HTML::MuteState::Unmuted };
@@ -1222,8 +1212,6 @@ protected:
 
     HashMap<u64, NavigationListener> m_navigation_listeners;
     u64 m_next_navigation_listener_id { 1 };
-
-    Vector<BlockedResource> m_blocked_resources;
 
     enum class NodePickerRequestType : u8 {
         Hovered,

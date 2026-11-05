@@ -99,20 +99,12 @@ ViewImplementation::ViewImplementation(IsPrivate is_private)
         // happen to be visiting crashy websites a lot.
         this->m_crash_count = 0;
     });
-
-    m_audibility_hold_timer = Core::Timer::create_single_shot(AK::Duration::zero(), [this] {
-        // The hold, not the timer's resolution, decides when it has ended.
-        auto now = MonotonicTime::now();
-        if (m_audibility_hold.is_held(now)) {
-            m_audibility_hold_timer->restart(*m_audibility_hold.held_until() - now);
-            return;
-        }
-        update_audibility();
-    });
 }
 
 ViewImplementation::~ViewImplementation()
 {
+    if (m_top_level_traversable)
+        m_top_level_traversable->presentation().on_change = nullptr;
     // The frontend may be torn down already, so clearing the ongoing navigation must not report a URL change to it, nor
     // cancelling the view's location requests that the location is no longer in use, nor closing the view's page (which
     // revokes its audio playback) that the tab went quiet.
@@ -201,6 +193,35 @@ void ViewImplementation::display_traversable(CanonicalTraversable& traversable, 
     traversable.set_view({}, *this);
     traversable.set_owner_tab_id({}, m_pending_owner_tab_id);
     traversable.set_system_visibility_state(system_visibility_state);
+    traversable.presentation().on_change = [this](TabPresentationState::Change change) {
+        auto& state = this->traversable().presentation();
+        switch (change) {
+        case TabPresentationState::Change::Title:
+            if (on_title_change)
+                on_title_change(state.title());
+            break;
+        case TabPresentationState::Change::URL:
+            did_update_url();
+            break;
+        case TabPresentationState::Change::Favicon:
+            if (on_favicon_change)
+                on_favicon_change(state.favicon() ? Optional<Gfx::Bitmap const&> { *state.favicon() } : Optional<Gfx::Bitmap const&> {});
+            break;
+        case TabPresentationState::Change::Loading:
+            if (on_loading_state_change)
+                on_loading_state_change(state.is_loading());
+            break;
+        case TabPresentationState::Change::Audibility:
+            if (on_audibility_changed)
+                on_audibility_changed(state.audibility());
+            break;
+        case TabPresentationState::Change::ContentBlocking:
+            notify_content_blocking_changed();
+            break;
+        }
+    };
+    for (auto change : { TabPresentationState::Change::Title, TabPresentationState::Change::URL, TabPresentationState::Change::Favicon, TabPresentationState::Change::Loading, TabPresentationState::Change::Audibility, TabPresentationState::Change::ContentBlocking })
+        traversable.presentation().on_change(change);
     traversable.on_session_history_changed = [this] {
         notify_session_history_changed();
     };
@@ -375,8 +396,6 @@ void ViewImplementation::did_change_active_document(Badge<CanonicalTraversable>)
     ignore_pending_permission_prompts();
     report_permission_presence();
     m_permissions_requested_by_page.clear();
-    set_title(Utf16String::from_utf8(url().serialize()));
-    set_favicon({});
     did_update_url();
 }
 
@@ -414,34 +433,26 @@ void ViewImplementation::set_text_fragment_indication_visibility(Badge<WebConten
     update_displayed_url();
 }
 
+Utf16String const& ViewImplementation::title() const
+{
+    static NeverDestroyed<Utf16String> empty;
+    return has_traversable() ? traversable().presentation().title() : *empty;
+}
+
+Optional<String> const& ViewImplementation::favicon_hash() const
+{
+    static NeverDestroyed<Optional<String>> empty;
+    return has_traversable() ? traversable().presentation().favicon_hash() : *empty;
+}
+
 void ViewImplementation::set_title(Utf16String title)
 {
-    if (m_title == title)
-        return;
-
-    m_title = move(title);
-
-    if (on_title_change)
-        on_title_change(m_title);
+    traversable().presentation().set_title(move(title));
 }
 
 void ViewImplementation::set_favicon(Optional<Gfx::Bitmap const&> favicon)
 {
-    m_favicon_hash.clear();
-
-    if (favicon.has_value()) {
-        if (auto favicon_png = Gfx::PNGWriter::encode(*favicon); !favicon_png.is_error())
-            m_favicon_hash = m_session->favicon_store->add_favicon(favicon_png.release_value());
-
-        if (m_favicon_hash.has_value()) {
-            if (m_is_private == IsPrivate::No)
-                Application::bookmark_store().update_favicon(url(), *m_favicon_hash);
-            m_session->history_store->update_favicon(url(), *m_favicon_hash);
-        }
-    }
-
-    if (on_favicon_change)
-        on_favicon_change(favicon);
+    traversable().presentation().set_favicon(favicon);
 }
 
 // The tab is displayed in a process of its own, whose page starts from a document standing in for the entry of the
@@ -744,7 +755,7 @@ void ViewImplementation::reload_for_webdriver_bidi(BypassCache bypass_cache, Utf
 
 void ViewImplementation::stop_loading()
 {
-    if (!m_is_loading)
+    if (!is_loading())
         return;
     // Only a stopped navigation that never activated its document needs reissuing on reload; a stopped
     // active-document load reloads through the session history. A navigation a history operation is finalizing is
@@ -2670,39 +2681,14 @@ void ViewImplementation::request_style_sheet_source(Web::CSS::StyleSheetIdentifi
     page().async_request_style_sheet_source(identifier);
 }
 
-// The page names what it blocked, so its kind is taken only from those the content blocker names, and the list of what
-// was blocked is kept short, each host and kind listed once.
-static constexpr size_t MAX_BLOCKED_RESOURCES = 100;
-
-static StringView known_blocked_resource_kind(StringView kind)
-{
-    static constexpr Array kinds { "Script"sv, "Image"sv, "Stylesheet"sv, "Font"sv, "Media"sv, "Frame"sv, "Request"sv };
-    for (auto known_kind : kinds) {
-        if (kind == known_kind)
-            return known_kind;
-    }
-    return "Request"sv;
-}
-
 void ViewImplementation::did_block_resource(Badge<WebContentPage>, URL::URL const& url, StringView kind)
 {
-    if (m_blocked_resources.size() >= MAX_BLOCKED_RESOURCES)
-        return;
-
-    auto host = MUST(String::from_utf8(url.serialized_host()));
-    auto resource_kind = known_blocked_resource_kind(kind);
-    auto is_listed = any_of(m_blocked_resources, [&](auto const& resource) { return resource.host == host && resource.kind == resource_kind; });
-    if (host.is_empty() || is_listed)
-        return;
-
-    m_blocked_resources.append({ move(host), resource_kind });
-    notify_content_blocking_changed();
+    traversable().presentation().did_block_resource(page().id(), url, kind);
 }
 
 void ViewImplementation::reset_blocked_resources()
 {
-    m_blocked_resources.clear();
-    notify_content_blocking_changed();
+    traversable().presentation().reset_blocked_resources();
 }
 
 void ViewImplementation::notify_content_blocking_changed()
@@ -2714,7 +2700,7 @@ void ViewImplementation::notify_content_blocking_changed()
 ContentBlockingSnapshot ViewImplementation::content_blocking_snapshot() const
 {
     ContentBlockingSnapshot snapshot;
-    snapshot.blocked_resources = m_blocked_resources;
+    snapshot.blocked_resources = traversable().presentation().blocked_resources();
 
     if (m_crash_state.has_value() || !traversable().active_document().host())
         return snapshot;
@@ -2946,28 +2932,7 @@ void ViewImplementation::toggle_page_mute_state()
 
 void ViewImplementation::update_audibility()
 {
-    auto audibility = Audio::Audibility::Inaudible;
-    if (m_audibility_hold.is_held(MonotonicTime::now()))
-        audibility = Audio::Audibility::Audible;
-    traversable().for_each_hosting_page([&](WebContentPage& page) {
-        if (page.audibility() == Audio::Audibility::Audible)
-            audibility = Audio::Audibility::Audible;
-    });
-    if (m_audibility == audibility)
-        return;
-    m_audibility = audibility;
-    ++m_audibility_change_count;
-    if (on_audibility_changed)
-        on_audibility_changed(m_audibility);
-}
-
-void ViewImplementation::page_left(WebContentPage const& page)
-{
-    if (page.audibility() != Audio::Audibility::Audible)
-        return;
-    auto now = MonotonicTime::now();
-    if (m_audibility_hold.page_left(page.id(), now))
-        m_audibility_hold_timer->restart(*m_audibility_hold.held_until() - now);
+    traversable().presentation().update_audibility();
 }
 
 void ViewImplementation::reset_page_media_state()
@@ -3368,11 +3333,7 @@ void ViewImplementation::did_finish_navigation()
 
 void ViewImplementation::set_loading_state(bool is_loading)
 {
-    if (m_is_loading == is_loading)
-        return;
-    m_is_loading = is_loading;
-    if (on_loading_state_change)
-        on_loading_state_change(is_loading);
+    traversable().presentation().set_loading(is_loading);
 }
 
 void ViewImplementation::run_webdriver_content_command(u64 command_id, Web::WebDriver::SessionBrowsingContext browsing_context, String const& name, JsonValue payload, Vector<String> arguments)
@@ -3534,7 +3495,6 @@ void ViewImplementation::prepare_page_for_navigable(WebContentPage& page)
     // The page's sound plays while it hosts the tab's documents, unless the tab is muted.
     page.client().set_audio_playback_mute_state(page.id(), m_mute_state);
     page.client().authorize_audio_playback(page.id());
-    m_audibility_hold.page_began_hosting(page.id());
     if (Application::browser_options().webdriver_browser_endpoint.has_value())
         Application::the().push_webdriver_session_config(page);
     Application::the().apply_view_options({}, *this, page);
@@ -3596,14 +3556,6 @@ void ViewImplementation::display_page_changed(RefPtr<WebContentPage> previous_pa
         fail_pending_debugger_requests();
         reject_pending_selection_requests();
 
-        // The previous page leaves the tab now, before it is let go of, unless it goes on hosting some of it.
-        auto previous_page_goes_on_hosting = false;
-        traversable().for_each_hosting_page([&](WebContentPage& page) {
-            if (&page == previous_page.ptr())
-                previous_page_goes_on_hosting = true;
-        });
-        if (!previous_page_goes_on_hosting)
-            page_left(*previous_page);
         reset_page_media_state();
 
         // Keep showing the outgoing page until the page paints its first frame.
@@ -4037,7 +3989,7 @@ JsonValue ViewImplementation::webdriver_session_history() const
     JsonObject serialized;
     serialized.set("currentURL"sv, url().serialize());
     serialized.set("displayedURL"sv, m_displayed_url.serialize());
-    serialized.set("title"sv, m_title.to_utf8());
+    serialized.set("title"sv, title().to_utf8());
     serialized.set("webContentProcessID"sv, page().client().pid());
     serialized.set("backButtonEnabled"sv, m_navigate_back_action->enabled());
     serialized.set("forwardButtonEnabled"sv, m_navigate_forward_action->enabled());

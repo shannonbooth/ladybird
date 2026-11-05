@@ -56,6 +56,7 @@ set(SOURCES
     Process.cpp
     ProcessManager.cpp
     ProcessSnapshot.cpp
+    TabPresentationState.cpp
     TabPerformanceStats.cpp
     TabPerformanceMonitor.cpp
     ProcessMonitor.cpp

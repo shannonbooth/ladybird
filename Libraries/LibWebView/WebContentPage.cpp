@@ -459,6 +459,10 @@ void WebContentPage::begin_top_level_load(URL::URL const& url)
 
     m_history_recorded_url_for_current_load.clear();
 
+    traversable().presentation().reset_blocked_resources();
+    traversable().presentation().set_loading(true);
+    if (!traversable().view().has_value())
+        return;
     auto& view = this->view();
     view.m_history_visit_transition_for_current_load = view.m_history_visit_transition_for_next_load;
     view.m_history_visit_transition_for_next_load = HistoryVisitTransition::Link;
@@ -663,10 +667,8 @@ void WebContentPage::close()
         m_client->forget_audio_playback(m_id);
         GamepadManager::the().page_closed(*this);
     }
-    if (m_traversable) {
-        if (auto view = m_traversable->view(); view.has_value())
-            view->did_close_page({}, m_id);
-    }
+    if (m_traversable)
+        m_traversable->presentation().page_closed(m_id);
     set_audibility(Audio::Audibility::Inaudible);
     m_web_ui = nullptr;
     auto owed_replies = move(m_owed_replies);
@@ -1304,7 +1306,7 @@ void WebContentPage::did_output_js_console_message(ConsoleOutput console_output)
 
 void WebContentPage::did_block_resource(URL::URL url, String kind)
 {
-    view().did_block_resource({}, url, kind);
+    traversable().presentation().did_block_resource(id(), url, kind);
 }
 
 void WebContentPage::did_start_network_request(u64 request_id, URL::URL url, ByteString method, Vector<HTTP::Header> request_headers, ByteBuffer request_body, Optional<String> initiator_type, String referrer_policy, bool is_navigation_request, Web::Fetch::Infrastructure::RequestPriority priority)
@@ -2107,10 +2109,8 @@ void WebContentPage::set_audibility(Audio::Audibility audibility)
     if (m_audibility == audibility)
         return;
     m_audibility = audibility;
-    if (m_traversable) {
-        if (auto view = m_traversable->view(); view.has_value())
-            view->update_audibility({});
-    }
+    if (m_traversable)
+        m_traversable->presentation().update_audibility();
 }
 
 void WebContentPage::did_change_screen_wake_lock_state(Web::ScreenWakeLockState wake_lock_state)
@@ -2880,7 +2880,8 @@ void WebContentPage::did_finish_loading(Web::HTML::CrossProcessId navigable_id, 
     if (!navigable->is_top_level_traversable())
         return;
 
-    if (displays_tab()) {
+    traversable().presentation().set_loading(false);
+    if (displays_tab() && traversable().view().has_value()) {
         auto const& committed_url = view().url();
 
         // The WebUI channel goes to the process the UI process gave the WebUI's document to, never by a URL a process
@@ -2926,7 +2927,7 @@ void WebContentPage::did_change_title(Utf16String title)
     if (auto process = WebView::Application::process_manager().find_child(client().child_id()); process.has_value())
         process->set_title(title);
 
-    if (displays_tab()) {
+    if (displays_tab() && traversable().view().has_value()) {
         if (!title.is_empty() && !shows_error_page(view())) {
             auto title_utf8 = title.to_utf8();
 
@@ -2941,8 +2942,11 @@ void WebContentPage::did_change_title(Utf16String title)
 
         if (title.is_empty())
             title = Utf16String::from_utf8(view().url().serialize());
-
-        view().set_title({}, title);
+    }
+    if (hosts_active_document_of(traversable())) {
+        if (title.is_empty())
+            title = Utf16String::from_utf8(traversable().active_document_url().serialize());
+        traversable().presentation().set_title(move(title));
     }
 }
 
@@ -3126,10 +3130,11 @@ void WebContentPage::did_change_favicon(Gfx::ShareableBitmap favicon)
         return;
     }
 
-    if (displays_tab()) {
+    if (displays_tab() && traversable().view().has_value()) {
         maybe_record_history_visit_for_current_load(view().url(), history_title(view().title(), view().url()), "favicon change"sv);
-        view().set_favicon({}, *favicon.bitmap());
     }
+    if (hosts_active_document_of(traversable()))
+        traversable().presentation().set_favicon(*favicon.bitmap());
 }
 
 void WebContentPage::did_request_delete_all_cookies(u64 request_id, URL::URL url)

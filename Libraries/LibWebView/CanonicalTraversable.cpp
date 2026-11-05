@@ -33,6 +33,7 @@ static u64 s_next_tab_id = 1;
 CanonicalTraversable::CanonicalTraversable(Web::HTML::CrossProcessId id, NonnullRefPtr<CanonicalSessionHistoryEntry> initial_history_entry, NonnullRefPtr<BrowsingSession> session)
     : CanonicalNavigable(id)
     , m_session(move(session))
+    , m_presentation(*this)
     , m_tab_id(s_next_tab_id++)
     , m_window_handle(generate_random_uuid())
     , m_session_history(move(initial_history_entry))
@@ -433,8 +434,7 @@ void CanonicalTraversable::release_page_if_unused(NonnullRefPtr<WebContentPage> 
         return;
     if (auto* bidi = WebDriverBiDi::the())
         bidi->push_session_state_for_client(page->client());
-    if (auto view = this->view(); view.has_value())
-        view->did_release_page({}, page);
+    presentation().page_left(page);
     page->client().revoke_audio_playback(page->id());
     // A page left hosting none of the tab's documents goes on representing the tab to a process holding part of
     // another tab of its group, whose documents can hold the tab's WindowProxies.
@@ -481,6 +481,7 @@ void CanonicalTraversable::set_page_standing_in_for_lost_document(Badge<ViewImpl
 
 void CanonicalTraversable::did_activate_document_in(Badge<CanonicalNavigable>, WebContentPage& host)
 {
+    presentation().page_began_hosting(host.id());
     // The page that stood in for the lost document is done, unless the document activated in it.
     auto stand_in_page = move(m_page_standing_in_for_lost_document);
     if (stand_in_page && stand_in_page != &host && stand_in_page->is_open())
@@ -690,6 +691,8 @@ void CanonicalTraversable::remove_from_index(CanonicalNavigable& navigable)
 
 void CanonicalTraversable::session_history_changed()
 {
+    if (active_session_history_entry())
+        presentation().set_url(active_document_url());
     // The traversable's replicated state carries its session history entries's size.
     send_replicated_state();
 
@@ -773,6 +776,7 @@ void CanonicalTraversable::stop_loading()
     if (auto page = display_page(); page && page->is_open())
         page->async_stop_loading();
 
+    presentation().set_loading(false);
     if (auto view = this->view(); view.has_value())
         view->did_stop_loading({}, stopped_navigation);
 }
@@ -1730,6 +1734,11 @@ void CanonicalTraversable::did_activate_history_entry(HistoryOperation& operatio
         end_history_jobs(navigable);
 
     if (&navigable == this) {
+        presentation().set_url(active_document_url());
+        if (&navigable.active_document() != replaced_document) {
+            presentation().set_title(Utf16String::from_utf8(active_document_url().serialize()));
+            presentation().set_favicon({});
+        }
         if (auto view = this->view(); view.has_value()) {
             if (&navigable.active_document() != replaced_document)
                 view->did_change_active_document({});
