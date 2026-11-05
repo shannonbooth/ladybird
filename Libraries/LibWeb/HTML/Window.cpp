@@ -557,15 +557,12 @@ WebIDL::ExceptionOr<Window::OpenedWindow> Window::window_open_steps_internal(Utf
             TRY(target_navigable->navigate({ .url = url_record.release_value(), .source_document = source_document, .exceptions_enabled = true, .referrer_policy = referrer_policy, .user_involvement = user_involvement }));
 
         // 2. If noopener is false, then set targetNavigable's active browsing context's opener browsing context to sourceDocument's browsing context.
+        // NB: The UI process sets it, and has the process hosting targetNavigable's document set it there. When that
+        //     is this process, it sets it at once.
         if (no_opener == TokenizedFeature::NoOpener::No) {
-            if (auto* local_target_navigable = as_if<LocalNavigable>(*target_navigable)) {
+            if (auto* local_target_navigable = as_if<LocalNavigable>(*target_navigable))
                 local_target_navigable->active_browsing_context()->set_opener_browsing_context(source_document.browsing_context());
-                local_target_navigable->report_opener_browsing_context();
-            } else {
-                // NB: That browsing context is in the process hosting targetNavigable, which the UI process asks to set
-                //     it to the one active in sourceDocument's node navigable.
-                source_document.page().client().request_set_opener_of_remote_navigable(as<RemoteNavigable>(*target_navigable), *source_document.navigable());
-            }
+            source_document.page().client().request_set_opener_of_navigable(*target_navigable, *source_document.navigable());
         }
     }
 
@@ -1448,7 +1445,7 @@ WebIDL::ExceptionOr<void> Window::set_opener(JS::Value value)
     if (value.is_null() && browsing_context) {
         browsing_context->set_opener_browsing_context(nullptr);
         if (auto navigable = this->navigable(); navigable && navigable->active_browsing_context() == browsing_context)
-            navigable->report_opener_browsing_context();
+            navigable->page().client().page_did_disown_opener_browsing_context(navigable->id());
     }
 
     // 2. If the given value is non-null, then perform ? DefinePropertyOrThrow(this, "opener", { [[Value]]: the given value, [[Writable]]: true, [[Enumerable]]: true, [[Configurable]]: true }).

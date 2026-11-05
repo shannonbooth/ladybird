@@ -710,7 +710,7 @@ public:
     virtual void request_close_of_remote_traversable(HTML::RemoteNavigable&, HTML::LocalNavigable const&, HTML::NavigationSourceSnapshot) { VERIFY_NOT_REACHED(); }
     virtual void request_focusing_steps_for_remote_navigable(HTML::RemoteNavigable&, HTML::FocusTrigger) { VERIFY_NOT_REACHED(); }
     virtual void request_window_focus_of_remote_navigable(HTML::RemoteNavigable&) { VERIFY_NOT_REACHED(); }
-    virtual void request_set_opener_of_remote_navigable(HTML::RemoteNavigable&, HTML::Navigable const&) { VERIFY_NOT_REACHED(); }
+    virtual void request_set_opener_of_navigable(HTML::Navigable const&, HTML::Navigable const&) { }
     virtual void navigation_params_creation_finished(HTML::LocalNavigable&, HTML::NavigationPopulationRequest, HTML::NavigationPopulationResult);
     virtual void changing_navigable_history_job_reached_population(HTML::CrossProcessId operation_id, HTML::CrossProcessId navigable_id, HTML::NavigationSourceSnapshot);
     virtual void history_navigation_params_creation_finished(HTML::CrossProcessId operation_id, HTML::CrossProcessId navigable_id, HTML::NavigationPopulationResult);
@@ -718,7 +718,7 @@ public:
     virtual void page_did_create_populated_document_with_an_origin_of_its_own(HTML::CrossProcessId, HTML::CrossProcessId, HTML::PopulatedDocumentOrigin, HTML::EnvironmentId const&) { }
     virtual void page_did_create_child_frame(HTML::CrossProcessId, DOM::Document const&, HTML::CrossProcessId, HTML::HostedNavigableState const&, HTML::PendingSessionHistoryEntryDescriptor const&, URL::Origin const&, HTML::EnvironmentId const&, HTML::CrossProcessId) { }
     virtual void page_did_change_hosted_navigable_state([[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] HTML::HostedNavigableState const& state) { }
-    virtual void page_did_set_opener_browsing_context([[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] Optional<HTML::CrossProcessId> opener_navigable_id) { }
+    virtual void page_did_disown_opener_browsing_context([[maybe_unused]] HTML::CrossProcessId navigable_id) { }
     virtual void page_did_completely_finish_loading([[maybe_unused]] HTML::CrossProcessId navigable_id, DOM::Document const&) { }
     virtual void page_did_change_navigable_container_state([[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] HTML::ReplicatedContainerState const& state) { }
     virtual void page_did_update_child_frame_viewport(HTML::CrossProcessId, [[maybe_unused]] DevicePixelRect viewport_rect, [[maybe_unused]] DevicePixelRect viewport_intersection) { }

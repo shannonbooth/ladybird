@@ -104,7 +104,7 @@ endpoint WebContentClient routed by Web::PageId page_id
     did_create_populated_document_with_an_origin_of_its_own(Web::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::CrossProcessId document_id, Web::HTML::PopulatedDocumentOrigin origin, Web::HTML::EnvironmentId environment_id) =|
     did_create_child_frame(Web::PageId page_id, Web::HTML::CrossProcessId parent_frame_id, Web::HTML::CrossProcessId container_document_id, Web::HTML::CrossProcessId frame_id, Web::HTML::HostedNavigableState hosted_state, Web::HTML::PendingSessionHistoryEntryDescriptor initial_history_entry, URL::Origin origin, Web::HTML::EnvironmentId environment_id, Web::HTML::CrossProcessId document_id) =|
     did_change_hosted_navigable_state(Web::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::HostedNavigableState state) =|
-    did_set_opener_browsing_context(Web::PageId page_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::CrossProcessId> opener_navigable_id) =|
+    did_disown_opener_browsing_context(Web::PageId page_id, Web::HTML::CrossProcessId navigable_id) =|
     did_completely_finish_loading(Web::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::CrossProcessId document_id) =|
     did_change_navigable_container_state(Web::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::ReplicatedContainerState state) =|
     did_update_frame_stats_displayed(Web::PageId page_id, Web::HTML::CrossProcessId frame_id, bool displayed) =|
