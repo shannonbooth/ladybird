@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include <AK/NeverDestroyed.h>
 #include <AK/NumericLimits.h>
+#include <AK/Random.h>
 #include <AK/StringBuilder.h>
 #include <AK/TemporaryChange.h>
 #include <LibCore/EventLoop.h>
@@ -18,22 +18,23 @@
 #include <LibWebView/CanonicalEnvironmentSettingsObject.h>
 #include <LibWebView/CanonicalTraversable.h>
 #include <LibWebView/CanonicalWindow.h>
+#include <LibWebView/PermissionManager.h>
 #include <LibWebView/StorageJar.h>
+#include <LibWebView/TabPerformanceMonitor.h>
+#include <LibWebView/UserAgentTopLevelTraversableSet.h>
 #include <LibWebView/ViewImplementation.h>
 #include <LibWebView/WebContentClient.h>
 #include <LibWebView/WebDriverBiDi.h>
 
 namespace WebView {
 
-// https://html.spec.whatwg.org/multipage/document-sequences.html#top-level-traversable-set
-static Vector<NonnullOwnPtr<CanonicalTraversable>>& user_agent_top_level_traversable_set()
-{
-    static NeverDestroyed<Vector<NonnullOwnPtr<CanonicalTraversable>>> set;
-    return *set;
-}
+static u64 s_next_tab_id = 1;
 
-CanonicalTraversable::CanonicalTraversable(Web::HTML::CrossProcessId id, NonnullRefPtr<CanonicalSessionHistoryEntry> initial_history_entry)
+CanonicalTraversable::CanonicalTraversable(Web::HTML::CrossProcessId id, NonnullRefPtr<CanonicalSessionHistoryEntry> initial_history_entry, NonnullRefPtr<BrowsingSession> session)
     : CanonicalNavigable(id)
+    , m_session(move(session))
+    , m_tab_id(s_next_tab_id++)
+    , m_window_handle(generate_random_uuid())
     , m_session_history(move(initial_history_entry))
     , m_session_storage(StorageJar::create())
     , m_document_cookie_version_buffer(Core::create_shared_version_buffer())
@@ -278,29 +279,12 @@ void CanonicalTraversable::for_each_hosting_page(Function<void(WebContentPage&)>
 
 CanonicalTraversable* CanonicalTraversable::traversable_containing(Web::HTML::CrossProcessId navigable_id)
 {
-    CanonicalTraversable* traversable = nullptr;
-    ViewImplementation::for_each_view([&](ViewImplementation& view) {
-        if (!view.traversable().find(navigable_id).has_value())
-            return IterationDecision::Continue;
-        traversable = &view.traversable();
-        return IterationDecision::Break;
-    });
-    return traversable;
+    return UserAgentTopLevelTraversableSet::the().traversable_containing(navigable_id);
 }
 
 CanonicalNavigable* CanonicalTraversable::navigable_with_active_browsing_context(CanonicalBrowsingContext const& browsing_context)
 {
-    CanonicalNavigable* result = nullptr;
-    ViewImplementation::for_each_view([&](ViewImplementation& view) {
-        view.traversable().for_each_in_inclusive_subtree([&](CanonicalNavigable& navigable) {
-            if (&navigable.active_browsing_context() != &browsing_context)
-                return IterationDecision::Continue;
-            result = &navigable;
-            return IterationDecision::Break;
-        });
-        return result ? IterationDecision::Break : IterationDecision::Continue;
-    });
-    return result;
+    return UserAgentTopLevelTraversableSet::the().navigable_with_active_browsing_context(browsing_context);
 }
 
 // A process holding part of a tab holds every tab of the tab's browsing context group, in pages hosting none of
@@ -796,22 +780,23 @@ void CanonicalTraversable::stop_loading()
 bool CanonicalTraversable::is_origin_held_by_a_document(URL::Origin const& origin)
 {
     auto holds = [&](CanonicalDocument const& document) { return document.origin().is_same_origin(origin); };
-    for (auto const& traversable : user_agent_top_level_traversable_set()) {
-        auto decision = traversable->for_each_in_inclusive_subtree([&](CanonicalNavigable const& navigable) {
+    bool found = false;
+    UserAgentTopLevelTraversableSet::the().for_each([&](CanonicalTraversable& traversable) {
+        auto decision = traversable.for_each_in_inclusive_subtree([&](CanonicalNavigable const& navigable) {
             auto held = holds(navigable.active_document());
             navigable.for_each_populated_document_state([&](CanonicalDocumentState const& document_state) {
                 held = held || holds(document_state.populated_document->document);
             });
             return held ? IterationDecision::Break : IterationDecision::Continue;
         });
-        if (decision == IterationDecision::Break)
-            return true;
-    }
-    return false;
+        found = decision == IterationDecision::Break;
+        return decision;
+    });
+    return found;
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#creating-a-new-top-level-traversable
-CanonicalTraversable& CanonicalTraversable::create_a_new_top_level_traversable(Web::HTML::CrossProcessId id, Optional<CanonicalNavigable&> opener, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::CrossProcessId document_id)
+CanonicalTraversable& CanonicalTraversable::create_a_new_top_level_traversable(NonnullRefPtr<BrowsingSession> session, Web::HTML::CrossProcessId id, Optional<CanonicalNavigable&> opener, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::CrossProcessId document_id)
 {
     // 1. Let document be null.
     RefPtr<CanonicalDocument> document;
@@ -840,7 +825,7 @@ CanonicalTraversable& CanonicalTraversable::create_a_new_top_level_traversable(W
     // 5. Let traversable be a new traversable navigable.
     // NB: Its session history entries start out as steps 7-9 leave them.
     history_entry->step = 0;
-    auto traversable = make<CanonicalTraversable>(id, history_entry);
+    auto traversable = make<CanonicalTraversable>(id, history_entry, move(session));
 
     // 6. Initialize the navigable traversable given documentState.
     traversable->set_current_session_history_entry(history_entry);
@@ -865,8 +850,7 @@ CanonicalTraversable& CanonicalTraversable::create_a_new_top_level_traversable(W
         traversable->clone_session_storage_from(opener->top_level_traversable());
 
     // 11. Append traversable to the user agent's top-level traversable set.
-    auto& traversable_ref = *traversable;
-    user_agent_top_level_traversable_set().append(move(traversable));
+    auto& traversable_ref = UserAgentTopLevelTraversableSet::the().add({}, move(traversable));
 
     // 12. Invoke WebDriver BiDi navigable created with traversable and openerNavigableForWebDriver.
     // NB: openerNavigableForWebDriver is the opener of a traversable that has one.
@@ -878,11 +862,11 @@ CanonicalTraversable& CanonicalTraversable::create_a_new_top_level_traversable(W
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-top-level-traversable
-void CanonicalTraversable::remove_from_user_agent_top_level_traversable_set(CanonicalTraversable& traversable)
+void CanonicalTraversable::destroy()
 {
     // 5. Remove traversable from the user agent's top-level traversable set.
     // NB: The process hosting the traversable's document runs the other steps.
-    user_agent_top_level_traversable_set().remove_first_matching([&](auto const& entry) { return entry.ptr() == &traversable; });
+    UserAgentTopLevelTraversableSet::the().remove({}, *this);
 }
 
 // The entry of navigable's session history entries that the process hosting navigable's active document names, or a
@@ -1102,6 +1086,10 @@ struct HistoryOperation {
 
 CanonicalTraversable::~CanonicalTraversable()
 {
+    TabPerformanceMonitor::forget_tab(tab_id());
+    if (session().permission_manager)
+        session().permission_manager->remove_tab(tab_id());
+
     // https://html.spec.whatwg.org/multipage/document-sequences.html#discard-a-browsing-context
     // The closed tab's browsing context is discarded, and removed from its group. It lives on as the opener browsing
     // context of the browsing contexts it opened.

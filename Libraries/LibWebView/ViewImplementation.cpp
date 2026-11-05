@@ -120,24 +120,21 @@ ViewImplementation::~ViewImplementation()
     on_location_in_use_change = nullptr;
     on_audibility_changed = nullptr;
     answer_pending_console_input_completions();
-    TabPerformanceMonitor::forget_view(view_id());
-    // Leave the views before the permission manager hears: a one-time grant that ends with this view has it revoke
-    // location in every view that shows the site, and this one is on its way out.
+    // Stop routing to this view before destroying its traversable and revoking its one-time permissions.
     all_views().remove(m_view_id);
-    session().permission_manager->remove_view(view_id());
     if (m_top_level_traversable)
         m_top_level_traversable->clear_ongoing_navigation();
     cancel_all_native_geolocation_requests();
 
-    if (!m_window_handle.is_empty() && !m_owner_view_id.has_value())
-        Application::the().notify_webdriver_window_closed(m_window_handle);
+    if (!handle().is_empty() && !owner_tab_id().has_value())
+        Application::the().notify_webdriver_window_closed(handle());
 
     reset_spell_checking();
 
     // NB: WebDriver BiDi may activate another top-level traversable, which must not be this one that is going away.
-    if (!m_window_handle.is_empty() && !m_owner_view_id.has_value()) {
+    if (!handle().is_empty() && !owner_tab_id().has_value()) {
         if (auto* webdriver_bidi = WebDriverBiDi::the())
-            webdriver_bidi->top_level_traversable_did_close(m_window_handle);
+            webdriver_bidi->top_level_traversable_did_close(handle());
     }
 
     if (m_top_level_traversable) {
@@ -155,7 +152,7 @@ ViewImplementation::~ViewImplementation()
     fail_webdriver_content_commands_after_window_close(m_webdriver_commands_waiting_for_a_document);
 
     if (m_top_level_traversable)
-        CanonicalTraversable::remove_from_user_agent_top_level_traversable_set(*m_top_level_traversable);
+        m_top_level_traversable->destroy();
 }
 
 pid_t ViewImplementation::web_content_pid() const
@@ -168,6 +165,28 @@ Vector<HistoryEntry> ViewImplementation::recent_history_entries(size_t limit) co
     return m_session->history_store->list_entries({}, 0, limit);
 }
 
+Optional<TabId> ViewImplementation::owner_tab_id() const
+{
+    if (m_top_level_traversable)
+        return m_top_level_traversable->owner_tab_id();
+    return m_pending_owner_tab_id;
+}
+
+void ViewImplementation::set_owner_view(ViewImplementation const& owner)
+{
+    m_pending_owner_tab_id = owner.traversable().tab_id();
+    if (m_top_level_traversable)
+        m_top_level_traversable->set_owner_tab_id({}, m_pending_owner_tab_id);
+}
+
+String const& ViewImplementation::handle() const
+{
+    static NeverDestroyed<String> empty_handle;
+    if (!m_top_level_traversable || m_webdriver_window_closed)
+        return *empty_handle;
+    return m_top_level_traversable->handle();
+}
+
 CanonicalTraversable& ViewImplementation::traversable() const
 {
     VERIFY(m_top_level_traversable);
@@ -177,8 +196,10 @@ CanonicalTraversable& ViewImplementation::traversable() const
 void ViewImplementation::display_traversable(CanonicalTraversable& traversable, Web::HTML::VisibilityState system_visibility_state)
 {
     VERIFY(!m_top_level_traversable);
+    VERIFY(&session() == &traversable.session());
     m_top_level_traversable = &traversable;
     traversable.set_view({}, *this);
+    traversable.set_owner_tab_id({}, m_pending_owner_tab_id);
     traversable.set_system_visibility_state(system_visibility_state);
     traversable.on_session_history_changed = [this] {
         notify_session_history_changed();
@@ -450,7 +471,7 @@ void ViewImplementation::server_did_paint(Badge<WebContentPage>, i32 bitmap_id, 
     if (did_swap_bitmap && m_crash_state.has_value() && m_crash_state->recovery_started)
         set_crash_state({});
     if (did_swap_bitmap)
-        TabPerformanceMonitor::did_present(view_id());
+        TabPerformanceMonitor::did_present(traversable().tab_id());
 
     if (did_swap_bitmap && on_ready_to_paint)
         on_ready_to_paint();
@@ -487,13 +508,13 @@ void ViewImplementation::set_system_visibility_state(Web::HTML::VisibilityState 
     report_permission_presence();
 }
 
-// One-time grants last only while some view shows their site, so each view tells the permission manager what it shows.
+// Report the traversable's site and visibility using its persistent tab identity.
 void ViewImplementation::report_permission_presence()
 {
     if (!m_top_level_traversable)
         return;
     auto visible = traversable().system_visibility_state() == Web::HTML::VisibilityState::Visible;
-    session().permission_manager->set_view_presence(view_id(), permission_origin(), visible);
+    session().permission_manager->set_tab_presence(traversable().tab_id(), permission_origin(), visible);
 }
 
 URL::Origin ViewImplementation::permission_origin() const
@@ -3128,16 +3149,13 @@ void ViewImplementation::initialize_tab(Web::HTML::VisibilityState system_visibi
     VERIFY(page().is_open());
     VERIFY(page().client().is_private() == m_is_private);
 
-    if (m_window_handle.is_empty()) {
-        m_window_handle = generate_random_uuid();
-        if (!m_owner_view_id.has_value()) {
-            Application::the().notify_webdriver_window_created(m_window_handle);
+    if (!owner_tab_id().has_value()) {
+        Application::the().notify_webdriver_window_created(handle());
 
-            // NB: WebDriver BiDi names a top-level traversable by its window handle, so the traversable is reported as
-            //     created once it has one.
-            if (auto* webdriver_bidi = WebDriverBiDi::the())
-                webdriver_bidi->top_level_traversable_did_get_window_handle(*traversable);
-        }
+        // NB: WebDriver BiDi names a top-level traversable by its window handle, so the traversable is reported as
+        //     created when its frontend is initialized.
+        if (auto* webdriver_bidi = WebDriverBiDi::the())
+            webdriver_bidi->top_level_traversable_did_get_window_handle(*traversable);
     }
     prepare_page_for_tab(page());
     display_page_changed({});
@@ -3531,7 +3549,7 @@ void ViewImplementation::prepare_page_for_tab(WebContentPage& page)
     prepare_page_for_navigable(page);
     // The window handle names the tab to WebDriver, and the viewport is the tab's: both belong to the page displaying
     // it, whose traversable is local.
-    page.async_set_window_handle(m_window_handle);
+    page.async_set_window_handle(handle());
     page.async_set_viewport(viewport_size(), m_device_pixel_ratio, m_is_fullscreen);
     Application::the().update_compositor_viewport(page.compositor_context_id(), viewport_size().to_type<int>(), m_device_pixel_ratio);
 }
@@ -3845,10 +3863,11 @@ void ViewImplementation::did_close_browsing_context(Badge<WebContentPage>)
     // https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-top-level-traversable
     // 6. Invoke WebDriver BiDi navigable destroyed with traversable.
     auto* webdriver_bidi = WebDriverBiDi::the();
-    if (webdriver_bidi && !m_window_handle.is_empty() && !m_owner_view_id.has_value())
+    if (webdriver_bidi && !handle().is_empty() && !owner_tab_id().has_value())
         webdriver_bidi->navigable_destroyed(traversable());
 
-    auto window_handle = move(m_window_handle);
+    auto window_handle = handle();
+    m_webdriver_window_closed = true;
 
     // Headless views retain their closed children. Remove the view from routing immediately so a command racing
     // with the close cannot reach the closed page.
@@ -3856,7 +3875,7 @@ void ViewImplementation::did_close_browsing_context(Badge<WebContentPage>)
     traversable().discard_pending_host();
     traversable().discard_representing_pages();
 
-    if (!window_handle.is_empty() && !m_owner_view_id.has_value()) {
+    if (!window_handle.is_empty() && !owner_tab_id().has_value()) {
         Application::the().notify_webdriver_window_closed(window_handle);
         if (webdriver_bidi)
             webdriver_bidi->top_level_traversable_did_close(window_handle);

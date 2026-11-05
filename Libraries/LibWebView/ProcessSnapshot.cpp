@@ -31,7 +31,7 @@ Vector<ProcessSnapshot> process_snapshots(ProcessManager& manager)
     Optional<ViewImplementation&> active_view;
     ViewImplementation::for_each_view([&](auto& view) {
         // An owned view's page shares its owner's process, which the owner's tab already lists.
-        if (view.owner_view_id().has_value())
+        if (view.owner_tab_id().has_value())
             return IterationDecision::Continue;
         if (!did_look_up_active_view) {
             active_view = Application::the().active_web_view();

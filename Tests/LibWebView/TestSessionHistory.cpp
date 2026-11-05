@@ -357,7 +357,7 @@ static void expect_nested_entry(WebView::CanonicalNestedHistory const& nested_hi
 
 TEST_CASE(entry_updates_address_the_navigables_session_history_entries)
 {
-    WebView::CanonicalTraversable traversable { {}, initial_history_entry() };
+    WebView::CanonicalTraversable traversable { {}, initial_history_entry(), WebView::BrowsingSession::create(WebView::IsPrivate::No) };
     traversable.set_id({ 9, 1 });
     give_active_document(traversable);
     auto& child = traversable.append_child(make<WebView::CanonicalNavigable>(navigable_id("frame-1"sv)));
@@ -397,7 +397,7 @@ TEST_CASE(entry_updates_address_the_navigables_session_history_entries)
 
 TEST_CASE(entry_updates_require_entry_and_document_state_identity)
 {
-    WebView::CanonicalTraversable traversable { {}, initial_history_entry() };
+    WebView::CanonicalTraversable traversable { {}, initial_history_entry(), WebView::BrowsingSession::create(WebView::IsPrivate::No) };
     traversable.set_id({ 9, 1 });
     give_active_document(traversable);
 
@@ -426,7 +426,7 @@ TEST_CASE(entry_updates_require_entry_and_document_state_identity)
 TEST_CASE(queued_same_document_entries_are_addressed_by_identity)
 {
     Core::EventLoop event_loop;
-    WebView::CanonicalTraversable traversable { {}, initial_history_entry() };
+    WebView::CanonicalTraversable traversable { {}, initial_history_entry(), WebView::BrowsingSession::create(WebView::IsPrivate::No) };
     traversable.set_id({ 9, 1 });
     give_active_document(traversable);
 
@@ -506,7 +506,7 @@ TEST_CASE(entry_among_its_own_nested_histories_is_rejected)
 
 TEST_CASE(child_history_mutations_use_the_reported_parent_document_state)
 {
-    WebView::CanonicalTraversable traversable { {}, initial_history_entry() };
+    WebView::CanonicalTraversable traversable { {}, initial_history_entry(), WebView::BrowsingSession::create(WebView::IsPrivate::No) };
     traversable.set_id({ 9, 1 });
     give_active_document(traversable);
 
@@ -719,7 +719,7 @@ TEST_CASE(clear_forward_session_history_rebuilds_traversal_state)
 
 TEST_CASE(cross_document_push_clears_forward_history_at_finalization)
 {
-    WebView::CanonicalTraversable traversable { {}, initial_history_entry() };
+    WebView::CanonicalTraversable traversable { {}, initial_history_entry(), WebView::BrowsingSession::create(WebView::IsPrivate::No) };
     traversable.set_id({ 9, 1 });
     give_active_document(traversable);
     WebView::TraversableSessionHistory history { initial_history_entry() };
@@ -819,7 +819,7 @@ TEST_CASE(history_log_entries_marks_nested_histories)
 
 TEST_CASE(cross_document_push_preserves_document_resource)
 {
-    WebView::CanonicalTraversable traversable { {}, initial_history_entry() };
+    WebView::CanonicalTraversable traversable { {}, initial_history_entry(), WebView::BrowsingSession::create(WebView::IsPrivate::No) };
     traversable.set_id({ 9, 1 });
     give_active_document(traversable);
     WebView::TraversableSessionHistory history { initial_history_entry() };
@@ -840,7 +840,7 @@ TEST_CASE(cross_document_push_preserves_document_resource)
 
 TEST_CASE(cross_document_replacement_preserves_forward_history)
 {
-    WebView::CanonicalTraversable traversable { {}, initial_history_entry() };
+    WebView::CanonicalTraversable traversable { {}, initial_history_entry(), WebView::BrowsingSession::create(WebView::IsPrivate::No) };
     traversable.set_id({ 9, 1 });
     give_active_document(traversable);
     WebView::TraversableSessionHistory history { initial_history_entry() };
@@ -883,7 +883,7 @@ TEST_CASE(cross_document_replacement_preserves_forward_history)
 
 TEST_CASE(cross_document_replacement_in_a_parent_keeps_a_current_step_in_a_child_history)
 {
-    WebView::CanonicalTraversable traversable { {}, initial_history_entry() };
+    WebView::CanonicalTraversable traversable { {}, initial_history_entry(), WebView::BrowsingSession::create(WebView::IsPrivate::No) };
     traversable.set_id({ 9, 1 });
     give_active_document(traversable);
     WebView::TraversableSessionHistory history { initial_history_entry() };
@@ -917,7 +917,7 @@ TEST_CASE(cross_document_replacement_in_a_parent_keeps_a_current_step_in_a_child
 
 TEST_CASE(nested_cross_document_push_updates_copied_session_histories)
 {
-    WebView::CanonicalTraversable traversable { {}, initial_history_entry() };
+    WebView::CanonicalTraversable traversable { {}, initial_history_entry(), WebView::BrowsingSession::create(WebView::IsPrivate::No) };
     traversable.set_id({ 9, 1 });
     give_active_document(traversable);
     auto& child = traversable.append_child(make<WebView::CanonicalNavigable>(navigable_id("frame"sv)));
@@ -953,7 +953,7 @@ TEST_CASE(nested_cross_document_push_updates_copied_session_histories)
 
 TEST_CASE(nested_cross_document_replacement_updates_copied_session_histories)
 {
-    WebView::CanonicalTraversable traversable { {}, initial_history_entry() };
+    WebView::CanonicalTraversable traversable { {}, initial_history_entry(), WebView::BrowsingSession::create(WebView::IsPrivate::No) };
     traversable.set_id({ 9, 1 });
     give_active_document(traversable);
     auto& child = traversable.append_child(make<WebView::CanonicalNavigable>(navigable_id("frame"sv)));
@@ -990,7 +990,7 @@ TEST_CASE(nested_cross_document_replacement_updates_copied_session_histories)
 
 TEST_CASE(nested_finalization_rejects_a_changed_initial_entry_identity)
 {
-    WebView::CanonicalTraversable traversable { {}, initial_history_entry() };
+    WebView::CanonicalTraversable traversable { {}, initial_history_entry(), WebView::BrowsingSession::create(WebView::IsPrivate::No) };
     traversable.set_id({ 9, 1 });
     give_active_document(traversable);
     auto& child = traversable.append_child(make<WebView::CanonicalNavigable>(navigable_id("frame"sv)));
@@ -1022,7 +1022,7 @@ TEST_CASE(nested_finalization_rejects_a_changed_initial_entry_identity)
 
 TEST_CASE(nested_finalization_rejects_wrong_active_entry_for_populated_history)
 {
-    WebView::CanonicalTraversable traversable { {}, initial_history_entry() };
+    WebView::CanonicalTraversable traversable { {}, initial_history_entry(), WebView::BrowsingSession::create(WebView::IsPrivate::No) };
     traversable.set_id({ 9, 1 });
     give_active_document(traversable);
     auto& child = traversable.append_child(make<WebView::CanonicalNavigable>(navigable_id("frame"sv)));

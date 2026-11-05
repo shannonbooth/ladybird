@@ -73,7 +73,7 @@ public:
     void for_each_request_server_site_bindings(Function<IterationDecision(RequestServerSiteBindings&)> const&);
     ErrorOr<void> simulate_request_server_connection_loss_for_testing(WebContentClient&, Web::PageId page_id);
 
-    Optional<u64> exclusive_performance_owner(pid_t) const;
+    Optional<TabId> exclusive_performance_owner(pid_t) const;
 
     size_t client_count() const { return m_agents.size(); }
 

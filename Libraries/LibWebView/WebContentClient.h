@@ -65,6 +65,7 @@
 #include <LibWebView/Forward.h>
 #include <LibWebView/RequestServerSiteBindings.h>
 #include <LibWebView/StorageAreaRegistry.h>
+#include <LibWebView/TabId.h>
 #include <LibWebView/WebContentPage.h>
 #include <WebContent/WebContentClientEndpoint.h>
 #include <WebContent/WebContentServerEndpoint.h>
@@ -151,7 +152,7 @@ public:
     // the same reason.
     virtual bool may_act_for_storage_area(Web::StorageAPI::StorageAreaId) const override;
 
-    Optional<u64> exclusive_performance_owner() const;
+    Optional<TabId> exclusive_performance_owner() const;
 
     void did_lose_process();
     void did_save_crash_report(ByteString const& report_name);

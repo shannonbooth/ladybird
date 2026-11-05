@@ -75,6 +75,7 @@ set(SOURCES
     StorageJar.cpp
     TestSpellChecker.cpp
     URL.cpp
+    UserAgentTopLevelTraversableSet.cpp
     UserAgent.cpp
     Utilities.cpp
     VideoDecoderServerControlClient.cpp

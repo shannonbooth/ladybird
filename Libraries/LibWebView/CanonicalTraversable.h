@@ -26,10 +26,12 @@
 #include <LibWebCommon/HTML/VisibilityState.h>
 #include <LibWebCommon/Page/PageId.h>
 #include <LibWebView/ApplyHistoryStep.h>
+#include <LibWebView/BrowsingSession.h>
 #include <LibWebView/CanonicalNavigable.h>
 #include <LibWebView/Export.h>
 #include <LibWebView/SessionHistory.h>
 #include <LibWebView/SessionHistoryTraversalQueue.h>
+#include <LibWebView/TabId.h>
 #include <LibWebView/WebContentPage.h>
 
 namespace WebView {
@@ -54,7 +56,7 @@ class WEBVIEW_API CanonicalTraversable final : public CanonicalNavigable {
     friend class ApplyHistoryStep;
 
 public:
-    CanonicalTraversable(Web::HTML::CrossProcessId id, NonnullRefPtr<CanonicalSessionHistoryEntry> initial_history_entry);
+    CanonicalTraversable(Web::HTML::CrossProcessId id, NonnullRefPtr<CanonicalSessionHistoryEntry> initial_history_entry, NonnullRefPtr<BrowsingSession>);
     virtual ~CanonicalTraversable() override;
 
     virtual bool is_top_level_traversable() const override { return true; }
@@ -127,6 +129,13 @@ public:
     void release_page_if_unused(NonnullRefPtr<WebContentPage>);
     void end_history_jobs(CanonicalNavigable const&, CanonicalDocument const* populated_document = nullptr);
 
+    BrowsingSession& session() const { return *m_session; }
+    TabId tab_id() const { return m_tab_id; }
+    Optional<TabId> owner_tab_id() const { return m_owner_tab_id; }
+    TabId performance_owner() const { return m_owner_tab_id.value_or(m_tab_id); }
+    void set_owner_tab_id(Badge<ViewImplementation>, Optional<TabId> owner) { m_owner_tab_id = owner; }
+    String const& handle() const { return m_window_handle; }
+
     Optional<ViewImplementation&> view() const;
     void set_view(Badge<ViewImplementation>, ViewImplementation&);
     RefPtr<WebContentPage> display_page() const;
@@ -177,11 +186,11 @@ public:
 
     void reload(BypassCache, Optional<Utf16String> navigation_id = {});
     void stop_loading();
-    static CanonicalTraversable& create_a_new_top_level_traversable(Web::HTML::CrossProcessId id, Optional<CanonicalNavigable&> opener, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::CrossProcessId document_id);
+    static CanonicalTraversable& create_a_new_top_level_traversable(NonnullRefPtr<BrowsingSession>, Web::HTML::CrossProcessId id, Optional<CanonicalNavigable&> opener, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::CrossProcessId document_id);
     static bool is_origin_held_by_a_document(URL::Origin const&);
     static CanonicalTraversable* traversable_containing(Web::HTML::CrossProcessId navigable_id);
     static CanonicalNavigable* navigable_with_active_browsing_context(CanonicalBrowsingContext const&);
-    static void remove_from_user_agent_top_level_traversable_set(CanonicalTraversable&);
+    void destroy();
     bool update_session_history_entry_navigation_api_state(CanonicalNavigable&, Web::HTML::SessionHistoryEntryIdentity const&, Web::HTML::StorageSerializationRecord navigation_api_state);
     bool update_session_history_entry_scroll_restoration_mode(CanonicalNavigable&, Web::HTML::SessionHistoryEntryIdentity const&, Web::HTML::ScrollRestorationMode scroll_restoration_mode);
     bool update_session_history_entry_document_state_navigable_target_name(CanonicalNavigable&, Web::HTML::SessionHistoryEntryIdentity const&, Utf16String navigable_target_name);
@@ -199,6 +208,10 @@ public:
     static StringView browser_history_traversal_stage_to_string(BrowserHistoryTraversalDiagnostic::Stage);
 
 private:
+    NonnullRefPtr<BrowsingSession> m_session;
+    TabId const m_tab_id;
+    Optional<TabId> m_owner_tab_id;
+    String const m_window_handle;
     ViewImplementation* m_view { nullptr };
     void session_history_changed();
     void check_if_unloading_is_canceled(ApplyHistoryStep&, Vector<Web::HTML::CrossProcessId> navigables_that_need_before_unload, NonnullRefPtr<CanonicalSessionHistoryEntry> target_entry, Web::HTML::UserNavigationInvolvement user_involvement_for_navigate_event, Function<void(Web::HTML::CheckIfUnloadingIsCanceledResult)> on_complete);
