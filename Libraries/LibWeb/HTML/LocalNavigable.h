@@ -111,7 +111,6 @@ public:
     bool is_closing() const { return m_closing; }
     void set_closing(bool value);
     void report_hosted_state();
-    void report_opener_browsing_context();
     void report_state_to_remote_container();
     bool is_script_closable();
 

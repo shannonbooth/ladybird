@@ -1350,9 +1350,9 @@ void CanonicalNavigable::send_replicated_state() const
     });
 }
 
-// The process hosting the active document sets and disowns its browsing context's opener browsing context, which it
-// reports as the navigable that browsing context is active in.
-void CanonicalNavigable::did_set_opener_browsing_context(Optional<Web::HTML::CrossProcessId> opener_navigable_id)
+// The opener browsing context of the navigable's active browsing context, given as the navigable it is active in. The
+// process hosting the active document holds it too.
+void CanonicalNavigable::set_opener_browsing_context(Optional<Web::HTML::CrossProcessId> opener_navigable_id)
 {
     RefPtr<CanonicalBrowsingContext> opener_browsing_context;
     if (opener_navigable_id.has_value()) {
@@ -1377,6 +1377,8 @@ void CanonicalNavigable::did_set_opener_browsing_context(Optional<Web::HTML::Cro
     }
 
     send_replicated_state();
+    if (auto host = active_document().host(); host && opener_browsing_context)
+        host->async_set_opener_of_navigable(id(), *opener_navigable_id);
 
     // A process can stop needing the tab of the previous opener.
     for (auto& client : clients)

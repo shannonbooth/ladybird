@@ -864,18 +864,20 @@ void WebContentPage::did_request_window_focus_of_navigable(Web::HTML::CrossProce
     endpoint->async_focus_window_of_navigable(navigable_id);
 }
 
+// https://html.spec.whatwg.org/multipage/nav-history-apis.html#window-open-steps
+// 16.2. If noopener is false, then set targetNavigable's active browsing context's opener browsing context to
+//       sourceDocument's browsing context.
+// NB: sourceDocument's node navigable must be one the requesting process hosts. The request comes through the page
+//     holding the target's tab, which is not the opener's when the two are different tabs.
 void WebContentPage::did_request_set_opener_of_navigable(Web::HTML::CrossProcessId navigable_id, Web::HTML::CrossProcessId opener_navigable_id)
 {
-    // window.open() on a navigable another process hosts sets the opener of its active browsing context there, to that
-    // of a navigable the requesting process hosts. The request comes through the page holding the target's tab, which
-    // is not the opener's when the two are different tabs.
     if (!client().hosted_navigable(opener_navigable_id).has_value())
         return;
-
-    auto endpoint = endpoint_hosting_navigable_represented_by(navigable_id);
-    if (!endpoint)
+    auto* traversable = CanonicalTraversable::traversable_containing(navigable_id);
+    if (!traversable)
         return;
-    endpoint->async_set_opener_of_navigable(navigable_id, opener_navigable_id);
+    if (auto navigable = traversable->find(navigable_id); navigable.has_value())
+        navigable->set_opener_browsing_context(opener_navigable_id);
 }
 
 void WebContentPage::did_completely_finish_loading(Web::HTML::CrossProcessId navigable_id, Web::HTML::CrossProcessId document_id)
@@ -2688,13 +2690,16 @@ void WebContentPage::did_change_hosted_navigable_state(Web::HTML::CrossProcessId
     navigable->update_hosted_state(move(state));
 }
 
-void WebContentPage::did_set_opener_browsing_context(Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::CrossProcessId> opener_navigable_id)
+// https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-opener
+// 1. If the given value is null and this's browsing context is non-null, then set this's browsing context's opener
+//    browsing context to null.
+// NB: Only the process hosting a navigable's active document disowns its browsing context's opener.
+void WebContentPage::did_disown_opener_browsing_context(Web::HTML::CrossProcessId navigable_id)
 {
-    // Only the process hosting a navigable's active document speaks for its browsing context.
     auto navigable = hosted_navigable(navigable_id);
     if (!navigable.has_value() || !hosts_active_document_of(*navigable))
         return;
-    navigable->did_set_opener_browsing_context(opener_navigable_id);
+    navigable->set_opener_browsing_context({});
 }
 
 void WebContentPage::did_change_navigable_container_state(Web::HTML::CrossProcessId navigable_id, Web::HTML::ReplicatedContainerState state)

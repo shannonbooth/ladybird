@@ -312,7 +312,7 @@ void PageClient::request_window_focus_of_remote_navigable(Web::HTML::RemoteNavig
     client().async_did_request_window_focus_of_navigable(m_id, navigable.id());
 }
 
-void PageClient::request_set_opener_of_remote_navigable(Web::HTML::RemoteNavigable& navigable, Web::HTML::Navigable const& opener)
+void PageClient::request_set_opener_of_navigable(Web::HTML::Navigable const& navigable, Web::HTML::Navigable const& opener)
 {
     client().async_did_request_set_opener_of_navigable(m_id, navigable.id(), opener.id());
 }
@@ -424,9 +424,9 @@ void PageClient::page_did_change_hosted_navigable_state(Web::HTML::CrossProcessI
     client().async_did_change_hosted_navigable_state(m_id, navigable_id, state);
 }
 
-void PageClient::page_did_set_opener_browsing_context(Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::CrossProcessId> opener_navigable_id)
+void PageClient::page_did_disown_opener_browsing_context(Web::HTML::CrossProcessId navigable_id)
 {
-    client().async_did_set_opener_browsing_context(m_id, navigable_id, opener_navigable_id);
+    client().async_did_disown_opener_browsing_context(m_id, navigable_id);
 }
 
 void PageClient::page_did_completely_finish_loading(Web::HTML::CrossProcessId navigable_id, Web::DOM::Document const& document)

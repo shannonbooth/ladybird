@@ -205,7 +205,7 @@ public:
     void set_hosted_state(Web::HTML::HostedNavigableState);
     void did_lose_active_document();
     void update_hosted_state(Web::HTML::HostedNavigableState);
-    void did_set_opener_browsing_context(Optional<Web::HTML::CrossProcessId> opener_navigable_id);
+    void set_opener_browsing_context(Optional<Web::HTML::CrossProcessId> opener_navigable_id);
     // https://html.spec.whatwg.org/multipage/document-sequences.html#has-cross-site-ancestor
     bool active_document_has_cross_site_ancestor() const;
     // Whether the navigable's active session history entry is among its session history entries.

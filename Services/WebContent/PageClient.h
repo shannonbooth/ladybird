@@ -208,13 +208,13 @@ private:
     virtual void request_close_of_remote_traversable(Web::HTML::RemoteNavigable&, Web::HTML::LocalNavigable const& source, Web::HTML::NavigationSourceSnapshot) override;
     virtual void request_focusing_steps_for_remote_navigable(Web::HTML::RemoteNavigable&, Web::HTML::FocusTrigger) override;
     virtual void request_window_focus_of_remote_navigable(Web::HTML::RemoteNavigable&) override;
-    virtual void request_set_opener_of_remote_navigable(Web::HTML::RemoteNavigable&, Web::HTML::Navigable const& opener) override;
+    virtual void request_set_opener_of_navigable(Web::HTML::Navigable const&, Web::HTML::Navigable const& opener) override;
     virtual void navigation_params_creation_finished(Web::HTML::LocalNavigable&, Web::HTML::NavigationPopulationRequest, Web::HTML::NavigationPopulationResult) override;
     virtual void changing_navigable_history_job_reached_population(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::NavigationSourceSnapshot) override;
     virtual void history_navigation_params_creation_finished(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::NavigationPopulationResult) override;
     virtual void navigation_population_failed(Web::HTML::CrossProcessId, Utf16String const&) override;
     virtual void page_did_change_hosted_navigable_state(Web::HTML::CrossProcessId navigable_id, Web::HTML::HostedNavigableState const&) override;
-    virtual void page_did_set_opener_browsing_context(Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::CrossProcessId> opener_navigable_id) override;
+    virtual void page_did_disown_opener_browsing_context(Web::HTML::CrossProcessId navigable_id) override;
     virtual void page_did_completely_finish_loading(Web::HTML::CrossProcessId navigable_id, Web::DOM::Document const&) override;
     virtual void page_did_change_navigable_container_state(Web::HTML::CrossProcessId navigable_id, Web::HTML::ReplicatedContainerState const&) override;
     virtual void page_did_create_populated_document_with_an_origin_of_its_own(Web::HTML::CrossProcessId navigable_id, Web::HTML::CrossProcessId document_id, Web::HTML::PopulatedDocumentOrigin, Web::HTML::EnvironmentId const& environment_id) override;

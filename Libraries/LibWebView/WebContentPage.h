@@ -347,7 +347,7 @@ private:
     virtual void did_finish_history_navigation_params_creation(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::NavigationPopulationResult result) override;
     virtual void did_fail_navigation_population(Web::HTML::CrossProcessId navigable_id, Utf16String navigation_id) override;
     virtual void did_change_hosted_navigable_state(Web::HTML::CrossProcessId navigable_id, Web::HTML::HostedNavigableState state) override;
-    virtual void did_set_opener_browsing_context(Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::CrossProcessId> opener_navigable_id) override;
+    virtual void did_disown_opener_browsing_context(Web::HTML::CrossProcessId navigable_id) override;
     virtual void did_change_navigable_container_state(Web::HTML::CrossProcessId navigable_id, Web::HTML::ReplicatedContainerState state) override;
     virtual void did_update_child_frame_viewport(Web::HTML::CrossProcessId frame_id, Web::DevicePixelRect viewport_rect, Web::DevicePixelRect viewport_intersection, double device_pixel_ratio) override;
     virtual void did_update_frame_stats_displayed(Web::HTML::CrossProcessId, bool) override;

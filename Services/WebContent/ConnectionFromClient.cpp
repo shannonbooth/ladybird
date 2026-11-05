@@ -355,7 +355,6 @@ void ConnectionFromClient::set_opener_of_navigable(Web::PageId page_id, Web::HTM
     if (!navigable || !navigable->active_browsing_context() || !opener)
         return;
     navigable->active_browsing_context()->set_opener_browsing_context(*opener);
-    navigable->report_opener_browsing_context();
 }
 
 Optional<PageClient&> ConnectionFromClient::page(Web::PageId index, SourceLocation location)

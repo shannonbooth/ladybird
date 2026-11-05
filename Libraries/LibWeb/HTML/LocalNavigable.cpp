@@ -1622,12 +1622,6 @@ void LocalNavigable::report_hosted_state()
     page().client().page_did_change_hosted_navigable_state(id(), hosted_state());
 }
 
-// The opener browsing context is reported as the navigable it is active in.
-void LocalNavigable::report_opener_browsing_context()
-{
-    page().client().page_did_set_opener_browsing_context(id(), active_browsing_context()->opener_navigable_id());
-}
-
 // A container in another process reads what it asks of its content navigable from the replicated state.
 void LocalNavigable::report_state_to_remote_container()
 {
