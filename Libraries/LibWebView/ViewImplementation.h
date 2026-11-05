@@ -162,7 +162,7 @@ public:
     // These act on the site given, which a panel showing it keeps even after the view moves on to another site.
     void set_site_permission(URL::Origin const&, Web::Permissions::PermissionName, Optional<PermissionDecision>);
     void reset_site_permissions(URL::Origin const&);
-    void did_request_permission(Badge<WebContentPage>, Web::Permissions::PermissionName);
+    void did_request_permission(Badge<CanonicalTraversable>, Web::Permissions::PermissionName);
 
     MicrophoneAuthorization microphone_authorization() const;
     // Calls back with whether the system lets the browser use the microphone, once the system has asked the user if it
@@ -681,8 +681,8 @@ public:
     void did_request_page_context_menu(Badge<WebContentPage>, WebContentPage& requesting_page, Gfx::IntPoint content_position, Web::ContextMenuForInputEventsTarget for_input_events_target, Optional<Utf16String> misspelled_word, Optional<u64> text_fragment_generation_id);
     void activate_spelling_menu_action_for_testing(Badge<WebContentPage>, WebContentPage& requesting_page, Web::SpellingMenuActionForTesting, u32 guess_index);
 
-    void did_request_spell_check(Badge<WebContentPage>, WebContentPage& requesting_page, u64 request_id, Utf16String text);
-    void did_request_writing_suggestion(Badge<WebContentPage>, WebContentPage& requesting_page, u64 request_id, Utf16String text, u32 caret_offset);
+    void request_spell_check(Badge<CanonicalTraversable>, Utf16String const& text, NonnullRefPtr<SpellCheckReply>);
+    void request_writing_suggestion(Badge<CanonicalTraversable>, Utf16String const& text, u32 caret_offset, NonnullRefPtr<WritingSuggestionReply>);
     void reset_spell_checking();
     void did_request_link_context_menu(Badge<WebContentPage>, Gfx::IntPoint content_position, Web::HTML::PreparedNavigationDescriptor, Optional<u64> text_fragment_generation_id);
     void did_generate_text_fragment_url(u64 request_id, Optional<URL::URL>);

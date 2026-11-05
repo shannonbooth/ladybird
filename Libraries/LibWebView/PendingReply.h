@@ -15,6 +15,9 @@
 #include <AK/Vector.h>
 #include <LibGfx/Color.h>
 #include <LibWebCommon/HTML/SelectedFile.h>
+#include <LibWebCommon/Page/SpellingError.h>
+#include <LibWebCommon/Page/WritingSuggestion.h>
+#include <LibWebCommon/Permissions/Permissions.h>
 
 namespace WebView {
 
@@ -88,5 +91,9 @@ using ColorPickerReply = PendingReply<Optional<Color>>;
 using DatePickerReply = PendingReply<Optional<Utf16String>>;
 using FilePickerReply = PendingReply<Vector<Web::HTML::SelectedFile>>;
 using SelectDropdownReply = PendingReply<Optional<u32>>;
+using PermissionPromptReply = PendingReply<Optional<Web::Permissions::PromptOutcome>>;
+using MicrophoneAuthorizationReply = PendingReply<bool>;
+using SpellCheckReply = PendingReply<Vector<Web::SpellingError>>;
+using WritingSuggestionReply = PendingReply<Optional<Web::WritingSuggestion>>;
 
 }

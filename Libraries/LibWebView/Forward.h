@@ -80,6 +80,7 @@ struct ChangingNavigable;
 struct CookieStorageKey;
 struct HistoryEntry;
 struct HistoryOperation;
+struct PermissionPromptRequest;
 struct SearchEngine;
 struct WebContentOptions;
 class WebContentPage;
