@@ -357,8 +357,6 @@ public:
     void notify_indexed_database_changed(JsonObject);
     u64 add_indexed_database_change_listener(DevTools::DevToolsDelegate::OnIndexedDatabaseChange);
     void remove_indexed_database_change_listener(u64 listener_id);
-    ErrorOr<Core::SharedVersionIndex> ensure_document_cookie_version_index(Badge<WebContentPage>, String const&);
-    Optional<Core::SharedVersion> document_cookie_version(URL::URL const&) const;
 
     void notify_storage_changed(DevTools::DevToolsDelegate::StorageChange);
     u64 add_storage_change_listener(DevTools::DevToolsDelegate::OnStorageChange);
@@ -1188,8 +1186,6 @@ protected:
     Vector<URL::Origin> m_sites_shown_microphone_denied_notice;
     u64 m_microphone_denied_notices_shown { 0 };
 
-    Core::AnonymousBuffer m_document_cookie_version_buffer;
-    HashMap<String, Core::SharedVersionIndex> m_document_cookie_version_indices;
     DevTools::DevToolsDelegate::OnHostCookieChange m_on_host_cookie_change;
     HashMap<u64, DevTools::DevToolsDelegate::OnIndexedDatabaseChange> m_indexed_database_change_listeners;
     u64 m_next_indexed_database_change_listener_id { 1 };

@@ -1356,7 +1356,7 @@ void WebContentPage::did_request_document_cookie_version_index(Web::HTML::Enviro
         return;
 
     if (displays_tab()) {
-        if (auto document_index = view().ensure_document_cookie_version_index({}, domain); !document_index.is_error())
+        if (auto document_index = traversable().ensure_document_cookie_version_index(domain); !document_index.is_error())
             async_set_document_cookie_version_index(document_id, document_index.value());
     }
 }
@@ -1690,7 +1690,7 @@ bool WebContentPage::document_may_use(Web::HTML::CrossProcessId document_id, Web
         return false;
     if (!permission_reaches_document(name, *document, *top_level_origin))
         return false;
-    auto& manager = *view().session().permission_manager;
+    auto& manager = *client().session().permission_manager;
     if (top_level_origin->is_opaque()) {
         // A file: page's grant lasts as long as the page, but the global default still binds it.
         if (manager.global_default(name) == Web::Permissions::EffectiveState::Denied)
@@ -1783,7 +1783,7 @@ void WebContentPage::did_request_permission(u64 request_id, Web::HTML::CrossProc
         }
     }
 
-    auto& manager = *view().session().permission_manager;
+    auto& manager = *client().session().permission_manager;
     if (!is_file) {
         if (auto state = manager.effective_state(*permission_name, *top_level_origin); state != Web::Permissions::EffectiveState::Prompt) {
             async_permission_request_completed(request_id, state);
@@ -1842,7 +1842,7 @@ void WebContentPage::did_request_permission(u64 request_id, Web::HTML::CrossProc
                     warnln("Unable to grant audio capture: {}", result.error());
             }
         } else {
-            auto& manager = *page->view().session().permission_manager;
+            auto& manager = *page->client().session().permission_manager;
 
             // The answer counts only if nothing was decided for the site while the prompt was up: A decision made
             // elsewhere (in the site-info panel, e.g.) wins, and a document that's gone takes its prompt with it. And
@@ -1877,7 +1877,7 @@ void WebContentPage::did_request_permission(u64 request_id, Web::HTML::CrossProc
 
 Web::Permissions::PermissionSnapshot WebContentPage::set_permission_for_testing(Web::HTML::CrossProcessId document_id, String const& name, String const& state)
 {
-    auto& manager = *view().session().permission_manager;
+    auto& manager = *client().session().permission_manager;
     auto permission_name = Web::Permissions::permission_name_from_string(name);
     auto document = hosted_document_with_id(document_id);
     auto top_level_origin = document ? document->top_level_origin() : Optional<URL::Origin> {};
@@ -1948,7 +1948,7 @@ String WebContentPage::microphone_state_for_testing() const
     state.set("systemRequests"sv, view().system_microphone_requests_for_testing());
     state.set("captureDecisions"sv, client().audio_capture_decision_count());
     state.set("captureRefusals"sv, client().audio_capture_refusal_count());
-    state.set("dismissals"sv, view().session().permission_manager->dismissals_for_testing(Web::Permissions::PermissionName::Microphone, view().permission_origin()));
+    state.set("dismissals"sv, client().session().permission_manager->dismissals_for_testing(Web::Permissions::PermissionName::Microphone, view().permission_origin()));
     return state.serialized();
 }
 
@@ -1959,7 +1959,7 @@ void WebContentPage::release_held_permission_prompt_for_testing(u32 waiters)
 
 Web::Permissions::PermissionSnapshot WebContentPage::advance_permission_clock_for_testing(u64 milliseconds)
 {
-    auto& manager = *view().session().permission_manager;
+    auto& manager = *client().session().permission_manager;
     manager.age_origin_for_testing(view().url().origin(), AK::Duration::from_milliseconds(static_cast<i64>(milliseconds)));
     return manager.snapshot_for(client().permission_origins());
 }
@@ -3613,7 +3613,7 @@ Messages::WebContentClient::DidRequestCookieResponse WebContentPage::did_request
     HTTP::Cookie::VersionedCookie cookie;
     cookie.cookie = client().session().cookie_jar->get_cookie(url, source, partition_context);
     if (source == HTTP::Cookie::Source::NonHttp)
-        cookie.cookie_version = view().document_cookie_version(url);
+        cookie.cookie_version = traversable().document_cookie_version(url);
     return cookie;
 }
 

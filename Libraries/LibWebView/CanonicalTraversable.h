@@ -19,6 +19,8 @@
 #include <AK/Variant.h>
 #include <AK/Vector.h>
 #include <AK/WeakPtr.h>
+#include <LibCore/AnonymousBuffer.h>
+#include <LibCore/SharedVersion.h>
 #include <LibWebCommon/Bindings/Navigation.h>
 #include <LibWebCommon/HTML/HistoryOperation.h>
 #include <LibWebCommon/HTML/VisibilityState.h>
@@ -142,6 +144,12 @@ public:
     StorageJar& session_storage() { return *m_session_storage; }
     void clone_session_storage_from(CanonicalTraversable const&);
 
+    // The versions of document.cookie that the processes hosting the traversable's documents cache, by domain.
+    Core::AnonymousBuffer const& document_cookie_version_buffer() const { return m_document_cookie_version_buffer; }
+    ErrorOr<Core::SharedVersionIndex> ensure_document_cookie_version_index(String const& domain);
+    Optional<Core::SharedVersion> document_cookie_version(URL::URL const&) const;
+    void increment_document_cookie_versions(HashTable<String> const& changed_domains);
+
     // Fired after every canonical session-history mutation, once the history has reached its post-mutation state.
     Function<void()> on_session_history_changed;
 
@@ -251,6 +259,8 @@ private:
     // https://storage.spec.whatwg.org/#storage-sheds
     // A traversable navigable's storage shed holds all session storage data.
     NonnullOwnPtr<StorageJar> m_session_storage;
+    Core::AnonymousBuffer m_document_cookie_version_buffer;
+    HashMap<String, Core::SharedVersionIndex> m_document_cookie_version_indices;
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#tn-session-history-traversal-queue
     SessionHistoryTraversalQueue m_history_traversal_queue;

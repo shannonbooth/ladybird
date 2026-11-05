@@ -36,7 +36,43 @@ CanonicalTraversable::CanonicalTraversable(Web::HTML::CrossProcessId id, Nonnull
     : CanonicalNavigable(id)
     , m_session_history(move(initial_history_entry))
     , m_session_storage(StorageJar::create())
+    , m_document_cookie_version_buffer(Core::create_shared_version_buffer())
 {
+}
+
+ErrorOr<Core::SharedVersionIndex> CanonicalTraversable::ensure_document_cookie_version_index(String const& domain)
+{
+    return m_document_cookie_version_indices.try_ensure(domain, [&]() -> ErrorOr<Core::SharedVersionIndex> {
+        Core::SharedVersionIndex document_index = m_document_cookie_version_indices.size();
+
+        if (!Core::initialize_shared_version(m_document_cookie_version_buffer, document_index)) {
+            dbgln("Reached maximum document cookie version count for {}, cannot create new version for {}", active_document_url(), domain);
+            return Error::from_string_literal("Reached maximum document cookie version count");
+        }
+
+        return document_index;
+    });
+}
+
+Optional<Core::SharedVersion> CanonicalTraversable::document_cookie_version(URL::URL const& url) const
+{
+    auto domain = HTTP::Cookie::canonicalize_domain(url);
+    if (!domain.has_value())
+        return {};
+
+    auto document_index = m_document_cookie_version_indices.get(*domain);
+    if (!document_index.has_value())
+        return {};
+
+    return Core::get_shared_version(m_document_cookie_version_buffer, *document_index);
+}
+
+void CanonicalTraversable::increment_document_cookie_versions(HashTable<String> const& changed_domains)
+{
+    for (auto const& domain : changed_domains) {
+        if (auto document_index = m_document_cookie_version_indices.get(domain); document_index.has_value())
+            Core::increment_shared_version(m_document_cookie_version_buffer, *document_index);
+    }
 }
 
 void CanonicalTraversable::clone_session_storage_from(CanonicalTraversable const& other)
