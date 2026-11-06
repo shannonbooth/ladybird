@@ -84,15 +84,14 @@ TEST_CASE(inspect_dom_tree_with_stale_nested_layout)
 
     size_t trees_received = 0;
     Optional<u64> last_counter;
-    view->on_received_dom_tree = [&](JsonObject tree) {
-        last_counter = counter_in_iframe_document(tree);
-        VERIFY(last_counter.has_value());
-        ++trees_received;
-    };
-
     static constexpr size_t tree_requests = 50;
     for (size_t request = 1; request <= tree_requests; ++request) {
-        view->inspect_dom_tree();
+        view->inspect_dom_tree([&](ErrorOr<JsonValue> tree) {
+            VERIFY(!tree.is_error());
+            last_counter = counter_in_iframe_document(tree.value().as_object());
+            VERIFY(last_counter.has_value());
+            ++trees_received;
+        });
         Core::EventLoop::current().spin_until([&]() { return trees_received >= request || crashed; });
         VERIFY(!crashed);
     }

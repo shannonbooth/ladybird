@@ -432,6 +432,23 @@ void WebContentPage::expect_reply_from_ui(NonnullRefPtr<PendingReplyBase> reply)
     m_replies_from_ui.append(move(reply));
 }
 
+void WebContentPage::cancel_replies_from_renderer()
+{
+    for (auto& reply : exchange(m_replies_from_renderer, {}))
+        reply.value->cancel();
+}
+
+u64 WebContentPage::expect_reply_from_renderer(NonnullRefPtr<PendingReplyBase> reply)
+{
+    if (!m_is_open) {
+        reply->cancel();
+        return 0;
+    }
+    auto request_id = m_next_renderer_request_id++;
+    m_replies_from_renderer.set(request_id, move(reply));
+    return request_id;
+}
+
 // A dialog blocks the whole tab, so every other page of the tab is told of the one a document of this page opened.
 void WebContentPage::did_open_dialog(Web::PendingDialog dialog, Utf16String const& message)
 {
@@ -709,6 +726,7 @@ void WebContentPage::close()
     m_is_open = false;
     for (auto& reply : exchange(m_replies_from_ui, {}))
         reply->cancel();
+    cancel_replies_from_renderer();
     // NB: Nothing finishes the input this page held, including a page discarded while its process hosts other pages.
     if (m_traversable) {
         if (auto view = m_traversable->view(); view.has_value())
@@ -1148,49 +1166,44 @@ void WebContentPage::did_request_external_url(URL::URL url, URL::Origin initiato
 
 void WebContentPage::did_inspect_storage(u64 request_id, String storage_items)
 {
-    if (displays_tab()) {
-        auto handler = view().on_received_storage_items.take(request_id);
-        if (handler.has_value())
-            (*handler)(parse_storage_items(storage_items));
-    }
+    if (auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnStorageItemsReceived>>(request_id))
+        reply->complete(parse_storage_items(storage_items));
 }
 
-void WebContentPage::did_inspect_grid_layouts(String grid_layouts)
+void WebContentPage::did_inspect_grid_layouts(u64 request_id, String grid_layouts)
 {
-    if (displays_tab()) {
-        if (view().on_received_grid_layouts)
-            view().on_received_grid_layouts(parse_json_array(grid_layouts, "grid layouts"sv));
-    }
+    if (auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnGridLayoutsReceived>>(request_id))
+        reply->complete(parse_json_array(grid_layouts, "grid layouts"sv));
 }
 
-void WebContentPage::did_inspect_current_grid(String grid_layout)
+void WebContentPage::did_inspect_current_grid(u64 request_id, String grid_layout)
 {
-    if (displays_tab()) {
-        if (view().on_received_current_grid)
-            view().on_received_current_grid(parse_optional_json_object(grid_layout, "current grid"sv));
-    }
+    if (auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnCurrentGridReceived>>(request_id))
+        reply->complete(parse_optional_json_object(grid_layout, "current grid"sv));
 }
 
-void WebContentPage::did_inspect_current_flexbox(String flexbox_layout)
+void WebContentPage::did_inspect_current_flexbox(u64 request_id, String flexbox_layout)
 {
-    if (displays_tab()) {
-        if (view().on_received_current_flexbox)
-            view().on_received_current_flexbox(parse_optional_json_object(flexbox_layout, "current flexbox"sv));
-    }
+    if (auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnCurrentFlexboxReceived>>(request_id))
+        reply->complete(parse_optional_json_object(flexbox_layout, "current flexbox"sv));
 }
 
 void WebContentPage::did_inspect_indexed_database(u64 request_id, String result)
 {
-    if (displays_tab())
-        view().did_receive_indexed_database_inspection(request_id, parse_json(result, "IndexedDB inspection result"sv));
+    auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnIndexedDBInspectionComplete>>(request_id);
+    if (!reply)
+        return;
+    auto inspection = parse_json(result, "IndexedDB inspection result"sv);
+    if (inspection.has_string("error"sv))
+        reply->complete(Error::from_string_literal("IndexedDB operation failed"));
+    else
+        reply->complete(move(inspection));
 }
 
-void WebContentPage::did_inspect_accessibility_tree(String accessibility_tree)
+void WebContentPage::did_inspect_accessibility_tree(u64 request_id, String accessibility_tree)
 {
-    if (displays_tab()) {
-        if (view().on_received_accessibility_tree)
-            view().on_received_accessibility_tree(parse_json(accessibility_tree, "accessibility tree"sv));
-    }
+    if (auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnAccessibilityTreeInspectionComplete>>(request_id))
+        reply->complete(parse_json(accessibility_tree, "accessibility tree"sv));
 }
 
 void WebContentPage::did_get_accessibility_tree(u64 sequence, Vector<AccessibilityNodeData> nodes)
@@ -1227,17 +1240,14 @@ void WebContentPage::did_get_hovered_node_id(Web::UniqueNodeID node_id)
 
 void WebContentPage::did_get_node_id_at_position(u64 request_id, Web::UniqueNodeID node_id)
 {
-    if (displays_tab()) {
-        view().did_receive_node_hit_test(request_id, node_id);
-    }
+    if (auto reply = take_reply_from_renderer<NodeHitTestReply>(request_id))
+        reply->complete(node_id);
 }
 
-void WebContentPage::did_list_style_sheets(Vector<Web::CSS::StyleSheetIdentifier> stylesheets)
+void WebContentPage::did_list_style_sheets(u64 request_id, Vector<Web::CSS::StyleSheetIdentifier> stylesheets)
 {
-    if (displays_tab()) {
-        if (view().on_received_style_sheet_list)
-            view().on_received_style_sheet_list(stylesheets);
-    }
+    if (auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnStyleSheetsReceived>>(request_id))
+        reply->complete(move(stylesheets));
 }
 
 void WebContentPage::did_get_style_sheet_source(Web::CSS::StyleSheetIdentifier identifier, URL::URL base_url, Utf16String source)
@@ -1250,20 +1260,19 @@ void WebContentPage::did_get_style_sheet_source(Web::CSS::StyleSheetIdentifier i
 
 void WebContentPage::did_list_devtools_sources(u64 request_id, Vector<Web::HTML::ScriptRegistryDescription> sources)
 {
-    if (displays_tab()) {
-        auto handler = view().on_received_devtools_sources.take(request_id);
-        if (handler.has_value())
-            (*handler)(move(sources));
-    }
+    if (auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnSourcesReceived>>(request_id))
+        reply->complete(move(sources));
 }
 
-void WebContentPage::did_get_devtools_source(Web::HTML::ScriptRegistryIdentifier source_id, Optional<Web::HTML::ScriptRegistryContent> source)
+void WebContentPage::did_get_devtools_source(u64 request_id, Web::HTML::ScriptRegistryIdentifier, Optional<Web::HTML::ScriptRegistryContent> source)
 {
-    if (displays_tab()) {
-        auto handler = view().on_received_devtools_source.take(source_id);
-        if (handler.has_value())
-            (*handler)(move(source));
-    }
+    auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnSourceReceived>>(request_id);
+    if (!reply)
+        return;
+    if (source.has_value())
+        reply->complete(source.release_value());
+    else
+        reply->complete(Error::from_string_literal("Unable to locate source"));
 }
 
 void WebContentPage::did_add_devtools_source(Web::HTML::ScriptRegistryDescription source)
@@ -1291,25 +1300,31 @@ void WebContentPage::did_resume_debugger()
 
 void WebContentPage::did_complete_debugger_breakpoint_operation(u64 request_id, Optional<String> error)
 {
-    if (displays_tab())
-        view().did_complete_debugger_breakpoint_operation(request_id, move(error));
+    auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnDebuggerBreakpointOperationComplete>>(request_id);
+    if (!reply)
+        return;
+    if (error.has_value())
+        reply->complete(Error::from_string_literal("Debugger breakpoint operation failed"));
+    else
+        reply->complete({});
 }
 
-void WebContentPage::did_take_screenshot(Gfx::ShareableBitmap screenshot)
+void WebContentPage::did_take_screenshot(u64 request_id, Gfx::ShareableBitmap screenshot)
 {
-    if (displays_tab())
-        view().did_receive_screenshot({}, screenshot);
+    if (auto reply = take_reply_from_renderer<ScreenshotReply>(request_id))
+        reply->complete(move(screenshot));
 }
 
-void WebContentPage::did_get_internal_page_info(WebView::PageInfoType type, Optional<Core::AnonymousBuffer> info)
+void WebContentPage::did_get_internal_page_info(u64 request_id, WebView::PageInfoType, Optional<Core::AnonymousBuffer> info)
 {
-    if (displays_tab())
-        view().did_receive_internal_page_info({}, type, info);
+    if (auto reply = take_reply_from_renderer<PageInfoReply>(request_id))
+        reply->complete(move(info));
 }
 
 void WebContentPage::did_get_selected_text(u64 request_id, ByteString selection)
 {
-    view().did_receive_selected_text({}, request_id, move(selection));
+    if (auto reply = take_reply_from_renderer<PendingReply<ErrorOr<ByteString>>>(request_id))
+        reply->complete(move(selection));
 }
 
 void WebContentPage::did_get_selected_text_for_lookup(u64 request_id, Optional<DictionaryLookup> lookup)
@@ -1317,26 +1332,27 @@ void WebContentPage::did_get_selected_text_for_lookup(u64 request_id, Optional<D
 
     // The page hosting the tab's focused navigable gives the baseline origin in the viewport of its local root.
     if (lookup.has_value() && lookup->baseline_origin.has_value())
-        lookup->baseline_origin->translate_by(view().traversable().focused_navigable_host_offset().to_type<int>());
-    view().did_receive_selected_text_for_lookup({}, request_id, move(lookup));
+        lookup->baseline_origin->translate_by(traversable().focused_navigable_host_offset().to_type<int>());
+    if (auto reply = take_reply_from_renderer<PendingReply<ErrorOr<Optional<DictionaryLookup>>>>(request_id))
+        reply->complete(move(lookup));
 }
 
 void WebContentPage::did_select_word_for_dictionary_lookup(u64 request_id, bool selected)
 {
-    view().did_select_word_for_dictionary_lookup({}, request_id, selected);
+    if (auto reply = take_reply_from_renderer<PendingReply<ErrorOr<bool>>>(request_id))
+        reply->complete(selected);
 }
 
 void WebContentPage::did_cut_selected_text(u64 request_id, ByteString selection)
 {
-    view().did_cut_selected_text({}, request_id, move(selection));
+    if (auto reply = take_reply_from_renderer<PendingReply<ErrorOr<ByteString>>>(request_id))
+        reply->complete(move(selection));
 }
 
-void WebContentPage::did_execute_js_console_input(DebuggerValue result)
+void WebContentPage::did_execute_js_console_input(u64 request_id, DebuggerValue result)
 {
-    if (displays_tab()) {
-        if (view().on_received_js_console_result)
-            view().on_received_js_console_result(move(result));
-    }
+    if (auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnScriptEvaluationComplete>>(request_id))
+        reply->complete(move(result));
 }
 
 void WebContentPage::did_output_js_console_message(ConsoleOutput console_output)
@@ -1503,8 +1519,8 @@ void WebContentPage::did_consume_user_activation(Web::HTML::UserActivationConsum
 
 void WebContentPage::webdriver_user_prompt_handling_complete(u64 request_id, Web::WebDriver::Response response)
 {
-    if (displays_tab())
-        view().did_complete_webdriver_user_prompt_handling({}, request_id, move(response));
+    if (auto reply = take_reply_from_renderer<WebDriverResponseReply>(request_id))
+        reply->complete(move(response));
 }
 
 void WebContentPage::webdriver_did_set_current_browsing_context(u64 command_id, Web::HTML::CrossProcessId navigable_id)
@@ -2401,12 +2417,10 @@ void WebContentPage::did_request_close_of_traversable(Web::HTML::CrossProcessId 
     endpoint->async_close_traversable_from_script(navigable_id);
 }
 
-void WebContentPage::did_inspect_dom_tree(String dom_tree)
+void WebContentPage::did_inspect_dom_tree(u64 request_id, String dom_tree)
 {
-    if (displays_tab()) {
-        if (view().on_received_dom_tree)
-            view().on_received_dom_tree(parse_json(dom_tree, "DOM tree"sv));
-    }
+    if (auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnTabInspectionComplete>>(request_id))
+        reply->complete(parse_json(dom_tree, "DOM tree"sv));
 }
 
 void WebContentPage::did_inspect_dom_node(DOMNodeProperties properties)
@@ -2417,12 +2431,15 @@ void WebContentPage::did_inspect_dom_node(DOMNodeProperties properties)
     }
 }
 
-void WebContentPage::did_finish_editing_dom_node(Optional<Web::UniqueNodeID> node_id)
+void WebContentPage::did_finish_editing_dom_node(u64 request_id, Optional<Web::UniqueNodeID> node_id)
 {
-    if (displays_tab()) {
-        if (view().on_finished_editing_dom_node)
-            view().on_finished_editing_dom_node(node_id);
-    }
+    auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnDOMNodeEditComplete>>(request_id);
+    if (!reply)
+        return;
+    if (node_id.has_value())
+        reply->complete(*node_id);
+    else
+        reply->complete(Error::from_string_literal("Unable to find DOM node to edit"));
 }
 
 void WebContentPage::did_mutate_dom(Mutation mutation)
@@ -2433,30 +2450,22 @@ void WebContentPage::did_mutate_dom(Mutation mutation)
     }
 }
 
-void WebContentPage::did_get_dom_node_html(String html)
+void WebContentPage::did_get_dom_node_html(u64 request_id, String html)
 {
-    if (displays_tab()) {
-        if (view().on_received_dom_node_html)
-            view().on_received_dom_node_html(move(html));
-    }
+    if (auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnDOMNodeHTMLReceived>>(request_id))
+        reply->complete(move(html));
 }
 
 void WebContentPage::did_resolve_dom_node_url(u64 request_id, String resolved_url)
 {
-    if (displays_tab()) {
-        auto handler = view().on_resolved_dom_node_url.take(request_id);
-        if (handler.has_value())
-            (*handler)(move(resolved_url));
-    }
+    if (auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnResolvedURLReceived>>(request_id))
+        reply->complete(move(resolved_url));
 }
 
 void WebContentPage::did_complete_js_console_input(u64 request_id, Optional<Vector<String>> matches, String match_prop)
 {
-    if (displays_tab()) {
-        auto handler = view().on_completed_js_console_input.take(request_id);
-        if (handler.has_value())
-            (*handler)(DevTools::DevToolsDelegate::ConsoleInputCompletion { move(matches), move(match_prop) });
-    }
+    if (auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnConsoleInputCompleted>>(request_id))
+        reply->complete(DevTools::DevToolsDelegate::ConsoleInputCompletion { move(matches), move(match_prop) });
 }
 
 void WebContentPage::did_receive_network_response_headers(u64 request_id, u32 status_code, Optional<String> reason_phrase, Vector<HTTP::Header> response_headers, Requests::CacheState cache_state)
@@ -3062,7 +3071,8 @@ void WebContentPage::did_request_link_context_menu(Web::HTML::CrossProcessId loc
 
 void WebContentPage::did_generate_text_fragment_url(u64 request_id, Optional<URL::URL> url)
 {
-    view().did_generate_text_fragment_url(request_id, move(url));
+    if (auto reply = take_reply_from_renderer<PendingReply<Optional<Optional<URL::URL>>>>(request_id))
+        reply->complete(move(url));
 }
 
 void WebContentPage::did_request_image_context_menu(Web::HTML::CrossProcessId local_root_id, Gfx::IntPoint content_position, Web::HTML::PreparedNavigationDescriptor navigation, ByteString, unsigned, Optional<Gfx::ShareableBitmap> bitmap)
@@ -3086,77 +3096,49 @@ void WebContentPage::did_request_media_context_menu(Web::HTML::CrossProcessId lo
         target->view.did_request_media_context_menu({}, *this, target->position, move(menu), move(verified_navigation));
 }
 
-void WebContentPage::did_get_highlighted_source(String html)
+void WebContentPage::did_get_highlighted_source(u64 request_id, String html)
 {
-    if (auto new_tab = Application::the().open_blank_new_tab(Web::HTML::ActivateTab::Yes); new_tab.has_value()) {
-        new_tab->did_start_showing_page_source();
-        new_tab->load_html(html);
-    }
+    if (auto reply = take_reply_from_renderer<PendingReply<Optional<String>>>(request_id))
+        reply->complete(move(html));
 }
 
 void WebContentPage::did_get_debugger_environments(u64 request_id, Optional<String> error, Vector<DebuggerEnvironment> environments)
 {
-    if (displays_tab()) {
-        auto callback = view().m_pending_debugger_environments_requests.take(request_id);
-        if (!callback.has_value()) {
-            if (view().m_cancelled_debugger_environments_requests.remove(request_id))
-                return;
-            client().did_misbehave("did_get_debugger_environments"sv, "unexpected request ID"sv);
-            return;
-        }
-        if (error.has_value())
-            (*callback)(Error::from_string_view(error->bytes_as_string_view()));
-        else
-            (*callback)(move(environments));
-    }
+    auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnDebuggerEnvironmentsReceived>>(request_id);
+    if (!reply)
+        return;
+    if (error.has_value())
+        reply->complete(Error::from_string_view(error->bytes_as_string_view()));
+    else
+        reply->complete(move(environments));
 }
 
 void WebContentPage::did_evaluate_javascript_in_debugger_frame(u64 request_id, Optional<String> error, DebuggerEvaluationResult result)
 {
-    if (displays_tab()) {
-        auto callback = view().m_pending_debugger_evaluation_requests.take(request_id);
-        if (!callback.has_value()) {
-            if (view().m_cancelled_debugger_evaluation_requests.remove(request_id))
-                return;
-            client().did_misbehave("did_evaluate_javascript_in_debugger_frame"sv, "unexpected request ID"sv);
-            return;
-        }
-        if (error.has_value())
-            (*callback)(error.release_value());
-        else
-            (*callback)(move(result));
-    }
+    auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnDebuggerEvaluationComplete>>(request_id);
+    if (!reply)
+        return;
+    if (error.has_value())
+        reply->complete(error.release_value());
+    else
+        reply->complete(move(result));
 }
 
 void WebContentPage::did_get_debugger_object_properties(u64 request_id, Optional<String> error, DebuggerObjectProperties properties)
 {
-    if (displays_tab()) {
-        auto callback = view().m_pending_debugger_object_properties_requests.take(request_id);
-        if (!callback.has_value()) {
-            if (view().m_cancelled_debugger_object_properties_requests.remove(request_id))
-                return;
-            client().did_misbehave("did_get_debugger_object_properties"sv, "unexpected request ID"sv);
-            return;
-        }
-        if (error.has_value())
-            (*callback)(error.release_value());
-        else
-            (*callback)(move(properties));
-    }
+    auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnDebuggerObjectPropertiesReceived>>(request_id);
+    if (!reply)
+        return;
+    if (error.has_value())
+        reply->complete(error.release_value());
+    else
+        reply->complete(move(properties));
 }
 
 void WebContentPage::did_get_debugger_source_positions(u64 request_id, Vector<DebuggerSourcePosition> positions)
 {
-    if (displays_tab()) {
-        auto callback = view().m_pending_debugger_source_positions_requests.take(request_id);
-        if (!callback.has_value()) {
-            if (view().m_cancelled_debugger_source_positions_requests.remove(request_id))
-                return;
-            client().did_misbehave("did_get_debugger_source_positions"sv, "unexpected request ID"sv);
-            return;
-        }
-        (*callback)(move(positions));
-    }
+    if (auto reply = take_reply_from_renderer<ReplyFor<DevTools::DevToolsDelegate::OnDebuggerSourcePositionsReceived>>(request_id))
+        reply->complete(move(positions));
 }
 
 void WebContentPage::did_request_alert(Utf16String message)
@@ -3286,8 +3268,8 @@ void WebContentPage::did_close_browsing_context()
 
 void WebContentPage::did_complete_close_preflight(u64 request_id, bool approved)
 {
-    if (displays_tab())
-        view().did_complete_close_preflight({}, request_id, approved);
+    if (auto reply = take_reply_from_renderer<ClosePreflightReply>(request_id))
+        reply->complete(approved);
 }
 
 void WebContentPage::did_request_select_dropdown(Web::HTML::CrossProcessId local_root_id, Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items)

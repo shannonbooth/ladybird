@@ -109,6 +109,16 @@ private:
     Vector<Function<void()>> m_settlement_callbacks;
 };
 
+// The reply a callback of this type waits for.
+template<typename>
+struct PendingReplyForCallback;
+template<typename... Args>
+struct PendingReplyForCallback<Function<void(Args...)>> {
+    using Type = PendingReply<Args...>;
+};
+template<typename Callback>
+using ReplyFor = typename PendingReplyForCallback<Callback>::Type;
+
 using DialogReply = PendingReply<bool, Optional<Utf16String>>;
 using ColorPickerReply = PendingReply<Optional<Color>>;
 using DatePickerReply = PendingReply<Optional<Utf16String>>;
@@ -118,5 +128,6 @@ using PermissionPromptReply = PendingReply<Optional<Web::Permissions::PromptOutc
 using MicrophoneAuthorizationReply = PendingReply<bool>;
 using SpellCheckReply = PendingReply<Vector<Web::SpellingError>>;
 using WritingSuggestionReply = PendingReply<Optional<Web::WritingSuggestion>>;
+using ClosePreflightReply = PendingReply<bool>;
 
 }

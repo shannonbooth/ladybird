@@ -3640,17 +3640,13 @@ static ErrorOr<Optional<String>> storage_set_result_to_error_or_old_value(Storag
 
 void Application::inspect_storage(DevTools::TabDescription const& description, Web::StorageAPI::StorageEndpointType storage_endpoint, OnStorageItemsReceived on_complete) const
 {
-    static u64 next_request_id = 0;
-
     auto view = ViewImplementation::find_view_by_id(description.id);
     if (!view.has_value()) {
         on_complete(Error::from_string_literal("Unable to locate tab"));
         return;
     }
 
-    auto request_id = next_request_id++;
-    view->on_received_storage_items.set(request_id, move(on_complete));
-    view->inspect_storage(storage_endpoint, request_id);
+    view->inspect_storage(storage_endpoint, move(on_complete));
 }
 
 // The jar a tab's storage of this kind lives in: session storage belongs to the tab's traversable, local storage to
@@ -3833,12 +3829,7 @@ void Application::inspect_tab(DevTools::TabDescription const& description, OnTab
         return;
     }
 
-    view->on_received_dom_tree = [&view = *view, on_complete = move(on_complete)](JsonObject dom_tree) {
-        view.on_received_dom_tree = nullptr;
-        on_complete(move(dom_tree));
-    };
-
-    view->inspect_dom_tree();
+    view->inspect_dom_tree(move(on_complete));
 }
 
 void Application::inspect_accessibility_tree(DevTools::TabDescription const& description, OnAccessibilityTreeInspectionComplete on_complete) const
@@ -3849,12 +3840,7 @@ void Application::inspect_accessibility_tree(DevTools::TabDescription const& des
         return;
     }
 
-    view->on_received_accessibility_tree = [&view = *view, on_complete = move(on_complete)](JsonObject accessibility_tree) {
-        view.on_received_accessibility_tree = nullptr;
-        on_complete(move(accessibility_tree));
-    };
-
-    view->inspect_accessibility_tree();
+    view->inspect_accessibility_tree(move(on_complete));
 }
 
 void Application::listen_for_dom_properties(DevTools::TabDescription const& description, OnDOMNodePropertiesReceived on_dom_node_properties_received) const
@@ -3892,12 +3878,7 @@ void Application::inspect_grid_layouts(DevTools::TabDescription const& descripti
         return;
     }
 
-    view->on_received_grid_layouts = [&view = *view, on_grid_layouts_received = move(on_grid_layouts_received)](JsonArray grid_layouts) {
-        view.on_received_grid_layouts = nullptr;
-        on_grid_layouts_received(move(grid_layouts));
-    };
-
-    view->inspect_grid_layouts(root_node_id);
+    view->inspect_grid_layouts(root_node_id, move(on_grid_layouts_received));
 }
 
 void Application::inspect_current_grid(DevTools::TabDescription const& description, Web::UniqueNodeID node_id, OnCurrentGridReceived on_current_grid_received) const
@@ -3908,12 +3889,7 @@ void Application::inspect_current_grid(DevTools::TabDescription const& descripti
         return;
     }
 
-    view->on_received_current_grid = [&view = *view, on_current_grid_received = move(on_current_grid_received)](Optional<JsonObject> grid_layout) {
-        view.on_received_current_grid = nullptr;
-        on_current_grid_received(move(grid_layout));
-    };
-
-    view->inspect_current_grid(node_id);
+    view->inspect_current_grid(node_id, move(on_current_grid_received));
 }
 
 void Application::inspect_current_flexbox(DevTools::TabDescription const& description, Web::UniqueNodeID node_id, bool only_look_at_parents, OnCurrentFlexboxReceived on_current_flexbox_received) const
@@ -3924,12 +3900,7 @@ void Application::inspect_current_flexbox(DevTools::TabDescription const& descri
         return;
     }
 
-    view->on_received_current_flexbox = [&view = *view, on_current_flexbox_received = move(on_current_flexbox_received)](Optional<JsonObject> flexbox_layout) {
-        view.on_received_current_flexbox = nullptr;
-        on_current_flexbox_received(move(flexbox_layout));
-    };
-
-    view->inspect_current_flexbox(node_id, only_look_at_parents);
+    view->inspect_current_flexbox(node_id, only_look_at_parents, move(on_current_flexbox_received));
 }
 
 void Application::clear_inspected_dom_node(DevTools::TabDescription const& description) const
@@ -4021,16 +3992,7 @@ static void edit_dom_node(DevTools::TabDescription const& description, Applicati
         return;
     }
 
-    view->on_finished_editing_dom_node = [&view = *view, on_complete = move(on_complete)](auto node_id) {
-        view.on_finished_editing_dom_node = nullptr;
-
-        if (node_id.has_value())
-            on_complete(*node_id);
-        else
-            on_complete(Error::from_string_literal("Unable to find DOM node to edit"));
-    };
-
-    edit(*view);
+    edit(*view, move(on_complete));
 }
 
 void Application::get_dom_node_inner_html(DevTools::TabDescription const& description, Web::UniqueNodeID node_id, OnDOMNodeHTMLReceived on_complete) const
@@ -4041,12 +4003,7 @@ void Application::get_dom_node_inner_html(DevTools::TabDescription const& descri
         return;
     }
 
-    view->on_received_dom_node_html = [&view = *view, on_complete = move(on_complete)](auto html) {
-        view.on_received_dom_node_html = nullptr;
-        on_complete(html);
-    };
-
-    view->get_dom_node_inner_html(node_id);
+    view->get_dom_node_inner_html(node_id, move(on_complete));
 }
 
 void Application::get_dom_node_outer_html(DevTools::TabDescription const& description, Web::UniqueNodeID node_id, OnDOMNodeHTMLReceived on_complete) const
@@ -4057,74 +4014,69 @@ void Application::get_dom_node_outer_html(DevTools::TabDescription const& descri
         return;
     }
 
-    view->on_received_dom_node_html = [&view = *view, on_complete = move(on_complete)](auto html) {
-        view.on_received_dom_node_html = nullptr;
-        on_complete(html);
-    };
-
-    view->get_dom_node_outer_html(node_id);
+    view->get_dom_node_outer_html(node_id, move(on_complete));
 }
 
 void Application::set_dom_node_outer_html(DevTools::TabDescription const& description, Web::UniqueNodeID node_id, String const& value, OnDOMNodeEditComplete on_complete) const
 {
-    edit_dom_node(description, move(on_complete), [&](auto& view) {
-        view.set_dom_node_outer_html(node_id, value);
+    edit_dom_node(description, move(on_complete), [&](auto& view, auto on_complete) {
+        view.set_dom_node_outer_html(node_id, value, move(on_complete));
     });
 }
 
 void Application::set_dom_node_text(DevTools::TabDescription const& description, Web::UniqueNodeID node_id, String const& value, OnDOMNodeEditComplete on_complete) const
 {
-    edit_dom_node(description, move(on_complete), [&](auto& view) {
-        view.set_dom_node_text(node_id, value);
+    edit_dom_node(description, move(on_complete), [&](auto& view, auto on_complete) {
+        view.set_dom_node_text(node_id, value, move(on_complete));
     });
 }
 
 void Application::set_dom_node_tag(DevTools::TabDescription const& description, Web::UniqueNodeID node_id, Utf16FlyString const& value, OnDOMNodeEditComplete on_complete) const
 {
-    edit_dom_node(description, move(on_complete), [&](auto& view) {
-        view.set_dom_node_tag(node_id, value);
+    edit_dom_node(description, move(on_complete), [&](auto& view, auto on_complete) {
+        view.set_dom_node_tag(node_id, value, move(on_complete));
     });
 }
 
 void Application::add_dom_node_attributes(DevTools::TabDescription const& description, Web::UniqueNodeID node_id, ReadonlySpan<Attribute> replacement_attributes, OnDOMNodeEditComplete on_complete) const
 {
-    edit_dom_node(description, move(on_complete), [&](auto& view) {
-        view.add_dom_node_attributes(node_id, replacement_attributes);
+    edit_dom_node(description, move(on_complete), [&](auto& view, auto on_complete) {
+        view.add_dom_node_attributes(node_id, replacement_attributes, move(on_complete));
     });
 }
 
 void Application::replace_dom_node_attribute(DevTools::TabDescription const& description, Web::UniqueNodeID node_id, Utf16FlyString const& name, ReadonlySpan<Attribute> replacement_attributes, OnDOMNodeEditComplete on_complete) const
 {
-    edit_dom_node(description, move(on_complete), [&](auto& view) {
-        view.replace_dom_node_attribute(node_id, name, replacement_attributes);
+    edit_dom_node(description, move(on_complete), [&](auto& view, auto on_complete) {
+        view.replace_dom_node_attribute(node_id, name, replacement_attributes, move(on_complete));
     });
 }
 
 void Application::create_child_element(DevTools::TabDescription const& description, Web::UniqueNodeID node_id, OnDOMNodeEditComplete on_complete) const
 {
-    edit_dom_node(description, move(on_complete), [&](auto& view) {
-        view.create_child_element(node_id);
+    edit_dom_node(description, move(on_complete), [&](auto& view, auto on_complete) {
+        view.create_child_element(node_id, move(on_complete));
     });
 }
 
 void Application::insert_dom_node_before(DevTools::TabDescription const& description, Web::UniqueNodeID node_id, Web::UniqueNodeID parent_node_id, Optional<Web::UniqueNodeID> sibling_node_id, OnDOMNodeEditComplete on_complete) const
 {
-    edit_dom_node(description, move(on_complete), [&](auto& view) {
-        view.insert_dom_node_before(node_id, parent_node_id, sibling_node_id);
+    edit_dom_node(description, move(on_complete), [&](auto& view, auto on_complete) {
+        view.insert_dom_node_before(node_id, parent_node_id, sibling_node_id, move(on_complete));
     });
 }
 
 void Application::clone_dom_node(DevTools::TabDescription const& description, Web::UniqueNodeID node_id, OnDOMNodeEditComplete on_complete) const
 {
-    edit_dom_node(description, move(on_complete), [&](auto& view) {
-        view.clone_dom_node(node_id);
+    edit_dom_node(description, move(on_complete), [&](auto& view, auto on_complete) {
+        view.clone_dom_node(node_id, move(on_complete));
     });
 }
 
 void Application::remove_dom_node(DevTools::TabDescription const& description, Web::UniqueNodeID node_id, OnDOMNodeEditComplete on_complete) const
 {
-    edit_dom_node(description, move(on_complete), [&](auto& view) {
-        view.remove_dom_node(node_id);
+    edit_dom_node(description, move(on_complete), [&](auto& view, auto on_complete) {
+        view.remove_dom_node(node_id, move(on_complete));
     });
 }
 
@@ -4136,12 +4088,7 @@ void Application::retrieve_style_sheets(DevTools::TabDescription const& descript
         return;
     }
 
-    view->on_received_style_sheet_list = [&view = *view, on_complete = move(on_complete)](Vector<Web::CSS::StyleSheetIdentifier> style_sheets) {
-        view.on_received_style_sheet_list = nullptr;
-        on_complete(move(style_sheets));
-    };
-
-    view->list_style_sheets();
+    view->list_style_sheets(move(on_complete));
 }
 
 void Application::retrieve_style_sheet_source(DevTools::TabDescription const& description, Web::CSS::StyleSheetIdentifier const& style_sheet) const
@@ -4192,16 +4139,7 @@ void Application::retrieve_source(DevTools::TabDescription const& description, W
         return;
     }
 
-    view->on_received_devtools_source.set(source_id, [on_complete = move(on_complete)](Optional<Web::HTML::ScriptRegistryContent> source) {
-        if (!source.has_value()) {
-            on_complete(Error::from_string_literal("Unable to locate source"));
-            return;
-        }
-
-        on_complete(source.release_value());
-    });
-
-    view->request_devtools_source(source_id);
+    view->request_devtools_source(source_id, move(on_complete));
 }
 
 void Application::listen_for_sources(DevTools::TabDescription const& description, OnSourceAvailable on_source_available) const
@@ -4362,12 +4300,7 @@ void Application::evaluate_javascript(DevTools::TabDescription const& descriptio
         return;
     }
 
-    view->on_received_js_console_result = [&view = *view, on_complete = move(on_complete)](DebuggerValue result) {
-        view.on_received_js_console_result = nullptr;
-        on_complete(move(result));
-    };
-
-    view->js_console_input(script);
+    view->js_console_input(script, move(on_complete));
 }
 
 void Application::listen_for_console_messages(DevTools::TabDescription const& description, OnConsoleMessage on_console_message) const

@@ -1342,21 +1342,21 @@ void ConnectionFromClient::debug_request(Web::PageId page_id, ByteString request
     }
 }
 
-void ConnectionFromClient::get_source(Web::PageId page_id)
+void ConnectionFromClient::get_source(Web::PageId page_id, u64 request_id)
 {
     if (auto page = this->page(page_id); page.has_value()) {
         if (auto doc = page->page().local_traversable()->active_document()) {
             auto html = Web::highlight_source(doc->url(), doc->base_url(), doc->source().to_utf8(), Syntax::Language::HTML);
-            async_did_get_highlighted_source(page_id, move(html));
+            async_did_get_highlighted_source(page_id, request_id, move(html));
         }
     }
 }
 
-void ConnectionFromClient::inspect_dom_tree(Web::PageId page_id)
+void ConnectionFromClient::inspect_dom_tree(Web::PageId page_id, u64 request_id)
 {
     if (auto page = this->page(page_id); page.has_value()) {
         if (auto doc = page->page().local_traversable()->active_document())
-            async_did_inspect_dom_tree(page_id, doc->dump_dom_tree_as_json().to_utf8());
+            async_did_inspect_dom_tree(page_id, request_id, doc->dump_dom_tree_as_json().to_utf8());
     }
 }
 
@@ -1653,7 +1653,7 @@ static void append_grid_layouts_for_node_and_frame_descendants(Web::DOM::Node& r
     });
 }
 
-void ConnectionFromClient::inspect_grid_layouts(Web::PageId page_id, Web::UniqueNodeID root_node_id)
+void ConnectionFromClient::inspect_grid_layouts(Web::PageId page_id, u64 request_id, Web::UniqueNodeID root_node_id)
 {
     auto page = this->page(page_id);
     if (!page.has_value())
@@ -1661,7 +1661,7 @@ void ConnectionFromClient::inspect_grid_layouts(Web::PageId page_id, Web::Unique
 
     auto* root_node = Web::DOM::Node::from_unique_id(root_node_id);
     if (!root_node) {
-        async_did_inspect_grid_layouts(page_id, "[]"_string);
+        async_did_inspect_grid_layouts(page_id, request_id, "[]"_string);
         return;
     }
 
@@ -1670,10 +1670,10 @@ void ConnectionFromClient::inspect_grid_layouts(Web::PageId page_id, Web::Unique
     JsonArray grid_layouts;
     append_grid_layouts_for_node_and_frame_descendants(*root_node, grid_layouts);
 
-    async_did_inspect_grid_layouts(page_id, grid_layouts.serialized());
+    async_did_inspect_grid_layouts(page_id, request_id, grid_layouts.serialized());
 }
 
-void ConnectionFromClient::inspect_current_grid(Web::PageId page_id, Web::UniqueNodeID node_id)
+void ConnectionFromClient::inspect_current_grid(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id)
 {
     auto page = this->page(page_id);
     if (!page.has_value())
@@ -1681,7 +1681,7 @@ void ConnectionFromClient::inspect_current_grid(Web::PageId page_id, Web::Unique
 
     auto* node = Web::DOM::Node::from_unique_id(node_id);
     if (!node) {
-        async_did_inspect_current_grid(page_id, "null"_string);
+        async_did_inspect_current_grid(page_id, request_id, "null"_string);
         return;
     }
 
@@ -1689,15 +1689,15 @@ void ConnectionFromClient::inspect_current_grid(Web::PageId page_id, Web::Unique
 
     for (auto const* current = node; current; current = current->parent_or_shadow_host_node()) {
         if (auto grid_layout = grid_layout_for_node(*current); grid_layout.has_value()) {
-            async_did_inspect_current_grid(page_id, grid_layout->serialized());
+            async_did_inspect_current_grid(page_id, request_id, grid_layout->serialized());
             return;
         }
     }
 
-    async_did_inspect_current_grid(page_id, "null"_string);
+    async_did_inspect_current_grid(page_id, request_id, "null"_string);
 }
 
-void ConnectionFromClient::inspect_current_flexbox(Web::PageId page_id, Web::UniqueNodeID node_id, bool only_look_at_parents)
+void ConnectionFromClient::inspect_current_flexbox(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, bool only_look_at_parents)
 {
     auto page = this->page(page_id);
     if (!page.has_value())
@@ -1705,7 +1705,7 @@ void ConnectionFromClient::inspect_current_flexbox(Web::PageId page_id, Web::Uni
 
     auto* node = Web::DOM::Node::from_unique_id(node_id);
     if (!node) {
-        async_did_inspect_current_flexbox(page_id, "null"_string);
+        async_did_inspect_current_flexbox(page_id, request_id, "null"_string);
         return;
     }
 
@@ -1713,12 +1713,12 @@ void ConnectionFromClient::inspect_current_flexbox(Web::PageId page_id, Web::Uni
 
     for (auto const* current = only_look_at_parents ? node->parent_or_shadow_host_node() : node; current; current = current->parent_or_shadow_host_node()) {
         if (auto flex_layout = flex_layout_for_node(*current); flex_layout.has_value()) {
-            async_did_inspect_current_flexbox(page_id, flex_layout->serialized());
+            async_did_inspect_current_flexbox(page_id, request_id, flex_layout->serialized());
             return;
         }
     }
 
-    async_did_inspect_current_flexbox(page_id, "null"_string);
+    async_did_inspect_current_flexbox(page_id, request_id, "null"_string);
 }
 
 void ConnectionFromClient::inspect_indexed_database_storage(Web::PageId page_id, u64 request_id)
@@ -1964,11 +1964,11 @@ void ConnectionFromClient::clear_grid_highlight(Web::PageId page_id, Web::Unique
     }
 }
 
-void ConnectionFromClient::inspect_accessibility_tree(Web::PageId page_id)
+void ConnectionFromClient::inspect_accessibility_tree(Web::PageId page_id, u64 request_id)
 {
     if (auto page = this->page(page_id); page.has_value() && page->page().has_local_traversable()) {
         if (auto doc = page->page().local_traversable()->active_document())
-            async_did_inspect_accessibility_tree(page_id, doc->dump_accessibility_tree_as_json().to_utf8());
+            async_did_inspect_accessibility_tree(page_id, request_id, doc->dump_accessibility_tree_as_json().to_utf8());
     }
 }
 
@@ -2160,13 +2160,13 @@ void ConnectionFromClient::get_node_id_at_position(Web::PageId page_id, u64 requ
     async_did_get_node_id_at_position(page_id, request_id, page->page().node_id_at_position(position));
 }
 
-void ConnectionFromClient::list_style_sheets(Web::PageId page_id)
+void ConnectionFromClient::list_style_sheets(Web::PageId page_id, u64 request_id)
 {
     auto page = this->page(page_id);
     if (!page.has_value())
         return;
 
-    async_did_list_style_sheets(page_id, page->list_style_sheets());
+    async_did_list_style_sheets(page_id, request_id, page->list_style_sheets());
 }
 
 void ConnectionFromClient::request_style_sheet_source(Web::PageId page_id, Web::CSS::StyleSheetIdentifier identifier)
@@ -2190,13 +2190,13 @@ void ConnectionFromClient::list_devtools_sources(Web::PageId page_id, u64 reques
     async_did_list_devtools_sources(page_id, request_id, page->list_devtools_sources());
 }
 
-void ConnectionFromClient::request_devtools_source(Web::PageId page_id, Web::HTML::ScriptRegistry::Identifier source_id)
+void ConnectionFromClient::request_devtools_source(Web::PageId page_id, u64 request_id, Web::HTML::ScriptRegistry::Identifier source_id)
 {
     auto page = this->page(page_id);
     if (!page.has_value())
         return;
 
-    async_did_get_devtools_source(page_id, source_id, page->devtools_source_content(source_id));
+    async_did_get_devtools_source(page_id, request_id, source_id, page->devtools_source_content(source_id));
 }
 
 void ConnectionFromClient::attach_debugger(Web::PageId page_id)
@@ -2405,7 +2405,7 @@ void ConnectionFromClient::start_sending_console_output(Web::PageId page_id, boo
         page->start_sending_console_output(messages, errors);
 }
 
-void ConnectionFromClient::get_dom_node_inner_html(Web::PageId page_id, Web::UniqueNodeID node_id)
+void ConnectionFromClient::get_dom_node_inner_html(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id)
 {
     auto* dom_node = Web::DOM::Node::from_unique_id(node_id);
     if (!dom_node)
@@ -2423,10 +2423,10 @@ void ConnectionFromClient::get_dom_node_inner_html(Web::PageId page_id, Web::Uni
         return;
     }
 
-    async_did_get_dom_node_html(page_id, html.to_utf8_but_should_be_ported_to_utf16());
+    async_did_get_dom_node_html(page_id, request_id, html.to_utf8_but_should_be_ported_to_utf16());
 }
 
-void ConnectionFromClient::get_dom_node_outer_html(Web::PageId page_id, Web::UniqueNodeID node_id)
+void ConnectionFromClient::get_dom_node_outer_html(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id)
 {
     auto* dom_node = Web::DOM::Node::from_unique_id(node_id);
     if (!dom_node)
@@ -2444,14 +2444,14 @@ void ConnectionFromClient::get_dom_node_outer_html(Web::PageId page_id, Web::Uni
         return;
     }
 
-    async_did_get_dom_node_html(page_id, html.to_utf8_but_should_be_ported_to_utf16());
+    async_did_get_dom_node_html(page_id, request_id, html.to_utf8_but_should_be_ported_to_utf16());
 }
 
-void ConnectionFromClient::set_dom_node_outer_html(Web::PageId page_id, Web::UniqueNodeID node_id, String html)
+void ConnectionFromClient::set_dom_node_outer_html(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, String html)
 {
     auto* dom_node = Web::DOM::Node::from_unique_id(node_id);
     if (!dom_node) {
-        async_did_finish_editing_dom_node(page_id, {});
+        async_did_finish_editing_dom_node(page_id, request_id, {});
         return;
     }
 
@@ -2462,32 +2462,32 @@ void ConnectionFromClient::set_dom_node_outer_html(Web::PageId page_id, Web::Uni
         auto& character_data = static_cast<Web::DOM::CharacterData&>(*dom_node);
         character_data.set_data(Utf16String::from_utf8(html));
     } else {
-        async_did_finish_editing_dom_node(page_id, {});
+        async_did_finish_editing_dom_node(page_id, request_id, {});
         return;
     }
 
-    async_did_finish_editing_dom_node(page_id, node_id);
+    async_did_finish_editing_dom_node(page_id, request_id, node_id);
 }
 
-void ConnectionFromClient::set_dom_node_text(Web::PageId page_id, Web::UniqueNodeID node_id, String text)
+void ConnectionFromClient::set_dom_node_text(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, String text)
 {
     auto* dom_node = Web::DOM::Node::from_unique_id(node_id);
     if (!dom_node || (!dom_node->is_text() && !dom_node->is_comment())) {
-        async_did_finish_editing_dom_node(page_id, {});
+        async_did_finish_editing_dom_node(page_id, request_id, {});
         return;
     }
 
     auto& character_data = static_cast<Web::DOM::CharacterData&>(*dom_node);
     character_data.set_data(Utf16String::from_utf8(text));
 
-    async_did_finish_editing_dom_node(page_id, character_data.unique_id());
+    async_did_finish_editing_dom_node(page_id, request_id, character_data.unique_id());
 }
 
-void ConnectionFromClient::set_dom_node_tag(Web::PageId page_id, Web::UniqueNodeID node_id, Utf16FlyString name)
+void ConnectionFromClient::set_dom_node_tag(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, Utf16FlyString name)
 {
     auto* dom_node = Web::DOM::Node::from_unique_id(node_id);
     if (!dom_node || !dom_node->is_element() || !dom_node->parent()) {
-        async_did_finish_editing_dom_node(page_id, {});
+        async_did_finish_editing_dom_node(page_id, request_id, {});
         return;
     }
 
@@ -2504,14 +2504,14 @@ void ConnectionFromClient::set_dom_node_tag(Web::PageId page_id, Web::UniqueNode
     }
 
     element.parent()->replace_child(*new_element, element).release_value_but_fixme_should_propagate_errors();
-    async_did_finish_editing_dom_node(page_id, new_element->unique_id());
+    async_did_finish_editing_dom_node(page_id, request_id, new_element->unique_id());
 }
 
-void ConnectionFromClient::add_dom_node_attributes(Web::PageId page_id, Web::UniqueNodeID node_id, Vector<WebView::Attribute> attributes)
+void ConnectionFromClient::add_dom_node_attributes(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, Vector<WebView::Attribute> attributes)
 {
     auto* dom_node = Web::DOM::Node::from_unique_id(node_id);
     if (!dom_node || !dom_node->is_element()) {
-        async_did_finish_editing_dom_node(page_id, {});
+        async_did_finish_editing_dom_node(page_id, request_id, {});
         return;
     }
 
@@ -2522,14 +2522,14 @@ void ConnectionFromClient::add_dom_node_attributes(Web::PageId page_id, Web::Uni
         element.set_attribute_value(attribute.name, attribute.value);
     }
 
-    async_did_finish_editing_dom_node(page_id, element.unique_id());
+    async_did_finish_editing_dom_node(page_id, request_id, element.unique_id());
 }
 
-void ConnectionFromClient::replace_dom_node_attribute(Web::PageId page_id, Web::UniqueNodeID node_id, Utf16FlyString name, Vector<WebView::Attribute> replacement_attributes)
+void ConnectionFromClient::replace_dom_node_attribute(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, Utf16FlyString name, Vector<WebView::Attribute> replacement_attributes)
 {
     auto* dom_node = Web::DOM::Node::from_unique_id(node_id);
     if (!dom_node || !dom_node->is_element()) {
-        async_did_finish_editing_dom_node(page_id, {});
+        async_did_finish_editing_dom_node(page_id, request_id, {});
         return;
     }
 
@@ -2547,44 +2547,44 @@ void ConnectionFromClient::replace_dom_node_attribute(Web::PageId page_id, Web::
     if (should_remove_attribute)
         element.remove_attribute(name);
 
-    async_did_finish_editing_dom_node(page_id, element.unique_id());
+    async_did_finish_editing_dom_node(page_id, request_id, element.unique_id());
 }
 
-void ConnectionFromClient::create_child_element(Web::PageId page_id, Web::UniqueNodeID node_id)
+void ConnectionFromClient::create_child_element(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id)
 {
     auto* dom_node = Web::DOM::Node::from_unique_id(node_id);
     if (!dom_node) {
-        async_did_finish_editing_dom_node(page_id, {});
+        async_did_finish_editing_dom_node(page_id, request_id, {});
         return;
     }
 
     auto element = Web::DOM::create_element(dom_node->document(), Web::HTML::TagNames::div, Web::Namespace::HTML).release_value_but_fixme_should_propagate_errors();
     dom_node->append_child(element).release_value_but_fixme_should_propagate_errors();
 
-    async_did_finish_editing_dom_node(page_id, element->unique_id());
+    async_did_finish_editing_dom_node(page_id, request_id, element->unique_id());
 }
 
-void ConnectionFromClient::create_child_text_node(Web::PageId page_id, Web::UniqueNodeID node_id)
+void ConnectionFromClient::create_child_text_node(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id)
 {
     auto* dom_node = Web::DOM::Node::from_unique_id(node_id);
     if (!dom_node) {
-        async_did_finish_editing_dom_node(page_id, {});
+        async_did_finish_editing_dom_node(page_id, request_id, {});
         return;
     }
 
     auto text_node = Web::DOM::Text::create(dom_node->document(), "text"_utf16);
     dom_node->append_child(text_node).release_value_but_fixme_should_propagate_errors();
 
-    async_did_finish_editing_dom_node(page_id, text_node->unique_id());
+    async_did_finish_editing_dom_node(page_id, request_id, text_node->unique_id());
 }
 
-void ConnectionFromClient::insert_dom_node_before(Web::PageId page_id, Web::UniqueNodeID node_id, Web::UniqueNodeID parent_node_id, Optional<Web::UniqueNodeID> sibling_node_id)
+void ConnectionFromClient::insert_dom_node_before(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, Web::UniqueNodeID parent_node_id, Optional<Web::UniqueNodeID> sibling_node_id)
 {
     auto* dom_node = Web::DOM::Node::from_unique_id(node_id);
     auto* parent_dom_node = Web::DOM::Node::from_unique_id(parent_node_id);
 
     if (!dom_node || !parent_dom_node) {
-        async_did_finish_editing_dom_node(page_id, {});
+        async_did_finish_editing_dom_node(page_id, request_id, {});
         return;
     }
 
@@ -2593,30 +2593,30 @@ void ConnectionFromClient::insert_dom_node_before(Web::PageId page_id, Web::Uniq
         sibling_dom_node = Web::DOM::Node::from_unique_id(*sibling_node_id);
 
         if (!sibling_dom_node) {
-            async_did_finish_editing_dom_node(page_id, {});
+            async_did_finish_editing_dom_node(page_id, request_id, {});
             return;
         }
     }
 
     parent_dom_node->insert_before(*dom_node, sibling_dom_node);
-    async_did_finish_editing_dom_node(page_id, dom_node->unique_id());
+    async_did_finish_editing_dom_node(page_id, request_id, dom_node->unique_id());
 }
 
-void ConnectionFromClient::clone_dom_node(Web::PageId page_id, Web::UniqueNodeID node_id)
+void ConnectionFromClient::clone_dom_node(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id)
 {
     auto* dom_node = Web::DOM::Node::from_unique_id(node_id);
     if (!dom_node || !dom_node->parent_node()) {
-        async_did_finish_editing_dom_node(page_id, {});
+        async_did_finish_editing_dom_node(page_id, request_id, {});
         return;
     }
 
     auto dom_node_clone = MUST(dom_node->clone_node(nullptr, true));
     dom_node->parent_node()->insert_before(dom_node_clone, dom_node->next_sibling());
 
-    async_did_finish_editing_dom_node(page_id, dom_node_clone->unique_id());
+    async_did_finish_editing_dom_node(page_id, request_id, dom_node_clone->unique_id());
 }
 
-void ConnectionFromClient::remove_dom_node(Web::PageId page_id, Web::UniqueNodeID node_id)
+void ConnectionFromClient::remove_dom_node(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id)
 {
     auto page = this->page(page_id);
     if (!page.has_value())
@@ -2624,13 +2624,13 @@ void ConnectionFromClient::remove_dom_node(Web::PageId page_id, Web::UniqueNodeI
 
     auto active_document = page->page().local_traversable()->active_document();
     if (!active_document) {
-        async_did_finish_editing_dom_node(page_id, {});
+        async_did_finish_editing_dom_node(page_id, request_id, {});
         return;
     }
 
     auto* dom_node = Web::DOM::Node::from_unique_id(node_id);
     if (!dom_node) {
-        async_did_finish_editing_dom_node(page_id, {});
+        async_did_finish_editing_dom_node(page_id, request_id, {});
         return;
     }
 
@@ -2640,25 +2640,25 @@ void ConnectionFromClient::remove_dom_node(Web::PageId page_id, Web::UniqueNodeI
 
     dom_node->remove();
 
-    async_did_finish_editing_dom_node(page_id, previous_dom_node->unique_id());
+    async_did_finish_editing_dom_node(page_id, request_id, previous_dom_node->unique_id());
 }
 
-void ConnectionFromClient::take_document_screenshot(Web::PageId page_id)
+void ConnectionFromClient::take_document_screenshot(Web::PageId page_id, u64 request_id)
 {
     auto page = this->page(page_id);
     if (!page.has_value())
         return;
 
-    page->queue_screenshot_task({});
+    page->queue_screenshot_task(request_id, {});
 }
 
-void ConnectionFromClient::take_dom_node_screenshot(Web::PageId page_id, Web::UniqueNodeID node_id)
+void ConnectionFromClient::take_dom_node_screenshot(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id)
 {
     auto page = this->page(page_id);
     if (!page.has_value())
         return;
 
-    page->queue_screenshot_task(node_id);
+    page->queue_screenshot_task(request_id, node_id);
 }
 
 static void append_page_text(Web::Page& page, StringBuilder& builder)
@@ -2740,11 +2740,11 @@ static void append_gc_graph(StringBuilder& builder)
     gc_graph.serialize(builder);
 }
 
-void ConnectionFromClient::request_internal_page_info(Web::PageId page_id, WebView::PageInfoType type)
+void ConnectionFromClient::request_internal_page_info(Web::PageId page_id, u64 request_id, WebView::PageInfoType type)
 {
     auto page = this->page(page_id);
     if (!page.has_value()) {
-        async_did_get_internal_page_info(page_id, type, {});
+        async_did_get_internal_page_info(page_id, request_id, type, {});
         return;
     }
 
@@ -2959,7 +2959,7 @@ void ConnectionFromClient::request_internal_page_info(Web::PageId page_id, WebVi
     auto buffer = MUST(Core::AnonymousBuffer::create_with_size(builder.length()));
     if (builder.length() > 0)
         memcpy(buffer.data<void>(), builder.string_view().characters_without_null_termination(), builder.length());
-    async_did_get_internal_page_info(page_id, type, buffer);
+    async_did_get_internal_page_info(page_id, request_id, type, buffer);
 }
 
 void ConnectionFromClient::get_selected_text(Web::PageId page_id, u64 request_id)
@@ -3516,13 +3516,13 @@ void ConnectionFromClient::reset_zoom(Web::PageId page_id)
         page->page().local_traversable()->reset_zoom();
 }
 
-void ConnectionFromClient::js_console_input(Web::PageId page_id, String js_source)
+void ConnectionFromClient::js_console_input(Web::PageId page_id, u64 request_id, String js_source)
 {
     auto page = this->page(page_id);
     if (!page.has_value())
         return;
 
-    page->js_console_input(js_source);
+    page->js_console_input(request_id, js_source);
 }
 
 void ConnectionFromClient::complete_js_console_input(Web::PageId page_id, u64 request_id, String input)

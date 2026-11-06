@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <AK/HashMap.h>
 #include <AK/HashTable.h>
 #include <AK/Noncopyable.h>
 #include <AK/Optional.h>
@@ -13,6 +14,7 @@
 #include <AK/RefPtr.h>
 #include <AK/String.h>
 #include <AK/Time.h>
+#include <AK/TypeCasts.h>
 #include <AK/WeakPtr.h>
 #include <LibAudio/Audibility.h>
 #include <LibCompositing/Types.h>
@@ -137,6 +139,19 @@ public:
     // A reply the UI owes this page. Closing the page cancels it.
     void expect_reply_from_ui(NonnullRefPtr<PendingReplyBase>);
 
+    // A reply this page's renderer owes the UI, keyed by the request id sent along with the request. Closing the page
+    // cancels it.
+    u64 expect_reply_from_renderer(NonnullRefPtr<PendingReplyBase>);
+    void cancel_replies_from_renderer();
+    template<typename Reply>
+    RefPtr<Reply> take_reply_from_renderer(u64 request_id)
+    {
+        auto it = m_replies_from_renderer.find(request_id);
+        if (it == m_replies_from_renderer.end() || !is<Reply>(*it->value))
+            return nullptr;
+        return static_ptr_cast<Reply>(m_replies_from_renderer.take(request_id).release_value());
+    }
+
     void owe_reply(OwedReply);
     bool take_owed_reply(OwedReply);
 
@@ -225,31 +240,31 @@ private:
     virtual void did_middle_click_link(Web::HTML::PreparedNavigationDescriptor navigation, ByteString, unsigned) override;
     virtual void did_request_external_url(URL::URL url, URL::Origin initiator_origin, bool has_transient_activation) override;
     virtual void did_inspect_storage(u64 request_id, String storage_items) override;
-    virtual void did_inspect_grid_layouts(String grid_layouts) override;
-    virtual void did_inspect_current_grid(String grid_layout) override;
-    virtual void did_inspect_current_flexbox(String flexbox_layout) override;
+    virtual void did_inspect_grid_layouts(u64 request_id, String grid_layouts) override;
+    virtual void did_inspect_current_grid(u64 request_id, String grid_layout) override;
+    virtual void did_inspect_current_flexbox(u64 request_id, String flexbox_layout) override;
     virtual void did_inspect_indexed_database(u64 request_id, String result) override;
-    virtual void did_inspect_accessibility_tree(String accessibility_tree) override;
+    virtual void did_inspect_accessibility_tree(u64 request_id, String accessibility_tree) override;
     virtual void did_get_accessibility_tree(u64 sequence, Vector<AccessibilityNodeData> nodes) override;
     virtual void did_change_accessibility_tree(u64 base_sequence, u64 sequence, AccessibilityTreeDelta delta) override;
     virtual void did_accessibility_focus_change(i64 focused_node_id) override;
     virtual void did_get_hovered_node_id(Web::UniqueNodeID node_id) override;
     virtual void did_get_node_id_at_position(u64 request_id, Web::UniqueNodeID node_id) override;
-    virtual void did_list_style_sheets(Vector<Web::CSS::StyleSheetIdentifier> stylesheets) override;
+    virtual void did_list_style_sheets(u64 request_id, Vector<Web::CSS::StyleSheetIdentifier> stylesheets) override;
     virtual void did_get_style_sheet_source(Web::CSS::StyleSheetIdentifier identifier, URL::URL base_url, Utf16String source) override;
     virtual void did_list_devtools_sources(u64 request_id, Vector<Web::HTML::ScriptRegistryDescription> sources) override;
-    virtual void did_get_devtools_source(Web::HTML::ScriptRegistryIdentifier source_id, Optional<Web::HTML::ScriptRegistryContent> source) override;
+    virtual void did_get_devtools_source(u64 request_id, Web::HTML::ScriptRegistryIdentifier source_id, Optional<Web::HTML::ScriptRegistryContent> source) override;
     virtual void did_add_devtools_source(Web::HTML::ScriptRegistryDescription source) override;
     virtual void did_pause_debugger(DebuggerPause pause) override;
     virtual void did_resume_debugger() override;
     virtual void did_complete_debugger_breakpoint_operation(u64 request_id, Optional<String> error) override;
-    virtual void did_take_screenshot(Gfx::ShareableBitmap screenshot) override;
-    virtual void did_get_internal_page_info(WebView::PageInfoType type, Optional<Core::AnonymousBuffer> info) override;
+    virtual void did_take_screenshot(u64 request_id, Gfx::ShareableBitmap screenshot) override;
+    virtual void did_get_internal_page_info(u64 request_id, WebView::PageInfoType type, Optional<Core::AnonymousBuffer> info) override;
     virtual void did_get_selected_text(u64 request_id, ByteString selection) override;
     virtual void did_get_selected_text_for_lookup(u64 request_id, Optional<DictionaryLookup> lookup) override;
     virtual void did_select_word_for_dictionary_lookup(u64 request_id, bool selected) override;
     virtual void did_cut_selected_text(u64 request_id, ByteString selection) override;
-    virtual void did_execute_js_console_input(DebuggerValue result) override;
+    virtual void did_execute_js_console_input(u64 request_id, DebuggerValue result) override;
     virtual void did_output_js_console_message(ConsoleOutput console_output) override;
     virtual void did_block_resource(URL::URL url, String kind) override;
     virtual void did_start_network_request(u64 request_id, URL::URL url, ByteString method, Vector<HTTP::Header> request_headers, ByteBuffer request_body, Optional<String> initiator_type, String referrer_policy, bool is_navigation_request, Web::Fetch::Infrastructure::RequestPriority priority) override;
@@ -327,11 +342,11 @@ private:
     virtual void changing_navigable_continuation_applied(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::HostedNavigableState> activated_navigable_state, Optional<Web::HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state) override;
     virtual void nonchanging_navigable_history_state_updated(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id) override;
     virtual void did_request_close_of_traversable(Web::HTML::CrossProcessId navigable_id, Web::HTML::CrossProcessId source_navigable_id, Web::HTML::NavigationSourceSnapshot source_snapshot) override;
-    virtual void did_inspect_dom_tree(String dom_tree) override;
+    virtual void did_inspect_dom_tree(u64 request_id, String dom_tree) override;
     virtual void did_inspect_dom_node(DOMNodeProperties properties) override;
-    virtual void did_finish_editing_dom_node(Optional<Web::UniqueNodeID> node_id) override;
+    virtual void did_finish_editing_dom_node(u64 request_id, Optional<Web::UniqueNodeID> node_id) override;
     virtual void did_mutate_dom(Mutation mutation) override;
-    virtual void did_get_dom_node_html(String html) override;
+    virtual void did_get_dom_node_html(u64 request_id, String html) override;
     virtual void did_resolve_dom_node_url(u64 request_id, String resolved_url) override;
     virtual void did_complete_js_console_input(u64 request_id, Optional<Vector<String>> matches, String match_prop) override;
     virtual void did_receive_network_response_headers(u64 request_id, u32 status_code, Optional<String> reason_phrase, Vector<HTTP::Header> response_headers, Requests::CacheState cache_state) override;
@@ -369,7 +384,7 @@ private:
     virtual void did_generate_text_fragment_url(u64 request_id, Optional<URL::URL> url) override;
     virtual void did_request_image_context_menu(Web::HTML::CrossProcessId local_root_id, Gfx::IntPoint content_position, Web::HTML::PreparedNavigationDescriptor navigation, ByteString, unsigned, Optional<Gfx::ShareableBitmap> bitmap) override;
     virtual void did_request_media_context_menu(Web::HTML::CrossProcessId local_root_id, Gfx::IntPoint content_position, ByteString, unsigned, Web::MediaContextMenu menu, Optional<Web::HTML::PreparedNavigationDescriptor> navigation) override;
-    virtual void did_get_highlighted_source(String html) override;
+    virtual void did_get_highlighted_source(u64 request_id, String html) override;
     virtual void did_get_debugger_environments(u64 request_id, Optional<String> error, Vector<DebuggerEnvironment> environments) override;
     virtual void did_evaluate_javascript_in_debugger_frame(u64 request_id, Optional<String> error, DebuggerEvaluationResult result) override;
     virtual void did_get_debugger_object_properties(u64 request_id, Optional<String> error, DebuggerObjectProperties properties) override;
@@ -428,6 +443,8 @@ private:
     WeakPtr<CanonicalTraversable> m_traversable;
     bool m_is_open { true };
     Vector<NonnullRefPtr<PendingReplyBase>> m_replies_from_ui;
+    HashMap<u64, NonnullRefPtr<PendingReplyBase>> m_replies_from_renderer;
+    u64 m_next_renderer_request_id { 1 };
     RefPtr<WebUI> m_web_ui;
     Audio::Audibility m_audibility { Audio::Audibility::Inaudible };
     Optional<PresentedBackingStores> m_presented_backing_stores;

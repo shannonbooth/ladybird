@@ -175,8 +175,8 @@ private:
     virtual void pinch_event(Web::PageId page_id, Web::PinchEvent) override;
     virtual void pinch_event_in_hosted_root(Web::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::PinchEvent) override;
     virtual void debug_request(Web::PageId page_id, ByteString, ByteString) override;
-    virtual void get_source(Web::PageId page_id) override;
-    virtual void inspect_dom_tree(Web::PageId page_id) override;
+    virtual void get_source(Web::PageId page_id, u64 request_id) override;
+    virtual void inspect_dom_tree(Web::PageId page_id, u64 request_id) override;
     virtual void inspect_storage(Web::PageId page_id, Web::StorageAPI::StorageEndpointType storage_endpoint, u64 request_id) override;
     // Web::StorageAPI::StorageAreaMirrorClient: the mirrors' link to the browser process, which owns the storage.
     virtual Web::StorageAPI::StorageAreaConnection connect_to_storage_area(Web::PageId, Web::StorageAPI::StorageEndpointType, Web::HTML::EnvironmentId const&) override;
@@ -190,9 +190,9 @@ private:
     virtual void storage_area_write_refused(Web::StorageAPI::StorageAreaId area_id, Vector<Utf16String> keys, Vector<Utf16String> values) override;
     virtual void storage_area_reset(Web::StorageAPI::StorageAreaId area_id, Vector<Utf16String> keys, Vector<Utf16String> values) override;
     virtual void inspect_dom_node(Web::PageId page_id, WebView::DOMNodeProperties::Type, Web::UniqueNodeID node_id, Optional<Web::CSS::PseudoElement> pseudo_element, JsonValue options) override;
-    virtual void inspect_grid_layouts(Web::PageId page_id, Web::UniqueNodeID root_node_id) override;
-    virtual void inspect_current_grid(Web::PageId page_id, Web::UniqueNodeID node_id) override;
-    virtual void inspect_current_flexbox(Web::PageId page_id, Web::UniqueNodeID node_id, bool only_look_at_parents) override;
+    virtual void inspect_grid_layouts(Web::PageId page_id, u64 request_id, Web::UniqueNodeID root_node_id) override;
+    virtual void inspect_current_grid(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id) override;
+    virtual void inspect_current_flexbox(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, bool only_look_at_parents) override;
     virtual void inspect_indexed_database_storage(Web::PageId page_id, u64 request_id) override;
     virtual void inspect_indexed_database_objects(Web::PageId page_id, u64 request_id, String host, JsonValue names, JsonValue options) override;
     virtual void delete_indexed_database(Web::PageId page_id, u64 request_id, String host, String name) override;
@@ -204,7 +204,7 @@ private:
     virtual void clear_flexbox_highlight(Web::PageId page_id, Web::UniqueNodeID node_id) override;
     virtual void highlight_grid(Web::PageId page_id, Web::UniqueNodeID node_id, JsonValue options) override;
     virtual void clear_grid_highlight(Web::PageId page_id, Web::UniqueNodeID node_id) override;
-    virtual void inspect_accessibility_tree(Web::PageId page_id) override;
+    virtual void inspect_accessibility_tree(Web::PageId page_id, u64 request_id) override;
     virtual void request_accessibility_tree(Web::PageId page_id) override;
     virtual void perform_accessibility_action(Web::PageId page_id, i64 node_id, String action) override;
     virtual void perform_accessibility_text_action(Web::PageId page_id, i64 node_id, String action, i32 offset_start,
@@ -212,10 +212,10 @@ private:
     virtual void get_hovered_node_id(Web::PageId page_id) override;
     virtual void get_node_id_at_position(Web::PageId page_id, u64 request_id, Web::DevicePixelPoint position) override;
 
-    virtual void list_style_sheets(Web::PageId page_id) override;
+    virtual void list_style_sheets(Web::PageId page_id, u64 request_id) override;
     virtual void request_style_sheet_source(Web::PageId page_id, Web::CSS::StyleSheetIdentifier identifier) override;
     virtual void list_devtools_sources(Web::PageId page_id, u64 request_id) override;
-    virtual void request_devtools_source(Web::PageId page_id, Web::HTML::ScriptRegistry::Identifier source_id) override;
+    virtual void request_devtools_source(Web::PageId page_id, u64 request_id, Web::HTML::ScriptRegistry::Identifier source_id) override;
     virtual void attach_debugger(Web::PageId page_id) override;
     virtual void configure_debugger(Web::PageId page_id, WebView::DebuggerConfiguration) override;
     virtual void detach_debugger(Web::PageId page_id) override;
@@ -234,18 +234,18 @@ private:
     virtual void set_listen_for_dom_mutations(Web::PageId page_id, bool) override;
     virtual void set_has_devtools_client(Web::PageId page_id, bool has_devtools_client) override;
     virtual void start_sending_console_output(Web::PageId page_id, bool messages, bool errors) override;
-    virtual void get_dom_node_inner_html(Web::PageId page_id, Web::UniqueNodeID node_id) override;
-    virtual void get_dom_node_outer_html(Web::PageId page_id, Web::UniqueNodeID node_id) override;
-    virtual void set_dom_node_outer_html(Web::PageId page_id, Web::UniqueNodeID node_id, String html) override;
-    virtual void set_dom_node_text(Web::PageId page_id, Web::UniqueNodeID node_id, String text) override;
-    virtual void set_dom_node_tag(Web::PageId page_id, Web::UniqueNodeID node_id, Utf16FlyString name) override;
-    virtual void add_dom_node_attributes(Web::PageId page_id, Web::UniqueNodeID node_id, Vector<WebView::Attribute> attributes) override;
-    virtual void replace_dom_node_attribute(Web::PageId page_id, Web::UniqueNodeID node_id, Utf16FlyString name, Vector<WebView::Attribute> replacement_attributes) override;
-    virtual void create_child_element(Web::PageId page_id, Web::UniqueNodeID node_id) override;
-    virtual void create_child_text_node(Web::PageId page_id, Web::UniqueNodeID node_id) override;
-    virtual void insert_dom_node_before(Web::PageId page_id, Web::UniqueNodeID node_id, Web::UniqueNodeID parent_node_id, Optional<Web::UniqueNodeID> sibling_node_id) override;
-    virtual void clone_dom_node(Web::PageId page_id, Web::UniqueNodeID node_id) override;
-    virtual void remove_dom_node(Web::PageId page_id, Web::UniqueNodeID node_id) override;
+    virtual void get_dom_node_inner_html(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id) override;
+    virtual void get_dom_node_outer_html(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id) override;
+    virtual void set_dom_node_outer_html(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, String html) override;
+    virtual void set_dom_node_text(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, String text) override;
+    virtual void set_dom_node_tag(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, Utf16FlyString name) override;
+    virtual void add_dom_node_attributes(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, Vector<WebView::Attribute> attributes) override;
+    virtual void replace_dom_node_attribute(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, Utf16FlyString name, Vector<WebView::Attribute> replacement_attributes) override;
+    virtual void create_child_element(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id) override;
+    virtual void create_child_text_node(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id) override;
+    virtual void insert_dom_node_before(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id, Web::UniqueNodeID parent_node_id, Optional<Web::UniqueNodeID> sibling_node_id) override;
+    virtual void clone_dom_node(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id) override;
+    virtual void remove_dom_node(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id) override;
 
     virtual void set_content_blocking_policy(Web::PageId page_id, bool enabled, Vector<String> disabled_sites) override;
     virtual void set_content_blockers(Core::AnonymousBuffer patterns) override;
@@ -286,7 +286,7 @@ private:
     virtual void update_visibility_state(Web::PageId page_id, Web::HTML::CrossProcessId navigable_id, Web::HTML::VisibilityState) override;
     virtual void reset_zoom(Web::PageId page_id) override;
 
-    virtual void js_console_input(Web::PageId page_id, String) override;
+    virtual void js_console_input(Web::PageId page_id, u64 request_id, String) override;
     virtual void run_javascript(Web::PageId page_id, String) override;
 
     virtual void did_open_dialog_in_another_process(Web::PageId page_id, Web::Page::PendingDialog dialog, Utf16String message) override;
@@ -318,10 +318,10 @@ private:
     virtual void toggle_media_picture_in_picture_state(Web::PageId page_id) override;
     virtual void toggle_media_controls_state(Web::PageId page_id) override;
 
-    virtual void take_document_screenshot(Web::PageId page_id) override;
-    virtual void take_dom_node_screenshot(Web::PageId page_id, Web::UniqueNodeID node_id) override;
+    virtual void take_document_screenshot(Web::PageId page_id, u64 request_id) override;
+    virtual void take_dom_node_screenshot(Web::PageId page_id, u64 request_id, Web::UniqueNodeID node_id) override;
 
-    virtual void request_internal_page_info(Web::PageId page_id, WebView::PageInfoType) override;
+    virtual void request_internal_page_info(Web::PageId page_id, u64 request_id, WebView::PageInfoType) override;
 
     virtual void get_selected_text(Web::PageId page_id, u64 request_id) override;
     virtual void generate_text_fragment_url(Web::PageId page_id, u64 request_id, u64 generation_id) override;
