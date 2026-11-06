@@ -17,6 +17,7 @@
 #include <LibWebCommon/PixelUnits.h>
 #include <LibWebView/Forward.h>
 #include <LibWebView/PendingReply.h>
+#include <LibWebView/TabClient.h>
 #include <LibWebView/TabObserver.h>
 #include <LibWebView/ViewImplementation.h>
 #include <LibWebView/ViewSurface.h>
@@ -26,6 +27,7 @@ namespace WebView {
 // A window that is never shown, which shows a tab for as long as it lives.
 class WEBVIEW_API HeadlessWebView
     : public ViewSurface
+    , public TabClient
     , public TabObserver
     , public Weakable<HeadlessWebView> {
 public:
@@ -59,6 +61,23 @@ protected:
     Optional<Utf16String> m_pending_prompt_text;
 
 protected:
+    // ^TabClient
+    virtual String show_tab_opened_by_page(Web::HTML::ActivateTab, Web::HTML::WebViewHints, CanonicalTraversable& traversable) override;
+    virtual void reposition_window(Gfx::IntPoint position) override;
+    virtual void resize_window(Gfx::IntSize size) override;
+    virtual void restore_window() override;
+    virtual void minimize_window() override;
+    virtual void maximize_window() override;
+    virtual void fullscreen_window() override;
+    virtual void exit_fullscreen_window() override;
+    virtual void request_alert(Utf16String const&, NonnullRefPtr<DialogReply> reply) override;
+    virtual void request_confirm(Utf16String const&, NonnullRefPtr<DialogReply> reply) override;
+    virtual void request_prompt(Utf16String const&, Utf16String const& prompt_text, NonnullRefPtr<DialogReply> reply) override;
+    virtual void request_set_prompt_text(Utf16String const& prompt_text) override;
+    virtual void request_accept_dialog() override;
+    virtual void request_dismiss_dialog() override;
+    virtual bool can_fullscreen_window() const override { return true; }
+
     // ^TabObserver
     virtual void tab_was_removed_from_user_interface() override;
     virtual void tab_web_content_did_crash(ViewImplementation::WebContentCrashReason) override;

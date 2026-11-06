@@ -49,7 +49,7 @@ TEST_CASE(before_unload)
 
     auto theme_path = LexicalPath::join(WebView::s_ladybird_resource_root, "themes"sv, "Default.ini"sv);
     auto theme = TRY_OR_FAIL(Gfx::load_system_theme(theme_path.string()));
-    OwnPtr<WebView::HeadlessWebView> view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
+    OwnPtr<Test::RequestHandlingWebView> view = Test::RequestHandlingWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
     Test::TabEvents view_events { view->tab() };
@@ -83,7 +83,7 @@ TEST_CASE(before_unload)
     bool adopt_navigation_prompt_for_close = false;
     Optional<bool> adopted_close_preflight_result;
     Optional<String> prompt_source;
-    view->tab().on_request_before_unload = [&](auto const& source, auto reply) {
+    view->on_request_before_unload = [&](auto const& source, auto reply) {
         ++prompt_count;
         prompt_source = source;
         if (adopt_navigation_prompt_for_close) {

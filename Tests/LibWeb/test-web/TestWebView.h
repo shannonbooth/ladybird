@@ -46,9 +46,27 @@ public:
     Function<void(JsonValue const&)> on_reference_test_metadata;
     Function<void(WebView::ViewImplementation::WebContentCrashReason)> on_web_content_crashed;
     Function<void()> on_web_content_process_change_for_cross_site_navigation;
+    Function<void(Utf16String const&, NonnullRefPtr<WebView::DialogReply>)> on_request_alert;
+    Function<void(Web::HTML::FileFilter const&, Web::HTML::AllowMultipleFiles, NonnullRefPtr<WebView::FilePickerReply>)> on_request_file_picker;
 
 private:
     TestWebView(Core::AnonymousBuffer theme, Web::DevicePixelSize viewport_size, WebView::ViewImplementation&);
+
+    // ^WebView::TabClient
+    virtual void request_alert(Utf16String const& message, NonnullRefPtr<WebView::DialogReply> reply) override
+    {
+        if (on_request_alert)
+            on_request_alert(message, move(reply));
+        else
+            HeadlessWebView::request_alert(message, move(reply));
+    }
+    virtual void request_file_picker(Web::HTML::FileFilter const& accepted_file_types, Web::HTML::AllowMultipleFiles allow_multiple_files, NonnullRefPtr<WebView::FilePickerReply> reply) override
+    {
+        if (on_request_file_picker)
+            on_request_file_picker(accepted_file_types, allow_multiple_files, move(reply));
+        else
+            HeadlessWebView::request_file_picker(accepted_file_types, allow_multiple_files, move(reply));
+    }
 
     // ^WebView::TabObserver
     virtual void tab_did_finish_loading(URL::URL const& url) override

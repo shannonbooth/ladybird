@@ -5,6 +5,7 @@
  */
 
 #include <LibCompositing/PictureInPictureControls.h>
+#include <LibWebView/TabClient.h>
 #include <UI/Qt/PictureInPictureWindow.h>
 #include <UI/Qt/WebContentView.h>
 #include <UI/Qt/WindowScreenObserver.h>
@@ -52,7 +53,8 @@ static Qt::WindowFlags window_flags()
 // It is moved by dragging anywhere on its page, and resized from its edges.
 class PictureInPictureWindow final
     : public QWidget
-    , public WebView::PictureInPictureWindow {
+    , public WebView::PictureInPictureWindow
+    , public WebView::TabClient {
 public:
     AK_ALLOC_WITH_KMALLOC;
 
@@ -83,7 +85,7 @@ public:
             .maximum_frames_per_second = m_screen_observer->refresh_rate(),
             .display_id = m_screen_observer->display_id(),
         };
-        m_view = new WebContentView(this, traversable, view_initial_state);
+        m_view = new WebContentView(this, *this, traversable, view_initial_state);
         m_screen_observer->on_device_pixel_ratio_change = [this] {
             m_view->set_device_pixel_ratio(m_screen_observer->device_pixel_ratio());
         };
@@ -247,8 +249,8 @@ private:
             browser_window->setWindowState(browser_window->windowState() & ~Qt::WindowMinimized);
             browser_window->raise();
             browser_window->activateWindow();
-            if (owner->on_activate_tab)
-                owner->on_activate_tab();
+            if (auto* client = owner->client())
+                client->activate_tab();
         }
         if (on_close)
             on_close(VideoKeepsPlaying::Yes);

@@ -1069,7 +1069,7 @@ static void run_test(TestWebView& view, TestRunContext& context, size_t test_ind
 
 static void set_ui_callbacks_for_tests(TestWebView& view, TestRunContext& context, TestRunCapture& test_run_capture)
 {
-    view.tab().on_request_file_picker = [&](auto const& accepted_file_types, auto allow_multiple_files, auto reply) {
+    view.on_request_file_picker = [&](auto const& accepted_file_types, auto allow_multiple_files, auto reply) {
         // Create some dummy files for tests.
         Vector<Web::HTML::SelectedFile> selected_files;
 
@@ -1110,7 +1110,7 @@ static void set_ui_callbacks_for_tests(TestWebView& view, TestRunContext& contex
         reply->complete(move(selected_files));
     };
 
-    view.tab().on_request_alert = [&](auto const&, auto reply) {
+    view.on_request_alert = [&](auto const&, auto reply) {
         // For tests, just close the alert right away to unblock JS execution.
         reply->complete(true, {});
     };

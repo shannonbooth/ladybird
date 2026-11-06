@@ -41,6 +41,7 @@
 #include <LibWebView/PageTranslation.h>
 #include <LibWebView/PermissionManager.h>
 #include <LibWebView/SessionHistory.h>
+#include <LibWebView/TabClient.h>
 #include <LibWebView/TabObserver.h>
 #include <LibWebView/TabPerformanceMonitor.h>
 #include <LibWebView/URL.h>
@@ -197,7 +198,6 @@ ViewImplementation::~ViewImplementation()
 void ViewImplementation::release_surface(ViewSurface& surface)
 {
     detach_surface(surface);
-    clear_frontend_callbacks();
     if (m_removed_from_user_interface || m_shutdown_started)
         return;
     // A tab whose frontend asked it to close stays until its page has closed it.
@@ -208,42 +208,25 @@ void ViewImplementation::release_surface(ViewSurface& surface)
     m_traversable.destroy();
 }
 
-void ViewImplementation::clear_frontend_callbacks()
-{
-    on_activate_tab = nullptr;
-    on_cancel_permission_prompt = nullptr;
-    on_exit_fullscreen_window = nullptr;
-    on_fullscreen_window = nullptr;
-    on_maximize_window = nullptr;
-    on_minimize_window = nullptr;
-    on_new_web_view = nullptr;
-    on_reposition_window = nullptr;
-    on_request_accept_dialog = nullptr;
-    on_request_alert = nullptr;
-    on_request_before_unload = nullptr;
-    on_request_color_picker = nullptr;
-    on_request_confirm = nullptr;
-    on_request_date_picker = nullptr;
-    on_request_dictionary_lookup = nullptr;
-    on_request_dismiss_dialog = nullptr;
-    on_request_external_url_confirmation = nullptr;
-    on_request_file_picker = nullptr;
-    on_request_permission = nullptr;
-    on_request_prompt = nullptr;
-    on_request_screenshot = nullptr;
-    on_request_select_dropdown = nullptr;
-    on_request_set_prompt_text = nullptr;
-    on_request_website_issue_report = nullptr;
-    on_resize_window = nullptr;
-    on_restore_window = nullptr;
-}
-
-void ViewImplementation::attach_surface(ViewSurface& surface)
+void ViewImplementation::attach_surface(ViewSurface& surface, TabClient& client)
 {
     VERIFY(!m_surface);
     VERIFY(!surface.m_view);
     m_surface = &surface;
+    m_client = &client;
     surface.m_view = this;
+}
+
+bool ViewImplementation::can_look_up_in_dictionary() const
+{
+    return m_client && m_client->can_look_up_in_dictionary();
+}
+
+// The lookup is shown once the page has answered, by which time the frontend can have let go of the tab.
+void ViewImplementation::show_dictionary_lookup(DictionaryLookup const& lookup, Gfx::IntPoint position)
+{
+    if (m_client)
+        m_client->request_dictionary_lookup(lookup, position);
 }
 
 void ViewImplementation::detach_surface(ViewSurface& surface)
@@ -251,6 +234,7 @@ void ViewImplementation::detach_surface(ViewSurface& surface)
     VERIFY(m_surface == &surface);
     VERIFY(surface.m_view == this);
     m_surface = nullptr;
+    m_client = nullptr;
     surface.m_view = nullptr;
 }
 
@@ -413,12 +397,12 @@ void ViewImplementation::request_permission_prompt(PermissionPromptRequest reque
         return;
     }
 
-    if (!on_request_permission) {
+    if (!m_client) {
         settle_permission_prompt(request, Web::Permissions::PromptOutcome::Cancelled);
         return;
     }
 
-    on_request_permission(request, [weak_this = make_weak_ptr(), request](Web::Permissions::PromptOutcome outcome) {
+    m_client->request_permission(request, [weak_this = make_weak_ptr(), request](Web::Permissions::PromptOutcome outcome) {
         if (auto* view = weak_this.ptr())
             view->settle_permission_prompt(request, outcome);
     });
@@ -441,8 +425,8 @@ void ViewImplementation::ignore_pending_permission_prompts()
     m_held_permission_prompt_for_testing.clear();
     m_held_permission_prompt_release_waiters_for_testing.clear();
     for (auto& pending : pending_prompts) {
-        if (on_cancel_permission_prompt)
-            on_cancel_permission_prompt(pending.request);
+        if (m_client)
+            m_client->cancel_permission_prompt(pending.request);
         for (auto& waiter : pending.waiters)
             waiter(Web::Permissions::PromptOutcome::Ignored);
     }
@@ -1305,7 +1289,7 @@ void ViewImplementation::handle_external_url(URL::URL url, URL::Origin initiator
         return;
 
     auto const headless_mode = Application::browser_options().headless_mode.has_value();
-    if (!headless_mode && action == ExternalURLAction::Prompt && !on_request_external_url_confirmation)
+    if (!headless_mode && action == ExternalURLAction::Prompt && !(m_client && m_client->can_confirm_external_url()))
         return;
 
     // Reserve the allowance while the handler is resolved. Browser UI allowances are specific to one navigation and
@@ -1379,7 +1363,7 @@ void ViewImplementation::handle_external_url(URL::URL url, URL::Origin initiator
             return;
         }
 
-        if (!view->on_request_external_url_confirmation) {
+        if (!view->m_client || !view->m_client->can_confirm_external_url()) {
             if (request_source == ExternalURLRequestSource::Page)
                 view->m_external_url_request_policy.allow_next_request();
             view->complete_external_url_request();
@@ -1400,7 +1384,7 @@ void ViewImplementation::handle_external_url(URL::URL url, URL::Origin initiator
             if (auto current_view = ViewImplementation::find_view_by_id(view_id); current_view.has_value())
                 current_view->complete_external_url_request();
         };
-        view->on_request_external_url_confirmation(url, initiator_origin, *handler, move(on_complete));
+        view->m_client->request_external_url_confirmation(url, initiator_origin, *handler, move(on_complete));
     });
 }
 
@@ -1876,7 +1860,7 @@ NonnullRefPtr<Core::Promise<bool>> ViewImplementation::select_word_for_dictionar
 
 bool ViewImplementation::look_up_selected_text_at(Gfx::IntPoint content_position)
 {
-    if (!on_request_dictionary_lookup)
+    if (!can_look_up_in_dictionary())
         return false;
 
     auto weak_this = make_weak_ptr();
@@ -1886,7 +1870,7 @@ bool ViewImplementation::look_up_selected_text_at(Gfx::IntPoint content_position
 
         if (lookup.has_value()) {
             auto lookup_position = lookup->baseline_origin.has_value() ? *lookup->baseline_origin : content_position;
-            weak_this->on_request_dictionary_lookup(*lookup, lookup_position);
+            weak_this->show_dictionary_lookup(*lookup, lookup_position);
             return;
         }
 
@@ -1899,7 +1883,7 @@ bool ViewImplementation::look_up_selected_text_at(Gfx::IntPoint content_position
                     return;
 
                 auto lookup_position = lookup->baseline_origin.has_value() ? *lookup->baseline_origin : content_position;
-                weak_this->on_request_dictionary_lookup(*lookup, lookup_position);
+                weak_this->show_dictionary_lookup(*lookup, lookup_position);
             });
         });
     });
@@ -1992,8 +1976,8 @@ bool ViewImplementation::can_report_website_issue() const
 
 void ViewImplementation::report_website_issue()
 {
-    if (can_report_website_issue() && on_request_website_issue_report)
-        on_request_website_issue_report();
+    if (can_report_website_issue() && m_client)
+        m_client->request_website_issue_report();
 }
 
 void ViewImplementation::update_report_website_issue_action()
@@ -2799,93 +2783,93 @@ bool ViewImplementation::has_open_dialog() const
 
 void ViewImplementation::request_alert(Utf16String const& message, NonnullRefPtr<DialogReply> reply)
 {
-    if (!on_request_alert) {
+    if (!m_client) {
         reply->cancel();
         return;
     }
     if (!admit_ui_request(m_dialog_reply, reply))
         return;
     complete_webdriver_navigation();
-    on_request_alert(message, move(reply));
+    m_client->request_alert(message, move(reply));
 }
 
 void ViewImplementation::request_confirm(Utf16String const& message, NonnullRefPtr<DialogReply> reply)
 {
-    if (!on_request_confirm) {
+    if (!m_client) {
         reply->cancel();
         return;
     }
     if (!admit_ui_request(m_dialog_reply, reply))
         return;
     complete_webdriver_navigation();
-    on_request_confirm(message, move(reply));
+    m_client->request_confirm(message, move(reply));
 }
 
 void ViewImplementation::request_prompt(Utf16String const& message, Utf16String const& default_value, NonnullRefPtr<DialogReply> reply)
 {
-    if (!on_request_prompt) {
+    if (!m_client) {
         reply->cancel();
         return;
     }
     if (!admit_ui_request(m_dialog_reply, reply))
         return;
     complete_webdriver_navigation();
-    on_request_prompt(message, default_value, move(reply));
+    m_client->request_prompt(message, default_value, move(reply));
 }
 
 void ViewImplementation::request_before_unload(String const& source, NonnullRefPtr<DialogReply> reply)
 {
-    if (!on_request_before_unload) {
+    if (!m_client) {
         reply->cancel();
         return;
     }
     if (!admit_ui_request(m_dialog_reply, reply))
         return;
-    on_request_before_unload(source, move(reply));
+    m_client->request_before_unload(source, move(reply));
 }
 
 void ViewImplementation::request_color_picker(Color color, NonnullRefPtr<ColorPickerReply> reply)
 {
-    if (!on_request_color_picker) {
+    if (!m_client) {
         reply->cancel();
         return;
     }
     if (!admit_ui_request(m_color_picker_reply, reply))
         return;
-    on_request_color_picker(color, move(reply));
+    m_client->request_color_picker(color, move(reply));
 }
 
 void ViewImplementation::request_date_picker(Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, NonnullRefPtr<DatePickerReply> reply)
 {
-    if (!on_request_date_picker) {
+    if (!m_client) {
         reply->cancel();
         return;
     }
     if (!admit_ui_request(m_date_picker_reply, reply))
         return;
-    on_request_date_picker(input_type, value, minimum, maximum, move(reply));
+    m_client->request_date_picker(input_type, value, minimum, maximum, move(reply));
 }
 
 void ViewImplementation::request_file_picker(Web::HTML::FileFilter const& filter, Web::HTML::AllowMultipleFiles allow_multiple_files, NonnullRefPtr<FilePickerReply> reply)
 {
-    if (!on_request_file_picker) {
+    if (!m_client) {
         reply->cancel();
         return;
     }
     if (!admit_ui_request(m_file_picker_reply, reply))
         return;
-    on_request_file_picker(filter, allow_multiple_files, move(reply));
+    m_client->request_file_picker(filter, allow_multiple_files, move(reply));
 }
 
 void ViewImplementation::request_select_dropdown(Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items, NonnullRefPtr<SelectDropdownReply> reply)
 {
-    if (!on_request_select_dropdown) {
+    if (!m_client) {
         reply->cancel();
         return;
     }
     if (!admit_ui_request(m_select_dropdown_reply, reply))
         return;
-    on_request_select_dropdown(content_position, minimum_width / device_pixel_ratio(), move(items), move(reply));
+    m_client->request_select_dropdown(content_position, minimum_width / device_pixel_ratio(), move(items), move(reply));
 }
 
 // The page hosting the tab's focused navigable, which the view's own page is when no other process hosts it.
@@ -5109,8 +5093,8 @@ NonnullRefPtr<Menu> ViewImplementation::create_page_context_menu(bool is_editabl
     menu->add_separator();
     if (is_about_page) {
         menu->add_action(Action::create("Take Screenshot..."sv, ActionID::TakeScreenshot, [this]() {
-            if (on_request_screenshot)
-                on_request_screenshot();
+            if (m_client)
+                m_client->request_screenshot();
         }));
     }
     menu->add_separator();
@@ -5202,19 +5186,18 @@ void ViewImplementation::add_text_edit_actions(Menu& menu, bool is_editable, boo
 
 void ViewImplementation::add_look_up_action(Menu& menu, Optional<DictionaryLookup> const& lookup, Gfx::IntPoint content_position)
 {
-    if (!lookup.has_value() || !on_request_dictionary_lookup)
+    if (!lookup.has_value() || !can_look_up_in_dictionary())
         return;
 
     auto position = lookup->baseline_origin.value_or(content_position);
     menu.add_action(Action::create("Look Up"sv, ActionID::LookUpSelectedText, [this, lookup = *lookup, position]() {
-        if (on_request_dictionary_lookup)
-            on_request_dictionary_lookup(lookup, position);
+        show_dictionary_lookup(lookup, position);
     }));
 }
 
 void ViewImplementation::request_context_menu_dictionary_lookup(Function<void(Optional<DictionaryLookup> const&)> on_complete)
 {
-    if (!on_request_dictionary_lookup) {
+    if (!can_look_up_in_dictionary()) {
         Optional<DictionaryLookup> lookup;
         on_complete(lookup);
         return;

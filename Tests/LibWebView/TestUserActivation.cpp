@@ -103,7 +103,7 @@ TEST_CASE(user_activation)
     auto theme_path = LexicalPath::join(WebView::s_ladybird_resource_root, "themes"sv, "Default.ini"sv);
     auto theme = TRY_OR_FAIL(Gfx::load_system_theme(theme_path.string()));
 
-    auto view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
+    auto view = Test::RequestHandlingWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
     Test::TabEvents view_events { view->tab() };
@@ -111,7 +111,7 @@ TEST_CASE(user_activation)
 
     // NB: The UI process counts the popups it lets the page open. The view creates no window for them.
     size_t popups_opened = 0;
-    view->tab().on_new_web_view = [&](auto, auto, auto&) {
+    view->on_new_web_view = [&](auto, auto, auto&) {
         ++popups_opened;
         return String {};
     };
@@ -141,7 +141,7 @@ TEST_CASE(user_activation)
     VERIFY(popups_opened == 4);
 
     // A gamepad user gesture gives activation too, to a page with the user's attention.
-    auto gamepad_view = WebView::HeadlessWebView::create(TRY_OR_FAIL(Gfx::load_system_theme(theme_path.string())), { 800, 600 });
+    auto gamepad_view = Test::RequestHandlingWebView::create(TRY_OR_FAIL(Gfx::load_system_theme(theme_path.string())), { 800, 600 });
     auto& gamepad_page = gamepad_view->tab().page();
     gamepad_view->tab().set_system_visibility_state(Web::HTML::VisibilityState::Visible);
     gamepad_view->tab().set_has_system_focus(true);

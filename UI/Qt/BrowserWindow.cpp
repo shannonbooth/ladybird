@@ -877,23 +877,26 @@ void BrowserWindow::initialize_tab_view(Tab* tab)
         }
     });
 
-    tab->view().tab().on_new_web_view = [this, tab](auto activate_tab, Web::HTML::WebViewHints hints, WebView::CanonicalTraversable& traversable) {
-        if (hints.popup) {
-            auto cascaded_configuration = Application::the().configuration_for_new_window();
-            WindowConfiguration configuration {
-                .x = hints.screen_x.has_value() ? hints.screen_x : cascaded_configuration.x,
-                .y = hints.screen_y.has_value() ? hints.screen_y : cascaded_configuration.y,
-                .width = hints.width,
-                .height = hints.height,
-            };
-            auto& window = Application::the().new_window({}, configuration, IsPopupWindow::Yes, m_is_private, tab, traversable);
-            return window.current_tab()->view().tab().handle();
-        }
-        auto& new_tab = create_new_tab(activate_tab, traversable);
-        return new_tab.view().tab().handle();
-    };
     if (!tab->view().tab().is_activated())
         tab->view().tab().activate();
+}
+
+// A page of the tab opened a tab or window, which the browser shows. Its WebDriver handle is returned.
+String BrowserWindow::show_tab_opened_by_page(Tab& opener, Web::HTML::ActivateTab activate_tab, Web::HTML::WebViewHints hints, WebView::CanonicalTraversable& traversable)
+{
+    if (hints.popup) {
+        auto cascaded_configuration = Application::the().configuration_for_new_window();
+        WindowConfiguration configuration {
+            .x = hints.screen_x.has_value() ? hints.screen_x : cascaded_configuration.x,
+            .y = hints.screen_y.has_value() ? hints.screen_y : cascaded_configuration.y,
+            .width = hints.width,
+            .height = hints.height,
+        };
+        auto& window = Application::the().new_window({}, configuration, IsPopupWindow::Yes, m_is_private, &opener, traversable);
+        return window.current_tab()->view().tab().handle();
+    }
+    auto& new_tab = create_new_tab(activate_tab, traversable);
+    return new_tab.view().tab().handle();
 }
 
 void BrowserWindow::uninitialize_tab(Tab* tab)

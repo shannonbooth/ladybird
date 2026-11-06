@@ -87,7 +87,7 @@ TEST_CASE(gamepad_exposure)
     auto& gamepad_manager = WebView::GamepadManager::the();
 
     {
-        auto view = WebView::HeadlessWebView::create(theme, { 800, 600 });
+        auto view = Test::RequestHandlingWebView::create(theme, { 800, 600 });
         auto& client = view->tab().page().client();
         give_user_attention(view->tab(), true);
         auto gamepad = gamepad_manager.create_virtual_gamepad(client).release_value();
@@ -126,14 +126,14 @@ TEST_CASE(gamepad_exposure)
     }
 
     {
-        auto view = WebView::HeadlessWebView::create(theme, { 800, 600 });
+        auto view = Test::RequestHandlingWebView::create(theme, { 800, 600 });
         auto& client = view->tab().page().client();
         give_user_attention(view->tab(), true);
 
         OwnPtr<WebView::HeadlessWebView> popup;
         bool popup_loaded = false;
         OwnPtr<Test::TabEvents> popup_events;
-        view->tab().on_new_web_view = [&](auto, auto, WebView::CanonicalTraversable& traversable) {
+        view->on_new_web_view = [&](auto, auto, WebView::CanonicalTraversable& traversable) {
             popup = WebView::HeadlessWebView::create_child(*view, traversable);
             popup_events = make<Test::TabEvents>(popup->tab());
             popup_events->on_load_finish = [&](auto const&) { popup_loaded = true; };
@@ -155,7 +155,7 @@ TEST_CASE(gamepad_exposure)
     }
 
     {
-        auto view = WebView::HeadlessWebView::create(theme, { 800, 600 });
+        auto view = Test::RequestHandlingWebView::create(theme, { 800, 600 });
         auto& page = view->tab().page();
         auto& client = page.client();
         auto& traversable = view->tab().traversable();

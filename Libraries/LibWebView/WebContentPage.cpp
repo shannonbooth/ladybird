@@ -39,6 +39,7 @@
 #include <LibWebView/RequestServerManager.h>
 #include <LibWebView/StorageAreaRegistry.h>
 #include <LibWebView/StorageJar.h>
+#include <LibWebView/TabClient.h>
 #include <LibWebView/TabObserver.h>
 #include <LibWebView/URL.h>
 #include <LibWebView/Utilities.h>
@@ -1364,20 +1365,20 @@ void WebContentPage::did_finish_network_request(u64 request_id, u64 body_size, R
 
 void WebContentPage::did_request_set_prompt_text(Utf16String message)
 {
-    if (view().on_request_set_prompt_text)
-        view().on_request_set_prompt_text(message);
+    if (auto* client = view().client())
+        client->request_set_prompt_text(message);
 }
 
 void WebContentPage::did_request_accept_dialog()
 {
-    if (view().on_request_accept_dialog)
-        view().on_request_accept_dialog();
+    if (auto* client = view().client())
+        client->request_accept_dialog();
 }
 
 void WebContentPage::did_request_dismiss_dialog()
 {
-    if (view().on_request_dismiss_dialog)
-        view().on_request_dismiss_dialog();
+    if (auto* client = view().client())
+        client->request_dismiss_dialog();
 }
 
 void WebContentPage::did_request_document_cookie_version_index(Web::HTML::EnvironmentId environment_id, i64 document_id, String domain)
@@ -1530,8 +1531,8 @@ void WebContentPage::did_request_restore_window()
 {
     if (!may_change_window(*this, "did_request_restore_window"sv))
         return;
-    if (view().on_restore_window)
-        view().on_restore_window();
+    if (auto* client = view().client())
+        client->restore_window();
 }
 
 void WebContentPage::did_request_reposition_window(Gfx::IntPoint position, u64 completion_id)
@@ -1542,8 +1543,8 @@ void WebContentPage::did_request_reposition_window(Gfx::IntPoint position, u64 c
         page->async_did_complete_window_rect_request(completion_id);
     });
     if (auto* view = expect_reply_from_ui(reply)) {
-        if (view->on_reposition_window)
-            view->on_reposition_window(position);
+        if (auto* client = view->client())
+            client->reposition_window(position);
         reply->complete();
     }
 }
@@ -1556,8 +1557,8 @@ void WebContentPage::did_request_resize_window(Gfx::IntSize size, u64 completion
         page->async_did_complete_window_rect_request(completion_id);
     });
     if (auto* view = expect_reply_from_ui(reply)) {
-        if (view->on_resize_window)
-            view->on_resize_window(size);
+        if (auto* client = view->client())
+            client->resize_window(size);
         reply->complete();
     }
 }
@@ -1570,8 +1571,8 @@ void WebContentPage::did_request_maximize_window(u64 completion_id)
         page->async_did_complete_window_rect_request(completion_id);
     });
     if (auto* view = expect_reply_from_ui(reply)) {
-        if (view->on_maximize_window)
-            view->on_maximize_window();
+        if (auto* client = view->client())
+            client->maximize_window();
         reply->complete();
     }
 }
@@ -1580,8 +1581,8 @@ void WebContentPage::did_request_minimize_window()
 {
     if (!may_change_window(*this, "did_request_minimize_window"sv))
         return;
-    if (view().on_minimize_window)
-        view().on_minimize_window();
+    if (auto* client = view().client())
+        client->minimize_window();
 }
 
 void WebContentPage::did_request_fullscreen_window()
@@ -1592,19 +1593,20 @@ void WebContentPage::did_request_fullscreen_window()
     },
         false);
     if (auto* view = expect_reply_from_ui(reply)) {
-        if (!consume_transient_user_activation() || !view->on_fullscreen_window) {
+        auto* client = view->client();
+        if (!consume_transient_user_activation() || !client || !client->can_fullscreen_window()) {
             reply->cancel();
             return;
         }
-        view->on_fullscreen_window();
+        client->fullscreen_window();
         reply->complete(true);
     }
 }
 
 void WebContentPage::did_request_exit_fullscreen()
 {
-    if (view().on_exit_fullscreen_window)
-        view().on_exit_fullscreen_window();
+    if (auto* client = view().client())
+        client->exit_fullscreen_window();
 }
 
 void WebContentPage::did_exit_picture_in_picture()
@@ -3229,8 +3231,8 @@ Messages::WebContentClient::DidRequestNewWebViewResponse WebContentPage::did_req
     String window_handle;
     if (picture_in_picture_navigable.has_value()) {
         window_handle = PictureInPictureManager::the().open_window(*this, *picture_in_picture_navigable, traversable, hints.picture_in_picture_window->video_size);
-    } else if (view().on_new_web_view) {
-        window_handle = view().on_new_web_view(activate_tab, hints, traversable);
+    } else if (auto* client = view().client()) {
+        window_handle = client->show_tab_opened_by_page(activate_tab, hints, traversable);
     }
 
     if (!traversable.view().surface()) {

@@ -209,7 +209,7 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
         .display_id = m_window->display_id(),
     };
 
-    m_view = new WebContentView(this, traversable, AK::move(view_initial_state));
+    m_view = new WebContentView(this, *this, traversable, AK::move(view_initial_state));
     observe(m_view->tab());
     QObject::connect(m_view, &WebContentView::close_requested, this, [this] {
         m_window->definitely_close_tab(tab_index());
@@ -282,10 +282,6 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
         update_tab_icon();
     });
 
-    view().tab().on_activate_tab = [this] {
-        m_window->activate_tab(tab_index());
-    };
-
     view().on_request_web_compat_report_review = [this](WebCompatReportCapture capture) {
         auto& tab = m_window->new_tab_from_url(URL::about_blank(), Web::HTML::ActivateTab::Yes, BrowserWindow::TabLocation::after_tab(*this));
         tab.view().on_close_web_compat_report_tab = [&tab] {
@@ -319,71 +315,6 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
         view().setFocus();
     });
 
-    // A dialog from a page says which site it comes from.
-    auto javascript_dialog_title = [this] {
-        auto origin = view().tab().url().origin();
-        if (!origin.is_opaque())
-            return qformatted("{} says", qstring_from_ak_string(origin.host().serialize()));
-        return qformatted("{}:// says", qstring_from_ak_string(view().tab().url().scheme()));
-    };
-
-    auto offer_to_block_further_dialogs = [this] {
-        return m_javascript_dialogs_shown_by_document++ > 0 ? JavaScriptDialog::OfferToBlockFurtherDialogs::Yes : JavaScriptDialog::OfferToBlockFurtherDialogs::No;
-    };
-
-    auto hold_javascript_dialog_reply = [this](NonnullRefPtr<WebView::DialogReply> reply) {
-        reply->on_cancel = [dialog = QPointer { m_javascript_dialog }] {
-            if (dialog)
-                dialog->dismiss();
-        };
-        m_javascript_dialog_reply = AK::move(reply);
-    };
-
-    view().tab().on_request_alert = [this, javascript_dialog_title, offer_to_block_further_dialogs, hold_javascript_dialog_reply](auto const& message, auto reply) {
-        if (m_suppress_javascript_dialogs_until_navigation || m_javascript_dialogs_blocked_for_document) {
-            reply->complete(false, {});
-            return;
-        }
-        hide_hover_label();
-        hold_javascript_dialog_reply(AK::move(reply));
-        m_javascript_dialog->set_title_icon(tab_icon());
-        m_javascript_dialog->show_alert(javascript_dialog_title(), qstring_from_utf16_string(message), offer_to_block_further_dialogs());
-    };
-
-    view().tab().on_request_before_unload = [this, hold_javascript_dialog_reply](auto const& source, auto reply) {
-        hide_hover_label();
-        hold_javascript_dialog_reply(AK::move(reply));
-        m_window->raise_for_close_prompt();
-        m_javascript_dialog->set_title_icon(tab_icon());
-        m_javascript_dialog->show_before_unload(qstring_from_ak_string(source));
-    };
-
-    view().tab().on_request_confirm = [this, javascript_dialog_title, offer_to_block_further_dialogs, hold_javascript_dialog_reply](auto const& message, auto reply) {
-        if (m_suppress_javascript_dialogs_until_navigation || m_javascript_dialogs_blocked_for_document) {
-            reply->complete(false, {});
-            return;
-        }
-        hide_hover_label();
-        hold_javascript_dialog_reply(AK::move(reply));
-        m_javascript_dialog->set_title_icon(tab_icon());
-        m_javascript_dialog->show_confirm(javascript_dialog_title(), qstring_from_utf16_string(message), offer_to_block_further_dialogs());
-    };
-
-    view().tab().on_request_prompt = [this, javascript_dialog_title, offer_to_block_further_dialogs, hold_javascript_dialog_reply](auto const& message, auto const& default_, auto reply) {
-        if (m_suppress_javascript_dialogs_until_navigation || m_javascript_dialogs_blocked_for_document) {
-            reply->complete(false, {});
-            return;
-        }
-        hide_hover_label();
-        hold_javascript_dialog_reply(AK::move(reply));
-        m_javascript_dialog->set_title_icon(tab_icon());
-        m_javascript_dialog->show_prompt(javascript_dialog_title(), qstring_from_utf16_string(message), qstring_from_utf16_string(default_), offer_to_block_further_dialogs());
-    };
-
-    view().tab().on_request_set_prompt_text = [this](auto const& message) {
-        m_javascript_dialog->set_prompt_text(qstring_from_utf16_string(message));
-    };
-
     m_javascript_dialog->on_complete = [this](auto type, bool accepted, auto const& prompt_text) {
         if (m_javascript_dialog->blocks_further_dialogs())
             m_javascript_dialogs_blocked_for_document = true;
@@ -394,43 +325,6 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
                 m_already_requested_close = false;
             m_suppress_javascript_dialogs_until_navigation = false;
         }
-    };
-
-    view().tab().on_request_external_url_confirmation = [this](auto const& url, auto const& initiator_origin, auto const& handler, auto on_complete) {
-        if (m_javascript_dialog->is_open() || m_color_picker_dialog || m_external_url_confirmation_dialog) {
-            on_complete(false);
-            return;
-        }
-
-        hide_hover_label();
-
-        auto initiator = initiator_origin.is_opaque() ? "This page"_string : initiator_origin.serialize();
-        auto application_name = handler.application_name().is_empty() ? "another application"sv : handler.application_name().bytes_as_string_view();
-        auto title = handler.application_name().is_empty() ? "Open external application?"_string : MUST(String::formatted("Open {}?", application_name));
-        auto message = MUST(String::formatted("{} wants to open a {} link with {}.", initiator, url.scheme(), application_name));
-        auto details = MUST(String::formatted("URL: '{}'", url));
-        auto open_button_text = handler.application_name().is_empty() ? "Open"_string : MUST(String::formatted("Open {}", application_name));
-
-        auto* dialog = new QMessageBox(&view());
-        m_external_url_confirmation_dialog = dialog;
-        dialog->setAttribute(Qt::WA_DeleteOnClose);
-        dialog->setIcon(QMessageBox::Icon::Question);
-        dialog->setWindowTitle(qstring_from_ak_string(title));
-        dialog->setTextFormat(Qt::PlainText);
-        dialog->setText(qstring_from_ak_string(message));
-        dialog->setDetailedText(qstring_from_ak_string(details));
-        auto* open_button = dialog->addButton(qstring_from_ak_string(open_button_text), QMessageBox::ButtonRole::AcceptRole);
-        dialog->addButton(QMessageBox::StandardButton::Cancel);
-        dialog->setDefaultButton(QMessageBox::StandardButton::Cancel);
-
-        QObject::connect(dialog, &QDialog::finished, this, [this, dialog = QPointer<QMessageBox> { dialog }, open_button, on_complete = AK::move(on_complete)](auto) mutable {
-            auto accepted = dialog && dialog->clickedButton() == open_button;
-            if (m_external_url_confirmation_dialog == dialog)
-                m_external_url_confirmation_dialog = nullptr;
-            on_complete(accepted);
-        });
-
-        dialog->open();
     };
 
     m_permission_prompts.create_popover = [this](WebView::PermissionPromptRequest const& request) {
@@ -451,280 +345,7 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
         return popover;
     };
 
-    view().tab().on_request_permission = [this](WebView::PermissionPromptRequest const& request, WebView::PermissionPromptCallback on_outcome) {
-        // A tab opened in the background, or in a window that was never active, has had nothing hold its prompts yet.
-        update_permission_prompts();
-        m_permission_prompts.enqueue(request, AK::move(on_outcome));
-    };
-
-    view().tab().on_cancel_permission_prompt = [this](WebView::PermissionPromptRequest const& request) {
-        m_permission_prompts.cancel(request);
-    };
-
-    view().tab().on_request_accept_dialog = [this]() {
-        m_javascript_dialog->accept();
-    };
-
-    view().tab().on_request_dismiss_dialog = [this]() {
-        m_javascript_dialog->dismiss();
-    };
-
-    view().tab().on_request_color_picker = [this](Color current_color, auto reply) {
-        auto* dialog = new QColorDialog(QColor(current_color.red(), current_color.green(), current_color.blue()), &view());
-        m_color_picker_dialog = dialog;
-
-        dialog->setWindowTitle("Ladybird");
-        dialog->setOption(QColorDialog::ShowAlphaChannel, false);
-        QObject::connect(dialog, &QColorDialog::currentColorChanged, this, [reply](QColor const& color) {
-            reply->update(Color(color.red(), color.green(), color.blue()));
-        });
-
-        QObject::connect(dialog, &QDialog::finished, this, [this, reply, dialog](auto result) {
-            Optional<Color> picked_color;
-            if (result == QDialog::Accepted)
-                picked_color = Color(dialog->selectedColor().red(), dialog->selectedColor().green(), dialog->selectedColor().blue());
-            if (m_color_picker_dialog == dialog)
-                m_color_picker_dialog = nullptr;
-            dialog->deleteLater();
-            reply->complete(AK::move(picked_color));
-        });
-        reply->on_cancel = [dialog = QPointer { dialog }] {
-            if (dialog)
-                dialog->close();
-        };
-
-        dialog->open();
-    };
-
-    view().tab().on_request_date_picker = [this](Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, auto reply) {
-        if (m_date_picker_dialog) {
-            reply->complete({});
-            return;
-        }
-
-        // NB: The values come from the page, so anything that does not parse leaves the picker at its defaults. The
-        //     page sanitizes the value the picker sends back.
-        auto type = qstring_from_utf16_string(input_type);
-        bool const picks_date = type != "time";
-        bool const picks_time = type == "time" || type == "datetime-local";
-
-        auto parse_date = [&](QString const& string) -> QDate {
-            if (type == "month")
-                return QDate::fromString(string + "-01", "yyyy-MM-dd");
-            if (type == "week") {
-                auto parts = string.split("-W");
-                if (parts.size() != 2)
-                    return {};
-                bool year_ok = false;
-                bool week_ok = false;
-                auto year = parts[0].toInt(&year_ok);
-                auto week = parts[1].toInt(&week_ok);
-                if (!year_ok || !week_ok)
-                    return {};
-                // The first ISO week of a year holds January 4th.
-                auto january_fourth = QDate(year, 1, 4);
-                return january_fourth.addDays(1 - january_fourth.dayOfWeek() + (week - 1) * 7);
-            }
-            return QDate::fromString(string.left(10), "yyyy-MM-dd");
-        };
-        auto current_value = qstring_from_utf16_string(value);
-        auto current_time = type == "datetime-local" ? current_value.mid(11) : current_value;
-        // NB: A value with seconds or a fraction of a second keeps them, so that confirming the picker does not drop
-        //     them. The "z" format reads and writes one to three digits of the fraction.
-        bool const picks_seconds = current_time.length() > 5;
-        bool const picks_milliseconds = current_time.contains('.');
-        auto const time_format = picks_milliseconds ? QStringLiteral("HH:mm:ss.z")
-            : picks_seconds                         ? QStringLiteral("HH:mm:ss")
-                                                    : QStringLiteral("HH:mm");
-        auto* dialog = new QDialog(&view());
-        m_date_picker_dialog = dialog;
-        dialog->setWindowTitle("Ladybird");
-        auto* layout = new QVBoxLayout(dialog);
-
-        QCalendarWidget* calendar = nullptr;
-        if (picks_date) {
-            calendar = new QCalendarWidget(dialog);
-            calendar->setGridVisible(false);
-            calendar->setVerticalHeaderFormat(type == "week" ? QCalendarWidget::ISOWeekNumbers : QCalendarWidget::NoVerticalHeader);
-            calendar->setFirstDayOfWeek(type == "week" ? Qt::Monday : QLocale().firstDayOfWeek());
-            // Draw weekends like other days, rather than in Qt's default red.
-            calendar->setWeekdayTextFormat(Qt::Saturday, {});
-            calendar->setWeekdayTextFormat(Qt::Sunday, {});
-            calendar->setStyleSheet(
-                "#qt_calendar_navigationbar { background: transparent; }"
-                "#qt_calendar_navigationbar QToolButton { background: transparent; border: none; padding: 2px 6px; font-weight: 600; }"
-                "#qt_calendar_navigationbar QToolButton::menu-indicator { image: none; width: 0; }"
-                "#qt_calendar_navigationbar QToolButton:hover { background: palette(midlight); border-radius: 4px; }"
-                "QCalendarWidget QAbstractItemView { selection-background-color: palette(accent); selection-color: palette(highlighted-text); }");
-            if (auto* previous_month = calendar->findChild<QToolButton*>("qt_calendar_prevmonth"))
-                previous_month->setIcon(calendar_month_chevron_icon(*calendar, ChevronDirection::Left));
-            if (auto* next_month = calendar->findChild<QToolButton*>("qt_calendar_nextmonth"))
-                next_month->setIcon(calendar_month_chevron_icon(*calendar, ChevronDirection::Right));
-            if (auto date = parse_date(current_value); date.isValid())
-                calendar->setSelectedDate(date);
-            if (auto date = parse_date(qstring_from_utf16_string(minimum)); date.isValid())
-                calendar->setMinimumDate(date);
-            if (auto date = parse_date(qstring_from_utf16_string(maximum)); date.isValid())
-                calendar->setMaximumDate(date);
-            layout->addWidget(calendar);
-        }
-
-        QTimeEdit* time_edit = nullptr;
-        if (picks_time) {
-            time_edit = new QTimeEdit(dialog);
-            time_edit->setDisplayFormat(picks_milliseconds ? QStringLiteral("HH:mm:ss.zzz") : time_format);
-            if (auto time = QTime::fromString(current_time, time_format); time.isValid())
-                time_edit->setTime(time);
-            layout->addWidget(time_edit);
-        }
-
-        auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dialog);
-        QObject::connect(buttons, &QDialogButtonBox::accepted, dialog, &QDialog::accept);
-        QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
-        layout->addWidget(buttons);
-
-        QObject::connect(dialog, &QDialog::finished, this, [this, reply, dialog, calendar, time_edit, type, time_format](int result) {
-            Optional<Utf16String> picked_value;
-            if (result == QDialog::Accepted) {
-                QString picked;
-                if (calendar) {
-                    auto date = calendar->selectedDate();
-                    if (type == "month") {
-                        picked = date.toString("yyyy-MM");
-                    } else if (type == "week") {
-                        int week_year = 0;
-                        auto week = date.weekNumber(&week_year);
-                        picked = QString("%1-W%2").arg(week_year, 4, 10, QChar('0')).arg(week, 2, 10, QChar('0'));
-                    } else {
-                        picked = date.toString("yyyy-MM-dd");
-                    }
-                }
-                if (time_edit) {
-                    if (!picked.isEmpty())
-                        picked += "T";
-                    picked += time_edit->time().toString(time_format);
-                }
-                picked_value = utf16_string_from_qstring(picked);
-            }
-            m_date_picker_dialog = nullptr;
-            dialog->deleteLater();
-            reply->complete(AK::move(picked_value));
-        });
-        reply->on_cancel = [dialog = QPointer { dialog }] {
-            if (dialog)
-                dialog->close();
-        };
-
-        dialog->open();
-    };
-
-    view().tab().on_request_file_picker = [this](auto const& accepted_file_types, auto allow_multiple_files, auto reply) {
-        QStringList accepted_file_filters;
-        QMimeDatabase mime_database;
-
-        for (auto const& filter : accepted_file_types.filters) {
-            filter.visit(
-                [&](Web::HTML::FileFilter::FileType type) {
-                    QString title;
-                    QString filter;
-
-                    switch (type) {
-                    case Web::HTML::FileFilter::FileType::Audio:
-                        title = "Audio files";
-                        filter = "audio/";
-                        break;
-                    case Web::HTML::FileFilter::FileType::Image:
-                        title = "Image files";
-                        filter = "image/";
-                        break;
-                    case Web::HTML::FileFilter::FileType::Video:
-                        title = "Video files";
-                        filter = "video/";
-                        break;
-                    }
-
-                    QStringList extensions;
-
-                    for (auto const& mime_type : mime_database.allMimeTypes()) {
-                        if (mime_type.name().startsWith(filter))
-                            extensions.append(mime_type.globPatterns());
-                    }
-
-                    accepted_file_filters.append(qformatted("{} ({})", title, extensions.join(" ")));
-                },
-                [&](Web::HTML::FileFilter::MimeType const& filter) {
-                    if (auto mime_type = mime_database.mimeTypeForName(qstring_from_utf16_string(filter.value)); mime_type.isValid())
-                        accepted_file_filters.append(mime_type.filterString());
-                },
-                [&](Web::HTML::FileFilter::Extension const& filter) {
-                    accepted_file_filters.append(qformatted("*.{}", qstring_from_utf16_string(filter.value)));
-                });
-        }
-
-        accepted_file_filters.size() > 1 ? accepted_file_filters.prepend("All files (*)") : accepted_file_filters.append("All files (*)");
-        auto filters = accepted_file_filters.join(";;");
-
-        auto allow_multiple = allow_multiple_files == Web::HTML::AllowMultipleFiles::Yes;
-        auto* dialog = new QFileDialog(this, allow_multiple ? "Select files" : "Select file", QDir::homePath(), filters);
-        m_file_picker_dialog = dialog;
-        dialog->setAttribute(Qt::WA_DeleteOnClose);
-        dialog->setFileMode(allow_multiple ? QFileDialog::ExistingFiles : QFileDialog::ExistingFile);
-
-        QObject::connect(dialog, &QDialog::finished, this, [this, reply, dialog = QPointer<QFileDialog> { dialog }](int result) {
-            Vector<Web::HTML::SelectedFile> selected_files;
-
-            if (dialog && result == QDialog::Accepted) {
-                for (auto const& path : dialog->selectedFiles()) {
-                    auto file_path = ak_byte_string_from_qstring(path);
-
-                    if (auto file = WebView::create_selected_file(file_path); file.is_error())
-                        warnln("Unable to open file {}: {}", file_path, file.error());
-                    else
-                        selected_files.append(file.release_value());
-                }
-            }
-
-            if (m_file_picker_dialog == dialog)
-                m_file_picker_dialog = nullptr;
-            reply->complete(std::move(selected_files));
-        });
-        reply->on_cancel = [dialog = QPointer<QFileDialog> { dialog }] {
-            if (dialog)
-                dialog->close();
-        };
-
-        dialog->open();
-    };
-
     QObject::connect(focus_location_editor_action, &QAction::triggered, this, [this] { focus_location_editor(); });
-
-    view().tab().on_restore_window = [this]() {
-        m_window->showNormal();
-    };
-
-    view().tab().on_reposition_window = [this](auto const& position) {
-        m_window->move(position.x(), position.y());
-    };
-
-    view().tab().on_resize_window = [this](auto const& size) {
-        m_window->resize(size.width(), size.height());
-    };
-
-    view().tab().on_maximize_window = [this]() {
-        m_window->showMaximized();
-    };
-
-    view().tab().on_minimize_window = [this]() {
-        m_window->showMinimized();
-    };
-
-    view().tab().on_fullscreen_window = [this]() {
-        m_window->fullscreen_mode().enter(this);
-    };
-
-    view().tab().on_exit_fullscreen_window = [this]() {
-        m_window->fullscreen_mode().exit(FullscreenMode::ExitInitiatedBy::WebContent);
-    };
 }
 
 void Tab::tab_did_change_content_blocking(WebView::ContentBlockingSnapshot const&)
@@ -867,6 +488,436 @@ void Tab::tab_did_change_screen_wake_lock_state(Web::ScreenWakeLockState wake_lo
 {
     set_screen_wake_lock_state(wake_lock_state);
 }
+
+// A dialog from a page says which site it comes from.
+QString Tab::javascript_dialog_title()
+{
+    auto origin = view().tab().url().origin();
+    if (!origin.is_opaque())
+        return qformatted("{} says", qstring_from_ak_string(origin.host().serialize()));
+    return qformatted("{}:// says", qstring_from_ak_string(view().tab().url().scheme()));
+}
+
+JavaScriptDialog::OfferToBlockFurtherDialogs Tab::offer_to_block_further_dialogs()
+{
+    return m_javascript_dialogs_shown_by_document++ > 0 ? JavaScriptDialog::OfferToBlockFurtherDialogs::Yes : JavaScriptDialog::OfferToBlockFurtherDialogs::No;
+}
+
+void Tab::hold_javascript_dialog_reply(NonnullRefPtr<WebView::DialogReply> reply)
+{
+    reply->on_cancel = [dialog = QPointer { m_javascript_dialog }] {
+        if (dialog)
+            dialog->dismiss();
+    };
+    m_javascript_dialog_reply = AK::move(reply);
+}
+
+void Tab::activate_tab()
+{
+    m_window->activate_tab(tab_index());
+}
+
+void Tab::request_alert(Utf16String const& message, NonnullRefPtr<WebView::DialogReply> reply)
+{
+    if (m_suppress_javascript_dialogs_until_navigation || m_javascript_dialogs_blocked_for_document) {
+        reply->complete(false, {});
+        return;
+    }
+    hide_hover_label();
+    hold_javascript_dialog_reply(AK::move(reply));
+    m_javascript_dialog->set_title_icon(tab_icon());
+    m_javascript_dialog->show_alert(javascript_dialog_title(), qstring_from_utf16_string(message), offer_to_block_further_dialogs());
+}
+
+void Tab::request_before_unload(String const& source, NonnullRefPtr<WebView::DialogReply> reply)
+{
+    hide_hover_label();
+    hold_javascript_dialog_reply(AK::move(reply));
+    m_window->raise_for_close_prompt();
+    m_javascript_dialog->set_title_icon(tab_icon());
+    m_javascript_dialog->show_before_unload(qstring_from_ak_string(source));
+}
+
+void Tab::request_confirm(Utf16String const& message, NonnullRefPtr<WebView::DialogReply> reply)
+{
+    if (m_suppress_javascript_dialogs_until_navigation || m_javascript_dialogs_blocked_for_document) {
+        reply->complete(false, {});
+        return;
+    }
+    hide_hover_label();
+    hold_javascript_dialog_reply(AK::move(reply));
+    m_javascript_dialog->set_title_icon(tab_icon());
+    m_javascript_dialog->show_confirm(javascript_dialog_title(), qstring_from_utf16_string(message), offer_to_block_further_dialogs());
+}
+
+void Tab::request_prompt(Utf16String const& message, Utf16String const& default_, NonnullRefPtr<WebView::DialogReply> reply)
+{
+    if (m_suppress_javascript_dialogs_until_navigation || m_javascript_dialogs_blocked_for_document) {
+        reply->complete(false, {});
+        return;
+    }
+    hide_hover_label();
+    hold_javascript_dialog_reply(AK::move(reply));
+    m_javascript_dialog->set_title_icon(tab_icon());
+    m_javascript_dialog->show_prompt(javascript_dialog_title(), qstring_from_utf16_string(message), qstring_from_utf16_string(default_), offer_to_block_further_dialogs());
+}
+
+void Tab::request_set_prompt_text(Utf16String const& message)
+{
+    m_javascript_dialog->set_prompt_text(qstring_from_utf16_string(message));
+}
+
+void Tab::request_external_url_confirmation(URL::URL const& url, URL::Origin const& initiator_origin, WebView::ExternalURLHandler const& handler, Function<void(bool)> on_complete)
+{
+    if (m_javascript_dialog->is_open() || m_color_picker_dialog || m_external_url_confirmation_dialog) {
+        on_complete(false);
+        return;
+    }
+
+    hide_hover_label();
+
+    auto initiator = initiator_origin.is_opaque() ? "This page"_string : initiator_origin.serialize();
+    auto application_name = handler.application_name().is_empty() ? "another application"sv : handler.application_name().bytes_as_string_view();
+    auto title = handler.application_name().is_empty() ? "Open external application?"_string : MUST(String::formatted("Open {}?", application_name));
+    auto message = MUST(String::formatted("{} wants to open a {} link with {}.", initiator, url.scheme(), application_name));
+    auto details = MUST(String::formatted("URL: '{}'", url));
+    auto open_button_text = handler.application_name().is_empty() ? "Open"_string : MUST(String::formatted("Open {}", application_name));
+
+    auto* dialog = new QMessageBox(&view());
+    m_external_url_confirmation_dialog = dialog;
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setIcon(QMessageBox::Icon::Question);
+    dialog->setWindowTitle(qstring_from_ak_string(title));
+    dialog->setTextFormat(Qt::PlainText);
+    dialog->setText(qstring_from_ak_string(message));
+    dialog->setDetailedText(qstring_from_ak_string(details));
+    auto* open_button = dialog->addButton(qstring_from_ak_string(open_button_text), QMessageBox::ButtonRole::AcceptRole);
+    dialog->addButton(QMessageBox::StandardButton::Cancel);
+    dialog->setDefaultButton(QMessageBox::StandardButton::Cancel);
+
+    QObject::connect(dialog, &QDialog::finished, this, [this, dialog = QPointer<QMessageBox> { dialog }, open_button, on_complete = AK::move(on_complete)](auto) mutable {
+        auto accepted = dialog && dialog->clickedButton() == open_button;
+        if (m_external_url_confirmation_dialog == dialog)
+            m_external_url_confirmation_dialog = nullptr;
+        on_complete(accepted);
+    });
+
+    dialog->open();
+}
+
+void Tab::request_permission(WebView::PermissionPromptRequest const& request, WebView::PermissionPromptCallback on_outcome)
+{
+    // A tab opened in the background, or in a window that was never active, has had nothing hold its prompts yet.
+    update_permission_prompts();
+    m_permission_prompts.enqueue(request, AK::move(on_outcome));
+}
+
+void Tab::cancel_permission_prompt(WebView::PermissionPromptRequest const& request)
+{
+    m_permission_prompts.cancel(request);
+}
+
+void Tab::request_accept_dialog()
+{
+    m_javascript_dialog->accept();
+}
+
+void Tab::request_dismiss_dialog()
+{
+    m_javascript_dialog->dismiss();
+}
+
+void Tab::request_color_picker(Color current_color, NonnullRefPtr<WebView::ColorPickerReply> reply)
+{
+    auto* dialog = new QColorDialog(QColor(current_color.red(), current_color.green(), current_color.blue()), &view());
+    m_color_picker_dialog = dialog;
+
+    dialog->setWindowTitle("Ladybird");
+    dialog->setOption(QColorDialog::ShowAlphaChannel, false);
+    QObject::connect(dialog, &QColorDialog::currentColorChanged, this, [reply](QColor const& color) {
+        reply->update(Color(color.red(), color.green(), color.blue()));
+    });
+
+    QObject::connect(dialog, &QDialog::finished, this, [this, reply, dialog](auto result) {
+        Optional<Color> picked_color;
+        if (result == QDialog::Accepted)
+            picked_color = Color(dialog->selectedColor().red(), dialog->selectedColor().green(), dialog->selectedColor().blue());
+        if (m_color_picker_dialog == dialog)
+            m_color_picker_dialog = nullptr;
+        dialog->deleteLater();
+        reply->complete(AK::move(picked_color));
+    });
+    reply->on_cancel = [dialog = QPointer { dialog }] {
+        if (dialog)
+            dialog->close();
+    };
+
+    dialog->open();
+}
+
+void Tab::request_date_picker(Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, NonnullRefPtr<WebView::DatePickerReply> reply)
+{
+    if (m_date_picker_dialog) {
+        reply->complete({});
+        return;
+    }
+
+    // NB: The values come from the page, so anything that does not parse leaves the picker at its defaults. The
+    //     page sanitizes the value the picker sends back.
+    auto type = qstring_from_utf16_string(input_type);
+    bool const picks_date = type != "time";
+    bool const picks_time = type == "time" || type == "datetime-local";
+
+    auto parse_date = [&](QString const& string) -> QDate {
+        if (type == "month")
+            return QDate::fromString(string + "-01", "yyyy-MM-dd");
+        if (type == "week") {
+            auto parts = string.split("-W");
+            if (parts.size() != 2)
+                return {};
+            bool year_ok = false;
+            bool week_ok = false;
+            auto year = parts[0].toInt(&year_ok);
+            auto week = parts[1].toInt(&week_ok);
+            if (!year_ok || !week_ok)
+                return {};
+            // The first ISO week of a year holds January 4th.
+            auto january_fourth = QDate(year, 1, 4);
+            return january_fourth.addDays(1 - january_fourth.dayOfWeek() + (week - 1) * 7);
+        }
+        return QDate::fromString(string.left(10), "yyyy-MM-dd");
+    };
+    auto current_value = qstring_from_utf16_string(value);
+    auto current_time = type == "datetime-local" ? current_value.mid(11) : current_value;
+    // NB: A value with seconds or a fraction of a second keeps them, so that confirming the picker does not drop
+    //     them. The "z" format reads and writes one to three digits of the fraction.
+    bool const picks_seconds = current_time.length() > 5;
+    bool const picks_milliseconds = current_time.contains('.');
+    auto const time_format = picks_milliseconds ? QStringLiteral("HH:mm:ss.z")
+        : picks_seconds                         ? QStringLiteral("HH:mm:ss")
+                                                : QStringLiteral("HH:mm");
+    auto* dialog = new QDialog(&view());
+    m_date_picker_dialog = dialog;
+    dialog->setWindowTitle("Ladybird");
+    auto* layout = new QVBoxLayout(dialog);
+
+    QCalendarWidget* calendar = nullptr;
+    if (picks_date) {
+        calendar = new QCalendarWidget(dialog);
+        calendar->setGridVisible(false);
+        calendar->setVerticalHeaderFormat(type == "week" ? QCalendarWidget::ISOWeekNumbers : QCalendarWidget::NoVerticalHeader);
+        calendar->setFirstDayOfWeek(type == "week" ? Qt::Monday : QLocale().firstDayOfWeek());
+        // Draw weekends like other days, rather than in Qt's default red.
+        calendar->setWeekdayTextFormat(Qt::Saturday, {});
+        calendar->setWeekdayTextFormat(Qt::Sunday, {});
+        calendar->setStyleSheet(
+            "#qt_calendar_navigationbar { background: transparent; }"
+            "#qt_calendar_navigationbar QToolButton { background: transparent; border: none; padding: 2px 6px; font-weight: 600; }"
+            "#qt_calendar_navigationbar QToolButton::menu-indicator { image: none; width: 0; }"
+            "#qt_calendar_navigationbar QToolButton:hover { background: palette(midlight); border-radius: 4px; }"
+            "QCalendarWidget QAbstractItemView { selection-background-color: palette(accent); selection-color: palette(highlighted-text); }");
+        if (auto* previous_month = calendar->findChild<QToolButton*>("qt_calendar_prevmonth"))
+            previous_month->setIcon(calendar_month_chevron_icon(*calendar, ChevronDirection::Left));
+        if (auto* next_month = calendar->findChild<QToolButton*>("qt_calendar_nextmonth"))
+            next_month->setIcon(calendar_month_chevron_icon(*calendar, ChevronDirection::Right));
+        if (auto date = parse_date(current_value); date.isValid())
+            calendar->setSelectedDate(date);
+        if (auto date = parse_date(qstring_from_utf16_string(minimum)); date.isValid())
+            calendar->setMinimumDate(date);
+        if (auto date = parse_date(qstring_from_utf16_string(maximum)); date.isValid())
+            calendar->setMaximumDate(date);
+        layout->addWidget(calendar);
+    }
+
+    QTimeEdit* time_edit = nullptr;
+    if (picks_time) {
+        time_edit = new QTimeEdit(dialog);
+        time_edit->setDisplayFormat(picks_milliseconds ? QStringLiteral("HH:mm:ss.zzz") : time_format);
+        if (auto time = QTime::fromString(current_time, time_format); time.isValid())
+            time_edit->setTime(time);
+        layout->addWidget(time_edit);
+    }
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dialog);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+
+    QObject::connect(dialog, &QDialog::finished, this, [this, reply, dialog, calendar, time_edit, type, time_format](int result) {
+        Optional<Utf16String> picked_value;
+        if (result == QDialog::Accepted) {
+            QString picked;
+            if (calendar) {
+                auto date = calendar->selectedDate();
+                if (type == "month") {
+                    picked = date.toString("yyyy-MM");
+                } else if (type == "week") {
+                    int week_year = 0;
+                    auto week = date.weekNumber(&week_year);
+                    picked = QString("%1-W%2").arg(week_year, 4, 10, QChar('0')).arg(week, 2, 10, QChar('0'));
+                } else {
+                    picked = date.toString("yyyy-MM-dd");
+                }
+            }
+            if (time_edit) {
+                if (!picked.isEmpty())
+                    picked += "T";
+                picked += time_edit->time().toString(time_format);
+            }
+            picked_value = utf16_string_from_qstring(picked);
+        }
+        m_date_picker_dialog = nullptr;
+        dialog->deleteLater();
+        reply->complete(AK::move(picked_value));
+    });
+    reply->on_cancel = [dialog = QPointer { dialog }] {
+        if (dialog)
+            dialog->close();
+    };
+
+    dialog->open();
+}
+
+void Tab::request_file_picker(Web::HTML::FileFilter const& accepted_file_types, Web::HTML::AllowMultipleFiles allow_multiple_files, NonnullRefPtr<WebView::FilePickerReply> reply)
+{
+    QStringList accepted_file_filters;
+    QMimeDatabase mime_database;
+
+    for (auto const& filter : accepted_file_types.filters) {
+        filter.visit(
+            [&](Web::HTML::FileFilter::FileType type) {
+                QString title;
+                QString filter;
+
+                switch (type) {
+                case Web::HTML::FileFilter::FileType::Audio:
+                    title = "Audio files";
+                    filter = "audio/";
+                    break;
+                case Web::HTML::FileFilter::FileType::Image:
+                    title = "Image files";
+                    filter = "image/";
+                    break;
+                case Web::HTML::FileFilter::FileType::Video:
+                    title = "Video files";
+                    filter = "video/";
+                    break;
+                }
+
+                QStringList extensions;
+
+                for (auto const& mime_type : mime_database.allMimeTypes()) {
+                    if (mime_type.name().startsWith(filter))
+                        extensions.append(mime_type.globPatterns());
+                }
+
+                accepted_file_filters.append(qformatted("{} ({})", title, extensions.join(" ")));
+            },
+            [&](Web::HTML::FileFilter::MimeType const& filter) {
+                if (auto mime_type = mime_database.mimeTypeForName(qstring_from_utf16_string(filter.value)); mime_type.isValid())
+                    accepted_file_filters.append(mime_type.filterString());
+            },
+            [&](Web::HTML::FileFilter::Extension const& filter) {
+                accepted_file_filters.append(qformatted("*.{}", qstring_from_utf16_string(filter.value)));
+            });
+    }
+
+    accepted_file_filters.size() > 1 ? accepted_file_filters.prepend("All files (*)") : accepted_file_filters.append("All files (*)");
+    auto filters = accepted_file_filters.join(";;");
+
+    auto allow_multiple = allow_multiple_files == Web::HTML::AllowMultipleFiles::Yes;
+    auto* dialog = new QFileDialog(this, allow_multiple ? "Select files" : "Select file", QDir::homePath(), filters);
+    m_file_picker_dialog = dialog;
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setFileMode(allow_multiple ? QFileDialog::ExistingFiles : QFileDialog::ExistingFile);
+
+    QObject::connect(dialog, &QDialog::finished, this, [this, reply, dialog = QPointer<QFileDialog> { dialog }](int result) {
+        Vector<Web::HTML::SelectedFile> selected_files;
+
+        if (dialog && result == QDialog::Accepted) {
+            for (auto const& path : dialog->selectedFiles()) {
+                auto file_path = ak_byte_string_from_qstring(path);
+
+                if (auto file = WebView::create_selected_file(file_path); file.is_error())
+                    warnln("Unable to open file {}: {}", file_path, file.error());
+                else
+                    selected_files.append(file.release_value());
+            }
+        }
+
+        if (m_file_picker_dialog == dialog)
+            m_file_picker_dialog = nullptr;
+        reply->complete(std::move(selected_files));
+    });
+    reply->on_cancel = [dialog = QPointer<QFileDialog> { dialog }] {
+        if (dialog)
+            dialog->close();
+    };
+
+    dialog->open();
+}
+
+void Tab::restore_window()
+{
+    m_window->showNormal();
+}
+
+void Tab::reposition_window(Gfx::IntPoint position)
+{
+    m_window->move(position.x(), position.y());
+}
+
+void Tab::resize_window(Gfx::IntSize size)
+{
+    m_window->resize(size.width(), size.height());
+}
+
+void Tab::maximize_window()
+{
+    m_window->showMaximized();
+}
+
+void Tab::minimize_window()
+{
+    m_window->showMinimized();
+}
+
+void Tab::fullscreen_window()
+{
+    m_window->fullscreen_mode().enter(this);
+}
+
+void Tab::exit_fullscreen_window()
+{
+    m_window->fullscreen_mode().exit(FullscreenMode::ExitInitiatedBy::WebContent);
+}
+
+String Tab::show_tab_opened_by_page(Web::HTML::ActivateTab activate_tab, Web::HTML::WebViewHints hints, WebView::CanonicalTraversable& traversable)
+{
+    return m_window->show_tab_opened_by_page(*this, activate_tab, hints, traversable);
+}
+
+void Tab::request_website_issue_report()
+{
+    m_view->request_website_issue_report();
+}
+
+void Tab::request_screenshot()
+{
+    m_view->request_screenshot();
+}
+
+void Tab::request_select_dropdown(Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items, NonnullRefPtr<WebView::SelectDropdownReply> reply)
+{
+    m_view->request_select_dropdown(content_position, minimum_width, AK::move(items), AK::move(reply));
+}
+
+#ifdef AK_OS_MACOS
+void Tab::request_dictionary_lookup(WebView::DictionaryLookup const& lookup, Gfx::IntPoint position)
+{
+    m_view->request_dictionary_lookup(lookup, position);
+}
+#endif
 
 void Tab::create_tab_context_menu()
 {

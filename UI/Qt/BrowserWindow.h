@@ -244,6 +244,7 @@ public slots:
     void activate_tab(int index);
     bool definitely_close_tab(int index);
     void forget_closed_tab(Tab&, bool window_is_closing);
+    String show_tab_opened_by_page(Tab& opener, Web::HTML::ActivateTab, Web::HTML::WebViewHints, WebView::CanonicalTraversable&);
     void move_tab(int old_index, int new_index);
     void request_to_close_tab(int index);
     void request_to_close_current_tab();

@@ -127,7 +127,7 @@ class WebContentView final
 public:
     AK_ALLOC_WITH_KMALLOC;
 
-    WebContentView(QWidget* window, Optional<WebView::CanonicalTraversable&> traversable = {}, WebContentViewInitialState initial_state = {});
+    WebContentView(QWidget* window, WebView::TabClient&, Optional<WebView::CanonicalTraversable&> traversable = {}, WebContentViewInitialState initial_state = {});
     virtual ~WebContentView() override;
 
 #ifdef LADYBIRD_QT_USE_VULKAN_WINDOW
@@ -188,6 +188,13 @@ public:
     void leave_report_review();
     void review_web_compat_report(WebCompatReportCapture);
     void select_web_compat_report_screenshot(Function<void(QImage)> on_selected, Function<void()> on_close = {});
+
+    void request_website_issue_report();
+    void request_screenshot();
+    void request_select_dropdown(Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem>, NonnullRefPtr<WebView::SelectDropdownReply>);
+#ifdef AK_OS_MACOS
+    void request_dictionary_lookup(WebView::DictionaryLookup const&, Gfx::IntPoint);
+#endif
 
     Function<void(WebCompatReportCapture)> on_request_web_compat_report_review;
     Function<void(Function<void(QImage)> on_selected)> on_request_web_compat_report_screenshot;

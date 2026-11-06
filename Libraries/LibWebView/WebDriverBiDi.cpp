@@ -17,6 +17,7 @@
 #include <LibURL/Parser.h>
 #include <LibWebView/CanonicalNavigable.h>
 #include <LibWebView/CanonicalTraversable.h>
+#include <LibWebView/TabClient.h>
 #include <LibWebView/ViewImplementation.h>
 #include <LibWebView/WebContentClient.h>
 #include <LibWebView/WebContentPage.h>
@@ -1164,8 +1165,8 @@ void WebDriverBiDi::browsing_context_activate(JsonObject const& params, CommandR
         other_traversable.view().set_system_visibility_state(Web::HTML::VisibilityState::Hidden);
     }
     view->set_system_visibility_state(Web::HTML::VisibilityState::Visible);
-    if (view->on_activate_tab)
-        view->on_activate_tab();
+    if (auto* client = view->client())
+        client->activate_tab();
 
     // 2. Run implementation-specific steps to set the system focus on the navigable if it is not focused.
     // NB: Other top-level traversables lose the system focus.
@@ -1725,8 +1726,8 @@ void WebDriverBiDi::browsing_context_set_viewport(JsonObject const& params, Comm
             continue;
         if (change.ratio != view->device_pixel_ratio())
             view->set_device_pixel_ratio_for_testing(view->page(), change.ratio);
-        if (view->on_resize_window)
-            view->on_resize_window(change.device_viewport);
+        if (auto* client = view->client())
+            client->resize_window(change.device_viewport);
     }
 
     // 9. Return success with data null.

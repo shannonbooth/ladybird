@@ -86,91 +86,105 @@ HeadlessWebView::HeadlessWebView(Core::AnonymousBuffer theme, Web::DevicePixelSi
     , m_theme(move(theme))
     , m_viewport_size(viewport_size)
 {
-    tab.attach_surface(*this);
+    tab.attach_surface(*this, *this);
     tab.set_viewport_size(viewport_size);
     tab.set_system_theme(m_theme);
     tab.set_screen_rects({ .rects = { screen_rect }, .available_rects = { screen_rect }, .main_screen_index = 0 });
 
     // A headless window is exactly its viewport, so every page gets the viewport as its window size.
     tab.set_window_size(viewport_size.to_type<int>());
+}
 
-    tab.on_new_web_view = [this](auto, auto, CanonicalTraversable& traversable) {
-        return adopt_child_web_view(create_child(*this, traversable)).tab().handle();
-    };
+String HeadlessWebView::show_tab_opened_by_page(Web::HTML::ActivateTab, Web::HTML::WebViewHints, CanonicalTraversable& traversable)
+{
+    return adopt_child_web_view(create_child(*this, traversable)).tab().handle();
+}
 
-    tab.on_reposition_window = [this](auto position) {
-        m_previous_dimensions.set_location(position.template to_type<Web::DevicePixels>());
-        this->tab().set_window_position(position);
-    };
+void HeadlessWebView::reposition_window(Gfx::IntPoint position)
+{
+    m_previous_dimensions.set_location(position.template to_type<Web::DevicePixels>());
+    this->tab().set_window_position(position);
+}
 
-    tab.on_resize_window = [this](auto size) {
-        m_viewport_size = size.template to_type<Web::DevicePixels>();
+void HeadlessWebView::resize_window(Gfx::IntSize size)
+{
+    m_viewport_size = size.template to_type<Web::DevicePixels>();
 
-        this->tab().set_window_size(size);
-        this->tab().set_viewport_size(m_viewport_size);
-    };
+    this->tab().set_window_size(size);
+    this->tab().set_viewport_size(m_viewport_size);
+}
 
-    tab.on_restore_window = [this]() {
-        this->tab().set_system_visibility_state(Web::HTML::VisibilityState::Visible);
-    };
+void HeadlessWebView::restore_window()
+{
+    this->tab().set_system_visibility_state(Web::HTML::VisibilityState::Visible);
+}
 
-    tab.on_minimize_window = [this]() {
-        this->tab().set_system_visibility_state(Web::HTML::VisibilityState::Hidden);
-    };
+void HeadlessWebView::minimize_window()
+{
+    this->tab().set_system_visibility_state(Web::HTML::VisibilityState::Hidden);
+}
 
-    tab.on_maximize_window = [this]() {
-        m_viewport_size = screen_rect.size();
-        m_previous_dimensions = screen_rect;
+void HeadlessWebView::maximize_window()
+{
+    m_viewport_size = screen_rect.size();
+    m_previous_dimensions = screen_rect;
 
-        this->tab().set_window_position(screen_rect.location().to_type<int>());
-        this->tab().set_window_size(screen_rect.size().to_type<int>());
-        this->tab().set_viewport_size(m_viewport_size);
-    };
+    this->tab().set_window_position(screen_rect.location().to_type<int>());
+    this->tab().set_window_size(screen_rect.size().to_type<int>());
+    this->tab().set_viewport_size(m_viewport_size);
+}
 
-    tab.on_fullscreen_window = [this]() {
-        m_previous_dimensions.set_size(m_viewport_size);
-        m_viewport_size = screen_rect.size();
+void HeadlessWebView::fullscreen_window()
+{
+    m_previous_dimensions.set_size(m_viewport_size);
+    m_viewport_size = screen_rect.size();
 
-        this->tab().set_window_position(screen_rect.location().to_type<int>());
-        this->tab().set_window_size(screen_rect.size().to_type<int>());
-        this->tab().set_is_fullscreen(Web::ViewportIsFullscreen::Yes);
-    };
+    this->tab().set_window_position(screen_rect.location().to_type<int>());
+    this->tab().set_window_size(screen_rect.size().to_type<int>());
+    this->tab().set_is_fullscreen(Web::ViewportIsFullscreen::Yes);
+}
 
-    tab.on_exit_fullscreen_window = [this]() {
-        m_viewport_size = m_previous_dimensions.size();
+void HeadlessWebView::exit_fullscreen_window()
+{
+    m_viewport_size = m_previous_dimensions.size();
 
-        this->tab().set_window_position(m_previous_dimensions.location().to_type<int>());
-        this->tab().set_window_size(m_previous_dimensions.size().to_type<int>());
-        this->tab().set_is_fullscreen(Web::ViewportIsFullscreen::No);
-    };
+    this->tab().set_window_position(m_previous_dimensions.location().to_type<int>());
+    this->tab().set_window_size(m_previous_dimensions.size().to_type<int>());
+    this->tab().set_is_fullscreen(Web::ViewportIsFullscreen::No);
+}
 
-    tab.on_request_alert = [this](auto const&, auto reply) {
-        m_pending_dialog_reply = move(reply);
-    };
+void HeadlessWebView::request_alert(Utf16String const&, NonnullRefPtr<DialogReply> reply)
+{
+    m_pending_dialog_reply = move(reply);
+}
 
-    tab.on_request_confirm = [this](auto const&, auto reply) {
-        m_pending_dialog_reply = move(reply);
-    };
+void HeadlessWebView::request_confirm(Utf16String const&, NonnullRefPtr<DialogReply> reply)
+{
+    m_pending_dialog_reply = move(reply);
+}
 
-    tab.on_request_prompt = [this](auto const&, auto const& prompt_text, auto reply) {
-        m_pending_dialog_reply = move(reply);
-        m_pending_prompt_text = prompt_text;
-    };
+void HeadlessWebView::request_prompt(Utf16String const&, Utf16String const& prompt_text, NonnullRefPtr<DialogReply> reply)
+{
+    m_pending_dialog_reply = move(reply);
+    m_pending_prompt_text = prompt_text;
+}
 
-    tab.on_request_set_prompt_text = [this](auto const& prompt_text) {
-        m_pending_prompt_text = prompt_text;
-    };
+void HeadlessWebView::request_set_prompt_text(Utf16String const& prompt_text)
+{
+    m_pending_prompt_text = prompt_text;
+}
 
-    tab.on_request_accept_dialog = [this]() {
-        VERIFY(m_pending_dialog_reply);
-        m_pending_dialog_reply.release_nonnull()->complete(true, move(m_pending_prompt_text));
-    };
+void HeadlessWebView::request_accept_dialog()
+{
+    VERIFY(m_pending_dialog_reply);
+    m_pending_dialog_reply.release_nonnull()->complete(true, move(m_pending_prompt_text));
+}
 
-    tab.on_request_dismiss_dialog = [this]() {
-        VERIFY(m_pending_dialog_reply);
-        m_pending_dialog_reply.release_nonnull()->complete(false, {});
-        m_pending_prompt_text.clear();
-    };
+void HeadlessWebView::request_dismiss_dialog()
+{
+    VERIFY(m_pending_dialog_reply);
+    m_pending_dialog_reply.release_nonnull()->complete(false, {});
+    m_pending_prompt_text.clear();
 }
 
 void HeadlessWebView::close_child_web_views()

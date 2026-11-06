@@ -123,15 +123,15 @@ static QWidget* initial_web_content_view_parent([[maybe_unused]] QWidget* window
 
 static Core::AnonymousBuffer make_system_theme_from_qt_palette(QWidget&, WebContentView::PaletteMode);
 
-WebContentView::WebContentView(QWidget* window, Optional<WebView::CanonicalTraversable&> traversable, WebContentViewInitialState initial_state)
+WebContentView::WebContentView(QWidget* window, WebView::TabClient& client, Optional<WebView::CanonicalTraversable&> traversable, WebContentViewInitialState initial_state)
     : WebContentViewBase(initial_web_content_view_parent(window))
 {
     if (traversable.has_value()) {
         // A tab the page's content opened.
         traversable->set_system_visibility_state(Web::HTML::VisibilityState::Hidden);
-        traversable->view().attach_surface(*this);
+        traversable->view().attach_surface(*this, client);
     } else {
-        WebView::ViewImplementation::open_tab(initial_state.is_private, Web::HTML::VisibilityState::Hidden).attach_surface(*this);
+        WebView::ViewImplementation::open_tab(initial_state.is_private, Web::HTML::VisibilityState::Hidden).attach_surface(*this, client);
     }
     observe(tab());
 
@@ -224,36 +224,40 @@ WebContentView::WebContentView(QWidget* window, Optional<WebView::CanonicalTrave
     };
 #endif
 
-    tab().on_request_website_issue_report = [this] {
-        start_web_compat_report();
-    };
+    m_select_dropdown = new SelectDropdown(this);
+}
 
-    tab().on_request_screenshot = [this] {
-        start_screenshot();
-    };
+void WebContentView::request_website_issue_report()
+{
+    start_web_compat_report();
+}
+
+void WebContentView::request_screenshot()
+{
+    start_screenshot();
+}
 
 #ifdef AK_OS_MACOS
-    tab().on_request_dictionary_lookup = [this](auto const& lookup, auto position) {
-        show_appkit_dictionary_lookup(*this, lookup, position);
-    };
+void WebContentView::request_dictionary_lookup(WebView::DictionaryLookup const& lookup, Gfx::IntPoint position)
+{
+    show_appkit_dictionary_lookup(*this, lookup, position);
+}
 #endif
 
-    m_select_dropdown = new SelectDropdown(this);
-
-    tab().on_request_select_dropdown = [this](Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items, auto reply) {
-        // NB: The view has a native window of its own, which Qt refuses as the transient parent of a popup. The
-        //     dropdown opens from the top-level window instead, which can change when the tab moves to another one.
-        if (m_select_dropdown->parentWidget() != this->window())
-            m_select_dropdown->setParent(this->window(), m_select_dropdown->windowFlags());
-        m_select_dropdown->on_closed = [reply](Optional<u32> const& selected_item_id) {
-            reply->complete(selected_item_id);
-        };
-        reply->on_cancel = [dropdown = m_select_dropdown] {
-            if (dropdown)
-                dropdown->close_without_reporting();
-        };
-        m_select_dropdown->open(map_point_to_global_position(content_position), minimum_width, items);
+void WebContentView::request_select_dropdown(Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items, NonnullRefPtr<WebView::SelectDropdownReply> reply)
+{
+    // NB: The view has a native window of its own, which Qt refuses as the transient parent of a popup. The
+    //     dropdown opens from the top-level window instead, which can change when the tab moves to another one.
+    if (m_select_dropdown->parentWidget() != this->window())
+        m_select_dropdown->setParent(this->window(), m_select_dropdown->windowFlags());
+    m_select_dropdown->on_closed = [reply](Optional<u32> const& selected_item_id) {
+        reply->complete(selected_item_id);
     };
+    reply->on_cancel = [dropdown = m_select_dropdown] {
+        if (dropdown)
+            dropdown->close_without_reporting();
+    };
+    m_select_dropdown->open(map_point_to_global_position(content_position), minimum_width, items);
 }
 
 // Push-based IME state (ViewImplementation::set_input_method_state) must nudge Qt to re-query inputMethodQuery().

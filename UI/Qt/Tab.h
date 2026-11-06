@@ -19,9 +19,11 @@
 #include <LibWebView/FileDownloader.h>
 #include <LibWebView/SessionStore.h>
 #include <LibWebView/Settings.h>
+#include <LibWebView/TabClient.h>
 #include <LibWebView/TabObserver.h>
 #include <LibWebView/TabPerformanceStats.h>
 #include <UI/Qt/FindInPageWidget.h>
+#include <UI/Qt/JavaScriptDialog.h>
 #include <UI/Qt/LocationEdit.h>
 #include <UI/Qt/PermissionPromptPopover.h>
 #include <UI/Qt/WebContentView.h>
@@ -48,7 +50,6 @@ class BookmarkPopover;
 class BrowserWindow;
 enum class ChromeIcon;
 class RestoreSessionCard;
-class JavaScriptDialog;
 class MessagePopover;
 
 class HyperlinkLabel final : public QLabel {
@@ -86,6 +87,7 @@ class SiteSettingsPopover;
 class Tab final
     : public QWidget
     , public WebView::SettingsObserver
+    , public WebView::TabClient
     , public WebView::TabObserver {
     Q_OBJECT
 
@@ -198,6 +200,43 @@ signals:
 private:
     void create_tab_shell();
     void create_tab_context_menu();
+    // ^WebView::TabClient
+    virtual void activate_tab() override;
+    virtual void request_alert(Utf16String const& message, NonnullRefPtr<WebView::DialogReply> reply) override;
+    virtual void request_before_unload(String const& source, NonnullRefPtr<WebView::DialogReply> reply) override;
+    virtual void request_confirm(Utf16String const& message, NonnullRefPtr<WebView::DialogReply> reply) override;
+    virtual void request_prompt(Utf16String const& message, Utf16String const& default_, NonnullRefPtr<WebView::DialogReply> reply) override;
+    virtual void request_set_prompt_text(Utf16String const& message) override;
+    virtual void request_external_url_confirmation(URL::URL const& url, URL::Origin const& initiator_origin, WebView::ExternalURLHandler const& handler, Function<void(bool)> on_complete) override;
+    virtual void request_permission(WebView::PermissionPromptRequest const& request, WebView::PermissionPromptCallback on_outcome) override;
+    virtual void cancel_permission_prompt(WebView::PermissionPromptRequest const& request) override;
+    virtual void request_accept_dialog() override;
+    virtual void request_dismiss_dialog() override;
+    virtual void request_color_picker(Color current_color, NonnullRefPtr<WebView::ColorPickerReply> reply) override;
+    virtual void request_date_picker(Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, NonnullRefPtr<WebView::DatePickerReply> reply) override;
+    virtual void request_file_picker(Web::HTML::FileFilter const& accepted_file_types, Web::HTML::AllowMultipleFiles allow_multiple_files, NonnullRefPtr<WebView::FilePickerReply> reply) override;
+    virtual void restore_window() override;
+    virtual void reposition_window(Gfx::IntPoint position) override;
+    virtual void resize_window(Gfx::IntSize size) override;
+    virtual void maximize_window() override;
+    virtual void minimize_window() override;
+    virtual void fullscreen_window() override;
+    virtual void exit_fullscreen_window() override;
+    virtual String show_tab_opened_by_page(Web::HTML::ActivateTab, Web::HTML::WebViewHints, WebView::CanonicalTraversable&) override;
+    virtual void request_website_issue_report() override;
+    virtual void request_screenshot() override;
+    virtual void request_select_dropdown(Gfx::IntPoint, i32, Vector<Web::HTML::SelectItem>, NonnullRefPtr<WebView::SelectDropdownReply>) override;
+    virtual bool can_confirm_external_url() const override { return true; }
+    virtual bool can_fullscreen_window() const override { return true; }
+#ifdef AK_OS_MACOS
+    virtual bool can_look_up_in_dictionary() const override { return true; }
+    virtual void request_dictionary_lookup(WebView::DictionaryLookup const&, Gfx::IntPoint) override;
+#endif
+
+    QString javascript_dialog_title();
+    JavaScriptDialog::OfferToBlockFurtherDialogs offer_to_block_further_dialogs();
+    void hold_javascript_dialog_reply(NonnullRefPtr<WebView::DialogReply>);
+
     // ^WebView::TabObserver
     virtual void tab_did_change_content_blocking(WebView::ContentBlockingSnapshot const&) override;
     virtual void tab_did_update_performance_stats(WebView::TabPerformanceStats const& stats) override;

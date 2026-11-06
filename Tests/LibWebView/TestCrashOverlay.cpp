@@ -50,7 +50,7 @@ static void test_crash_overlay(bool bidi_reload_only)
     auto app = TRY_OR_FAIL(environment.create_application<TestApplication>());
     auto theme_path = LexicalPath::join(WebView::s_ladybird_resource_root, "themes"sv, "Default.ini"sv);
     auto theme = TRY_OR_FAIL(Gfx::load_system_theme(theme_path.string()));
-    auto view = WebView::HeadlessWebView::create(theme, { 1000, 700 });
+    auto view = Test::RequestHandlingWebView::create(theme, { 1000, 700 });
     size_t loads_finished = 0;
     Test::TabEvents view_events { view->tab() };
     view_events.on_load_finish = [&](auto const&) { ++loads_finished; };
@@ -58,13 +58,13 @@ static void test_crash_overlay(bool bidi_reload_only)
 
     auto evaluate = [&](StringView source) {
         Optional<JsonValue> result;
-        view->tab().on_request_alert = [&](Utf16String const& value, auto reply) {
+        view->on_request_alert = [&](Utf16String const& value, auto reply) {
             result = MUST(JsonValue::from_string(value.to_utf8()));
             reply->complete(true, {});
         };
         view->tab().run_javascript(MUST(String::formatted("alert(JSON.stringify(({}) ?? null))", source)));
         Core::EventLoop::current().spin_until([&] { return result.has_value(); });
-        view->tab().on_request_alert = nullptr;
+        view->on_request_alert = nullptr;
         return result.release_value();
     };
     auto first_url = URL::Parser::basic_parse("data:text/html,<title>First</title>first-page"sv).release_value();

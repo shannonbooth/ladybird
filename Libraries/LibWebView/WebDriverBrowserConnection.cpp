@@ -8,6 +8,7 @@
 #include <LibCore/EventLoop.h>
 #include <LibWebView/Application.h>
 #include <LibWebView/PermissionManager.h>
+#include <LibWebView/TabClient.h>
 #include <LibWebView/ViewImplementation.h>
 #include <LibWebView/WebDriverBrowserConnection.h>
 #if defined(AK_OS_MACOS)
@@ -195,8 +196,8 @@ void WebDriverBrowserConnection::switch_to_window(u64 command_id, String window_
 
     // 5. Update any implementation-specific state that would result from the user selecting the current
     //    browsing context for interaction, without altering OS-level focus.
-    if (view->on_activate_tab)
-        view->on_activate_tab();
+    if (auto* client = view->client())
+        client->activate_tab();
 
     async_command_complete(command_id, JsonValue {});
 }

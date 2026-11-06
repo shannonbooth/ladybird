@@ -9,6 +9,7 @@
 #include <AK/Array.h>
 #include <LibCore/EventLoop.h>
 #include <LibWebView/Application.h>
+#include <LibWebView/HeadlessWebView.h>
 #include <LibWebView/TabObserver.h>
 
 namespace Test {
@@ -102,6 +103,65 @@ private:
     virtual void tab_is_ready_to_paint() override { call(on_ready_to_paint); }
     virtual void tab_did_activate_picture_in_picture_control(Compositing::PictureInPictureControl control) override { call(on_picture_in_picture_control_activated, control); }
     virtual void tab_web_content_did_crash(WebView::ViewImplementation::WebContentCrashReason reason) override { call(on_web_content_crashed, reason); }
+};
+
+// A headless window whose test answers some of what its tab asks of it, as a frontend would.
+class RequestHandlingWebView final : public WebView::HeadlessWebView {
+public:
+    static NonnullOwnPtr<RequestHandlingWebView> create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size, WebView::IsPrivate is_private = WebView::IsPrivate::No)
+    {
+        auto web_view = adopt_own(*new RequestHandlingWebView(move(theme), window_size, open_tab(is_private)));
+        web_view->tab().activate();
+        return web_view;
+    }
+
+    Function<String(Web::HTML::ActivateTab, Web::HTML::WebViewHints, WebView::CanonicalTraversable&)> on_new_web_view;
+    Function<void(Utf16String const&, NonnullRefPtr<WebView::DialogReply>)> on_request_alert;
+    Function<void(String const&, NonnullRefPtr<WebView::DialogReply>)> on_request_before_unload;
+    Function<void(Color, NonnullRefPtr<WebView::ColorPickerReply>)> on_request_color_picker;
+    Function<void()> on_request_website_issue_report;
+
+    // What a headless window does with a tab or window a page opened.
+    String show_tab_opened_by_page_as_headless(Web::HTML::ActivateTab activate_tab, Web::HTML::WebViewHints hints, WebView::CanonicalTraversable& traversable)
+    {
+        return HeadlessWebView::show_tab_opened_by_page(activate_tab, hints, traversable);
+    }
+
+private:
+    using HeadlessWebView::HeadlessWebView;
+
+    virtual String show_tab_opened_by_page(Web::HTML::ActivateTab activate_tab, Web::HTML::WebViewHints hints, WebView::CanonicalTraversable& traversable) override
+    {
+        if (on_new_web_view)
+            return on_new_web_view(activate_tab, hints, traversable);
+        return HeadlessWebView::show_tab_opened_by_page(activate_tab, hints, traversable);
+    }
+    virtual void request_alert(Utf16String const& message, NonnullRefPtr<WebView::DialogReply> reply) override
+    {
+        if (on_request_alert)
+            on_request_alert(message, move(reply));
+        else
+            HeadlessWebView::request_alert(message, move(reply));
+    }
+    virtual void request_before_unload(String const& source, NonnullRefPtr<WebView::DialogReply> reply) override
+    {
+        if (on_request_before_unload)
+            on_request_before_unload(source, move(reply));
+        else
+            HeadlessWebView::request_before_unload(source, move(reply));
+    }
+    virtual void request_color_picker(Color color, NonnullRefPtr<WebView::ColorPickerReply> reply) override
+    {
+        if (on_request_color_picker)
+            on_request_color_picker(color, move(reply));
+        else
+            HeadlessWebView::request_color_picker(color, move(reply));
+    }
+    virtual void request_website_issue_report() override
+    {
+        if (on_request_website_issue_report)
+            on_request_website_issue_report();
+    }
 };
 
 }

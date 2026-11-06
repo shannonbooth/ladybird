@@ -69,6 +69,7 @@ class TraversableSessionHistory;
 class VideoDecoderServerControlClient;
 class UserAgentTopLevelTraversableSet;
 class ViewImplementation;
+class TabClient;
 class TabObserver;
 class ViewSurface;
 class WebContentClient;

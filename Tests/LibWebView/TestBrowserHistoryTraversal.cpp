@@ -107,7 +107,7 @@ TEST_CASE(browser_history_traversal)
     auto theme_path = LexicalPath::join(WebView::s_ladybird_resource_root, "themes"sv, "Default.ini"sv);
     auto theme = TRY_OR_FAIL(Gfx::load_system_theme(theme_path.string()));
 
-    OwnPtr<WebView::HeadlessWebView> view = WebView::HeadlessWebView::create(theme, { 800, 600 });
+    OwnPtr<Test::RequestHandlingWebView> view = Test::RequestHandlingWebView::create(theme, { 800, 600 });
 
     size_t loads_started = 0;
     Test::TabEvents view_events { view->tab() };
@@ -130,7 +130,7 @@ TEST_CASE(browser_history_traversal)
         VERIFY(!client.may_act_for_page(0));
         return IterationDecision::Continue;
     });
-    auto spare_view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
+    auto spare_view = Test::RequestHandlingWebView::create(move(theme), { 800, 600 });
     VERIFY(spare_view->tab().traversable().session_history().current_step() == 0);
     VERIFY(spare_view->tab().traversable().session_history().current_entry().url == URL::about_blank());
 
@@ -270,10 +270,10 @@ TEST_CASE(browser_history_traversal)
     // Take the spare, so the restored view launches a process of its own the way a private window's tab does. A
     // spare is relaunched from a deferred task, so none is available until the event loop next runs.
     auto restored_theme = TRY_OR_FAIL(Gfx::load_system_theme(theme_path.string()));
-    auto spare_consumer = WebView::HeadlessWebView::create(restored_theme, { 800, 600 });
+    auto spare_consumer = Test::RequestHandlingWebView::create(restored_theme, { 800, 600 });
     VERIFY(!app->has_spare_web_content_process());
 
-    auto restored_view = WebView::HeadlessWebView::create(restored_theme, { 800, 600 });
+    auto restored_view = Test::RequestHandlingWebView::create(restored_theme, { 800, 600 });
     VERIFY(&restored_view->tab().page().client() != &spare_consumer->tab().page().client());
 
     // The restored URL is shown before the traversal runs, so wait for the document behind it to load.
@@ -296,7 +296,7 @@ TEST_CASE(browser_history_traversal)
     bool popup_loaded = false;
     Web::PageId popup_page_id = 0;
     OwnPtr<Test::TabEvents> popup_events;
-    restored_view->tab().on_new_web_view = [&](auto, auto, WebView::CanonicalTraversable& traversable) {
+    restored_view->on_new_web_view = [&](auto, auto, WebView::CanonicalTraversable& traversable) {
         popup_page_id = traversable.display_page()->id();
         popup = WebView::HeadlessWebView::create_child(*restored_view, traversable);
         popup_events = make<Test::TabEvents>(popup->tab());
@@ -350,7 +350,7 @@ TEST_CASE(browser_history_traversal)
 
     // Rejecting a popup must not authorize an ID that was never assigned to a page.
     Web::PageId rejected_page_id = 0;
-    restored_view->tab().on_new_web_view = [&](auto, auto, WebView::CanonicalTraversable& traversable) {
+    restored_view->on_new_web_view = [&](auto, auto, WebView::CanonicalTraversable& traversable) {
         rejected_page_id = traversable.display_page()->id();
         return String {};
     };
@@ -358,7 +358,7 @@ TEST_CASE(browser_history_traversal)
     VERIFY(!rejected_popup.new_page_id().has_value());
     VERIFY(rejected_page_id != 0);
     VERIFY(!client.may_act_for_page(rejected_page_id));
-    restored_view->tab().on_new_web_view = nullptr;
+    restored_view->on_new_web_view = nullptr;
 
     // An initial page can read cookies before the UI adopts it into a view.
     {
@@ -372,7 +372,7 @@ TEST_CASE(browser_history_traversal)
 
     // A reload from the browser's UI fires no navigate event.
     {
-        auto reload_view = WebView::HeadlessWebView::create(restored_theme, { 800, 600 });
+        auto reload_view = Test::RequestHandlingWebView::create(restored_theme, { 800, 600 });
         auto reload_page_path = ByteString::formatted("{}/reload.html", test_config_directory);
         auto reload_page = TRY_OR_FAIL(Core::File::open(reload_page_path, Core::File::OpenMode::Write));
         TRY_OR_FAIL(reload_page->write_until_depleted("<script>navigation.onnavigate=()=>alert('navigate')</script>reload"sv.bytes()));
@@ -385,7 +385,7 @@ TEST_CASE(browser_history_traversal)
                 ++reload_url_loads_finished;
         };
         size_t navigate_events = 0;
-        reload_view->tab().on_request_alert = [&](auto const&, auto reply) {
+        reload_view->on_request_alert = [&](auto const&, auto reply) {
             ++navigate_events;
             reply->complete(true, {});
         };
@@ -404,7 +404,7 @@ TEST_CASE(browser_history_traversal)
     // A navigation from the browser's UI that starts while another's document is being activated does not take that
     // document from it.
     {
-        auto view = WebView::HeadlessWebView::create(restored_theme, { 800, 600 });
+        auto view = Test::RequestHandlingWebView::create(restored_theme, { 800, 600 });
         auto write_page = [&](StringView name, StringView contents) -> ErrorOr<URL::URL> {
             auto path = ByteString::formatted("{}/{}", test_config_directory, name);
             auto file = TRY(Core::File::open(path, Core::File::OpenMode::Write));

@@ -180,13 +180,12 @@ public:
 
     bool is_activated() const { return m_activated; }
 
-    // A frontend shows the tab on an attached surface. Once the surface is released, a tab that is not closing closes,
-    // and one whose browsing context has closed is destroyed.
-    void attach_surface(ViewSurface&);
+    // A frontend shows the tab on its widget's surface, and does what the tab asks of it as its client. Letting go of the
+    // surface destroys the tab, unless the frontend asked it to close.
+    void attach_surface(ViewSurface&, TabClient&);
     void release_surface(ViewSurface&);
     ViewSurface* surface() const { return m_surface; }
-    // The callbacks a frontend installed go with it.
-    void clear_frontend_callbacks();
+    TabClient* client() const { return m_client; }
 
     static void for_each_view(Function<IterationDecision(ViewImplementation&)>);
     static Optional<ViewImplementation&> find_view_by_id(u64);
@@ -616,32 +615,6 @@ public:
         }
     }
 
-    Function<String(Web::HTML::ActivateTab, Web::HTML::WebViewHints, CanonicalTraversable&)> on_new_web_view;
-    Function<void()> on_activate_tab;
-    Function<void(DictionaryLookup const&, Gfx::IntPoint)> on_request_dictionary_lookup;
-    Function<void(Utf16String const& message, NonnullRefPtr<DialogReply>)> on_request_alert;
-    Function<void(String const& source, NonnullRefPtr<DialogReply>)> on_request_before_unload;
-    Function<void(Utf16String const& message, NonnullRefPtr<DialogReply>)> on_request_confirm;
-    Function<void(Utf16String const& message, Utf16String const& default_, NonnullRefPtr<DialogReply>)> on_request_prompt;
-    Function<void(Utf16String const& message)> on_request_set_prompt_text;
-    Function<void(URL::URL const&, URL::Origin const&, ExternalURLHandler const&, Function<void(bool)>)> on_request_external_url_confirmation;
-    Function<void()> on_request_accept_dialog;
-    Function<void()> on_request_website_issue_report;
-    Function<void()> on_request_screenshot;
-    Function<void()> on_request_dismiss_dialog;
-    Function<void()> on_restore_window;
-    Function<void(Gfx::IntPoint)> on_reposition_window;
-    Function<void(Gfx::IntSize)> on_resize_window;
-    Function<void()> on_maximize_window;
-    Function<void()> on_minimize_window;
-    Function<void()> on_fullscreen_window;
-    Function<void()> on_exit_fullscreen_window;
-    Function<void(Color current_color, NonnullRefPtr<ColorPickerReply>)> on_request_color_picker;
-    Function<void(Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, NonnullRefPtr<DatePickerReply>)> on_request_date_picker;
-    Function<void(PermissionPromptRequest const&, PermissionPromptCallback)> on_request_permission;
-    Function<void(PermissionPromptRequest const&)> on_cancel_permission_prompt;
-    Function<void(Web::HTML::FileFilter const& accepted_file_types, Web::HTML::AllowMultipleFiles, NonnullRefPtr<FilePickerReply>)> on_request_file_picker;
-    Function<void(Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items, NonnullRefPtr<SelectDropdownReply>)> on_request_select_dropdown;
     enum class WebContentCrashReason {
         ProcessCrash,
         RejectedIPC,
@@ -727,6 +700,8 @@ private:
     void update_compositor_display_metadata(WebContentPage&);
 
     void detach_surface(ViewSurface&);
+    bool can_look_up_in_dictionary() const;
+    void show_dictionary_lookup(DictionaryLookup const&, Gfx::IntPoint);
     void remove_from_user_interface();
     void did_update_url();
     void settle_permission_prompt(PermissionPromptRequest const&, Web::Permissions::PromptOutcome);
@@ -1077,6 +1052,7 @@ private:
 
     CanonicalTraversable& m_traversable;
     ViewSurface* m_surface { nullptr };
+    TabClient* m_client { nullptr };
     Web::DevicePixelSize m_viewport_size;
     Optional<ScreenRects> m_screen_rects;
     Core::AnonymousBuffer m_system_theme;
