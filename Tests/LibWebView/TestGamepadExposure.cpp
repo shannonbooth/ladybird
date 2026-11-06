@@ -129,7 +129,7 @@ TEST_CASE(gamepad_exposure)
         auto& client = view->page().client();
         give_user_attention(*view, true);
 
-        OwnPtr<WebView::HeadlessWebView> popup;
+        WebView::TabHandle<WebView::HeadlessWebView> popup;
         bool popup_loaded = false;
         view->on_new_web_view = [&](auto, auto, WebView::CanonicalTraversable& traversable) {
             popup = WebView::HeadlessWebView::create_child(*view, traversable);

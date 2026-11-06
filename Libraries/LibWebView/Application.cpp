@@ -1616,8 +1616,9 @@ void Application::crash_compositor_process()
     m_compositor_client->async_crash();
 }
 
-ErrorOr<NonnullRefPtr<WebContentPage>> Application::open_page_for_new_tab(IsPrivate is_private)
+ErrorOr<NonnullRefPtr<WebContentPage>> Application::open_page_for_new_tab(NonnullOwnPtr<ViewImplementation> view)
 {
+    auto is_private = view->is_private();
     RefPtr<WebContentClient> web_content_client;
     if (is_private == IsPrivate::Yes) {
         web_content_client = TRY(create_web_content_client(IsPrivate::Yes, allocate_page_id()));
@@ -1628,7 +1629,7 @@ ErrorOr<NonnullRefPtr<WebContentPage>> Application::open_page_for_new_tab(IsPriv
         launch_spare_web_content_process();
         web_content_client = TRY(create_web_content_client(IsPrivate::No, allocate_page_id()));
     }
-    return web_content_client->open_initial_page_for_new_top_level_traversable();
+    return web_content_client->open_initial_page_for_new_top_level_traversable(move(view));
 }
 
 ErrorOr<Application::ChildFrameWebContentProcess> Application::launch_child_frame_web_content_process(IsPrivate is_private, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables, Web::HTML::CrossProcessId root_navigable_id, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::VisibilityState system_visibility_state)
@@ -2028,8 +2029,8 @@ void Application::handle_compositor_process_death()
     // Nothing will forward or hand back the input events the dead compositor still held.
     WebContentClient::for_each_client([](WebContentClient& client) {
         client.for_each_page([](WebContentPage& page) {
-            if (page.displays_tab())
-                page.view().discard_input_events_routed_through_lost_compositor({});
+            if (page.hosts_top_level_document())
+                page.view().discard_input_events_routed_through_lost_compositor();
             return IterationDecision::Continue;
         });
         return IterationDecision::Continue;
@@ -2248,7 +2249,7 @@ static void load_page_and_exit_on_close(Core::EventLoop& event_loop, HeadlessWeb
 
 ErrorOr<int> Application::execute()
 {
-    OwnPtr<HeadlessWebView> view;
+    TabHandle<HeadlessWebView> view;
     RefPtr<Core::Timer> screenshot_timer;
 
     if (m_browser_options.headless_mode.has_value()) {
@@ -2522,7 +2523,7 @@ OwnPtr<PictureInPictureWindow> Application::create_picture_in_picture_window(Web
         return {};
 
     // Every view in a headless browser is a HeadlessWebView.
-    auto& requesting_view = static_cast<HeadlessWebView&>(requesting_page.view());
+    auto& requesting_view = static_cast<HeadlessWebView&>(requesting_page.traversable().view());
     return HeadlessWebView::create_picture_in_picture_window(requesting_view, traversable, video_size);
 }
 

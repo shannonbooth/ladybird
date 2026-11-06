@@ -21,11 +21,11 @@ namespace {
 // A view that records the URL each tab it opens is loaded with.
 class TestWebView final : public WebView::HeadlessWebView {
 public:
-    static NonnullOwnPtr<TestWebView> create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size)
+    static WebView::TabHandle<TestWebView> create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size)
     {
-        auto view = adopt_own(*new TestWebView(move(theme), window_size));
-        view->initialize_tab(Web::HTML::VisibilityState::Visible);
-        return view;
+        auto& view = static_cast<TestWebView&>(open_tab(adopt_own(*new TestWebView(move(theme), window_size)), Web::HTML::VisibilityState::Visible));
+        view.activate();
+        return WebView::TabHandle<TestWebView> { view };
     }
 
     Vector<URL::URL> const& new_tab_urls() const { return m_new_tab_urls; }

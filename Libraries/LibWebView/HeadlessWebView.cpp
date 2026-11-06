@@ -18,7 +18,7 @@ class HeadlessPictureInPictureWindow final : public PictureInPictureWindow {
 public:
     AK_ALLOC_WITH_KMALLOC;
 
-    HeadlessPictureInPictureWindow(Gfx::IntSize size, NonnullOwnPtr<HeadlessWebView> view)
+    HeadlessPictureInPictureWindow(Gfx::IntSize size, TabHandle<HeadlessWebView> view)
         : m_size(size)
         , m_view(move(view))
     {
@@ -43,7 +43,7 @@ public:
 
 private:
     Gfx::IntSize m_size;
-    NonnullOwnPtr<HeadlessWebView> m_view;
+    TabHandle<HeadlessWebView> m_view;
 };
 
 NonnullOwnPtr<PictureInPictureWindow> HeadlessWebView::create_picture_in_picture_window(HeadlessWebView& requesting_view, CanonicalTraversable& traversable, Gfx::IntSize video_size)
@@ -54,24 +54,34 @@ NonnullOwnPtr<PictureInPictureWindow> HeadlessWebView::create_picture_in_picture
     return make<HeadlessPictureInPictureWindow>(size, move(view));
 }
 
-NonnullOwnPtr<HeadlessWebView> HeadlessWebView::create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size, IsPrivate is_private)
+TabHandle<HeadlessWebView> HeadlessWebView::create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size, IsPrivate is_private, Function<void(HeadlessWebView&)> configure)
 {
-    auto view = adopt_own(*new HeadlessWebView(move(theme), window_size, is_private));
-    view->initialize_tab(Web::HTML::VisibilityState::Visible);
+    auto& view = static_cast<HeadlessWebView&>(open_tab(adopt_own(*new HeadlessWebView(move(theme), window_size, is_private)), Web::HTML::VisibilityState::Visible));
+    if (configure)
+        configure(view);
+    view.activate();
 
-    return view;
+    return TabHandle<HeadlessWebView> { view };
 }
 
-NonnullOwnPtr<HeadlessWebView> HeadlessWebView::create_child(HeadlessWebView& parent, CanonicalTraversable& traversable, IsOwnedByParent is_owned_by_parent)
+TabHandle<HeadlessWebView> HeadlessWebView::create_child(HeadlessWebView& parent, CanonicalTraversable& traversable, IsOwnedByParent is_owned_by_parent)
 {
-    auto view = adopt_own(*new HeadlessWebView(parent.m_theme, parent.m_viewport_size, parent.is_private()));
+    // The traversable was created with a view from the parent, as a headless view's content opens headless views.
+    auto& child = static_cast<HeadlessWebView&>(traversable.view());
     if (is_owned_by_parent == IsOwnedByParent::Yes)
-        view->set_owner_view(parent);
+        child.set_owner_view(parent);
+    traversable.set_system_visibility_state(Web::HTML::VisibilityState::Visible);
+    child.activate();
 
-    view->initialize_tab(Web::HTML::VisibilityState::Visible, traversable);
-
-    return view;
+    return TabHandle<HeadlessWebView> { child };
 }
+
+NonnullOwnPtr<ViewImplementation> HeadlessWebView::create_view_for_new_traversable()
+{
+    return adopt_own(*new HeadlessWebView(m_theme, m_viewport_size, is_private()));
+}
+
+HeadlessWebView::~HeadlessWebView() = default;
 
 HeadlessWebView::HeadlessWebView(Core::AnonymousBuffer theme, Web::DevicePixelSize viewport_size, IsPrivate is_private)
     : ViewImplementation(is_private)
@@ -176,7 +186,7 @@ void HeadlessWebView::propagate_web_content_crash(WebContentCrashReason crash_re
         on_web_content_crashed(crash_reason);
 }
 
-HeadlessWebView& HeadlessWebView::adopt_child_web_view(NonnullOwnPtr<HeadlessWebView> web_view)
+HeadlessWebView& HeadlessWebView::adopt_child_web_view(TabHandle<HeadlessWebView> web_view)
 {
     // A window outlives the window that opened it, so the root view owns every window opened from its windows.
     if (m_parent_web_view)

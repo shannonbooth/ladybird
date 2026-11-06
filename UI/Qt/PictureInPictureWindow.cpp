@@ -132,6 +132,7 @@ public:
         // The window has the rounded corners and the faint edge of a floating video.
         round_appkit_view_corners(*this, 12, QColor(255, 255, 255, 20));
 #endif
+        m_view->tab().activate();
         set_size_limits(video_size);
         lock_aspect_ratio();
 

@@ -1235,7 +1235,7 @@ static ErrorOr<int> run_tests(Core::AnonymousBuffer const& theme, Web::DevicePix
     size_t total_tests = tests.size();
     auto concurrency = min(app.test_concurrency, total_tests);
     InitialLoadTracker initial_load_tracker { concurrency };
-    Vector<NonnullOwnPtr<TestWebView>> views;
+    Vector<WebView::TabHandle<TestWebView>> views;
     views.ensure_capacity(concurrency);
 
     TestRunCapture test_run_capture;

@@ -61,7 +61,7 @@ public:
     size_t opened_tab_loads() const { return m_opened_tab_loads; }
 
 private:
-    mutable Vector<NonnullOwnPtr<WebView::HeadlessWebView>> m_opened_tabs;
+    mutable Vector<WebView::TabHandle<WebView::HeadlessWebView>> m_opened_tabs;
     mutable WebView::ViewImplementation* m_active_view { nullptr };
     mutable size_t m_opened_tab_loads { 0 };
 };

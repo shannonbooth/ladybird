@@ -22,17 +22,13 @@
 #include <LibCore/AnonymousBuffer.h>
 #include <LibCore/SharedVersion.h>
 #include <LibWebCommon/Bindings/Navigation.h>
-#include <LibWebCommon/Clipboard/SystemClipboard.h>
-#include <LibWebCommon/HTML/FileFilter.h>
 #include <LibWebCommon/HTML/HistoryOperation.h>
-#include <LibWebCommon/HTML/SelectItem.h>
 #include <LibWebCommon/HTML/VisibilityState.h>
 #include <LibWebCommon/Page/PageId.h>
 #include <LibWebView/ApplyHistoryStep.h>
 #include <LibWebView/BrowsingSession.h>
 #include <LibWebView/CanonicalNavigable.h>
 #include <LibWebView/Export.h>
-#include <LibWebView/MicrophoneAuthorizer.h>
 #include <LibWebView/PendingReply.h>
 #include <LibWebView/SessionHistory.h>
 #include <LibWebView/SessionHistoryTraversalQueue.h>
@@ -62,6 +58,8 @@ class WEBVIEW_API CanonicalTraversable final : public CanonicalNavigable {
     friend class ApplyHistoryStep;
 
 public:
+    CanonicalTraversable(Web::HTML::CrossProcessId id, NonnullRefPtr<CanonicalSessionHistoryEntry> initial_history_entry, NonnullRefPtr<BrowsingSession>, NonnullOwnPtr<ViewImplementation>);
+    // A model test may make a traversable without a tab. The user agent always creates one with its view.
     CanonicalTraversable(Web::HTML::CrossProcessId id, NonnullRefPtr<CanonicalSessionHistoryEntry> initial_history_entry, NonnullRefPtr<BrowsingSession>);
     virtual ~CanonicalTraversable() override;
 
@@ -135,39 +133,6 @@ public:
     void release_page_if_unused(NonnullRefPtr<WebContentPage>);
     void end_history_jobs(CanonicalNavigable const&, CanonicalDocument const* populated_document = nullptr);
 
-    // Requests that need the user. With no view to ask, the reply gets its no-UI answer.
-    bool has_open_dialog() const;
-    void request_alert(Utf16String const& message, NonnullRefPtr<DialogReply>);
-    void request_confirm(Utf16String const& message, NonnullRefPtr<DialogReply>);
-    void request_prompt(Utf16String const& message, Utf16String const& default_value, NonnullRefPtr<DialogReply>);
-    void request_before_unload(String const& source, NonnullRefPtr<DialogReply>);
-    void request_color_picker(Color, NonnullRefPtr<ColorPickerReply>);
-    void request_date_picker(Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, NonnullRefPtr<DatePickerReply>);
-    void request_file_picker(Web::HTML::FileFilter const&, Web::HTML::AllowMultipleFiles, NonnullRefPtr<FilePickerReply>);
-    void request_select_dropdown(Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem>, NonnullRefPtr<SelectDropdownReply>);
-    void did_request_permission(Web::Permissions::PermissionName);
-    void request_permission_prompt(PermissionPromptRequest, NonnullRefPtr<PermissionPromptReply>);
-    MicrophoneAuthorization microphone_authorization() const;
-    void ensure_microphone_authorization(NonnullRefPtr<MicrophoneAuthorizationReply>);
-    void show_microphone_denied_notice();
-    void request_spell_check(Utf16String const& text, NonnullRefPtr<SpellCheckReply>);
-    void request_writing_suggestion(Utf16String const& text, u32 caret_offset, NonnullRefPtr<WritingSuggestionReply>);
-    Web::Clipboard::SystemClipboardItem clipboard_item() const;
-    void insert_clipboard_item(Web::Clipboard::SystemClipboardItem);
-    void restore_window();
-    void reposition_window(Gfx::IntPoint);
-    void resize_window(Gfx::IntSize);
-    void maximize_window();
-    void minimize_window();
-    void request_fullscreen_window(WebContentPage&);
-    void exit_fullscreen_window();
-    void fully_exit_fullscreen();
-    // Positions keep coming for a watch, so the view tracks geolocation requests by page and request id.
-    void request_geolocation_position(WebContentPage&, u64 request_id, Web::HTML::CrossProcessId document_id);
-    void cancel_geolocation_position_request(WebContentPage&, u64 request_id);
-    void start_geolocation_position_watch(WebContentPage&, u64 request_id, Web::HTML::CrossProcessId document_id);
-    void stop_geolocation_position_watch(WebContentPage&, u64 request_id);
-
     TabPresentationState& presentation() { return m_presentation; }
     TabPresentationState const& presentation() const { return m_presentation; }
 
@@ -178,8 +143,8 @@ public:
     void set_owner_tab_id(Badge<ViewImplementation>, Optional<TabId> owner) { m_owner_tab_id = owner; }
     String const& handle() const { return m_window_handle; }
 
-    Optional<ViewImplementation&> view() const;
-    void set_view(Badge<ViewImplementation>, ViewImplementation&);
+    // The traversable owns the view of its tab, created with it, which lives as long as it does.
+    ViewImplementation& view() const;
     RefPtr<WebContentPage> display_page() const;
     ErrorOr<NonnullRefPtr<WebContentPage>> obtain_page_to_host_traversable(RefPtr<WebContentClient> host);
     void set_page_standing_in_for_lost_document(Badge<ViewImplementation>, NonnullRefPtr<WebContentPage>);
@@ -228,7 +193,7 @@ public:
 
     void reload(BypassCache, Optional<Utf16String> navigation_id = {});
     void stop_loading();
-    static CanonicalTraversable& create_a_new_top_level_traversable(NonnullRefPtr<BrowsingSession>, Web::HTML::CrossProcessId id, Optional<CanonicalNavigable&> opener, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::CrossProcessId document_id);
+    static CanonicalTraversable& create_a_new_top_level_traversable(NonnullRefPtr<BrowsingSession>, Web::HTML::CrossProcessId id, Optional<CanonicalNavigable&> opener, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::CrossProcessId document_id, NonnullOwnPtr<ViewImplementation>);
     static bool is_origin_held_by_a_document(URL::Origin const&);
     static CanonicalTraversable* traversable_containing(Web::HTML::CrossProcessId navigable_id);
     static CanonicalNavigable* navigable_with_active_browsing_context(CanonicalBrowsingContext const&);
@@ -255,7 +220,7 @@ private:
     TabId const m_tab_id;
     Optional<TabId> m_owner_tab_id;
     String const m_window_handle;
-    ViewImplementation* m_view { nullptr };
+    OwnPtr<ViewImplementation> m_view;
     void session_history_changed();
     void check_if_unloading_is_canceled(ApplyHistoryStep&, Vector<Web::HTML::CrossProcessId> navigables_that_need_before_unload, NonnullRefPtr<CanonicalSessionHistoryEntry> target_entry, Web::HTML::UserNavigationInvolvement user_involvement_for_navigate_event, Function<void(Web::HTML::CheckIfUnloadingIsCanceledResult)> on_complete);
     void queue_navigation_api_state_clear_task(ApplyHistoryStep&, ChangingNavigable&);

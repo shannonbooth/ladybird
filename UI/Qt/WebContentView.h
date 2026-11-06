@@ -502,7 +502,6 @@ private:
     int m_vertical_tab_overlay_right { 0 };
     int m_bookmarks_bar_overlay_height { 0 };
 #endif
-    OwnPtr<WebView::ViewImplementation> m_owned_tab;
 };
 
 bool wheel_event_scrolls_continuously(QWheelEvent const&);

@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+#include "HeadlessTest.h"
 #include <AK/ScopeGuard.h>
 #include <LibTest/TestCase.h>
 #include <LibURL/Parser.h>
@@ -11,17 +12,24 @@
 #include <LibWebView/CanonicalDocument.h>
 #include <LibWebView/CanonicalTraversable.h>
 #include <LibWebView/UserAgentTopLevelTraversableSet.h>
+#include <LibWebView/ViewImplementation.h>
 
-static WebView::CanonicalTraversable& create_traversable(NonnullRefPtr<WebView::BrowsingSession> session, u64 id)
+// The user agent creates a traversable with its tab's view, which needs an application.
+#define CREATE_APPLICATION()                                                    \
+    Test::HeadlessTestEnvironment environment { "TestTraversableOwnership"sv }; \
+    auto app = TRY_OR_FAIL(environment.create_application())
+
+static WebView::CanonicalTraversable& create_traversable(WebView::IsPrivate is_private, u64 id)
 {
-    return WebView::CanonicalTraversable::create_a_new_top_level_traversable(move(session), { 100, id }, {}, Web::HTML::create_initial_session_history_entry_descriptor({ 101, id }, {}, {}), { 102, id });
+    auto view = make<WebView::ViewImplementation>(is_private);
+    return WebView::CanonicalTraversable::create_a_new_top_level_traversable(WebView::Application::session_for_new_view(is_private), { 100, id }, {}, Web::HTML::create_initial_session_history_entry_descriptor({ 101, id }, {}, {}), { 102, id }, move(view));
 }
 
 TEST_CASE(unattached_traversable_is_owned_and_found_by_the_user_agent)
 {
-    auto& traversable = create_traversable(WebView::BrowsingSession::create(WebView::IsPrivate::No), 1);
+    CREATE_APPLICATION();
+    auto& traversable = create_traversable(WebView::IsPrivate::No, 1);
     ScopeGuard destroy = [&] { traversable.destroy(); };
-    EXPECT(!traversable.view().has_value());
     auto& set = WebView::UserAgentTopLevelTraversableSet::the();
     EXPECT_EQ(set.find(traversable.tab_id()), &traversable);
     EXPECT_EQ(set.find_by_handle(traversable.handle()), &traversable);
@@ -32,9 +40,9 @@ TEST_CASE(unattached_traversable_is_owned_and_found_by_the_user_agent)
 
 TEST_CASE(traversable_destruction_removes_every_lookup_and_releases_its_session)
 {
-    auto session = WebView::BrowsingSession::create(WebView::IsPrivate::Yes);
-    auto weak_session = session->make_weak_ptr();
-    auto& traversable = create_traversable(move(session), 2);
+    CREATE_APPLICATION();
+    auto& traversable = create_traversable(WebView::IsPrivate::Yes, 2);
+    auto weak_session = traversable.session().make_weak_ptr();
     auto id = traversable.id();
     auto tab_id = traversable.tab_id();
     auto handle = traversable.handle();
@@ -50,10 +58,10 @@ TEST_CASE(traversable_destruction_removes_every_lookup_and_releases_its_session)
 
 TEST_CASE(tabs_have_distinct_identity_even_when_they_share_a_session)
 {
-    auto session = WebView::BrowsingSession::create(WebView::IsPrivate::No);
-    auto& first = create_traversable(session, 3);
+    CREATE_APPLICATION();
+    auto& first = create_traversable(WebView::IsPrivate::No, 3);
     ScopeGuard destroy_first = [&] { first.destroy(); };
-    auto& second = create_traversable(session, 4);
+    auto& second = create_traversable(WebView::IsPrivate::No, 4);
     ScopeGuard destroy_second = [&] { second.destroy(); };
     EXPECT_NE(first.tab_id(), second.tab_id());
     EXPECT_NE(first.handle(), second.handle());
@@ -71,7 +79,8 @@ TEST_CASE(tabs_have_distinct_identity_even_when_they_share_a_session)
 
 TEST_CASE(presentation_is_retained_without_a_view_and_observers_can_disconnect)
 {
-    auto& traversable = create_traversable(WebView::BrowsingSession::create(WebView::IsPrivate::No), 5);
+    CREATE_APPLICATION();
+    auto& traversable = create_traversable(WebView::IsPrivate::No, 5);
     ScopeGuard destroy = [&] { traversable.destroy(); };
     auto& state = traversable.presentation();
     auto url = URL::Parser::basic_parse("https://example.com/"sv).release_value();
@@ -92,7 +101,8 @@ TEST_CASE(presentation_is_retained_without_a_view_and_observers_can_disconnect)
 
 TEST_CASE(blocked_resource_totals_include_each_hosting_page)
 {
-    auto& traversable = create_traversable(WebView::BrowsingSession::create(WebView::IsPrivate::No), 6);
+    CREATE_APPLICATION();
+    auto& traversable = create_traversable(WebView::IsPrivate::No, 6);
     ScopeGuard destroy = [&] { traversable.destroy(); };
     auto& state = traversable.presentation();
     auto url = URL::Parser::basic_parse("https://ads.example/script.js"sv).release_value();

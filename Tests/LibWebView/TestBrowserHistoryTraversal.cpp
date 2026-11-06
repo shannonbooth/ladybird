@@ -288,7 +288,7 @@ TEST_CASE(browser_history_traversal)
 
     // Exercise the record of pages the client was given across popup detachment and close
     // acknowledgement, without pumping the event loop between those transitions.
-    OwnPtr<WebView::HeadlessWebView> popup;
+    WebView::TabHandle<WebView::HeadlessWebView> popup;
     bool popup_loaded = false;
     Web::PageId popup_page_id = 0;
     restored_view->on_new_web_view = [&](auto, auto, WebView::CanonicalTraversable& traversable) {
@@ -322,7 +322,7 @@ TEST_CASE(browser_history_traversal)
     VERIFY(!cookie_jar.get_named_cookie(cookie_url, cookie.name).has_value());
     cookie_jar.set_cookie(cookie_url, cookie, HTTP::Cookie::Source::Http, {});
     client.page(popup_page_id)->set_detached_close_pending(true);
-    popup.clear();
+    popup.close();
     VERIFY(!client.page(popup_page_id));
     // The page is gone, but messages sent while the client had it can still arrive, so the client may
     // still name it.

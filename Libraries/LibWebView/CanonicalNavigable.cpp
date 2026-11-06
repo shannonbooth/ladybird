@@ -701,7 +701,7 @@ CanonicalNavigable::ChosenTopLevelTraversable CanonicalNavigable::choose_a_new_t
     //     sends, as the UI process does not hold it.
     auto opener = no_opener ? Optional<CanonicalNavigable&> {} : current_navigable;
     auto initial_history_entry = Web::HTML::create_initial_session_history_entry_descriptor(Application::the().allocate_ui_process_cross_process_id(), opener.has_value() ? move(current_document_base_url) : Optional<URL::URL> {}, move(target_name));
-    auto& chosen = CanonicalTraversable::create_a_new_top_level_traversable(current_page.client().session(), id, opener, move(initial_history_entry), document_id);
+    auto& chosen = CanonicalTraversable::create_a_new_top_level_traversable(current_page.client().session(), id, opener, move(initial_history_entry), document_id, current_page.view().create_view_for_new_traversable());
 
     //    2. If sandboxingFlagSet's sandboxed navigation browsing context flag is set, then set chosen's active browsing
     //       context's one permitted sandboxed navigator to currentNavigable's active browsing context.
@@ -856,8 +856,7 @@ void CanonicalNavigable::hand_pending_webdriver_commands_to(WebContentPage& new_
     auto old_host = traversable.page_hosting(*this);
     if (!old_host)
         return;
-    if (auto view = traversable.view(); view.has_value())
-        view->move_pending_webdriver_commands_to_new_host({}, id(), *old_host, new_host);
+    traversable.view().move_pending_webdriver_commands_to_new_host({}, id(), *old_host, new_host);
 }
 
 RefPtr<WebContentClient> CanonicalNavigable::process_to_host_for_site_isolation(CanonicalDocument const& document, Optional<URL::Origin> const& initiator_origin) const
@@ -997,8 +996,7 @@ ErrorOr<NonnullRefPtr<WebContentPage>> CanonicalNavigable::obtain_page_to_host_i
     }
 
     auto& page = *host->page(page_id);
-    if (auto view = traversable.view(); view.has_value())
-        view->prepare_page_for_navigable(page);
+    traversable.view().prepare_page_for_navigable(page);
     return page;
 }
 
@@ -1284,8 +1282,7 @@ void CanonicalNavigable::update_hosted_state(Web::HTML::HostedNavigableState sta
     set_hosted_state(move(state));
     send_replicated_state();
     if (is_top_level_traversable()) {
-        if (auto view = top_level_traversable().view(); view.has_value())
-            view->notify_content_blocking_changed();
+        top_level_traversable().view().notify_content_blocking_changed();
     }
 }
 
@@ -1537,8 +1534,7 @@ void CanonicalNavigable::did_commit_navigation(CanonicalSessionHistoryEntry& ent
             traversable.did_activate_document_in({}, *document->host());
         if (traversable.display_page() != previous_display_page) {
             traversable.presentation().update_audibility();
-            if (auto view = traversable.view(); view.has_value())
-                view->did_change_display_page({}, previous_display_page);
+            traversable.view().did_change_display_page({}, previous_display_page);
         }
     }
     update_hosted_state(move(hosted_state));
@@ -1675,7 +1671,7 @@ void CanonicalNavigable::begin_evaluating_javascript_url(URL::URL const& url, Ut
         .state = CanonicalNavigation::EvaluatingJavaScriptURL {},
         .page = host,
     });
-    if (is_top_level_traversable() && host.displays_tab())
+    if (is_top_level_traversable() && host.hosts_top_level_document())
         host.begin_top_level_load(url);
 }
 
@@ -1696,8 +1692,7 @@ void CanonicalNavigable::notify_view_of_ongoing_navigation() const
 {
     if (!is_top_level_traversable())
         return;
-    if (auto view = top_level_traversable().view(); view.has_value())
-        view->did_change_ongoing_navigation({});
+    top_level_traversable().view().did_change_ongoing_navigation({});
 }
 
 void CanonicalNavigable::clear_ongoing_navigation()
@@ -1773,8 +1768,7 @@ void CanonicalNavigable::did_cancel_navigation(Utf16String navigation_id)
         return;
     top_level_traversable().presentation().set_loading(false);
     // A navigation being finalized that is canceled never activates its document, like an uncommitted one.
-    if (auto view = top_level_traversable().view(); view.has_value())
-        view->did_cancel_loading({}, navigation != nullptr);
+    top_level_traversable().view().did_cancel_loading({}, navigation != nullptr);
 }
 
 Optional<Utf16String> CanonicalNavigable::tracked_load_navigation_id() const

@@ -20,7 +20,9 @@ namespace TestWeb {
 
 class TestWebView final : public WebView::HeadlessWebView {
 public:
-    static NonnullOwnPtr<TestWebView> create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size);
+    virtual ~TestWebView() override = default;
+
+    static WebView::TabHandle<TestWebView> create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size);
 
     void clear_content_blockers();
     void reset_force_dark();

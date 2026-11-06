@@ -892,6 +892,8 @@ void BrowserWindow::initialize_tab_view(Tab* tab)
         auto& new_tab = create_new_tab(activate_tab, traversable);
         return new_tab.view().tab().handle();
     };
+    if (!tab->view().tab().is_activated())
+        tab->view().tab().activate();
 }
 
 void BrowserWindow::uninitialize_tab(Tab* tab)

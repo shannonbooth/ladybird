@@ -107,7 +107,7 @@ bool process_is_running(pid_t pid)
     return ::kill(pid, 0) == 0;
 }
 
-NonnullOwnPtr<WebView::HeadlessWebView> open_tab_with_picture_in_picture_window(TestApplication& app, Core::AnonymousBuffer theme)
+WebView::TabHandle<WebView::HeadlessWebView> open_tab_with_picture_in_picture_window(TestApplication& app, Core::AnonymousBuffer theme)
 {
     // A view that takes the spare process finds its initial document loaded already.
     auto takes_spare_process = app.has_spare_web_content_process();
@@ -138,7 +138,7 @@ NonnullOwnPtr<WebView::HeadlessWebView> open_tab_with_picture_in_picture_window(
 }
 
 // A browser window closes its tabs without waiting for their processes, and destroys their views at once.
-void close_tab_as_a_browser_window_does(NonnullOwnPtr<WebView::HeadlessWebView> view)
+void close_tab_as_a_browser_window_does(WebView::TabHandle<WebView::HeadlessWebView> view)
 {
     auto close = view->prepare_for_close_without_prompting();
     close();

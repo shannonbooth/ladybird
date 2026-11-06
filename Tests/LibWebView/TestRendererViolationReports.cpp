@@ -274,7 +274,7 @@ TEST_CASE(renderer_violation_reports)
     pages.set("/source-replacement"sv, { .headers = {}, .body = "<!DOCTYPE html>replacement" });
     TestHttpServer server { move(pages) };
 
-    Vector<NonnullOwnPtr<WebView::HeadlessWebView>> liars;
+    Vector<WebView::TabHandle<WebView::HeadlessWebView>> liars;
     auto create_liar = [&] {
         auto liar = WebView::HeadlessWebView::create(theme, { 800, 600 });
         bool loaded = false;

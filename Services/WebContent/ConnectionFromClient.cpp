@@ -2133,22 +2133,6 @@ void ConnectionFromClient::perform_accessibility_text_action(Web::PageId page_id
     page->schedule_accessibility_tree_update();
 }
 
-void ConnectionFromClient::get_hovered_node_id(Web::PageId page_id)
-{
-    auto page = this->page(page_id);
-    if (!page.has_value())
-        return;
-
-    Web::UniqueNodeID node_id = 0;
-
-    if (auto document = page->page().local_traversable()->active_document()) {
-        if (auto* hovered_node = document->hovered_node())
-            node_id = hovered_node->unique_id();
-    }
-
-    async_did_get_hovered_node_id(page_id, node_id);
-}
-
 void ConnectionFromClient::get_node_id_at_position(Web::PageId page_id, u64 request_id, Web::DevicePixelPoint position)
 {
     auto page = this->page(page_id);

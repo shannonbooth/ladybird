@@ -209,7 +209,6 @@ private:
     virtual void perform_accessibility_action(Web::PageId page_id, i64 node_id, String action) override;
     virtual void perform_accessibility_text_action(Web::PageId page_id, i64 node_id, String action, i32 offset_start,
         i32 offset_end, String text) override;
-    virtual void get_hovered_node_id(Web::PageId page_id) override;
     virtual void get_node_id_at_position(Web::PageId page_id, u64 request_id, Web::DevicePixelPoint position) override;
 
     virtual void list_style_sheets(Web::PageId page_id, u64 request_id) override;

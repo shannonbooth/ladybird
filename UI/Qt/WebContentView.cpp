@@ -124,10 +124,19 @@ static QWidget* initial_web_content_view_parent([[maybe_unused]] QWidget* window
 WebContentView::WebContentView(QWidget* window, Optional<WebView::CanonicalTraversable&> traversable, WebContentViewInitialState initial_state)
     : WebContentViewBase(initial_web_content_view_parent(window))
 {
-    m_owned_tab = make<WebView::ViewImplementation>(initial_state.is_private);
-    if (initial_state.owner_view)
-        m_owned_tab->set_owner_view(*initial_state.owner_view);
-    m_owned_tab->attach_surface(*this);
+    if (traversable.has_value()) {
+        // A tab the page's content opened, whose traversable was created with its view.
+        auto& tab = traversable->view();
+        if (initial_state.owner_view)
+            tab.set_owner_view(*initial_state.owner_view);
+        traversable->set_system_visibility_state(Web::HTML::VisibilityState::Hidden);
+        tab.attach_surface(*this);
+    } else {
+        auto view = make<WebView::ViewImplementation>(initial_state.is_private);
+        if (initial_state.owner_view)
+            view->set_owner_view(*initial_state.owner_view);
+        WebView::ViewImplementation::open_tab(AK::move(view), Web::HTML::VisibilityState::Hidden).attach_surface(*this);
+    }
 
 #ifdef LADYBIRD_QT_USE_RHI_WIDGET
     // Keep the QRhiWidget out of the top-level QWidget backing store. If it is
@@ -205,8 +214,6 @@ WebContentView::WebContentView(QWidget* window, Optional<WebView::CanonicalTrave
         if (m_tooltip_text.has_value())
             show_tooltip(QCursor::pos(), qstring_from_ak_string(m_tooltip_text.value()), *this);
     });
-
-    tab().initialize_tab(Web::HTML::VisibilityState::Hidden, traversable);
 
     m_accessibility_manager = make<WebView::AccessibilityTreeManager>();
 

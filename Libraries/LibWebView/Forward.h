@@ -69,6 +69,7 @@ class TraversableSessionHistory;
 class VideoDecoderServerControlClient;
 class UserAgentTopLevelTraversableSet;
 class ViewImplementation;
+class ViewSurface;
 class WebContentClient;
 class WebContentTestClient;
 class WebDriverBrowserConnection;

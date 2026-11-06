@@ -46,7 +46,7 @@ void NotificationManager::show(WebContentPage& page, u64 page_notification_id, U
     // Only the page that shows the tab's document may notify for that document. A page hosting a cross-site frame
     // in the tab has its own process, and its renderer refuses the notification; one that asks anyway is misbehaving,
     // and would have the frame's notification attributed to the site it's embedded in.
-    if (!page.displays_tab()) {
+    if (!page.hosts_top_level_document()) {
         page.client().did_misbehave("did_request_show_notification"sv, "notification from a page that doesn't display its tab"sv);
         return;
     }
@@ -58,7 +58,7 @@ void NotificationManager::show(WebContentPage& page, u64 page_notification_id, U
     // The notification belongs to the top-level origin the browser knows its document by, never to one the page
     // reports. (An origin, not a URL's: An opaque origin, which file: pages have, is the same one for the life of the
     // document, where a URL would make a fresh one on every ask.)
-    auto url = page.view().url();
+    auto url = page.traversable().active_document_url();
     auto origin = move(top_level_origin);
 
     Record record {
@@ -70,7 +70,7 @@ void NotificationManager::show(WebContentPage& page, u64 page_notification_id, U
         .origin_url = URL::Parser::basic_parse(origin.serialize()).value_or(url),
         .traversable = page.traversable().make_weak_ptr<CanonicalTraversable>(),
         .tag = data.tag,
-        .is_private = page.view().session().is_private(),
+        .is_private = page.traversable().session().is_private(),
     };
 
     // Same origin and same tag take the place of the earlier notification (the spec's oldNotification): Its page

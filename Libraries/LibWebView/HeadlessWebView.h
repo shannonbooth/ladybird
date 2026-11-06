@@ -21,12 +21,14 @@ class WEBVIEW_API HeadlessWebView : public WebView::ViewImplementation {
 public:
     AK_ALLOC_WITH_KMALLOC;
 
-    static NonnullOwnPtr<HeadlessWebView> create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size, IsPrivate = IsPrivate::No);
+    virtual ~HeadlessWebView() override;
+
+    static TabHandle<HeadlessWebView> create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size, IsPrivate = IsPrivate::No, Function<void(HeadlessWebView&)> configure = {});
     enum class IsOwnedByParent : bool {
         No,
         Yes,
     };
-    static NonnullOwnPtr<HeadlessWebView> create_child(HeadlessWebView&, CanonicalTraversable&, IsOwnedByParent = IsOwnedByParent::No);
+    static TabHandle<HeadlessWebView> create_child(HeadlessWebView&, CanonicalTraversable&, IsOwnedByParent = IsOwnedByParent::No);
     static NonnullOwnPtr<PictureInPictureWindow> create_picture_in_picture_window(HeadlessWebView& requesting_view, CanonicalTraversable&, Gfx::IntSize video_size);
 
     void reset_viewport_size(Web::DevicePixelSize);
@@ -55,13 +57,14 @@ protected:
     HeadlessWebView(Core::AnonymousBuffer theme, Web::DevicePixelSize viewport_size, IsPrivate = IsPrivate::No);
 
     void propagate_web_content_crash(WebContentCrashReason);
-    HeadlessWebView& adopt_child_web_view(NonnullOwnPtr<HeadlessWebView>);
+    HeadlessWebView& adopt_child_web_view(TabHandle<HeadlessWebView>);
     void discard_child_web_view(HeadlessWebView&);
     void schedule_forced_close();
     virtual Core::AnonymousBuffer system_theme() override { return m_theme; }
     virtual Optional<ScreenRects> screen_rects() const override;
     void update_zoom() override;
     ViewImplementation* create_view_for_new_tab_or_window(IsPrivate) override;
+    virtual NonnullOwnPtr<ViewImplementation> create_view_for_new_traversable() override;
 
     virtual Web::DevicePixelSize viewport_size() const override { return m_viewport_size; }
     virtual Gfx::IntPoint to_content_position(Gfx::IntPoint widget_position) const override { return widget_position; }
@@ -79,7 +82,7 @@ protected:
     RefPtr<Core::Timer> m_forced_close_timer;
     WeakPtr<HeadlessWebView> m_parent_web_view;
     bool m_propagate_crashes_to_parent { true };
-    Vector<NonnullOwnPtr<HeadlessWebView>> m_child_web_views;
+    Vector<TabHandle<HeadlessWebView>> m_child_web_views;
 };
 
 }

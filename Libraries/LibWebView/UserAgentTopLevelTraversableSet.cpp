@@ -28,7 +28,11 @@ CanonicalTraversable& UserAgentTopLevelTraversableSet::add(Badge<CanonicalTraver
 
 void UserAgentTopLevelTraversableSet::remove(Badge<CanonicalTraversable>, CanonicalTraversable& traversable)
 {
-    m_traversables.remove_first_matching([&](auto const& entry) { return entry.ptr() == &traversable; });
+    // Destroying a traversable can close others, such as a headless window's children, so it leaves the set first.
+    auto index = m_traversables.find_first_index_if([&](auto const& entry) { return entry.ptr() == &traversable; });
+    if (!index.has_value())
+        return;
+    auto removed = m_traversables.take(*index);
 }
 
 void UserAgentTopLevelTraversableSet::for_each(Function<IterationDecision(CanonicalTraversable&)> const& callback) const

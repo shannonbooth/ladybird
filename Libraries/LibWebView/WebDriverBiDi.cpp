@@ -158,7 +158,7 @@ void WebDriverBiDi::push_session_state_for_client(WebContentClient& client) cons
     HashTable<String> hosted_traversables;
     client.for_each_page([&](WebContentPage& page) {
         auto& traversable = page.traversable();
-        if (page.displays_tab() || traversable.page_hosts_any(page)) {
+        if (page.hosts_top_level_document() || traversable.page_hosts_any(page)) {
             auto id = traversable.id();
             hosted_traversables.set(MUST(String::formatted("{}-{}", id.namespace_id, id.local_id)));
         }
@@ -266,8 +266,8 @@ static ErrorOr<CanonicalNavigable*, Web::WebDriver::Error> get_a_navigable(Strin
     if (!traversable)
         return no_such_frame();
 
-    auto view = traversable->view();
-    if (!view.has_value() || !is_top_level_traversable_of_a_window(*view))
+    auto* view = &traversable->view();
+    if (!is_top_level_traversable_of_a_window(*view))
         return no_such_frame();
 
     auto navigable = traversable->find(id);
@@ -1040,11 +1040,7 @@ void WebDriverBiDi::run_subscribe_steps(u64 command_id, String const& event_name
 
 void WebDriverBiDi::run_content_command(CanonicalNavigable const& navigable, String const& method, JsonValue params, CommandResult on_complete)
 {
-    auto view = navigable.top_level_traversable().view();
-    if (!view.has_value()) {
-        on_complete(no_such_frame());
-        return;
-    }
+    auto* view = &navigable.top_level_traversable().view();
 
     auto command_id = m_next_content_command_id++;
     m_pending_content_commands.set(command_id, move(on_complete));
@@ -1088,7 +1084,7 @@ void WebDriverBiDi::run_command(u64 command_id, String const& method, JsonValue 
                     }
                     on_complete(move(response));
                 });
-                blocked->page->view().run_webdriver_bidi_content_command(*blocked->page, content_command_id, blocked->navigable_id, method, params);
+                blocked->page->traversable().view().run_webdriver_bidi_content_command(*blocked->page, content_command_id, blocked->navigable_id, method, params);
                 return;
             }
         }
@@ -1155,7 +1151,7 @@ void WebDriverBiDi::browsing_context_activate(JsonObject const& params, CommandR
 
     // 4. Return activate a navigable with navigable.
     // https://w3c.github.io/webdriver-bidi/#activate-a-navigable
-    auto view = traversable->view();
+    auto* view = &traversable->view();
 
     // 1. Run implementation-specific steps so that navigable's system visibility state becomes visible. If this is not
     //    possible return error with error code unsupported operation.
@@ -1165,8 +1161,7 @@ void WebDriverBiDi::browsing_context_activate(JsonObject const& params, CommandR
         auto other_id = WebDriverBiDi::navigable_id(other_traversable);
         if (&other_traversable == traversable || os_window_of(other_id) != os_window)
             continue;
-        if (auto other_view = other_traversable.view(); other_view.has_value())
-            other_view->set_system_visibility_state(Web::HTML::VisibilityState::Hidden);
+        other_traversable.view().set_system_visibility_state(Web::HTML::VisibilityState::Hidden);
     }
     view->set_system_visibility_state(Web::HTML::VisibilityState::Visible);
     if (view->on_activate_tab)
@@ -1197,7 +1192,7 @@ void WebDriverBiDi::browsing_context_close(JsonObject const& params, CommandResu
     // 4. Assert: navigable is not null.
     // 5. If navigable is not a top-level traversable, return error with error code invalid argument.
     auto* traversable = TRY_OR_COMPLETE(get_a_top_level_traversable(navigable_id));
-    auto view = traversable->view();
+    auto* view = &traversable->view();
 
     // 6. If prompt unload is true:
     if (prompt_unload) {
@@ -1295,11 +1290,10 @@ void WebDriverBiDi::browsing_context_create(JsonObject const& params, CommandRes
 
         // NB: Opening the traversable activated it.
         if (background) {
-            if (auto new_view = get_a_top_level_traversable(*handle).value()->view(); new_view.has_value()) {
-                new_view->traversable().set_has_system_focus(false, nullptr);
-                if (is_tab)
-                    new_view->set_system_visibility_state(Web::HTML::VisibilityState::Hidden);
-            }
+            auto& new_view = get_a_top_level_traversable(*handle).value()->view();
+            new_view.traversable().set_has_system_focus(false, nullptr);
+            if (is_tab)
+                new_view.set_system_visibility_state(Web::HTML::VisibilityState::Hidden);
             JsonObject reference_params;
             reference_params.set("context"sv, reference_handle);
             browsing_context_activate(reference_params, [](auto) { });
@@ -1430,8 +1424,9 @@ void WebDriverBiDi::await_a_navigation(CanonicalNavigable& navigable, URL::URL u
     });
 
     if (navigable.is_top_level_traversable()) {
-        if (auto view = static_cast<CanonicalTraversable&>(navigable).view(); view.has_value()) {
-            view->load(move(navigation));
+        {
+            auto& view = static_cast<CanonicalTraversable&>(navigable).view();
+            view.load(move(navigation));
             return;
         }
     }
@@ -1557,7 +1552,7 @@ void WebDriverBiDi::browsing_context_reload(JsonObject const& params, CommandRes
         previous_waiter->on_complete(Web::WebDriver::Error::from_code(Web::WebDriver::ErrorCode::UnknownError, "Navigation was canceled"sv));
     auto navigation_id = Utf16String::from_utf8(generate_random_uuid());
     m_reload_waiters.set(traversable.id(), { navigation_id, wait_condition, move(on_complete) });
-    traversable.view()->reload_for_webdriver_bidi(ignore_cache ? BypassCache::Yes : BypassCache::No, move(navigation_id));
+    traversable.view().reload_for_webdriver_bidi(ignore_cache ? BypassCache::Yes : BypassCache::No, move(navigation_id));
 }
 
 static constexpr double MAXIMUM_DEVICE_VIEWPORT_DIMENSION = 16384;
@@ -1671,9 +1666,7 @@ void WebDriverBiDi::browsing_context_set_viewport(JsonObject const& params, Comm
     };
     Vector<ViewportChange> changes;
     for (auto* navigable : navigables) {
-        auto view = navigable->view();
-        if (!view.has_value())
-            continue;
+        auto* view = &navigable->view();
 
         // NB: The layout viewport of a top-level traversable is the viewport of its view, which a headless view takes
         //     the size of its window for. The view remembers the size it had before the first override, which is its
@@ -1798,7 +1791,7 @@ void WebDriverBiDi::browsing_context_traverse_history(JsonObject const& params, 
         CommandResult on_complete;
     };
     auto pending_traversal = adopt_ref(*new PendingTraversal(move(on_complete)));
-    traversable->view()->traverse_the_history_by_delta(static_cast<int>(*delta), CheckForCancelation::Yes, [pending_traversal] {
+    traversable->view().traverse_the_history_by_delta(static_cast<int>(*delta), CheckForCancelation::Yes, [pending_traversal] {
         if (auto on_complete = move(pending_traversal->on_complete))
             on_complete(JsonValue {});
     });

@@ -10,7 +10,6 @@
 #include <AK/TemporaryChange.h>
 #include <LibCore/EventLoop.h>
 #include <LibURL/Site.h>
-#include <LibWebCommon/Geolocation/GeolocationPositionErrorCode.h>
 #include <LibWebCommon/WebView/SiteIsolation.h>
 #include <LibWebView/Application.h>
 #include <LibWebView/CanonicalBrowsingContext.h>
@@ -30,6 +29,13 @@
 namespace WebView {
 
 static u64 s_next_tab_id = 1;
+
+CanonicalTraversable::CanonicalTraversable(Web::HTML::CrossProcessId id, NonnullRefPtr<CanonicalSessionHistoryEntry> initial_history_entry, NonnullRefPtr<BrowsingSession> session, NonnullOwnPtr<ViewImplementation> view)
+    : CanonicalTraversable(id, move(initial_history_entry), move(session))
+{
+    m_view = move(view);
+    m_view->did_create_traversable({}, *this);
+}
 
 CanonicalTraversable::CanonicalTraversable(Web::HTML::CrossProcessId id, NonnullRefPtr<CanonicalSessionHistoryEntry> initial_history_entry, NonnullRefPtr<BrowsingSession> session)
     : CanonicalNavigable(id)
@@ -450,231 +456,10 @@ void CanonicalTraversable::release_page_if_unused(NonnullRefPtr<WebContentPage> 
     did_lose_page(page, WebContentProcessLost::No);
 }
 
-Optional<ViewImplementation&> CanonicalTraversable::view() const
+ViewImplementation& CanonicalTraversable::view() const
 {
-    if (!m_view)
-        return {};
+    VERIFY(m_view);
     return *m_view;
-}
-
-bool CanonicalTraversable::has_open_dialog() const
-{
-    return m_view && m_view->has_open_dialog();
-}
-
-void CanonicalTraversable::request_alert(Utf16String const& message, NonnullRefPtr<DialogReply> reply)
-{
-    if (m_view)
-        m_view->request_alert({}, message, move(reply));
-    else
-        reply->cancel();
-}
-
-void CanonicalTraversable::request_confirm(Utf16String const& message, NonnullRefPtr<DialogReply> reply)
-{
-    if (m_view)
-        m_view->request_confirm({}, message, move(reply));
-    else
-        reply->cancel();
-}
-
-void CanonicalTraversable::request_prompt(Utf16String const& message, Utf16String const& default_value, NonnullRefPtr<DialogReply> reply)
-{
-    if (m_view)
-        m_view->request_prompt({}, message, default_value, move(reply));
-    else
-        reply->cancel();
-}
-
-void CanonicalTraversable::request_before_unload(String const& source, NonnullRefPtr<DialogReply> reply)
-{
-    if (m_view)
-        m_view->request_before_unload({}, source, move(reply));
-    else
-        reply->cancel();
-}
-
-void CanonicalTraversable::request_color_picker(Color color, NonnullRefPtr<ColorPickerReply> reply)
-{
-    if (m_view)
-        m_view->request_color_picker({}, color, move(reply));
-    else
-        reply->cancel();
-}
-
-void CanonicalTraversable::request_date_picker(Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, NonnullRefPtr<DatePickerReply> reply)
-{
-    if (m_view)
-        m_view->request_date_picker({}, input_type, value, minimum, maximum, move(reply));
-    else
-        reply->cancel();
-}
-
-void CanonicalTraversable::request_file_picker(Web::HTML::FileFilter const& filter, Web::HTML::AllowMultipleFiles allow_multiple_files, NonnullRefPtr<FilePickerReply> reply)
-{
-    if (m_view)
-        m_view->request_file_picker({}, filter, allow_multiple_files, move(reply));
-    else
-        reply->cancel();
-}
-
-void CanonicalTraversable::did_request_permission(Web::Permissions::PermissionName name)
-{
-    if (m_view)
-        m_view->did_request_permission({}, name);
-}
-
-void CanonicalTraversable::request_permission_prompt(PermissionPromptRequest request, NonnullRefPtr<PermissionPromptReply> reply)
-{
-    if (!m_view) {
-        reply->cancel();
-        return;
-    }
-    m_view->request_permission_prompt(move(request), [reply](Web::Permissions::PromptOutcome outcome) {
-        reply->complete(outcome);
-    });
-}
-
-MicrophoneAuthorization CanonicalTraversable::microphone_authorization() const
-{
-    return m_view ? m_view->microphone_authorization() : MicrophoneAuthorization::Denied;
-}
-
-void CanonicalTraversable::ensure_microphone_authorization(NonnullRefPtr<MicrophoneAuthorizationReply> reply)
-{
-    if (!m_view) {
-        reply->cancel();
-        return;
-    }
-    m_view->ensure_microphone_authorization([reply](bool authorized) {
-        reply->complete(authorized);
-    });
-}
-
-void CanonicalTraversable::show_microphone_denied_notice()
-{
-    if (m_view)
-        m_view->show_microphone_denied_notice();
-}
-
-void CanonicalTraversable::request_spell_check(Utf16String const& text, NonnullRefPtr<SpellCheckReply> reply)
-{
-    if (m_view)
-        m_view->request_spell_check({}, text, move(reply));
-    else
-        reply->cancel();
-}
-
-void CanonicalTraversable::request_writing_suggestion(Utf16String const& text, u32 caret_offset, NonnullRefPtr<WritingSuggestionReply> reply)
-{
-    if (m_view)
-        m_view->request_writing_suggestion({}, text, caret_offset, move(reply));
-    else
-        reply->cancel();
-}
-
-Web::Clipboard::SystemClipboardItem CanonicalTraversable::clipboard_item() const
-{
-    if (!m_view)
-        return {};
-    return m_view->clipboard_item();
-}
-
-void CanonicalTraversable::insert_clipboard_item(Web::Clipboard::SystemClipboardItem item)
-{
-    if (m_view)
-        m_view->insert_clipboard_item(move(item));
-}
-
-void CanonicalTraversable::restore_window()
-{
-    if (m_view && m_view->on_restore_window)
-        m_view->on_restore_window();
-}
-
-void CanonicalTraversable::reposition_window(Gfx::IntPoint position)
-{
-    if (m_view && m_view->on_reposition_window)
-        m_view->on_reposition_window(position);
-}
-
-void CanonicalTraversable::resize_window(Gfx::IntSize size)
-{
-    if (m_view && m_view->on_resize_window)
-        m_view->on_resize_window(size);
-}
-
-void CanonicalTraversable::maximize_window()
-{
-    if (m_view && m_view->on_maximize_window)
-        m_view->on_maximize_window();
-}
-
-void CanonicalTraversable::minimize_window()
-{
-    if (m_view && m_view->on_minimize_window)
-        m_view->on_minimize_window();
-}
-
-void CanonicalTraversable::request_fullscreen_window(WebContentPage& page)
-{
-    if (m_view && m_view->on_fullscreen_window)
-        m_view->on_fullscreen_window();
-    else
-        page.async_deny_fullscreen_window();
-}
-
-void CanonicalTraversable::exit_fullscreen_window()
-{
-    if (m_view && m_view->on_exit_fullscreen_window)
-        m_view->on_exit_fullscreen_window();
-}
-
-void CanonicalTraversable::fully_exit_fullscreen()
-{
-    if (m_view)
-        m_view->exit_fullscreen();
-}
-
-void CanonicalTraversable::request_geolocation_position(WebContentPage& page, u64 request_id, Web::HTML::CrossProcessId document_id)
-{
-    if (m_view && m_view->on_request_geolocation_position)
-        m_view->on_request_geolocation_position(page, request_id, document_id);
-    else
-        page.async_geolocation_position_response(request_id, {}, to_underlying(Web::Geolocation::GeolocationPositionErrorCode::PositionUnavailable));
-}
-
-void CanonicalTraversable::cancel_geolocation_position_request(WebContentPage& page, u64 request_id)
-{
-    if (m_view && m_view->on_cancel_geolocation_position_request)
-        m_view->on_cancel_geolocation_position_request(page, request_id);
-}
-
-void CanonicalTraversable::start_geolocation_position_watch(WebContentPage& page, u64 request_id, Web::HTML::CrossProcessId document_id)
-{
-    if (m_view && m_view->on_start_geolocation_position_watch)
-        m_view->on_start_geolocation_position_watch(page, request_id, document_id);
-    else
-        page.async_geolocation_position_response(request_id, {}, to_underlying(Web::Geolocation::GeolocationPositionErrorCode::PositionUnavailable));
-}
-
-void CanonicalTraversable::stop_geolocation_position_watch(WebContentPage& page, u64 request_id)
-{
-    if (m_view && m_view->on_stop_geolocation_position_watch)
-        m_view->on_stop_geolocation_position_watch(page, request_id);
-}
-
-void CanonicalTraversable::request_select_dropdown(Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items, NonnullRefPtr<SelectDropdownReply> reply)
-{
-    if (m_view)
-        m_view->request_select_dropdown({}, content_position, minimum_width, move(items), move(reply));
-    else
-        reply->cancel();
-}
-
-void CanonicalTraversable::set_view(Badge<ViewImplementation>, ViewImplementation& view)
-{
-    m_view = &view;
 }
 
 RefPtr<WebContentPage> CanonicalTraversable::display_page() const
@@ -705,9 +490,7 @@ void CanonicalTraversable::did_activate_document_in(Badge<CanonicalNavigable>, W
 
 ErrorOr<NonnullRefPtr<WebContentPage>> CanonicalTraversable::obtain_page_to_host_traversable(RefPtr<WebContentClient> host)
 {
-    auto view = this->view();
-    if (!view.has_value())
-        return Error::from_string_literal("No view displays the traversable");
+    auto* view = &this->view();
     auto display_page = this->display_page();
     if (host && display_page && display_page->is_open() && host == &display_page->client())
         return display_page.release_nonnull();
@@ -992,8 +775,7 @@ void CanonicalTraversable::stop_loading()
         page->async_stop_loading();
 
     presentation().set_loading(false);
-    if (auto view = this->view(); view.has_value())
-        view->did_stop_loading({}, stopped_navigation);
+    view().did_stop_loading({}, stopped_navigation);
 }
 
 bool CanonicalTraversable::is_origin_held_by_a_document(URL::Origin const& origin)
@@ -1015,7 +797,7 @@ bool CanonicalTraversable::is_origin_held_by_a_document(URL::Origin const& origi
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#creating-a-new-top-level-traversable
-CanonicalTraversable& CanonicalTraversable::create_a_new_top_level_traversable(NonnullRefPtr<BrowsingSession> session, Web::HTML::CrossProcessId id, Optional<CanonicalNavigable&> opener, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::CrossProcessId document_id)
+CanonicalTraversable& CanonicalTraversable::create_a_new_top_level_traversable(NonnullRefPtr<BrowsingSession> session, Web::HTML::CrossProcessId id, Optional<CanonicalNavigable&> opener, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::CrossProcessId document_id, NonnullOwnPtr<ViewImplementation> view)
 {
     // 1. Let document be null.
     RefPtr<CanonicalDocument> document;
@@ -1044,7 +826,7 @@ CanonicalTraversable& CanonicalTraversable::create_a_new_top_level_traversable(N
     // 5. Let traversable be a new traversable navigable.
     // NB: Its session history entries start out as steps 7-9 leave them.
     history_entry->step = 0;
-    auto traversable = make<CanonicalTraversable>(id, history_entry, move(session));
+    auto traversable = make<CanonicalTraversable>(id, history_entry, move(session), move(view));
 
     // 6. Initialize the navigable traversable given documentState.
     traversable->set_current_session_history_entry(history_entry);
@@ -1083,6 +865,8 @@ CanonicalTraversable& CanonicalTraversable::create_a_new_top_level_traversable(N
 // https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-top-level-traversable
 void CanonicalTraversable::destroy()
 {
+    if (m_view)
+        m_view->did_destroy_traversable({});
     // 5. Remove traversable from the user agent's top-level traversable set.
     // NB: The process hosting the traversable's document runs the other steps.
     UserAgentTopLevelTraversableSet::the().remove({}, *this);
@@ -1305,6 +1089,8 @@ struct HistoryOperation {
 
 CanonicalTraversable::~CanonicalTraversable()
 {
+    if (m_view)
+        m_view->did_destroy_traversable({});
     TabPerformanceMonitor::forget_tab(tab_id());
     if (session().permission_manager)
         session().permission_manager->remove_tab(tab_id());
@@ -1412,8 +1198,7 @@ void CanonicalTraversable::traverse_the_history_to_step(i32 step, CheckForCancel
 // the traversal cancels is gone.
 void CanonicalTraversable::run_browser_ui_traversal_at_queue_position(Function<Optional<i32>()> select_target_step, CheckForCancelation check_for_cancelation, Function<void()> on_ready, NonnullRefPtr<Core::Promise<Empty>> promise)
 {
-    auto view = this->view();
-    VERIFY(view.has_value());
+    auto* view = &this->view();
     auto canceled_uncommitted_navigation = check_for_cancelation == CheckForCancelation::Yes && has_uncommitted_navigation();
     if (canceled_uncommitted_navigation)
         stop_loading();
@@ -1530,8 +1315,7 @@ RefPtr<WebContentPage> CanonicalTraversable::page_hosting(CanonicalNavigable con
 
 void CanonicalTraversable::did_lose_page(WebContentPage& page, WebContentProcessLost process_lost)
 {
-    if (auto view = this->view(); view.has_value())
-        view->did_lose_page({}, page, process_lost);
+    view().did_lose_page({}, page, process_lost);
 }
 
 void CanonicalTraversable::did_not_receive_reply(OwedReply const& owed)
@@ -1754,8 +1538,7 @@ bool CanonicalTraversable::run_changing_navigable_history_step_job(ApplyHistoryS
     if (navigable.is_top_level_traversable()) {
         if (!operation.parameters.has<Web::ReloadHistoryOperationParameters>()
             && changing_navigable.target_entry->document_state->document.ptr() != &navigable.active_document()) {
-            if (auto view = this->view(); view.has_value())
-                view->reset_blocked_resources();
+            view().reset_blocked_resources();
         }
         if (operation.is_browser_traversal()) {
             if (auto callback = move(operation.browser_traversal().on_ready))
@@ -1954,15 +1737,16 @@ void CanonicalTraversable::did_activate_history_entry(HistoryOperation& operatio
             presentation().set_title(Utf16String::from_utf8(active_document_url().serialize()));
             presentation().set_favicon({});
         }
-        if (auto view = this->view(); view.has_value()) {
+        {
+            auto& view = this->view();
             if (&navigable.active_document() != replaced_document)
-                view->did_change_active_document({});
+                view.did_change_active_document({});
             // NB: The address bar can already show a pending navigation's URL while the old document
             //     is still visible. Only apply the destination's zoom after its document is activated.
-            view->apply_zoom_for_current_host();
-            view->m_external_url_request_policy.clear_page_request_allowance();
-            if (view->on_top_level_navigation_commit)
-                view->on_top_level_navigation_commit();
+            view.apply_zoom_for_current_host();
+            view.m_external_url_request_policy.clear_page_request_allowance();
+            if (view.on_top_level_navigation_commit)
+                view.on_top_level_navigation_commit();
         }
     }
 }
@@ -2287,8 +2071,7 @@ void CanonicalTraversable::run_browser_history_traversal_at_queue_position(i32 t
     VERIFY(!m_browser_history_traversal);
     m_browser_history_traversal = operation;
     operation->queue_promise = promise;
-    auto view = this->view();
-    VERIFY(view.has_value());
+    auto* view = &this->view();
     view->will_apply_history_traversal_step(operation_id);
     run_history_operation(*operation);
 }
@@ -2946,8 +2729,7 @@ void CanonicalTraversable::did_not_apply_reload(Web::HTML::CrossProcessId naviga
         return;
     if (auto* webdriver_bidi = WebDriverBiDi::the())
         webdriver_bidi->reload_did_not_apply(*this, navigation_id);
-    if (auto view = this->view(); view.has_value())
-        view->did_not_apply_reload();
+    this->view().did_not_apply_reload();
 }
 
 // The operation is over: its apply the history step returned result, or its steps ended without applying one.
@@ -2991,8 +2773,7 @@ void CanonicalTraversable::finish_history_operation(Web::HTML::CrossProcessId op
 
     auto committed_step = operation->algorithm ? operation->algorithm->committed_step() : Optional<i32> {};
     if (committed_step.has_value()) {
-        if (auto view = this->view(); view.has_value())
-            view->did_commit_history_step();
+        this->view().did_commit_history_step();
     }
 
     // The step of the entry the requesting page's operation targets: the committed step, but for a created child's
@@ -3013,16 +2794,14 @@ void CanonicalTraversable::finish_history_operation(Web::HTML::CrossProcessId op
     if (operation->is_browser_traversal()) {
         if (auto callback = move(operation->browser_traversal().on_ready))
             callback();
-        if (auto view = this->view(); view.has_value())
-            view->did_finish_history_traversal(operation_id);
+        this->view().did_finish_history_traversal(operation_id);
     }
 
     // NB: Resolving the queue promise can synchronously start the next queued operation.
     if (operation->queue_promise)
         operation->queue_promise->resolve({});
 
-    if (auto view = this->view(); view.has_value())
-        view->run_webdriver_commands_waiting_for_a_document({});
+    this->view().run_webdriver_commands_waiting_for_a_document({});
 
     // NB: The run of apply the history step that finished the operation can be on the stack; destroy the operation
     //     only once the stack has unwound.
@@ -3209,14 +2988,12 @@ void CanonicalTraversable::did_receive_changing_navigable_continuation_applied(W
         // the document has accepted the UI-owned history state. Only the browser traversal itself reaches the
         // observable top-level completion point here.
         if (navigable_id == id() && operation->is_browser_traversal()) {
-            if (auto view = this->view(); view.has_value())
-                view->did_apply_top_level_history_traversal_step(operation_id);
+            this->view().did_apply_top_level_history_traversal_step(operation_id);
         }
         operation->algorithm->process_changing_navigable_continuations();
     }
 
-    if (auto view = this->view(); view.has_value())
-        view->run_webdriver_commands_waiting_for_a_document({});
+    this->view().run_webdriver_commands_waiting_for_a_document({});
 }
 
 void CanonicalTraversable::did_receive_nonchanging_navigable_history_state_updated(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
