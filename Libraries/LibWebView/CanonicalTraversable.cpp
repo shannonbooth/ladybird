@@ -456,6 +456,75 @@ Optional<ViewImplementation&> CanonicalTraversable::view() const
     return *m_view;
 }
 
+bool CanonicalTraversable::has_open_dialog() const
+{
+    return m_view && m_view->has_open_dialog();
+}
+
+void CanonicalTraversable::request_alert(Utf16String const& message, NonnullRefPtr<DialogReply> reply)
+{
+    if (m_view)
+        m_view->request_alert({}, message, move(reply));
+    else
+        reply->cancel();
+}
+
+void CanonicalTraversable::request_confirm(Utf16String const& message, NonnullRefPtr<DialogReply> reply)
+{
+    if (m_view)
+        m_view->request_confirm({}, message, move(reply));
+    else
+        reply->cancel();
+}
+
+void CanonicalTraversable::request_prompt(Utf16String const& message, Utf16String const& default_value, NonnullRefPtr<DialogReply> reply)
+{
+    if (m_view)
+        m_view->request_prompt({}, message, default_value, move(reply));
+    else
+        reply->cancel();
+}
+
+void CanonicalTraversable::request_before_unload(String const& source, NonnullRefPtr<DialogReply> reply)
+{
+    if (m_view)
+        m_view->request_before_unload({}, source, move(reply));
+    else
+        reply->cancel();
+}
+
+void CanonicalTraversable::request_color_picker(Color color, NonnullRefPtr<ColorPickerReply> reply)
+{
+    if (m_view)
+        m_view->request_color_picker({}, color, move(reply));
+    else
+        reply->cancel();
+}
+
+void CanonicalTraversable::request_date_picker(Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, NonnullRefPtr<DatePickerReply> reply)
+{
+    if (m_view)
+        m_view->request_date_picker({}, input_type, value, minimum, maximum, move(reply));
+    else
+        reply->cancel();
+}
+
+void CanonicalTraversable::request_file_picker(Web::HTML::FileFilter const& filter, Web::HTML::AllowMultipleFiles allow_multiple_files, NonnullRefPtr<FilePickerReply> reply)
+{
+    if (m_view)
+        m_view->request_file_picker({}, filter, allow_multiple_files, move(reply));
+    else
+        reply->cancel();
+}
+
+void CanonicalTraversable::request_select_dropdown(Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items, NonnullRefPtr<SelectDropdownReply> reply)
+{
+    if (m_view)
+        m_view->request_select_dropdown({}, content_position, minimum_width, move(items), move(reply));
+    else
+        reply->cancel();
+}
+
 void CanonicalTraversable::set_view(Badge<ViewImplementation>, ViewImplementation& view)
 {
     m_view = &view;

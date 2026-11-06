@@ -356,15 +356,19 @@ WebContentView::WebContentView(QWidget* window, Optional<WebView::CanonicalTrave
     };
 
     m_select_dropdown = new SelectDropdown(this);
-    m_select_dropdown->on_closed = [this](Optional<u32> const& selected_item_id) {
-        select_dropdown_closed(selected_item_id);
-    };
 
-    on_request_select_dropdown = [this](Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items) {
+    on_request_select_dropdown = [this](Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items, auto reply) {
         // NB: The view has a native window of its own, which Qt refuses as the transient parent of a popup. The
         //     dropdown opens from the top-level window instead, which can change when the tab moves to another one.
         if (m_select_dropdown->parentWidget() != this->window())
             m_select_dropdown->setParent(this->window(), m_select_dropdown->windowFlags());
+        m_select_dropdown->on_closed = [reply](Optional<u32> const& selected_item_id) {
+            reply->complete(selected_item_id);
+        };
+        reply->on_cancel = [dropdown = m_select_dropdown] {
+            if (dropdown)
+                dropdown->close_without_reporting();
+        };
         m_select_dropdown->open(map_point_to_global_position(content_position), minimum_width, items);
     };
 }

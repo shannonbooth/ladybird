@@ -82,7 +82,7 @@ TEST_CASE(before_unload)
     bool adopt_navigation_prompt_for_close = false;
     Optional<bool> adopted_close_preflight_result;
     Optional<String> prompt_source;
-    view->on_request_before_unload = [&](auto const& source, auto on_complete) {
+    view->on_request_before_unload = [&](auto const& source, auto reply) {
         ++prompt_count;
         prompt_source = source;
         if (adopt_navigation_prompt_for_close) {
@@ -90,7 +90,7 @@ TEST_CASE(before_unload)
                 adopted_close_preflight_result = approved;
             });
         }
-        on_complete(accept_prompt);
+        reply->complete(accept_prompt, {});
     };
 
     // A cancellation request without sticky activation must not show a prompt.

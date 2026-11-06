@@ -26,6 +26,7 @@
 #include <LibWebCommon/StorageAPI/StorageEndpoint.h>
 #include <LibWebView/Export.h>
 #include <LibWebView/Forward.h>
+#include <LibWebView/PendingReply.h>
 #include <WebContent/WebContentClientEndpoint.h>
 #include <WebContent/WebContentServerEndpoint.h>
 #include <WebContent/WebContentTestClientEndpoint.h>
@@ -133,6 +134,9 @@ public:
     Web::Permissions::PermissionSnapshot advance_permission_clock_for_testing(u64 milliseconds);
     void close();
 
+    // A reply the UI owes this page. Closing the page cancels it.
+    void expect_reply_from_ui(NonnullRefPtr<PendingReplyBase>);
+
     void owe_reply(OwedReply);
     bool take_owed_reply(OwedReply);
 
@@ -195,6 +199,7 @@ private:
     };
     Optional<ViewPosition> view_position(Web::HTML::CrossProcessId local_root_id, Gfx::IntPoint) const;
     void did_open_dialog(Web::PendingDialog, Utf16String const& message);
+    RefPtr<DialogReply> open_dialog(Web::PendingDialog, Utf16String const& message);
     void maybe_record_history_visit_for_current_load(URL::URL const&, Optional<String> title, StringView reason);
 
     virtual void did_request_navigation_of_navigable(Web::HTML::CrossProcessId navigable_id, Web::HTML::CrossProcessId source_navigable_id, Web::HTML::CrossProcessId source_document_id, Web::HTML::PreparedNavigationDescriptor navigation) override;
@@ -422,6 +427,7 @@ private:
     Web::PageId m_id;
     WeakPtr<CanonicalTraversable> m_traversable;
     bool m_is_open { true };
+    Vector<NonnullRefPtr<PendingReplyBase>> m_replies_from_ui;
     RefPtr<WebUI> m_web_ui;
     Audio::Audibility m_audibility { Audio::Audibility::Inaudible };
     Optional<PresentedBackingStores> m_presented_backing_stores;

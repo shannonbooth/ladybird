@@ -108,3 +108,84 @@ TEST_CASE(blocked_resource_totals_include_each_hosting_page)
     EXPECT_EQ(state.blocked_resource_count(), 0u);
     EXPECT(state.blocked_resources().is_empty());
 }
+
+TEST_CASE(ui_reply_answers_once)
+{
+    size_t replies = 0;
+    size_t cancellations = 0;
+    auto reply = WebView::DatePickerReply::create([&](auto value) {
+        EXPECT_EQ(value, "2026-11-05"_utf16);
+        ++replies;
+    },
+        {});
+    reply->on_cancel = [&] { ++cancellations; };
+    reply->complete("2026-11-05"_utf16);
+    reply->complete("2026-11-06"_utf16);
+    reply->cancel();
+    EXPECT(!reply->is_pending());
+    EXPECT_EQ(replies, 1u);
+    EXPECT_EQ(cancellations, 0u);
+}
+
+TEST_CASE(ui_stale_picker_completion_does_not_answer_a_new_request)
+{
+    Vector<Optional<Utf16String>> first_replies;
+    Vector<Optional<Utf16String>> second_replies;
+    size_t cancellations = 0;
+    auto old_reply = WebView::DatePickerReply::create([&](auto value) { first_replies.append(move(value)); }, {});
+    old_reply->on_cancel = [&] { ++cancellations; };
+    old_reply->cancel();
+    auto new_reply = WebView::DatePickerReply::create([&](auto value) { second_replies.append(move(value)); }, {});
+    old_reply->complete("2026-11-04"_utf16);
+    new_reply->complete("2026-11-05"_utf16);
+    EXPECT_EQ(cancellations, 1u);
+    EXPECT_EQ(first_replies.size(), 1u);
+    EXPECT(!first_replies[0].has_value());
+    EXPECT_EQ(second_replies.size(), 1u);
+    EXPECT_EQ(second_replies[0], "2026-11-05"_utf16);
+}
+
+TEST_CASE(ui_reply_updates_only_while_pending)
+{
+    size_t updates = 0;
+    size_t replies = 0;
+    auto reply = WebView::ColorPickerReply::create([&](auto) { ++replies; }, {});
+    reply->set_on_update([&](auto color) {
+        EXPECT(color == Color(Color::Red));
+        ++updates;
+    });
+    reply->update(Color(Color::Red));
+    reply->complete({});
+    reply->update(Color(Color::Red));
+    EXPECT_EQ(updates, 1u);
+    EXPECT_EQ(replies, 1u);
+}
+
+TEST_CASE(ui_cancellation_closes_the_widget_before_releasing_admission_and_answering)
+{
+    Vector<StringView> order;
+    auto reply = WebView::DatePickerReply::create([&](auto) { order.append("answer"sv); }, {});
+    reply->when_settled([&] { order.append("release"sv); });
+    reply->on_cancel = [&] {
+        order.append("close"sv);
+        EXPECT(!reply->is_pending());
+        reply->complete("stale"_utf16);
+        reply->cancel();
+    };
+    reply->cancel();
+    EXPECT_EQ(order.size(), 3u);
+    EXPECT_EQ(order[0], "close"sv);
+    EXPECT_EQ(order[1], "release"sv);
+    EXPECT_EQ(order[2], "answer"sv);
+}
+
+TEST_CASE(ui_completion_releases_admission_before_reentrant_completion_code)
+{
+    bool admitted = true;
+    auto reply = WebView::DatePickerReply::create([&](auto) { EXPECT(!admitted); }, {});
+    reply->when_settled([&] { admitted = false; });
+    reply->complete({});
+    size_t late_observers = 0;
+    reply->when_settled([&] { ++late_observers; });
+    EXPECT_EQ(late_observers, 1u);
+}

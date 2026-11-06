@@ -422,6 +422,16 @@ Optional<WebContentPage::ViewPosition> WebContentPage::view_position(Web::HTML::
     return ViewPosition { view(), position };
 }
 
+void WebContentPage::expect_reply_from_ui(NonnullRefPtr<PendingReplyBase> reply)
+{
+    m_replies_from_ui.remove_all_matching([](auto const& reply) { return !reply->is_pending(); });
+    if (!m_is_open) {
+        reply->cancel();
+        return;
+    }
+    m_replies_from_ui.append(move(reply));
+}
+
 // A dialog blocks the whole tab, so every other page of the tab is told of the one a document of this page opened.
 void WebContentPage::did_open_dialog(Web::PendingDialog dialog, Utf16String const& message)
 {
@@ -429,6 +439,49 @@ void WebContentPage::did_open_dialog(Web::PendingDialog dialog, Utf16String cons
         if (&page != this)
             page.async_did_open_dialog_in_another_process(dialog, message);
     });
+}
+
+static void answer_dialog(WebContentPage& page, Web::PendingDialog dialog, bool accepted, Optional<Utf16String> text)
+{
+    switch (dialog) {
+    case Web::PendingDialog::None:
+        VERIFY_NOT_REACHED();
+    case Web::PendingDialog::Alert:
+        page.async_alert_closed();
+        return;
+    case Web::PendingDialog::BeforeUnload:
+        page.routed_proxy()->async_before_unload_closed(page.id(), accepted);
+        return;
+    case Web::PendingDialog::Confirm:
+        page.async_confirm_closed(accepted);
+        return;
+    case Web::PendingDialog::Prompt:
+        page.async_prompt_closed(accepted ? move(text) : Optional<Utf16String> {});
+        return;
+    }
+}
+
+// The tab shows one dialog at a time. The other pages of the tab hold it too, but only this page is owed the answer.
+RefPtr<DialogReply> WebContentPage::open_dialog(Web::PendingDialog dialog, Utf16String const& message)
+{
+    if (traversable().has_open_dialog()) {
+        answer_dialog(*this, dialog, dialog == Web::PendingDialog::BeforeUnload, {});
+        return nullptr;
+    }
+    did_open_dialog(dialog, message);
+    auto reply = DialogReply::create([page = NonnullRefPtr { *this }, dialog](bool accepted, Optional<Utf16String> text) {
+        if (!page->m_traversable)
+            return;
+        page->traversable().for_each_hosting_page([&](WebContentPage& other_page) {
+            if (&other_page != page.ptr())
+                other_page.async_did_open_dialog_in_another_process(Web::PendingDialog::None, Utf16View {});
+        });
+        if (page->is_open())
+            answer_dialog(*page, dialog, accepted, move(text));
+    },
+        dialog == Web::PendingDialog::BeforeUnload, {});
+    expect_reply_from_ui(reply);
+    return reply;
 }
 
 void WebContentPage::maybe_record_history_visit_for_current_load(URL::URL const& url, Optional<String> title, StringView reason)
@@ -654,6 +707,8 @@ void WebContentPage::close()
     PictureInPictureManager::the().close_window(*this);
     NotificationManager::the().page_did_close(*this);
     m_is_open = false;
+    for (auto& reply : exchange(m_replies_from_ui, {}))
+        reply->cancel();
     // NB: Nothing finishes the input this page held, including a page discarded while its process hosts other pages.
     if (m_traversable) {
         if (auto view = m_traversable->view(); view.has_value())
@@ -1603,12 +1658,25 @@ void WebContentPage::did_request_file(ByteString path, i32 request_id)
 
 void WebContentPage::did_request_color_picker(Color current_color)
 {
-    view().did_request_color_picker({}, *this, current_color);
+    auto reply = ColorPickerReply::create([page = NonnullRefPtr { *this }](Optional<Color> color) {
+        page->async_color_picker_update(color, Web::HTML::ColorPickerUpdateState::Closed);
+    },
+        {});
+    reply->set_on_update([page = NonnullRefPtr { *this }](Optional<Color> color) {
+        page->async_color_picker_update(color, Web::HTML::ColorPickerUpdateState::Update);
+    });
+    expect_reply_from_ui(reply);
+    traversable().request_color_picker(current_color, move(reply));
 }
 
 void WebContentPage::did_request_date_picker(Utf16String input_type, Utf16String value, Utf16String minimum, Utf16String maximum)
 {
-    view().did_request_date_picker({}, *this, move(input_type), move(value), move(minimum), move(maximum));
+    auto reply = DatePickerReply::create([page = NonnullRefPtr { *this }](Optional<Utf16String> value) {
+        page->async_date_picker_closed(move(value));
+    },
+        {});
+    expect_reply_from_ui(reply);
+    traversable().request_date_picker(input_type, value, minimum, maximum, move(reply));
 }
 
 static Optional<Web::Permissions::PermissionName> permission_name_from(Utf16String const& name)
@@ -2031,7 +2099,12 @@ void WebContentPage::did_stop_geolocation_position_watch(u64 request_id)
 
 void WebContentPage::did_request_file_picker(Web::HTML::FileFilter accepted_file_types, Web::HTML::AllowMultipleFiles allow_multiple_files)
 {
-    view().did_request_file_picker({}, *this, accepted_file_types, allow_multiple_files);
+    auto reply = FilePickerReply::create([page = NonnullRefPtr { *this }](Vector<Web::HTML::SelectedFile> files) {
+        page->async_file_picker_closed(move(files));
+    },
+        {});
+    expect_reply_from_ui(reply);
+    traversable().request_file_picker(accepted_file_types, allow_multiple_files, move(reply));
 }
 
 void WebContentPage::did_finish_handling_input_event(u64 event_id, Web::EventResult event_result)
@@ -3076,51 +3149,26 @@ void WebContentPage::did_get_debugger_source_positions(u64 request_id, Vector<De
 
 void WebContentPage::did_request_alert(Utf16String message)
 {
-    did_open_dialog(Web::PendingDialog::Alert, message);
-    view().did_open_user_prompt({});
-    if (view().on_request_alert)
-        view().on_request_alert(message);
+    if (auto reply = open_dialog(Web::PendingDialog::Alert, message))
+        traversable().request_alert(message, reply.release_nonnull());
 }
 
 void WebContentPage::did_request_before_unload(String source)
 {
-    did_open_dialog(Web::PendingDialog::BeforeUnload, {});
-    auto weak_traversable = m_traversable;
-    auto origin_page_id = id();
-    auto close_prompt = [weak_traversable, origin_page_id](bool accepted) {
-        if (!weak_traversable)
-            return;
-
-        weak_traversable->for_each_hosting_page([&](WebContentPage& page) {
-            if (page.id() != origin_page_id)
-                page.async_did_open_dialog_in_another_process(Web::PendingDialog::None, Utf16View {});
-            else
-                page.routed_proxy()->async_before_unload_closed(origin_page_id, accepted);
-        });
-    };
-
-    if (view().on_request_before_unload) {
-        view().on_request_before_unload(source, move(close_prompt));
-        return;
-    }
-
-    close_prompt(true);
+    if (auto reply = open_dialog(Web::PendingDialog::BeforeUnload, {}))
+        traversable().request_before_unload(source, reply.release_nonnull());
 }
 
 void WebContentPage::did_request_confirm(Utf16String message)
 {
-    did_open_dialog(Web::PendingDialog::Confirm, message);
-    view().did_open_user_prompt({});
-    if (view().on_request_confirm)
-        view().on_request_confirm(message);
+    if (auto reply = open_dialog(Web::PendingDialog::Confirm, message))
+        traversable().request_confirm(message, reply.release_nonnull());
 }
 
 void WebContentPage::did_request_prompt(Utf16String message, Utf16String default_)
 {
-    did_open_dialog(Web::PendingDialog::Prompt, message);
-    view().did_open_user_prompt({});
-    if (view().on_request_prompt)
-        view().on_request_prompt(message, default_);
+    if (auto reply = open_dialog(Web::PendingDialog::Prompt, message))
+        traversable().request_prompt(message, default_, reply.release_nonnull());
 }
 
 void WebContentPage::did_change_favicon(Gfx::ShareableBitmap favicon)
@@ -3232,8 +3280,18 @@ void WebContentPage::did_complete_close_preflight(u64 request_id, bool approved)
 
 void WebContentPage::did_request_select_dropdown(Web::HTML::CrossProcessId local_root_id, Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items)
 {
-    if (auto target = view_position(local_root_id, content_position); target.has_value())
-        target->view.did_request_select_dropdown({}, *this, target->position, minimum_width, move(items));
+    auto reply = SelectDropdownReply::create([page = NonnullRefPtr { *this }](Optional<u32> item) {
+        page->async_select_dropdown_closed(item);
+    },
+        {});
+    expect_reply_from_ui(reply);
+    auto local_root = hosted_navigable(local_root_id);
+    if (!local_root.has_value()) {
+        reply->cancel();
+        return;
+    }
+    content_position.translate_by(traversable().local_root_offset(*local_root).to_type<int>());
+    traversable().request_select_dropdown(content_position, minimum_width, move(items), move(reply));
 }
 
 void WebContentPage::did_request_primary_paste()

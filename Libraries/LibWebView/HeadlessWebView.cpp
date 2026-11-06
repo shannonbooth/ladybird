@@ -133,16 +133,16 @@ HeadlessWebView::HeadlessWebView(Core::AnonymousBuffer theme, Web::DevicePixelSi
         set_is_fullscreen(Web::ViewportIsFullscreen::No);
     };
 
-    on_request_alert = [this](auto const&) {
-        m_pending_dialog = Web::PendingDialog::Alert;
+    on_request_alert = [this](auto const&, auto reply) {
+        m_pending_dialog_reply = move(reply);
     };
 
-    on_request_confirm = [this](auto const&) {
-        m_pending_dialog = Web::PendingDialog::Confirm;
+    on_request_confirm = [this](auto const&, auto reply) {
+        m_pending_dialog_reply = move(reply);
     };
 
-    on_request_prompt = [this](auto const&, auto const& prompt_text) {
-        m_pending_dialog = Web::PendingDialog::Prompt;
+    on_request_prompt = [this](auto const&, auto const& prompt_text, auto reply) {
+        m_pending_dialog_reply = move(reply);
         m_pending_prompt_text = prompt_text;
     };
 
@@ -151,47 +151,13 @@ HeadlessWebView::HeadlessWebView(Core::AnonymousBuffer theme, Web::DevicePixelSi
     };
 
     on_request_accept_dialog = [this]() {
-        switch (m_pending_dialog) {
-        case Web::PendingDialog::None:
-            VERIFY_NOT_REACHED();
-            break;
-        case Web::PendingDialog::Alert:
-            alert_closed();
-            break;
-        case Web::PendingDialog::BeforeUnload:
-            before_unload_closed(true);
-            break;
-        case Web::PendingDialog::Confirm:
-            confirm_closed(true);
-            break;
-        case Web::PendingDialog::Prompt:
-            prompt_closed(move(m_pending_prompt_text));
-            break;
-        }
-
-        m_pending_dialog = Web::PendingDialog::None;
+        VERIFY(m_pending_dialog_reply);
+        m_pending_dialog_reply.release_nonnull()->complete(true, move(m_pending_prompt_text));
     };
 
     on_request_dismiss_dialog = [this]() {
-        switch (m_pending_dialog) {
-        case Web::PendingDialog::None:
-            VERIFY_NOT_REACHED();
-            break;
-        case Web::PendingDialog::Alert:
-            alert_closed();
-            break;
-        case Web::PendingDialog::BeforeUnload:
-            before_unload_closed(false);
-            break;
-        case Web::PendingDialog::Confirm:
-            confirm_closed(false);
-            break;
-        case Web::PendingDialog::Prompt:
-            prompt_closed({});
-            break;
-        }
-
-        m_pending_dialog = Web::PendingDialog::None;
+        VERIFY(m_pending_dialog_reply);
+        m_pending_dialog_reply.release_nonnull()->complete(false, {});
         m_pending_prompt_text.clear();
     };
 }

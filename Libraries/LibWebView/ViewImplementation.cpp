@@ -112,6 +112,18 @@ ViewImplementation::ViewImplementation(IsPrivate is_private)
 
 ViewImplementation::~ViewImplementation()
 {
+    // The frontend is going away and takes its own UI down, so the requests it was showing get their no-UI answers.
+    auto cancel = [](auto& reply) {
+        if (!reply)
+            return;
+        reply->on_cancel = nullptr;
+        reply->cancel();
+    };
+    cancel(m_dialog_reply);
+    cancel(m_color_picker_reply);
+    cancel(m_date_picker_reply);
+    cancel(m_file_picker_reply);
+    cancel(m_select_dropdown_reply);
     if (m_top_level_traversable)
         m_top_level_traversable->presentation().on_change = nullptr;
     // The frontend may be torn down already, so clearing the ongoing navigation must not report a URL change to it, nor
@@ -2782,109 +2794,98 @@ void ViewImplementation::set_is_fullscreen(Web::ViewportIsFullscreen is_fullscre
     handle_resize();
 }
 
-// NB: Every page of the tab holds the dialog a document of one of them opened.
-void ViewImplementation::alert_closed()
+template<typename Reply>
+static bool is_pending(RefPtr<Reply> const& reply)
 {
-    traversable().for_each_hosting_page([&](WebContentPage& page) {
-        page.async_alert_closed();
-    });
+    return reply && reply->is_pending();
 }
 
-void ViewImplementation::before_unload_closed(bool accepted)
+bool ViewImplementation::has_open_dialog() const
 {
-    page().routed_proxy()->async_before_unload_closed(page().id(), accepted);
+    return is_pending(m_dialog_reply);
 }
 
-void ViewImplementation::confirm_closed(bool accepted)
+void ViewImplementation::request_alert(Badge<CanonicalTraversable>, Utf16String const& message, NonnullRefPtr<DialogReply> reply)
 {
-    traversable().for_each_hosting_page([&](WebContentPage& page) {
-        page.async_confirm_closed(accepted);
-    });
-}
-
-void ViewImplementation::prompt_closed(Optional<Utf16String> const& response)
-{
-    traversable().for_each_hosting_page([&](WebContentPage& page) {
-        page.async_prompt_closed(response);
-    });
-}
-
-// The UI shows one dialog of a kind at a time, so a page asking while another page's is open is told it closed.
-static bool another_page_awaits(RefPtr<WebContentPage> const& owner, WebContentPage& requesting_page)
-{
-    return owner && owner->is_open() && owner.ptr() != &requesting_page;
-}
-
-void ViewImplementation::did_request_color_picker(Badge<WebContentPage>, WebContentPage& requesting_page, Color current_color)
-{
-    if (another_page_awaits(m_color_picker_page, requesting_page)) {
-        requesting_page.async_color_picker_update({}, Web::HTML::ColorPickerUpdateState::Closed);
+    if (!on_request_alert) {
+        reply->cancel();
         return;
     }
-    m_color_picker_page = requesting_page;
-    if (on_request_color_picker)
-        on_request_color_picker(current_color);
+    m_dialog_reply = reply;
+    complete_webdriver_navigation();
+    on_request_alert(message, move(reply));
 }
 
-void ViewImplementation::color_picker_update(Optional<Color> picked_color, Web::HTML::ColorPickerUpdateState state)
+void ViewImplementation::request_confirm(Badge<CanonicalTraversable>, Utf16String const& message, NonnullRefPtr<DialogReply> reply)
 {
-    NonnullRefPtr<WebContentPage> target = m_color_picker_page ? *m_color_picker_page : page();
-    if (state == Web::HTML::ColorPickerUpdateState::Closed)
-        m_color_picker_page.clear();
-    target->async_color_picker_update(picked_color, state);
-}
-
-void ViewImplementation::did_request_date_picker(Badge<WebContentPage>, WebContentPage& requesting_page, Utf16String input_type, Utf16String value, Utf16String minimum, Utf16String maximum)
-{
-    if (another_page_awaits(m_date_picker_page, requesting_page) || !on_request_date_picker) {
-        requesting_page.async_date_picker_closed({});
+    if (!on_request_confirm) {
+        reply->cancel();
         return;
     }
-    m_date_picker_page = requesting_page;
-    on_request_date_picker(input_type, value, minimum, maximum);
+    m_dialog_reply = reply;
+    complete_webdriver_navigation();
+    on_request_confirm(message, move(reply));
 }
 
-void ViewImplementation::date_picker_closed(Optional<Utf16String> picked_value)
+void ViewImplementation::request_prompt(Badge<CanonicalTraversable>, Utf16String const& message, Utf16String const& default_value, NonnullRefPtr<DialogReply> reply)
 {
-    NonnullRefPtr<WebContentPage> target = m_date_picker_page ? *m_date_picker_page : page();
-    m_date_picker_page.clear();
-    target->async_date_picker_closed(move(picked_value));
-}
-
-void ViewImplementation::did_request_file_picker(Badge<WebContentPage>, WebContentPage& requesting_page, Web::HTML::FileFilter const& accepted_file_types, Web::HTML::AllowMultipleFiles allow_multiple_files)
-{
-    if (another_page_awaits(m_file_picker_page, requesting_page)) {
-        requesting_page.async_file_picker_closed({});
+    if (!on_request_prompt) {
+        reply->cancel();
         return;
     }
-    m_file_picker_page = requesting_page;
-    if (on_request_file_picker)
-        on_request_file_picker(accepted_file_types, allow_multiple_files);
+    m_dialog_reply = reply;
+    complete_webdriver_navigation();
+    on_request_prompt(message, default_value, move(reply));
 }
 
-void ViewImplementation::file_picker_closed(Vector<Web::HTML::SelectedFile> selected_files)
+void ViewImplementation::request_before_unload(Badge<CanonicalTraversable>, String const& source, NonnullRefPtr<DialogReply> reply)
 {
-    NonnullRefPtr<WebContentPage> target = m_file_picker_page ? *m_file_picker_page : page();
-    m_file_picker_page.clear();
-    target->async_file_picker_closed(move(selected_files));
-}
-
-void ViewImplementation::did_request_select_dropdown(Badge<WebContentPage>, WebContentPage& requesting_page, Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items)
-{
-    if (another_page_awaits(m_select_dropdown_page, requesting_page)) {
-        requesting_page.async_select_dropdown_closed({});
+    if (!on_request_before_unload) {
+        reply->cancel();
         return;
     }
-    m_select_dropdown_page = requesting_page;
-    if (on_request_select_dropdown)
-        on_request_select_dropdown(to_widget_position(content_position), minimum_width / device_pixel_ratio(), move(items));
+    m_dialog_reply = reply;
+    on_request_before_unload(source, move(reply));
 }
 
-void ViewImplementation::select_dropdown_closed(Optional<u32> const& selected_item_id)
+void ViewImplementation::request_color_picker(Badge<CanonicalTraversable>, Color color, NonnullRefPtr<ColorPickerReply> reply)
 {
-    NonnullRefPtr<WebContentPage> target = m_select_dropdown_page ? *m_select_dropdown_page : page();
-    m_select_dropdown_page.clear();
-    target->async_select_dropdown_closed(selected_item_id);
+    if (is_pending(m_color_picker_reply) || !on_request_color_picker) {
+        reply->cancel();
+        return;
+    }
+    m_color_picker_reply = reply;
+    on_request_color_picker(color, move(reply));
+}
+
+void ViewImplementation::request_date_picker(Badge<CanonicalTraversable>, Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, NonnullRefPtr<DatePickerReply> reply)
+{
+    if (is_pending(m_date_picker_reply) || !on_request_date_picker) {
+        reply->cancel();
+        return;
+    }
+    m_date_picker_reply = reply;
+    on_request_date_picker(input_type, value, minimum, maximum, move(reply));
+}
+
+void ViewImplementation::request_file_picker(Badge<CanonicalTraversable>, Web::HTML::FileFilter const& filter, Web::HTML::AllowMultipleFiles allow_multiple_files, NonnullRefPtr<FilePickerReply> reply)
+{
+    if (is_pending(m_file_picker_reply) || !on_request_file_picker) {
+        reply->cancel();
+        return;
+    }
+    m_file_picker_reply = reply;
+    on_request_file_picker(filter, allow_multiple_files, move(reply));
+}
+
+void ViewImplementation::request_select_dropdown(Badge<CanonicalTraversable>, Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items, NonnullRefPtr<SelectDropdownReply> reply)
+{
+    if (is_pending(m_select_dropdown_reply) || !on_request_select_dropdown) {
+        reply->cancel();
+        return;
+    }
+    m_select_dropdown_reply = reply;
+    on_request_select_dropdown(to_widget_position(content_position), minimum_width / device_pixel_ratio(), move(items), move(reply));
 }
 
 // The page hosting the tab's focused navigable, which the view's own page is when no other process hosts it.
@@ -3866,11 +3867,6 @@ void ViewImplementation::did_complete_webdriver_user_prompt_handling(Badge<WebCo
 {
     if (auto on_complete = m_pending_webdriver_user_prompt_requests.take(request_id); on_complete.has_value())
         on_complete.value()(move(response));
-}
-
-void ViewImplementation::did_open_user_prompt(Badge<WebContentPage>)
-{
-    complete_webdriver_navigation();
 }
 
 Optional<ViewImplementation&> ViewImplementation::find_view_by_handle(StringView handle)
