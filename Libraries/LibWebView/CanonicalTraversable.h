@@ -32,6 +32,7 @@
 #include <LibWebView/SessionHistory.h>
 #include <LibWebView/SessionHistoryTraversalQueue.h>
 #include <LibWebView/TabId.h>
+#include <LibWebView/TabPresentationState.h>
 #include <LibWebView/WebContentPage.h>
 
 namespace WebView {
@@ -129,6 +130,9 @@ public:
     void release_page_if_unused(NonnullRefPtr<WebContentPage>);
     void end_history_jobs(CanonicalNavigable const&, CanonicalDocument const* populated_document = nullptr);
 
+    TabPresentationState& presentation() { return m_presentation; }
+    TabPresentationState const& presentation() const { return m_presentation; }
+
     BrowsingSession& session() const { return *m_session; }
     TabId tab_id() const { return m_tab_id; }
     Optional<TabId> owner_tab_id() const { return m_owner_tab_id; }
@@ -209,6 +213,7 @@ public:
 
 private:
     NonnullRefPtr<BrowsingSession> m_session;
+    TabPresentationState m_presentation;
     TabId const m_tab_id;
     Optional<TabId> m_owner_tab_id;
     String const m_window_handle;

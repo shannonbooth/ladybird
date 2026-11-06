@@ -1535,8 +1535,11 @@ void CanonicalNavigable::did_commit_navigation(CanonicalSessionHistoryEntry& ent
         auto& traversable = top_level_traversable();
         if (document->host())
             traversable.did_activate_document_in({}, *document->host());
-        if (auto view = traversable.view(); view.has_value() && traversable.display_page() != previous_display_page)
-            view->did_change_display_page({}, previous_display_page);
+        if (traversable.display_page() != previous_display_page) {
+            traversable.presentation().update_audibility();
+            if (auto view = traversable.view(); view.has_value())
+                view->did_change_display_page({}, previous_display_page);
+        }
     }
     update_hosted_state(move(hosted_state));
     if (document != previous_document && document->is_completely_loaded())
@@ -1768,6 +1771,7 @@ void CanonicalNavigable::did_cancel_navigation(Utf16String navigation_id)
 
     if (!is_tracked_load || !is_top_level_traversable())
         return;
+    top_level_traversable().presentation().set_loading(false);
     // A navigation being finalized that is canceled never activates its document, like an uncommitted one.
     if (auto view = top_level_traversable().view(); view.has_value())
         view->did_cancel_loading({}, navigation != nullptr);

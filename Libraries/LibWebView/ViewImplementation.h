@@ -206,16 +206,15 @@ public:
     void did_change_ongoing_navigation(Badge<CanonicalNavigable>);
     void did_change_active_document(Badge<CanonicalTraversable>);
 
-    void set_text_fragment_indication_visibility(Badge<WebContentPage>, bool);
     // The URL of the tab's active document.
     URL::URL url() const;
     URL::URL const& displayed_url() const { return m_displayed_url; }
 
     void set_title(Badge<WebContentPage>, Utf16String title) { set_title(move(title)); }
-    Utf16String const& title() const { return m_title; }
+    Utf16String const& title() const;
 
     void set_favicon(Badge<WebContentPage>, Optional<Gfx::Bitmap const&> favicon) { set_favicon(favicon); }
-    Optional<String> const& favicon_hash() const { return m_favicon_hash; }
+    Optional<String> const& favicon_hash() const;
 
     String const& handle() const;
 
@@ -246,7 +245,7 @@ public:
     void reload(BypassCache = BypassCache::No);
     void reload_for_webdriver_bidi(BypassCache, Utf16String navigation_id);
     void stop_loading();
-    bool is_loading() const { return m_is_loading; }
+    bool is_loading() const { return has_traversable() && traversable().presentation().is_loading(); }
 
     bool crash_overlay_active() const { return m_crash_state.has_value(); }
     String crash_overlay_failed_url() const;
@@ -514,7 +513,6 @@ public:
 
     bool tab_indicator_visible(TabIndicator indicator) const { return m_tab_indicators.is_visible(indicator); }
     u64 playing_audio_indicator_change_count() const { return m_playing_audio_indicator_change_count; }
-    void did_change_screen_wake_lock_state(Badge<WebContentPage>, Web::ScreenWakeLockState);
 
     void did_reset_state_for_testing(Badge<WebContentPage>, Web::HTML::SessionHistoryEntryDescriptor);
     bool capture_session_history_snapshot_for_testing(Badge<WebContentPage>);
@@ -544,7 +542,6 @@ public:
     void did_complete_webdriver_user_prompt_handling(Badge<WebContentPage>, u64 request_id, Web::WebDriver::Response);
     void did_open_user_prompt(Badge<WebContentPage>);
     static Optional<ViewImplementation&> find_view_by_handle(StringView);
-    void did_change_background_color(Badge<WebContentPage>, Gfx::Color);
     Gfx::Color page_background_color() const { return m_page_background_color; }
 
     void did_allocate_backing_stores(Badge<WebContentPage>, Vector<i32> bitmap_ids, Vector<Gfx::SharedImage> backing_stores);
@@ -644,7 +641,6 @@ public:
     Function<void(u64 request_id, u32 status_code, Optional<String> const&, Vector<HTTP::Header> const&, Requests::CacheState)> on_network_response_headers_received;
     Function<void(u64 request_id, ByteBuffer)> on_network_response_body_received;
     Function<void(u64 request_id, u64 body_size, Requests::RequestTimingInfo const&, Optional<Requests::NetworkError> const&)> on_network_request_finished;
-    Function<void(i32 count_waiting)> on_resource_status_change;
     Function<void()> on_restore_window;
     Function<void(Gfx::IntPoint)> on_reposition_window;
     Function<void(Gfx::IntSize)> on_resize_window;
@@ -671,7 +667,6 @@ public:
     Function<void(double milliseconds)> on_set_test_timeout;
     Function<void(JsonValue)> on_reference_test_metadata;
     Function<void(size_t current_match_index, Optional<size_t> const& total_match_count)> on_find_in_page;
-    Function<void(Gfx::Color)> on_theme_color_change;
     Function<void(Gfx::Color)> on_page_background_color_change;
     Function<void(Web::ScreenWakeLockState)> on_screen_wake_lock_state_changed;
     enum class WebContentCrashReason {
@@ -901,9 +896,6 @@ protected:
     };
     Optional<BrowserUILoad> m_browser_ui_load;
     URL::URL m_displayed_url { URL::about_blank() };
-    bool m_text_fragment_indication_is_visible { false };
-    Utf16String m_title;
-    Optional<String> m_favicon_hash;
 
     struct CrashState {
         URL::URL failed_url;
@@ -1037,7 +1029,6 @@ protected:
 
     bool m_can_undo { false };
     bool m_can_redo { false };
-    bool m_is_loading { false };
     // WebDriver's observation of the top-level navigation completion state. The navigation itself is the
     // canonical traversable's ongoing navigation record.
     struct WebDriverNavigationObservation {
@@ -1115,7 +1106,6 @@ protected:
 
     TabIndicators m_tab_indicators;
     u64 m_playing_audio_indicator_change_count { 0 };
-    Web::ScreenWakeLockState m_screen_wake_lock_state { Web::ScreenWakeLockState::Released };
 
     Web::HTML::MuteState m_mute_state { Web::HTML::MuteState::Unmuted };
 
@@ -1218,8 +1208,6 @@ protected:
 
     HashMap<u64, NavigationListener> m_navigation_listeners;
     u64 m_next_navigation_listener_id { 1 };
-
-    Vector<BlockedResource> m_blocked_resources;
 
     enum class NodePickerRequestType : u8 {
         Hovered,

@@ -112,6 +112,8 @@ ViewImplementation::ViewImplementation(IsPrivate is_private)
 
 ViewImplementation::~ViewImplementation()
 {
+    if (m_top_level_traversable)
+        m_top_level_traversable->presentation().on_change = nullptr;
     // The frontend may be torn down already, so clearing the ongoing navigation must not report a URL change to it, nor
     // cancelling the view's location requests or closing the view's page (which revokes its audio playback) a change
     // in what the tab shows.
@@ -199,6 +201,48 @@ void ViewImplementation::display_traversable(CanonicalTraversable& traversable, 
     traversable.set_view({}, *this);
     traversable.set_owner_tab_id({}, m_pending_owner_tab_id);
     traversable.set_system_visibility_state(system_visibility_state);
+    traversable.presentation().on_change = [this](TabPresentationState::Change change) {
+        auto& state = this->traversable().presentation();
+        switch (change) {
+        case TabPresentationState::Change::Title:
+            if (on_title_change)
+                on_title_change(state.title());
+            break;
+        case TabPresentationState::Change::URL:
+            did_update_url();
+            break;
+        case TabPresentationState::Change::Favicon:
+            if (on_favicon_change)
+                on_favicon_change(state.favicon() ? Optional<Gfx::Bitmap const&> { *state.favicon() } : Optional<Gfx::Bitmap const&> {});
+            break;
+        case TabPresentationState::Change::Loading:
+            if (on_loading_state_change)
+                on_loading_state_change(state.is_loading());
+            break;
+        case TabPresentationState::Change::Audibility:
+            m_tab_indicators.set_active(TabIndicator::PlayingAudio, state.audibility() == Audio::Audibility::Audible, MonotonicTime::now());
+            break;
+        case TabPresentationState::Change::ContentBlocking:
+            notify_content_blocking_changed();
+            break;
+        case TabPresentationState::Change::BackgroundColor:
+            if (auto color = state.background_color(); color.has_value())
+                set_page_background_color(*color);
+            break;
+        case TabPresentationState::Change::ScreenWakeLock:
+            if (on_screen_wake_lock_state_changed)
+                on_screen_wake_lock_state_changed(state.screen_wake_lock_state());
+            break;
+        case TabPresentationState::Change::TextFragmentIndication:
+            update_displayed_url();
+            break;
+        case TabPresentationState::Change::ThemeColor:
+        case TabPresentationState::Change::ResourceCount:
+            break;
+        }
+    };
+    for (auto change : { TabPresentationState::Change::Title, TabPresentationState::Change::URL, TabPresentationState::Change::Favicon, TabPresentationState::Change::Loading, TabPresentationState::Change::Audibility, TabPresentationState::Change::ContentBlocking })
+        traversable.presentation().on_change(change);
     traversable.on_session_history_changed = [this] {
         notify_session_history_changed();
     };
@@ -374,8 +418,6 @@ void ViewImplementation::did_change_active_document(Badge<CanonicalTraversable>)
     ignore_pending_permission_prompts();
     report_permission_presence();
     m_permissions_requested_by_page.clear();
-    set_title(Utf16String::from_utf8(url().serialize()));
-    set_favicon({});
     did_update_url();
 }
 
@@ -389,13 +431,14 @@ void ViewImplementation::update_displayed_url()
         if (auto position = raw_fragment->find(":~:"sv); position.has_value())
             displayed_url_without_fragment_directive.set_fragment(raw_fragment->substring_view(0, *position));
     }
-    if (!m_text_fragment_indication_is_visible)
+    auto text_fragment_indication_is_visible = m_top_level_traversable && traversable().presentation().text_fragment_indication_is_visible();
+    if (!text_fragment_indication_is_visible)
         displayed_url = displayed_url_without_fragment_directive;
 
     if (m_top_level_traversable) {
         auto const& current_entry = traversable().session_history().current_entry();
         if (current_entry.url == displayed_url_without_fragment_directive)
-            displayed_url = display_url_for_session_history_entry(current_entry.descriptor(), m_text_fragment_indication_is_visible);
+            displayed_url = display_url_for_session_history_entry(current_entry.descriptor(), text_fragment_indication_is_visible);
     }
 
     if (m_displayed_url == displayed_url)
@@ -405,42 +448,26 @@ void ViewImplementation::update_displayed_url()
         on_url_change(m_displayed_url);
 }
 
-void ViewImplementation::set_text_fragment_indication_visibility(Badge<WebContentPage>, bool visible)
+Utf16String const& ViewImplementation::title() const
 {
-    if (m_text_fragment_indication_is_visible == visible)
-        return;
-    m_text_fragment_indication_is_visible = visible;
-    update_displayed_url();
+    static NeverDestroyed<Utf16String> empty;
+    return has_traversable() ? traversable().presentation().title() : *empty;
+}
+
+Optional<String> const& ViewImplementation::favicon_hash() const
+{
+    static NeverDestroyed<Optional<String>> empty;
+    return has_traversable() ? traversable().presentation().favicon_hash() : *empty;
 }
 
 void ViewImplementation::set_title(Utf16String title)
 {
-    if (m_title == title)
-        return;
-
-    m_title = move(title);
-
-    if (on_title_change)
-        on_title_change(m_title);
+    traversable().presentation().set_title(move(title));
 }
 
 void ViewImplementation::set_favicon(Optional<Gfx::Bitmap const&> favicon)
 {
-    m_favicon_hash.clear();
-
-    if (favicon.has_value()) {
-        if (auto favicon_png = Gfx::PNGWriter::encode(*favicon); !favicon_png.is_error())
-            m_favicon_hash = m_session->favicon_store->add_favicon(favicon_png.release_value());
-
-        if (m_favicon_hash.has_value()) {
-            if (m_is_private == IsPrivate::No)
-                Application::bookmark_store().update_favicon(url(), *m_favicon_hash);
-            m_session->history_store->update_favicon(url(), *m_favicon_hash);
-        }
-    }
-
-    if (on_favicon_change)
-        on_favicon_change(favicon);
+    traversable().presentation().set_favicon(favicon);
 }
 
 // The tab is displayed in a process of its own, whose page starts from a document standing in for the entry of the
@@ -555,7 +582,7 @@ void ViewImplementation::load(Web::HTML::PreparedNavigationDescriptor navigation
     m_last_stopped_navigation.clear();
     if (navigation.url.scheme() != "javascript"sv) {
         if (navigation.url.fragment().has_value() && navigation.url.fragment()->contains(":~:"sv))
-            m_text_fragment_indication_is_visible = true;
+            traversable().presentation().set_text_fragment_indication_visible(true);
         m_browser_ui_load = BrowserUILoad { navigation.navigation_id, navigation.url };
     }
     traversable().begin_navigation(move(navigation));
@@ -743,7 +770,7 @@ void ViewImplementation::reload_for_webdriver_bidi(BypassCache bypass_cache, Utf
 
 void ViewImplementation::stop_loading()
 {
-    if (!m_is_loading)
+    if (!is_loading())
         return;
     // Only a stopped navigation that never activated its document needs reissuing on reload; a stopped
     // active-document load reloads through the session history. A navigation a history operation is finalizing is
@@ -2670,39 +2697,14 @@ void ViewImplementation::request_style_sheet_source(Web::CSS::StyleSheetIdentifi
     page().async_request_style_sheet_source(identifier);
 }
 
-// The page names what it blocked, so its kind is taken only from those the content blocker names, and the list of what
-// was blocked is kept short, each host and kind listed once.
-static constexpr size_t MAX_BLOCKED_RESOURCES = 100;
-
-static StringView known_blocked_resource_kind(StringView kind)
-{
-    static constexpr Array kinds { "Script"sv, "Image"sv, "Stylesheet"sv, "Font"sv, "Media"sv, "Frame"sv, "Request"sv };
-    for (auto known_kind : kinds) {
-        if (kind == known_kind)
-            return known_kind;
-    }
-    return "Request"sv;
-}
-
 void ViewImplementation::did_block_resource(Badge<WebContentPage>, URL::URL const& url, StringView kind)
 {
-    if (m_blocked_resources.size() >= MAX_BLOCKED_RESOURCES)
-        return;
-
-    auto host = MUST(String::from_utf8(url.serialized_host()));
-    auto resource_kind = known_blocked_resource_kind(kind);
-    auto is_listed = any_of(m_blocked_resources, [&](auto const& resource) { return resource.host == host && resource.kind == resource_kind; });
-    if (host.is_empty() || is_listed)
-        return;
-
-    m_blocked_resources.append({ move(host), resource_kind });
-    notify_content_blocking_changed();
+    traversable().presentation().did_block_resource(page().id(), url, kind);
 }
 
 void ViewImplementation::reset_blocked_resources()
 {
-    m_blocked_resources.clear();
-    notify_content_blocking_changed();
+    traversable().presentation().reset_blocked_resources();
 }
 
 void ViewImplementation::notify_content_blocking_changed()
@@ -2714,7 +2716,7 @@ void ViewImplementation::notify_content_blocking_changed()
 ContentBlockingSnapshot ViewImplementation::content_blocking_snapshot() const
 {
     ContentBlockingSnapshot snapshot;
-    snapshot.blocked_resources = m_blocked_resources;
+    snapshot.blocked_resources = traversable().presentation().blocked_resources();
 
     if (m_crash_state.has_value() || !traversable().active_document().host())
         return snapshot;
@@ -2946,33 +2948,14 @@ void ViewImplementation::toggle_page_mute_state()
 
 void ViewImplementation::update_audibility()
 {
-    auto audible = false;
-    traversable().for_each_hosting_page([&](WebContentPage& page) {
-        if (page.audibility() == Audio::Audibility::Audible)
-            audible = true;
-    });
-    m_tab_indicators.set_active(TabIndicator::PlayingAudio, audible, MonotonicTime::now());
+    traversable().presentation().update_audibility();
 }
 
 void ViewImplementation::reset_page_media_state()
 {
     update_audibility();
 
-    if (m_screen_wake_lock_state != Web::ScreenWakeLockState::Released) {
-        m_screen_wake_lock_state = Web::ScreenWakeLockState::Released;
-        if (on_screen_wake_lock_state_changed)
-            on_screen_wake_lock_state_changed(m_screen_wake_lock_state);
-    }
-}
-
-void ViewImplementation::did_change_screen_wake_lock_state(Badge<WebContentPage>, Web::ScreenWakeLockState wake_lock_state)
-{
-    if (m_screen_wake_lock_state == wake_lock_state)
-        return;
-
-    m_screen_wake_lock_state = wake_lock_state;
-    if (on_screen_wake_lock_state_changed)
-        on_screen_wake_lock_state_changed(m_screen_wake_lock_state);
+    traversable().presentation().set_screen_wake_lock_state(Web::ScreenWakeLockState::Released);
 }
 
 bool ViewImplementation::needs_beforeunload_check() const
@@ -2984,11 +2967,6 @@ bool ViewImplementation::needs_beforeunload_check() const
             needs_beforeunload_check = true;
     });
     return needs_beforeunload_check;
-}
-
-void ViewImplementation::did_change_background_color(Badge<WebContentPage>, Gfx::Color color)
-{
-    set_page_background_color(color);
 }
 
 void ViewImplementation::set_page_background_color_to_system_canvas(bool dark)
@@ -3353,11 +3331,7 @@ void ViewImplementation::did_finish_navigation()
 
 void ViewImplementation::set_loading_state(bool is_loading)
 {
-    if (m_is_loading == is_loading)
-        return;
-    m_is_loading = is_loading;
-    if (on_loading_state_change)
-        on_loading_state_change(is_loading);
+    traversable().presentation().set_loading(is_loading);
 }
 
 void ViewImplementation::run_webdriver_content_command(u64 command_id, Web::WebDriver::SessionBrowsingContext browsing_context, String const& name, JsonValue payload, Vector<String> arguments)
@@ -4012,7 +3986,7 @@ JsonValue ViewImplementation::webdriver_session_history() const
     JsonObject serialized;
     serialized.set("currentURL"sv, url().serialize());
     serialized.set("displayedURL"sv, m_displayed_url.serialize());
-    serialized.set("title"sv, m_title.to_utf8());
+    serialized.set("title"sv, title().to_utf8());
     serialized.set("webContentProcessID"sv, page().client().pid());
     serialized.set("backButtonEnabled"sv, m_navigate_back_action->enabled());
     serialized.set("forwardButtonEnabled"sv, m_navigate_forward_action->enabled());

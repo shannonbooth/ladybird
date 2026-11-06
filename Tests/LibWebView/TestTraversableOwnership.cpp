@@ -6,6 +6,7 @@
 
 #include <AK/ScopeGuard.h>
 #include <LibTest/TestCase.h>
+#include <LibURL/Parser.h>
 #include <LibWebView/CanonicalBrowsingContext.h>
 #include <LibWebView/CanonicalDocument.h>
 #include <LibWebView/CanonicalTraversable.h>
@@ -66,4 +67,44 @@ TEST_CASE(tabs_have_distinct_identity_even_when_they_share_a_session)
     EXPECT_EQ(order.size(), 2u);
     EXPECT_EQ(order[0], first.tab_id());
     EXPECT_EQ(order[1], second.tab_id());
+}
+
+TEST_CASE(presentation_is_retained_without_a_view_and_observers_can_disconnect)
+{
+    auto& traversable = create_traversable(WebView::BrowsingSession::create(WebView::IsPrivate::No), 5);
+    ScopeGuard destroy = [&] { traversable.destroy(); };
+    auto& state = traversable.presentation();
+    auto url = URL::Parser::basic_parse("https://example.com/"sv).release_value();
+    size_t notifications = 0;
+    state.on_change = [&](auto) { ++notifications; };
+    state.set_title("Document title"_utf16);
+    state.set_url(url);
+    state.set_loading(true);
+    EXPECT_EQ(notifications, 3u);
+    state.on_change = nullptr;
+    state.set_title("Changed without a view"_utf16);
+    state.set_loading(false);
+    EXPECT_EQ(notifications, 3u);
+    EXPECT_EQ(state.title(), "Changed without a view"_utf16);
+    EXPECT_EQ(state.url(), url);
+    EXPECT(!state.is_loading());
+}
+
+TEST_CASE(blocked_resource_totals_include_each_hosting_page)
+{
+    auto& traversable = create_traversable(WebView::BrowsingSession::create(WebView::IsPrivate::No), 6);
+    ScopeGuard destroy = [&] { traversable.destroy(); };
+    auto& state = traversable.presentation();
+    auto url = URL::Parser::basic_parse("https://ads.example/script.js"sv).release_value();
+    state.did_block_resource(Web::PageId { 1 }, url, "Script"sv);
+    state.did_block_resource(Web::PageId { 1 }, url, "Script"sv);
+    state.did_block_resource(Web::PageId { 2 }, url, "unknown kind"sv);
+    EXPECT_EQ(state.blocked_resource_count(), 3u);
+    EXPECT_EQ(state.blocked_resources().size(), 2u);
+    EXPECT_EQ(state.blocked_resources()[1].kind, "Request"sv);
+    state.page_closed(Web::PageId { 1 });
+    EXPECT_EQ(state.blocked_resource_count(), 1u);
+    state.reset_blocked_resources();
+    EXPECT_EQ(state.blocked_resource_count(), 0u);
+    EXPECT(state.blocked_resources().is_empty());
 }

@@ -45,7 +45,7 @@ if (BUILD_BROWSER_TESTS_ONLY)
     return()
 endif()
 
-ladybird_test(TestTraversableOwnership.cpp LibWebView LIBS LibWebView)
+ladybird_test(TestTraversableOwnership.cpp LibWebView LIBS LibWebView LibURL)
 
 ladybird_test_suite(LibWebView)
 
