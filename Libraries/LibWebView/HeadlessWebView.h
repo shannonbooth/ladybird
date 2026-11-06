@@ -44,11 +44,6 @@ public:
     // Child crashes then no longer reach this window. The children stay, as deferred tasks may still reach them.
     void disconnect_child_crash_handlers();
 
-    virtual Web::DevicePixelSize viewport_size() const override { return m_viewport_size; }
-    virtual Gfx::IntPoint to_content_position(Gfx::IntPoint widget_position) const override { return widget_position; }
-    virtual Gfx::IntPoint to_widget_position(Gfx::IntPoint content_position) const override { return content_position; }
-    virtual Core::AnonymousBuffer system_theme() override { return m_theme; }
-    virtual Optional<ScreenRects> screen_rects() const override;
     virtual ViewImplementation* create_view_for_new_tab_or_window(IsPrivate) override;
 
 protected:

@@ -51,7 +51,7 @@ private:
 NonnullOwnPtr<PictureInPictureWindow> HeadlessWebView::create_picture_in_picture_window(CanonicalTraversable& traversable, ViewImplementation const& owner, Gfx::IntSize video_size)
 {
     auto size = PictureInPictureWindow::initial_size(video_size, screen_rect.size().to_type<int>());
-    auto theme = owner.surface() ? owner.surface()->system_theme() : Core::AnonymousBuffer {};
+    auto theme = owner.system_theme();
     auto& tab = traversable.view();
     traversable.set_system_visibility_state(Web::HTML::VisibilityState::Visible);
     auto web_view = adopt_own(*new HeadlessWebView(move(theme), size.to_type<Web::DevicePixels>(), tab));
@@ -86,6 +86,9 @@ HeadlessWebView::HeadlessWebView(Core::AnonymousBuffer theme, Web::DevicePixelSi
     , m_viewport_size(viewport_size)
 {
     tab.attach_surface(*this);
+    tab.set_viewport_size(viewport_size);
+    tab.set_system_theme(m_theme);
+    tab.set_screen_rects({ .rects = { screen_rect }, .available_rects = { screen_rect }, .main_screen_index = 0 });
 
     // A headless window is exactly its viewport, so every page gets the viewport as its window size.
     tab.set_window_size(viewport_size.to_type<int>());
@@ -103,7 +106,7 @@ HeadlessWebView::HeadlessWebView(Core::AnonymousBuffer theme, Web::DevicePixelSi
         m_viewport_size = size.template to_type<Web::DevicePixels>();
 
         this->tab().set_window_size(size);
-        this->tab().handle_resize();
+        this->tab().set_viewport_size(m_viewport_size);
     };
 
     tab.on_restore_window = [this]() {
@@ -120,7 +123,7 @@ HeadlessWebView::HeadlessWebView(Core::AnonymousBuffer theme, Web::DevicePixelSi
 
         this->tab().set_window_position(screen_rect.location().to_type<int>());
         this->tab().set_window_size(screen_rect.size().to_type<int>());
-        this->tab().handle_resize();
+        this->tab().set_viewport_size(m_viewport_size);
     };
 
     tab.on_fullscreen_window = [this]() {
@@ -279,17 +282,12 @@ void HeadlessWebView::schedule_forced_close()
         m_forced_close_timer->start();
 }
 
-Optional<ScreenRects> HeadlessWebView::screen_rects() const
-{
-    return ScreenRects { .rects = { screen_rect }, .available_rects = { screen_rect }, .main_screen_index = 0 };
-}
-
 void HeadlessWebView::reset_viewport_size(Web::DevicePixelSize size)
 {
     m_viewport_size = size;
 
     tab().set_window_size(size.to_type<int>());
-    tab().handle_resize();
+    tab().set_viewport_size(m_viewport_size);
 }
 
 }

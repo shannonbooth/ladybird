@@ -121,6 +121,8 @@ static QWidget* initial_web_content_view_parent([[maybe_unused]] QWidget* window
 #endif
 }
 
+static Core::AnonymousBuffer make_system_theme_from_qt_palette(QWidget&, WebContentView::PaletteMode);
+
 WebContentView::WebContentView(QWidget* window, Optional<WebView::CanonicalTraversable&> traversable, WebContentViewInitialState initial_state)
     : WebContentViewBase(initial_web_content_view_parent(window))
 {
@@ -172,6 +174,8 @@ WebContentView::WebContentView(QWidget* window, Optional<WebView::CanonicalTrave
 
     tab().set_device_pixel_ratio(devicePixelRatio());
     tab().set_display_metadata(initial_state.display_id, initial_state.maximum_frames_per_second);
+    tab().set_screen_rects(screen_rects());
+    tab().set_system_theme(make_system_theme_from_qt_palette(*this, PaletteMode::Default));
 
     tab().set_page_background_color_to_system_canvas(websites_prefer_dark());
 #ifdef LADYBIRD_QT_USE_IOSURFACE_LAYER
@@ -181,12 +185,12 @@ WebContentView::WebContentView(QWidget* window, Optional<WebView::CanonicalTrave
 #endif
 
     QObject::connect(qGuiApp, &QGuiApplication::screenRemoved, this, [this](QScreen*) {
-        tab().update_screen_rects();
+        tab().set_screen_rects(screen_rects());
     });
 
     QObject::connect(qGuiApp, &QGuiApplication::screenAdded, this, [this](QScreen* screen) {
         watch_screen_geometry(*screen);
-        tab().update_screen_rects();
+        tab().set_screen_rects(screen_rects());
     });
 
     for (auto* screen : QGuiApplication::screens())
@@ -1826,7 +1830,7 @@ void WebContentView::resizeEvent(QResizeEvent* event)
 void WebContentView::set_viewport_rect(Gfx::IntRect rect)
 {
     m_viewport_size = rect.size();
-    tab().handle_resize();
+    tab().set_viewport_size(m_viewport_size.to_type<Web::DevicePixels>());
 }
 
 // A view in a tab that isn't the current one gets its geometry, but Qt holds the resize event back until the tab is
@@ -2021,13 +2025,8 @@ void WebContentView::update_palette(PaletteMode mode)
 
     // NB: Every page hosting documents of this tab takes the palette, including the pages of out-of-process iframes.
     //     Their prefers-color-scheme and system colors resolve against it.
-    tab().update_system_theme(make_system_theme_from_qt_palette(*this, mode));
+    tab().set_system_theme(make_system_theme_from_qt_palette(*this, mode));
     tab().update_interface_color_scheme();
-}
-
-Core::AnonymousBuffer WebContentView::system_theme()
-{
-    return make_system_theme_from_qt_palette(*this, PaletteMode::Default);
 }
 
 #if !defined(Q_OS_MACOS) && !defined(Q_OS_WIN)
@@ -2164,14 +2163,14 @@ void WebContentView::accessibilityActiveChanged(bool active)
 void WebContentView::watch_screen_geometry(QScreen& screen)
 {
     QObject::connect(&screen, &QScreen::geometryChanged, this, [this](QRect const&) {
-        tab().update_screen_rects();
+        tab().set_screen_rects(screen_rects());
     });
     QObject::connect(&screen, &QScreen::availableGeometryChanged, this, [this](QRect const&) {
-        tab().update_screen_rects();
+        tab().set_screen_rects(screen_rects());
     });
 }
 
-Optional<WebView::ScreenRects> WebContentView::screen_rects() const
+WebView::ScreenRects WebContentView::screen_rects() const
 {
     auto screens = QGuiApplication::screens();
 
@@ -2286,29 +2285,14 @@ Web::DevicePixelPoint WebContentView::node_picker_position_for(QSinglePointEvent
     return { event.position().x() * tab().device_pixel_ratio(), event.position().y() * tab().device_pixel_ratio() };
 }
 
-Web::DevicePixelSize WebContentView::viewport_size() const
-{
-    return m_viewport_size.to_type<Web::DevicePixels>();
-}
-
 QPoint WebContentView::map_point_to_global_position(Gfx::IntPoint position) const
 {
     return mapToGlobal(QPoint { position.x(), position.y() } / tab().device_pixel_ratio());
 }
 
-Gfx::IntPoint WebContentView::to_content_position(Gfx::IntPoint widget_position) const
+void WebContentView::show_context_menu(WebView::Menu& menu, Gfx::IntPoint content_position)
 {
-    return widget_position;
-}
-
-Gfx::IntPoint WebContentView::to_widget_position(Gfx::IntPoint content_position) const
-{
-    return content_position;
-}
-
-void WebContentView::show_context_menu(WebView::Menu& menu, Gfx::IntPoint widget_position)
-{
-    execute_context_menu_later(m_context_menu, *this, menu, map_point_to_global_position(widget_position));
+    execute_context_menu_later(m_context_menu, *this, menu, map_point_to_global_position(content_position));
 }
 
 #if defined(LADYBIRD_QT_USE_IOSURFACE_LAYER) || defined(LADYBIRD_HAS_WAYLAND_GPU_QUERY)

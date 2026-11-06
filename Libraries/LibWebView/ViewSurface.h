@@ -38,14 +38,8 @@ public:
     // Stops showing the tab, before the widget goes away, while what its callbacks reach still exists.
     void release_tab();
 
-    virtual Web::DevicePixelSize viewport_size() const = 0;
-    virtual Gfx::IntPoint to_content_position(Gfx::IntPoint widget_position) const = 0;
-    virtual Gfx::IntPoint to_widget_position(Gfx::IntPoint content_position) const = 0;
-
     virtual void did_update_zoom() { }
-    virtual Core::AnonymousBuffer system_theme() { return {}; }
-    virtual Optional<ScreenRects> screen_rects() const { return {}; }
-    virtual void show_context_menu(Menu&, Gfx::IntPoint) { }
+    virtual void show_context_menu(Menu&, Gfx::IntPoint /* content_position */) { }
     virtual void did_accept_presented_backing_store(i32, Gfx::IntRect) { }
     // Returns whether the surface took over releasing the backing store.
     virtual bool release_backing_store(i32) { return false; }

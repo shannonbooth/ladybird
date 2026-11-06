@@ -218,14 +218,11 @@ signals:
 
 private:
     // ^WebView::ViewSurface
-    virtual Core::AnonymousBuffer system_theme() override;
-    virtual Optional<WebView::ScreenRects> screen_rects() const override;
     virtual void did_update_zoom() override;
-    virtual Web::DevicePixelSize viewport_size() const override;
-    virtual Gfx::IntPoint to_content_position(Gfx::IntPoint widget_position) const override;
-    virtual Gfx::IntPoint to_widget_position(Gfx::IntPoint content_position) const override;
-    virtual void show_context_menu(WebView::Menu&, Gfx::IntPoint widget_position) override;
+    virtual void show_context_menu(WebView::Menu&, Gfx::IntPoint content_position) override;
     virtual void did_accept_presented_backing_store(i32, Gfx::IntRect) override;
+
+    WebView::ScreenRects screen_rects() const;
 
 #ifdef LADYBIRD_QT_USE_RHI_WIDGET
     // ^QRhiWidget

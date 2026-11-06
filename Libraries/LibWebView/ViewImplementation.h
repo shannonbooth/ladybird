@@ -338,8 +338,6 @@ public:
     void set_frame_rate_capped(bool);
 
     using ScreenRects = WebView::ScreenRects;
-    // Sends the screens that screen_rects() reports to every page hosting documents of the tab.
-    void update_screen_rects();
     bool scales_frames_to_fit() const { return m_scales_frames_to_fit; }
     void set_scales_frames_to_fit(bool scales_frames_to_fit) { m_scales_frames_to_fit = scales_frames_to_fit; }
     void set_device_pixel_ratio(double device_pixel_ratio) { m_device_pixel_ratio = device_pixel_ratio; }
@@ -402,8 +400,6 @@ public:
     // A page created to host documents of the tab in another process takes the preferences the view's page has.
     void send_preferences_to_page(WebContentPage&);
     void send_system_theme_to_page(WebContentPage&);
-    // Sends the theme to every page hosting documents of the tab, including the pages of out-of-process iframes.
-    void update_system_theme(Core::AnonymousBuffer const&);
 
     void notify_cookies_changed(HashTable<String> const& changed_domains, ReadonlySpan<HTTP::Cookie::Cookie> page_cookies, ReadonlySpan<HTTP::Cookie::Cookie> host_cookies);
     void listen_for_host_cookie_changes(DevTools::DevToolsDelegate::OnHostCookieChange);
@@ -426,7 +422,7 @@ public:
     NonnullRefPtr<Core::Promise<ByteString>> cut_selected_text();
     NonnullRefPtr<Core::Promise<Optional<String>>> selected_text_with_whitespace_collapsed();
     NonnullRefPtr<Core::Promise<Optional<DictionaryLookup>>> selected_text_for_dictionary_lookup();
-    bool look_up_selected_text_at(Gfx::IntPoint widget_position);
+    bool look_up_selected_text_at(Gfx::IntPoint content_position);
     void select_all();
     void undo();
     void redo();
@@ -725,10 +721,14 @@ public:
 
     WebContentPage& page() const;
 
-    // The surface attached to the view answers these.
-    Web::DevicePixelSize viewport_size() const;
-    Gfx::IntPoint to_content_position(Gfx::IntPoint widget_position) const;
-    Gfx::IntPoint to_widget_position(Gfx::IntPoint content_position) const;
+    // The surface showing the tab sets these, which stay as they were while no surface shows it.
+    Web::DevicePixelSize viewport_size() const { return m_viewport_size; }
+    void set_viewport_size(Web::DevicePixelSize);
+    Optional<ScreenRects> const& screen_rects() const { return m_screen_rects; }
+    void set_screen_rects(ScreenRects);
+    Core::AnonymousBuffer const& system_theme() const { return m_system_theme; }
+    // Sends the theme to every page hosting documents of the tab, including the pages of out-of-process iframes.
+    void set_system_theme(Core::AnonymousBuffer);
 
     // Requests that coordinate tab state before reaching the frontend.
     void request_permission_prompt(PermissionPromptRequest, NonnullRefPtr<PermissionPromptReply>);
@@ -747,11 +747,11 @@ public:
     void insert_clipboard_item(Web::Clipboard::SystemClipboardItem);
 
     virtual void geolocation_settings_changed() override;
-    void handle_resize();
     NonnullRefPtr<Core::Promise<Empty>> reset_state_for_testing();
 
 private:
-    void show_context_menu(Menu&, Gfx::IntPoint widget_position);
+    void show_context_menu(Menu&, Gfx::IntPoint content_position);
+    void handle_resize();
 
     void will_apply_history_traversal_step(Web::HTML::CrossProcessId operation_id);
     void did_apply_top_level_history_traversal_step(Web::HTML::CrossProcessId operation_id);
@@ -765,8 +765,6 @@ private:
 
     static constexpr auto ZOOM_STEP = 0.1;
 
-    Core::AnonymousBuffer system_theme();
-    Optional<ScreenRects> screen_rects() const;
     void update_compositor_display_metadata(WebContentPage&);
 
     void detach_surface(ViewSurface&);
@@ -888,7 +886,7 @@ private:
     void process_next_external_url_request();
     void request_text_fragment_url(Optional<u64> generation_id);
     void request_context_menu_dictionary_lookup(Function<void(Optional<DictionaryLookup> const&)> on_complete);
-    NonnullRefPtr<Core::Promise<bool>> select_word_for_dictionary_lookup(Gfx::IntPoint widget_position);
+    NonnullRefPtr<Core::Promise<bool>> select_word_for_dictionary_lookup(Gfx::IntPoint content_position);
     void reject_pending_selection_requests();
     enum class PromptForPath : u8 {
         No,
@@ -1119,6 +1117,9 @@ private:
 
     CanonicalTraversable& m_traversable;
     ViewSurface* m_surface { nullptr };
+    Web::DevicePixelSize m_viewport_size;
+    Optional<ScreenRects> m_screen_rects;
+    Core::AnonymousBuffer m_system_theme;
     bool m_activated { false };
     bool m_removed_from_user_interface { false };
     // Whether the frontend let go of the tab to close it, which the page has yet to do.

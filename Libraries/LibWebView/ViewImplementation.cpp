@@ -302,45 +302,16 @@ void ViewImplementation::detach_surface(ViewSurface& surface)
     surface.m_view = nullptr;
 }
 
-Web::DevicePixelSize ViewImplementation::viewport_size() const
+void ViewImplementation::show_context_menu(Menu& menu, Gfx::IntPoint content_position)
 {
     if (m_surface)
-        return m_surface->viewport_size();
-    return {};
-}
-
-Gfx::IntPoint ViewImplementation::to_content_position(Gfx::IntPoint widget_position) const
-{
-    return m_surface ? m_surface->to_content_position(widget_position) : widget_position;
-}
-
-Gfx::IntPoint ViewImplementation::to_widget_position(Gfx::IntPoint content_position) const
-{
-    return m_surface ? m_surface->to_widget_position(content_position) : content_position;
-}
-
-void ViewImplementation::show_context_menu(Menu& menu, Gfx::IntPoint widget_position)
-{
-    if (m_surface)
-        m_surface->show_context_menu(menu, widget_position);
+        m_surface->show_context_menu(menu, content_position);
 }
 
 void ViewImplementation::did_accept_presented_backing_store(i32 bitmap_id, Gfx::IntRect rect)
 {
     if (m_surface)
         m_surface->did_accept_presented_backing_store(bitmap_id, rect);
-}
-
-Core::AnonymousBuffer ViewImplementation::system_theme()
-{
-    return m_surface ? m_surface->system_theme() : Core::AnonymousBuffer {};
-}
-
-Optional<ScreenRects> ViewImplementation::screen_rects() const
-{
-    if (m_surface)
-        return m_surface->screen_rects();
-    return {};
 }
 
 void ViewImplementation::did_get_accessibility_tree(u64 sequence, Vector<AccessibilityNodeData> nodes)
@@ -1124,20 +1095,19 @@ static void send_screen_rects_to_page(WebContentPage& page, ViewImplementation::
     page.async_update_screen_rects(screens.rects, screens.available_rects, screens.main_screen_index);
 }
 
-void ViewImplementation::update_screen_rects()
+void ViewImplementation::set_screen_rects(ScreenRects screens)
 {
-    auto screens = screen_rects();
-    if (!screens.has_value())
-        return;
+    m_screen_rects = move(screens);
     traversable().for_each_hosting_page([&](WebContentPage& page) {
-        send_screen_rects_to_page(page, *screens);
+        send_screen_rects_to_page(page, *m_screen_rects);
     });
 }
 
-void ViewImplementation::update_system_theme(Core::AnonymousBuffer const& theme)
+void ViewImplementation::set_system_theme(Core::AnonymousBuffer theme)
 {
+    m_system_theme = move(theme);
     traversable().for_each_hosting_page([&](WebContentPage& page) {
-        page.async_update_system_theme(theme);
+        page.async_update_system_theme(m_system_theme);
     });
 }
 
@@ -1962,42 +1932,42 @@ NonnullRefPtr<Core::Promise<Optional<DictionaryLookup>>> ViewImplementation::sel
     });
 }
 
-NonnullRefPtr<Core::Promise<bool>> ViewImplementation::select_word_for_dictionary_lookup(Gfx::IntPoint widget_position)
+NonnullRefPtr<Core::Promise<bool>> ViewImplementation::select_word_for_dictionary_lookup(Gfx::IntPoint content_position)
 {
     auto promise = Core::Promise<bool>::construct();
 
     // The word is selected in the page the lookup then asks for the selection, in the viewport of its local root.
     auto& host = focused_navigable_host();
-    auto position = to_content_position(widget_position).to_type<Web::DevicePixels>() - traversable().focused_navigable_host_offset();
+    auto position = content_position.to_type<Web::DevicePixels>() - traversable().focused_navigable_host_offset();
     host.async_select_word_for_dictionary_lookup(expect_reply_settling(host, promise), position);
     return promise;
 }
 
-bool ViewImplementation::look_up_selected_text_at(Gfx::IntPoint widget_position)
+bool ViewImplementation::look_up_selected_text_at(Gfx::IntPoint content_position)
 {
     if (!on_request_dictionary_lookup)
         return false;
 
     auto weak_this = make_weak_ptr();
-    selected_text_for_dictionary_lookup()->when_resolved([weak_this, widget_position](auto& lookup) {
+    selected_text_for_dictionary_lookup()->when_resolved([weak_this, content_position](auto& lookup) {
         if (!weak_this)
             return;
 
         if (lookup.has_value()) {
-            auto lookup_position = lookup->baseline_origin.has_value() ? weak_this->to_widget_position(*lookup->baseline_origin) : widget_position;
+            auto lookup_position = lookup->baseline_origin.has_value() ? *lookup->baseline_origin : content_position;
             weak_this->on_request_dictionary_lookup(*lookup, lookup_position);
             return;
         }
 
-        weak_this->select_word_for_dictionary_lookup(widget_position)->when_resolved([weak_this, widget_position](bool& selected) {
+        weak_this->select_word_for_dictionary_lookup(content_position)->when_resolved([weak_this, content_position](bool& selected) {
             if (!weak_this || !selected)
                 return;
 
-            weak_this->selected_text_for_dictionary_lookup()->when_resolved([weak_this, widget_position](auto& lookup) {
+            weak_this->selected_text_for_dictionary_lookup()->when_resolved([weak_this, content_position](auto& lookup) {
                 if (!weak_this || !lookup.has_value())
                     return;
 
-                auto lookup_position = lookup->baseline_origin.has_value() ? weak_this->to_widget_position(*lookup->baseline_origin) : widget_position;
+                auto lookup_position = lookup->baseline_origin.has_value() ? *lookup->baseline_origin : content_position;
                 weak_this->on_request_dictionary_lookup(*lookup, lookup_position);
             });
         });
@@ -2994,7 +2964,7 @@ void ViewImplementation::request_select_dropdown(Gfx::IntPoint content_position,
     }
     if (!admit_ui_request(m_select_dropdown_reply, reply))
         return;
-    on_request_select_dropdown(to_widget_position(content_position), minimum_width / device_pixel_ratio(), move(items), move(reply));
+    on_request_select_dropdown(content_position, minimum_width / device_pixel_ratio(), move(items), move(reply));
 }
 
 // The page hosting the tab's focused navigable, which the view's own page is when no other process hosts it.
@@ -3208,6 +3178,14 @@ Gfx::IntRect ViewImplementation::rect_fitting_frame(Gfx::IntSize frame_size, Gfx
     auto scale = min(static_cast<float>(target_size.width()) / frame_size.width(), static_cast<float>(target_size.height()) / frame_size.height());
     auto fitted_size = frame_size.to_type<float>().scaled(scale).to_rounded<int>();
     return Gfx::IntRect { {}, fitted_size }.centered_within({ {}, target_size });
+}
+
+void ViewImplementation::set_viewport_size(Web::DevicePixelSize size)
+{
+    m_viewport_size = size;
+    // Activating the tab gives its page the viewport.
+    if (m_activated)
+        handle_resize();
 }
 
 void ViewImplementation::handle_resize()
@@ -5195,7 +5173,7 @@ static void add_search_action(Menu& menu, Optional<String> const& selected_text)
 void ViewImplementation::open_context_menu(NonnullRefPtr<Menu> menu, Gfx::IntPoint content_position)
 {
     m_context_menu = move(menu);
-    show_context_menu(*m_context_menu, to_widget_position(content_position));
+    show_context_menu(*m_context_menu, content_position);
 }
 
 NonnullRefPtr<Menu> ViewImplementation::create_page_context_menu(bool is_editable, Optional<String> const& selected_text, Optional<DictionaryLookup> const& lookup, Gfx::IntPoint content_position)
@@ -5322,7 +5300,7 @@ void ViewImplementation::add_look_up_action(Menu& menu, Optional<DictionaryLooku
     if (!lookup.has_value() || !on_request_dictionary_lookup)
         return;
 
-    auto position = to_widget_position(lookup->baseline_origin.value_or(content_position));
+    auto position = lookup->baseline_origin.value_or(content_position);
     menu.add_action(Action::create("Look Up"sv, ActionID::LookUpSelectedText, [this, lookup = *lookup, position]() {
         if (on_request_dictionary_lookup)
             on_request_dictionary_lookup(lookup, position);
