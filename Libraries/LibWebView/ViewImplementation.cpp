@@ -184,10 +184,11 @@ ViewImplementation::~ViewImplementation()
     VERIFY(m_shutdown_started || !m_top_level_traversable);
 }
 
-void ViewImplementation::release_frontend_hold()
+void ViewImplementation::release_surface(ViewSurface& surface)
 {
-    VERIFY(m_frontend_holds > 0);
-    if (--m_frontend_holds > 0 || m_notifying_close || m_shutdown_started)
+    detach_surface(surface);
+    clear_frontend_callbacks();
+    if (m_notifying_close || m_shutdown_started)
         return;
     // A tab whose frontend asked it to close stays until its page has closed it.
     if (m_close_pending && !m_browsing_context_closed)
@@ -277,7 +278,6 @@ void ViewImplementation::attach_surface(ViewSurface& surface)
     VERIFY(!surface.m_view);
     m_surface = &surface;
     surface.m_view = this;
-    add_frontend_hold();
 }
 
 void ViewImplementation::detach_surface(ViewSurface& surface)
@@ -366,11 +366,8 @@ void ViewSurface::release_tab()
 {
     if (!m_view)
         return;
-    auto& view = *m_view;
-    view.detach_surface(*this);
-    view.clear_frontend_callbacks();
     // NB: This may destroy the view.
-    view.release_frontend_hold();
+    m_view->release_surface(*this);
 }
 
 ViewImplementation& ViewSurface::tab() const
@@ -4007,7 +4004,7 @@ void ViewImplementation::did_close_browsing_context()
         on_close();
     m_notifying_close = false;
     // NB: This destroys the view.
-    if (m_frontend_holds == 0)
+    if (!m_surface)
         destroy_tab();
 }
 

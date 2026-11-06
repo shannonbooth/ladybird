@@ -3242,7 +3242,7 @@ Messages::WebContentClient::DidRequestNewWebViewResponse WebContentPage::did_req
         window_handle = view().on_new_web_view(activate_tab, hints, traversable);
     }
 
-    if (!traversable.view().has_frontend()) {
+    if (!traversable.view().surface()) {
         client().discard_page_of_undisplayed_top_level_traversable(new_page_id);
         traversable.destroy();
         return { {}, {}, {}, {}, {}, {}, {}, Web::HTML::VisibilityState::Hidden, move(window_handle) };
@@ -3263,7 +3263,7 @@ void WebContentPage::did_close_browsing_context()
     client().unregister_embedded_page(m_id);
 
     if (m_traversable && hosts_top_level_document()) {
-        // NB: The view destroys the traversable once no frontend holds the tab.
+        // NB: The view destroys the traversable once no surface shows the tab.
         auto& view = m_traversable->view();
         m_traversable = nullptr;
         view.did_close_browsing_context();

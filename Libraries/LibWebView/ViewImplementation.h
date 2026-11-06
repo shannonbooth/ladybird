@@ -188,15 +188,12 @@ public:
     void did_destroy_traversable(Badge<CanonicalTraversable>);
     bool is_closing() const { return m_close_pending || m_shutdown_started; }
 
-    // A frontend holds the tab while it shows it: an attached surface is a hold. Once the tab's last
-    // hold goes, a tab that is not closing closes, and one whose browsing context has closed is destroyed.
-    void add_frontend_hold() { ++m_frontend_holds; }
-    bool has_frontend() const { return m_frontend_holds > 0; }
-    void release_frontend_hold();
     bool is_activated() const { return m_activated; }
 
+    // A frontend shows the tab on an attached surface. Once the surface is released, a tab that is not closing closes,
+    // and one whose browsing context has closed is destroyed.
     void attach_surface(ViewSurface&);
-    void detach_surface(ViewSurface&);
+    void release_surface(ViewSurface&);
     ViewSurface* surface() const { return m_surface; }
     // The callbacks a frontend installed go with it.
     void clear_frontend_callbacks();
@@ -770,6 +767,7 @@ protected:
     virtual Optional<ScreenRects> screen_rects() const;
     void update_compositor_display_metadata(WebContentPage&);
 
+    void detach_surface(ViewSurface&);
     void did_update_url();
     void settle_permission_prompt(PermissionPromptRequest const&, Web::Permissions::PromptOutcome);
     void report_permission_presence();
@@ -1123,7 +1121,6 @@ protected:
     CanonicalTraversable* m_top_level_traversable { nullptr };
     ViewSurface* m_surface { nullptr };
     bool m_activated { false };
-    size_t m_frontend_holds { 0 };
     bool m_browsing_context_closed { false };
     bool m_notifying_close { false };
     bool m_shutdown_started { false };
