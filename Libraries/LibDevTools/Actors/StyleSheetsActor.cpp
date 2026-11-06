@@ -23,7 +23,7 @@ StyleSheetsActor::StyleSheetsActor(DevToolsServer& devtools, String name, WeakPt
     , m_tab(move(tab))
 {
     if (auto tab = m_tab.strong_ref()) {
-        devtools.delegate().listen_for_style_sheet_sources(
+        m_style_sheet_source_listener = devtools.delegate().listen_for_style_sheet_sources(
             tab->description(),
             weak_callback(*this, [](auto& self, Web::CSS::StyleSheetIdentifier const& style_sheet, Utf16String source) {
                 self.style_sheet_source_received(style_sheet, move(source));
@@ -31,10 +31,11 @@ StyleSheetsActor::StyleSheetsActor(DevToolsServer& devtools, String name, WeakPt
     }
 }
 
-StyleSheetsActor::~StyleSheetsActor()
+StyleSheetsActor::~StyleSheetsActor() = default;
+
+void StyleSheetsActor::stop_listening()
 {
-    if (auto tab = m_tab.strong_ref())
-        devtools().delegate().stop_listening_for_style_sheet_sources(tab->description());
+    m_style_sheet_source_listener = nullptr;
 }
 
 String StyleSheetsActor::resource_id_for_index(StringView actor_name, size_t index)

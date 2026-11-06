@@ -11,6 +11,7 @@
 #include <LibDevTools/Actor.h>
 #include <LibDevTools/DevToolsDelegate.h>
 #include <LibDevTools/Forward.h>
+#include <LibDevTools/Listener.h>
 
 namespace DevTools {
 
@@ -78,8 +79,9 @@ private:
     bool m_is_watching_console_errors { false };
     bool m_is_watching_source_resources { false };
     bool m_is_watching_thread_state_resources { false };
-    bool m_debugger_is_attached { false };
     bool m_connection_closed { false };
+    OwnPtr<Listener> m_source_listener;
+    OwnPtr<Listener> m_debugger_listener;
 };
 
 }

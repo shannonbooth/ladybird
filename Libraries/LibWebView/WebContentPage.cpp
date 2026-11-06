@@ -39,6 +39,7 @@
 #include <LibWebView/RequestServerManager.h>
 #include <LibWebView/StorageAreaRegistry.h>
 #include <LibWebView/StorageJar.h>
+#include <LibWebView/TabObserver.h>
 #include <LibWebView/URL.h>
 #include <LibWebView/Utilities.h>
 #include <LibWebView/ViewImplementation.h>
@@ -1234,8 +1235,7 @@ void WebContentPage::did_get_style_sheet_source(Web::CSS::StyleSheetIdentifier i
 {
     if (!hosts_top_level_document())
         return;
-    if (view().on_received_style_sheet_source)
-        view().on_received_style_sheet_source(identifier, base_url, source);
+    view().notify_observers([&](TabObserver& observer) { observer.tab_did_receive_style_sheet_source(identifier, base_url, source); });
 }
 
 void WebContentPage::did_list_devtools_sources(u64 request_id, Vector<Web::HTML::ScriptRegistryDescription> sources)
@@ -1259,8 +1259,7 @@ void WebContentPage::did_add_devtools_source(Web::HTML::ScriptRegistryDescriptio
 {
     if (!hosts_top_level_document())
         return;
-    if (view().on_devtools_source_available)
-        view().on_devtools_source_available(move(source));
+    view().notify_observers([&](TabObserver& observer) { observer.tab_did_make_source_available(source); });
 }
 
 void WebContentPage::did_pause_debugger(DebuggerPause pause)
@@ -1337,8 +1336,7 @@ void WebContentPage::did_output_js_console_message(ConsoleOutput console_output)
 {
     if (!hosts_top_level_document())
         return;
-    if (view().on_console_message)
-        view().on_console_message(move(console_output));
+    view().notify_observers([&](TabObserver& observer) { observer.tab_did_receive_console_message(console_output); });
 }
 
 void WebContentPage::did_block_resource(URL::URL url, String kind)
@@ -1350,24 +1348,21 @@ void WebContentPage::did_start_network_request(u64 request_id, URL::URL url, Byt
 {
     if (!hosts_top_level_document())
         return;
-    if (view().on_network_request_started)
-        view().on_network_request_started(request_id, url, method, request_headers, move(request_body), move(initiator_type), move(referrer_policy), is_navigation_request, priority);
+    view().notify_observers([&](TabObserver& observer) { observer.tab_did_start_network_request(request_id, url, method, request_headers, request_body, initiator_type, referrer_policy, is_navigation_request, priority); });
 }
 
 void WebContentPage::did_receive_network_response_body(u64 request_id, ByteBuffer data)
 {
     if (!hosts_top_level_document())
         return;
-    if (view().on_network_response_body_received)
-        view().on_network_response_body_received(request_id, move(data));
+    view().notify_observers([&](TabObserver& observer) { observer.tab_did_receive_network_response_body(request_id, data); });
 }
 
 void WebContentPage::did_finish_network_request(u64 request_id, u64 body_size, Requests::RequestTimingInfo timing_info, Optional<Requests::NetworkError> network_error)
 {
     if (!hosts_top_level_document())
         return;
-    if (view().on_network_request_finished)
-        view().on_network_request_finished(request_id, body_size, timing_info, network_error);
+    view().notify_observers([&](TabObserver& observer) { observer.tab_did_finish_network_request(request_id, body_size, timing_info, network_error); });
 }
 
 void WebContentPage::did_request_set_prompt_text(Utf16String message)
@@ -2436,8 +2431,7 @@ void WebContentPage::did_inspect_dom_node(DOMNodeProperties properties)
 {
     if (!hosts_top_level_document())
         return;
-    if (view().on_received_dom_node_properties)
-        view().on_received_dom_node_properties(move(properties));
+    view().notify_observers([&](TabObserver& observer) { observer.tab_did_receive_dom_node_properties(properties); });
 }
 
 void WebContentPage::did_finish_editing_dom_node(u64 request_id, Optional<Web::UniqueNodeID> node_id)
@@ -2455,8 +2449,7 @@ void WebContentPage::did_mutate_dom(Mutation mutation)
 {
     if (!hosts_top_level_document())
         return;
-    if (view().on_dom_mutation_received)
-        view().on_dom_mutation_received(move(mutation));
+    view().notify_observers([&](TabObserver& observer) { observer.tab_did_receive_dom_mutation(mutation); });
 }
 
 void WebContentPage::did_get_dom_node_html(u64 request_id, String html)
@@ -2481,8 +2474,7 @@ void WebContentPage::did_receive_network_response_headers(u64 request_id, u32 st
 {
     if (!hosts_top_level_document())
         return;
-    if (view().on_network_response_headers_received)
-        view().on_network_response_headers_received(request_id, status_code, reason_phrase, response_headers, cache_state);
+    view().notify_observers([&](TabObserver& observer) { observer.tab_did_receive_network_response_headers(request_id, status_code, reason_phrase, response_headers, cache_state); });
 }
 
 void WebContentPage::did_update_indexed_database(String update)

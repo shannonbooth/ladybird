@@ -9,6 +9,7 @@
 #include <AK/NonnullRefPtr.h>
 #include <LibDevTools/Actor.h>
 #include <LibDevTools/Forward.h>
+#include <LibDevTools/Listener.h>
 #include <LibWebCommon/WebView/DOMNodeProperties.h>
 
 namespace DevTools {
@@ -21,6 +22,7 @@ public:
     virtual ~PageStyleActor() override;
 
     JsonValue serialize_style() const;
+    void stop_listening();
 
 private:
     PageStyleActor(DevToolsServer&, String name, WeakPtr<InspectorActor>);
@@ -33,6 +35,7 @@ private:
     void received_dom_node_properties(WebView::DOMNodeProperties const&);
 
     WeakPtr<InspectorActor> m_inspector;
+    OwnPtr<Listener> m_dom_properties_listener;
 
     Vector<Message, 1> m_pending_inspect_requests;
     Vector<String> m_style_rule_actors;

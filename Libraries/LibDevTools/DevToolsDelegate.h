@@ -11,12 +11,14 @@
 #include <AK/JsonArray.h>
 #include <AK/JsonObject.h>
 #include <AK/JsonValue.h>
+#include <AK/OwnPtr.h>
 #include <AK/Time.h>
 #include <AK/Vector.h>
 #include <LibDevTools/Actors/CSSPropertiesActor.h>
 #include <LibDevTools/Actors/PageStyleActor.h>
 #include <LibDevTools/Actors/TabActor.h>
 #include <LibDevTools/Forward.h>
+#include <LibDevTools/Listener.h>
 #include <LibHTTP/Cookie/Cookie.h>
 #include <LibHTTP/Header.h>
 #include <LibRequests/CacheState.h>
@@ -47,8 +49,7 @@ public:
     virtual ErrorOr<void> set_cookie(TabDescription const&, Optional<HTTP::Cookie::Cookie>, HTTP::Cookie::Cookie) const { return {}; }
     virtual void delete_cookies(TabDescription const&, Vector<HTTP::Cookie::Cookie>) const { }
     using OnHostCookieChange = Function<void(Vector<HTTP::Cookie::Cookie>)>;
-    virtual void listen_for_host_cookie_changes(TabDescription const&, OnHostCookieChange) const { }
-    virtual void stop_listening_for_host_cookie_changes(TabDescription const&) const { }
+    [[nodiscard]] virtual OwnPtr<Listener> listen_for_host_cookie_changes(TabDescription const&, OnHostCookieChange) const { return {}; }
 
     struct StorageItem {
         String name;
@@ -96,8 +97,7 @@ public:
     virtual void inspect_accessibility_tree(TabDescription const&, OnAccessibilityTreeInspectionComplete) const { }
 
     using OnDOMNodePropertiesReceived = Function<void(WebView::DOMNodeProperties)>;
-    virtual void listen_for_dom_properties(TabDescription const&, OnDOMNodePropertiesReceived) const { }
-    virtual void stop_listening_for_dom_properties(TabDescription const&) const { }
+    [[nodiscard]] virtual OwnPtr<Listener> listen_for_dom_properties(TabDescription const&, OnDOMNodePropertiesReceived) const { return {}; }
     virtual void inspect_dom_node(TabDescription const&, WebView::DOMNodeProperties::Type, Web::UniqueNodeID, Optional<Web::CSS::PseudoElement>, JsonObject options = {}) const { (void)options; }
     virtual void clear_inspected_dom_node(TabDescription const&) const { }
 
@@ -133,8 +133,7 @@ public:
     virtual void clear_grid_highlight(TabDescription const&, Web::UniqueNodeID) const { }
 
     using OnDOMMutationReceived = Function<void(WebView::Mutation)>;
-    virtual void listen_for_dom_mutations(TabDescription const&, OnDOMMutationReceived) const { }
-    virtual void stop_listening_for_dom_mutations(TabDescription const&) const { }
+    [[nodiscard]] virtual OwnPtr<Listener> listen_for_dom_mutations(TabDescription const&, OnDOMMutationReceived) const { return {}; }
 
     using OnDOMNodeHTMLReceived = Function<void(ErrorOr<String>)>;
     using OnDOMNodeEditComplete = Function<void(ErrorOr<Web::UniqueNodeID>)>;
@@ -165,16 +164,14 @@ public:
     using OnStyleSheetSourceReceived = Function<void(Web::CSS::StyleSheetIdentifier const&, Utf16String)>;
     virtual void retrieve_style_sheets(TabDescription const&, OnStyleSheetsReceived) const { }
     virtual void retrieve_style_sheet_source(TabDescription const&, Web::CSS::StyleSheetIdentifier const&) const { }
-    virtual void listen_for_style_sheet_sources(TabDescription const&, OnStyleSheetSourceReceived) const { }
-    virtual void stop_listening_for_style_sheet_sources(TabDescription const&) const { }
+    [[nodiscard]] virtual OwnPtr<Listener> listen_for_style_sheet_sources(TabDescription const&, OnStyleSheetSourceReceived) const { return {}; }
 
     using OnSourcesReceived = Function<void(ErrorOr<Vector<Web::HTML::ScriptRegistryDescription>>)>;
     using OnSourceReceived = Function<void(ErrorOr<Web::HTML::ScriptRegistryContent>)>;
     using OnSourceAvailable = Function<void(Web::HTML::ScriptRegistryDescription)>;
     virtual void retrieve_sources(TabDescription const&, OnSourcesReceived) const { }
     virtual void retrieve_source(TabDescription const&, Web::HTML::ScriptRegistryIdentifier, OnSourceReceived) const { }
-    virtual void listen_for_sources(TabDescription const&, OnSourceAvailable) const { }
-    virtual void stop_listening_for_sources(TabDescription const&) const { }
+    [[nodiscard]] virtual OwnPtr<Listener> listen_for_sources(TabDescription const&, OnSourceAvailable) const { return {}; }
 
     using OnDebuggerPaused = Function<void(WebView::DebuggerPause)>;
     using OnDebuggerResumed = Function<void()>;
@@ -183,9 +180,9 @@ public:
     using OnDebuggerEvaluationComplete = Function<void(ErrorOr<WebView::DebuggerEvaluationResult, String>)>;
     using OnDebuggerObjectPropertiesReceived = Function<void(ErrorOr<WebView::DebuggerObjectProperties, String>)>;
     using OnDebuggerSourcePositionsReceived = Function<void(ErrorOr<Vector<WebView::DebuggerSourcePosition>>)>;
-    virtual void attach_debugger(TabDescription const&, OnDebuggerPaused, OnDebuggerResumed) const { }
+    // The debugger stays attached for as long as the listener lives.
+    [[nodiscard]] virtual OwnPtr<Listener> attach_debugger(TabDescription const&, OnDebuggerPaused, OnDebuggerResumed) const { return {}; }
     virtual void configure_debugger(TabDescription const&, WebView::DebuggerConfiguration) const { }
-    virtual void detach_debugger(TabDescription const&) const { }
     virtual void interrupt_debugger(TabDescription const&) const { }
     virtual void resume_debugger(TabDescription const&, WebView::DebuggerResumeMode) const { }
     virtual void update_debugger_blackboxing(TabDescription const&, Utf16String, Vector<WebView::DebuggerBlackboxRange>, WebView::DebuggerBlackboxingOperation) const { }
@@ -200,8 +197,7 @@ public:
     virtual void evaluate_javascript(TabDescription const&, String const&, OnScriptEvaluationComplete) const { }
 
     using OnConsoleMessage = Function<void(WebView::ConsoleOutput)>;
-    virtual void listen_for_console_messages(TabDescription const&, OnConsoleMessage) const { }
-    virtual void stop_listening_for_console_messages(TabDescription const&) const { }
+    [[nodiscard]] virtual OwnPtr<Listener> listen_for_console_messages(TabDescription const&, OnConsoleMessage) const { return {}; }
     virtual void start_sending_console_output(TabDescription const&, bool, bool) const { }
 
     struct NetworkRequestData {
@@ -236,17 +232,14 @@ public:
     using OnNetworkResponseHeadersReceived = Function<void(NetworkResponseData)>;
     using OnNetworkResponseBodyReceived = Function<void(u64 request_id, ByteBuffer data)>;
     using OnNetworkRequestFinished = Function<void(NetworkRequestCompleteData)>;
-    virtual void listen_for_network_events(TabDescription const&, OnNetworkRequestStarted, OnNetworkResponseHeadersReceived, OnNetworkResponseBodyReceived, OnNetworkRequestFinished) const { }
-    virtual void stop_listening_for_network_events(TabDescription const&) const { }
+    [[nodiscard]] virtual OwnPtr<Listener> listen_for_network_events(TabDescription const&, OnNetworkRequestStarted, OnNetworkResponseHeadersReceived, OnNetworkResponseBodyReceived, OnNetworkRequestFinished) const { return {}; }
 
     using OnNavigationStarted = Function<void(String url)>;
     using OnNavigationFinished = Function<void(String url, String title)>;
-    virtual void listen_for_navigation_events(TabDescription const&, OnNavigationStarted, OnNavigationFinished) const { }
-    virtual void stop_listening_for_navigation_events(TabDescription const&) const { }
+    [[nodiscard]] virtual OwnPtr<Listener> listen_for_navigation_events(TabDescription const&, OnNavigationStarted, OnNavigationFinished) const { return {}; }
 
     using OnInspectElementRequest = Function<void(Web::UniqueNodeID)>;
-    virtual void listen_for_inspect_element_requests(TabDescription const&, OnInspectElementRequest) const { }
-    virtual void stop_listening_for_inspect_element_requests(TabDescription const&) const { }
+    [[nodiscard]] virtual OwnPtr<Listener> listen_for_inspect_element_requests(TabDescription const&, OnInspectElementRequest) const { return {}; }
 
     virtual void did_connect_devtools_client(TabDescription const&) const { }
     virtual void did_disconnect_devtools_client(TabDescription const&) const { }

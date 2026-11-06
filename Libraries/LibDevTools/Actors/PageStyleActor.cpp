@@ -209,7 +209,7 @@ PageStyleActor::PageStyleActor(DevToolsServer& devtools, String name, WeakPtr<In
     , m_inspector(move(inspector))
 {
     if (auto tab = InspectorActor::tab_for(m_inspector)) {
-        devtools.delegate().listen_for_dom_properties(tab->description(),
+        m_dom_properties_listener = devtools.delegate().listen_for_dom_properties(tab->description(),
             weak_callback(*this, [](auto& self, WebView::DOMNodeProperties const& properties) {
                 self.received_dom_node_properties(properties);
             }));
@@ -219,9 +219,11 @@ PageStyleActor::PageStyleActor(DevToolsServer& devtools, String name, WeakPtr<In
 PageStyleActor::~PageStyleActor()
 {
     clear_style_rule_actors();
+}
 
-    if (auto tab = InspectorActor::tab_for(m_inspector))
-        devtools().delegate().stop_listening_for_dom_properties(tab->description());
+void PageStyleActor::stop_listening()
+{
+    m_dom_properties_listener = nullptr;
 }
 
 void PageStyleActor::clear_style_rule_actors()

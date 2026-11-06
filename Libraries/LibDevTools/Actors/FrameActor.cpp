@@ -14,9 +14,11 @@
 #include <LibDevTools/Actors/FrameActor.h>
 #include <LibDevTools/Actors/InspectorActor.h>
 #include <LibDevTools/Actors/NetworkEventActor.h>
+#include <LibDevTools/Actors/PageStyleActor.h>
 #include <LibDevTools/Actors/StyleSheetsActor.h>
 #include <LibDevTools/Actors/TabActor.h>
 #include <LibDevTools/Actors/ThreadActor.h>
+#include <LibDevTools/Actors/WalkerActor.h>
 #include <LibDevTools/Actors/WatcherActor.h>
 #include <LibDevTools/DevToolsDelegate.h>
 #include <LibDevTools/DevToolsServer.h>
@@ -76,7 +78,7 @@ FrameActor::FrameActor(DevToolsServer& devtools, String name, WeakPtr<TabActor> 
     add_child_actor(accessibility);
 
     if (auto tab = m_tab.strong_ref()) {
-        devtools.delegate().listen_for_console_messages(
+        m_console_listener = devtools.delegate().listen_for_console_messages(
             tab->description(),
             weak_callback(*this, [](auto& self, WebView::ConsoleOutput console_output) {
                 self.on_console_message(move(console_output));
@@ -97,7 +99,7 @@ FrameActor::FrameActor(DevToolsServer& devtools, String name, WeakPtr<TabActor> 
                 }));
         });
 
-        devtools.delegate().listen_for_network_events(
+        m_network_listener = devtools.delegate().listen_for_network_events(
             tab->description(),
             weak_callback(*this, [](auto& self, DevToolsDelegate::NetworkRequestData data) {
                 self.on_network_request_started(move(data));
@@ -112,7 +114,7 @@ FrameActor::FrameActor(DevToolsServer& devtools, String name, WeakPtr<TabActor> 
                 self.on_network_request_finished(move(data));
             }));
 
-        devtools.delegate().listen_for_navigation_events(
+        m_navigation_listener = devtools.delegate().listen_for_navigation_events(
             tab->description(),
             weak_callback(*this, [](auto& self, String url) {
                 self.on_navigation_started(move(url));
@@ -121,35 +123,23 @@ FrameActor::FrameActor(DevToolsServer& devtools, String name, WeakPtr<TabActor> 
                 self.on_navigation_finished(move(url), move(title));
             }));
 
-        devtools.delegate().listen_for_inspect_element_requests(
+        m_inspect_element_listener = devtools.delegate().listen_for_inspect_element_requests(
             tab->description(),
             weak_callback(*this, [](auto& self, Web::UniqueNodeID node_id) {
                 if (auto console = self.m_console.strong_ref())
                     console->inspect_element(node_id);
             }));
-
-        m_is_listening = true;
     }
 }
 
-FrameActor::~FrameActor()
-{
-    stop_listening();
-}
+FrameActor::~FrameActor() = default;
 
 void FrameActor::stop_listening()
 {
-    if (!m_is_listening)
-        return;
-
-    if (auto tab = m_tab.strong_ref()) {
-        devtools().delegate().stop_listening_for_console_messages(tab->description());
-        devtools().delegate().stop_listening_for_network_events(tab->description());
-        devtools().delegate().stop_listening_for_navigation_events(tab->description());
-        devtools().delegate().stop_listening_for_inspect_element_requests(tab->description());
-    }
-
-    m_is_listening = false;
+    m_console_listener = nullptr;
+    m_network_listener = nullptr;
+    m_navigation_listener = nullptr;
+    m_inspect_element_listener = nullptr;
 }
 
 void FrameActor::handle_message(Message const& message)
@@ -157,13 +147,15 @@ void FrameActor::handle_message(Message const& message)
     JsonObject response;
 
     if (message.type == "detach"sv) {
-        if (auto tab = m_tab.strong_ref()) {
-            devtools().delegate().stop_listening_for_dom_properties(tab->description());
-            devtools().delegate().stop_listening_for_dom_mutations(tab->description());
-            devtools().delegate().stop_listening_for_console_messages(tab->description());
-            devtools().delegate().stop_listening_for_style_sheet_sources(tab->description());
+        if (auto page_style = InspectorActor::page_style_for(m_inspector))
+            page_style->stop_listening();
+        if (auto walker = InspectorActor::walker_for(m_inspector))
+            walker->stop_listening();
+        m_console_listener = nullptr;
+        if (auto style_sheets = m_style_sheets.strong_ref())
+            style_sheets->stop_listening();
+        if (auto tab = m_tab.strong_ref())
             tab->reset_selected_node();
-        }
 
         send_response(message, move(response));
         return;

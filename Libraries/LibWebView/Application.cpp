@@ -72,6 +72,7 @@
 #include <LibWebView/SiteCompatibility.h>
 #include <LibWebView/SpellChecker.h>
 #include <LibWebView/StorageAreaRegistry.h>
+#include <LibWebView/TabObserver.h>
 #include <LibWebView/TabPerformanceMonitor.h>
 #include <LibWebView/Translator.h>
 #include <LibWebView/URL.h>
@@ -103,6 +104,237 @@
 #endif
 
 namespace WebView {
+
+namespace {
+
+using Delegate = DevTools::DevToolsDelegate;
+
+// What the DevTools server listens for in a tab, until it lets go of it.
+class DevToolsTabListener : public DevTools::Listener
+    , public TabObserver {
+protected:
+    explicit DevToolsTabListener(ViewImplementation& tab)
+        : TabObserver(tab)
+    {
+    }
+};
+
+class HostCookieListener final : public DevToolsTabListener {
+public:
+    AK_ALLOC_WITH_KMALLOC;
+
+    HostCookieListener(ViewImplementation& tab, Delegate::OnHostCookieChange on_change)
+        : DevToolsTabListener(tab)
+        , m_on_change(move(on_change))
+    {
+    }
+
+private:
+    virtual void tab_did_change_host_cookies(Vector<HTTP::Cookie::Cookie> const& cookies) override { m_on_change(cookies); }
+
+    Delegate::OnHostCookieChange m_on_change;
+};
+
+class DOMPropertiesListener final : public DevToolsTabListener {
+public:
+    AK_ALLOC_WITH_KMALLOC;
+
+    DOMPropertiesListener(ViewImplementation& tab, Delegate::OnDOMNodePropertiesReceived on_received)
+        : DevToolsTabListener(tab)
+        , m_on_received(move(on_received))
+    {
+    }
+
+private:
+    virtual void tab_did_receive_dom_node_properties(DOMNodeProperties const& properties) override { m_on_received(properties); }
+
+    Delegate::OnDOMNodePropertiesReceived m_on_received;
+};
+
+// The page reports its DOM mutations while a listener hears of them.
+class DOMMutationListener final : public DevToolsTabListener {
+public:
+    AK_ALLOC_WITH_KMALLOC;
+
+    DOMMutationListener(ViewImplementation& tab, Delegate::OnDOMMutationReceived on_received)
+        : DevToolsTabListener(tab)
+        , m_on_received(move(on_received))
+    {
+        tab.set_listen_for_dom_mutations(true);
+    }
+
+    virtual ~DOMMutationListener() override
+    {
+        if (auto* tab = observed_tab())
+            tab->set_listen_for_dom_mutations(false);
+    }
+
+private:
+    virtual void tab_did_receive_dom_mutation(Mutation const& mutation) override { m_on_received(mutation); }
+
+    Delegate::OnDOMMutationReceived m_on_received;
+};
+
+class StyleSheetSourceListener final : public DevToolsTabListener {
+public:
+    AK_ALLOC_WITH_KMALLOC;
+
+    StyleSheetSourceListener(ViewImplementation& tab, Delegate::OnStyleSheetSourceReceived on_received)
+        : DevToolsTabListener(tab)
+        , m_on_received(move(on_received))
+    {
+    }
+
+private:
+    virtual void tab_did_receive_style_sheet_source(Web::CSS::StyleSheetIdentifier const& style_sheet, URL::URL const&, Utf16String const& source) override { m_on_received(style_sheet, source); }
+
+    Delegate::OnStyleSheetSourceReceived m_on_received;
+};
+
+class SourceListener final : public DevToolsTabListener {
+public:
+    AK_ALLOC_WITH_KMALLOC;
+
+    SourceListener(ViewImplementation& tab, Delegate::OnSourceAvailable on_available)
+        : DevToolsTabListener(tab)
+        , m_on_available(move(on_available))
+    {
+    }
+
+private:
+    virtual void tab_did_make_source_available(Web::HTML::ScriptRegistryDescription const& source) override { m_on_available(source); }
+
+    Delegate::OnSourceAvailable m_on_available;
+};
+
+// The debugger is attached while a listener hears of it pausing and resuming.
+class DebuggerListener final : public DevToolsTabListener {
+public:
+    AK_ALLOC_WITH_KMALLOC;
+
+    DebuggerListener(ViewImplementation& tab, Delegate::OnDebuggerPaused on_paused, Delegate::OnDebuggerResumed on_resumed)
+        : DevToolsTabListener(tab)
+        , m_on_paused(move(on_paused))
+        , m_on_resumed(move(on_resumed))
+    {
+        tab.attach_debugger();
+    }
+
+    virtual ~DebuggerListener() override
+    {
+        if (auto* tab = observed_tab())
+            tab->detach_debugger();
+    }
+
+private:
+    virtual void tab_debugger_did_pause(DebuggerPause const& pause) override { m_on_paused(pause); }
+    virtual void tab_debugger_did_resume() override { m_on_resumed(); }
+
+    Delegate::OnDebuggerPaused m_on_paused;
+    Delegate::OnDebuggerResumed m_on_resumed;
+};
+
+class ConsoleMessageListener final : public DevToolsTabListener {
+public:
+    AK_ALLOC_WITH_KMALLOC;
+
+    ConsoleMessageListener(ViewImplementation& tab, Delegate::OnConsoleMessage on_message)
+        : DevToolsTabListener(tab)
+        , m_on_message(move(on_message))
+    {
+    }
+
+private:
+    virtual void tab_did_receive_console_message(ConsoleOutput const& output) override { m_on_message(output); }
+
+    Delegate::OnConsoleMessage m_on_message;
+};
+
+class NetworkListener final : public DevToolsTabListener {
+public:
+    AK_ALLOC_WITH_KMALLOC;
+
+    NetworkListener(ViewImplementation& tab, Delegate::OnNetworkRequestStarted on_request_started, Delegate::OnNetworkResponseHeadersReceived on_response_headers, Delegate::OnNetworkResponseBodyReceived on_response_body, Delegate::OnNetworkRequestFinished on_request_finished)
+        : DevToolsTabListener(tab)
+        , m_on_request_started(move(on_request_started))
+        , m_on_response_headers(move(on_response_headers))
+        , m_on_response_body(move(on_response_body))
+        , m_on_request_finished(move(on_request_finished))
+    {
+    }
+
+private:
+    virtual void tab_did_start_network_request(u64 request_id, URL::URL const& url, ByteString const& method, Vector<HTTP::Header> const& headers, ByteBuffer const& body, Optional<String> const& initiator_type, String const& referrer_policy, bool is_navigation_request, Web::Fetch::Infrastructure::RequestPriority priority) override
+    {
+        m_on_request_started({
+            .request_id = request_id,
+            .url = url.to_string(),
+            .method = MUST(String::from_byte_string(method)),
+            .start_time = UnixDateTime::now(),
+            .request_headers = headers,
+            .request_body = body,
+            .initiator_type = initiator_type,
+            .referrer_policy = referrer_policy,
+            .is_navigation_request = is_navigation_request,
+            .priority = priority,
+        });
+    }
+
+    virtual void tab_did_receive_network_response_headers(u64 request_id, u32 status_code, Optional<String> const& reason_phrase, Vector<HTTP::Header> const& headers, Requests::CacheState cache_state) override
+    {
+        m_on_response_headers({ request_id, status_code, reason_phrase, headers, cache_state });
+    }
+
+    virtual void tab_did_receive_network_response_body(u64 request_id, ByteBuffer const& data) override { m_on_response_body(request_id, data); }
+
+    virtual void tab_did_finish_network_request(u64 request_id, u64 body_size, Requests::RequestTimingInfo const& timing_info, Optional<Requests::NetworkError> const& network_error) override
+    {
+        m_on_request_finished({ request_id, body_size, timing_info, network_error });
+    }
+
+    Delegate::OnNetworkRequestStarted m_on_request_started;
+    Delegate::OnNetworkResponseHeadersReceived m_on_response_headers;
+    Delegate::OnNetworkResponseBodyReceived m_on_response_body;
+    Delegate::OnNetworkRequestFinished m_on_request_finished;
+};
+
+class NavigationListener final : public DevToolsTabListener {
+public:
+    AK_ALLOC_WITH_KMALLOC;
+
+    NavigationListener(ViewImplementation& tab, Delegate::OnNavigationStarted on_started, Delegate::OnNavigationFinished on_finished)
+        : DevToolsTabListener(tab)
+        , m_on_started(move(on_started))
+        , m_on_finished(move(on_finished))
+    {
+    }
+
+private:
+    virtual void tab_did_start_loading(URL::URL const& url) override { m_on_started(url.to_string()); }
+    virtual void tab_did_finish_loading(URL::URL const& url) override { m_on_finished(url.to_string(), observed_tab()->title().to_well_formed_utf8()); }
+
+    Delegate::OnNavigationStarted m_on_started;
+    Delegate::OnNavigationFinished m_on_finished;
+};
+
+class InspectElementListener final : public DevToolsTabListener {
+public:
+    AK_ALLOC_WITH_KMALLOC;
+
+    InspectElementListener(ViewImplementation& tab, Delegate::OnInspectElementRequest on_request)
+        : DevToolsTabListener(tab)
+        , m_on_request(move(on_request))
+    {
+    }
+
+private:
+    virtual bool wants_inspect_element_requests() const override { return true; }
+    virtual void tab_did_request_inspect_element(Web::UniqueNodeID node_id) override { m_on_request(node_id); }
+
+    Delegate::OnInspectElementRequest m_on_request;
+};
+
+}
 
 static constexpr size_t maximum_content_blocker_list_size = 64 * MiB;
 static constexpr size_t maximum_combined_content_blocker_list_size = 256 * MiB;
@@ -3617,16 +3849,12 @@ void Application::delete_cookies(DevTools::TabDescription const& description, Ve
         view->session().cookie_jar->delete_cookie({ cookie.name, cookie.domain, cookie.host_only, cookie.path, cookie.partition_key });
 }
 
-void Application::listen_for_host_cookie_changes(DevTools::TabDescription const& description, OnHostCookieChange on_host_cookie_change) const
+OwnPtr<DevTools::Listener> Application::listen_for_host_cookie_changes(DevTools::TabDescription const& description, OnHostCookieChange on_host_cookie_change) const
 {
-    if (auto view = ViewImplementation::find_view_by_id(description.id); view.has_value())
-        view->listen_for_host_cookie_changes(move(on_host_cookie_change));
-}
-
-void Application::stop_listening_for_host_cookie_changes(DevTools::TabDescription const& description) const
-{
-    if (auto view = ViewImplementation::find_view_by_id(description.id); view.has_value())
-        view->stop_listening_for_host_cookie_changes();
+    auto view = ViewImplementation::find_view_by_id(description.id);
+    if (!view.has_value())
+        return {};
+    return make<HostCookieListener>(*view, move(on_host_cookie_change));
 }
 
 static ErrorOr<Optional<String>> storage_set_result_to_error_or_old_value(StorageSetResult result)
@@ -3842,22 +4070,12 @@ void Application::inspect_accessibility_tree(DevTools::TabDescription const& des
     view->inspect_accessibility_tree(move(on_complete));
 }
 
-void Application::listen_for_dom_properties(DevTools::TabDescription const& description, OnDOMNodePropertiesReceived on_dom_node_properties_received) const
+OwnPtr<DevTools::Listener> Application::listen_for_dom_properties(DevTools::TabDescription const& description, OnDOMNodePropertiesReceived on_dom_node_properties_received) const
 {
     auto view = ViewImplementation::find_view_by_id(description.id);
     if (!view.has_value())
-        return;
-
-    view->on_received_dom_node_properties = move(on_dom_node_properties_received);
-}
-
-void Application::stop_listening_for_dom_properties(DevTools::TabDescription const& description) const
-{
-    auto view = ViewImplementation::find_view_by_id(description.id);
-    if (!view.has_value())
-        return;
-
-    view->on_received_dom_node_properties = nullptr;
+        return {};
+    return make<DOMPropertiesListener>(*view, move(on_dom_node_properties_received));
 }
 
 void Application::inspect_dom_node(DevTools::TabDescription const& description, DOMNodeProperties::Type property_type, Web::UniqueNodeID node_id, Optional<Web::CSS::PseudoElement> pseudo_element, JsonObject options) const
@@ -3962,24 +4180,12 @@ void Application::clear_grid_highlight(DevTools::TabDescription const& descripti
         view->clear_grid_highlight(node_id);
 }
 
-void Application::listen_for_dom_mutations(DevTools::TabDescription const& description, OnDOMMutationReceived on_dom_mutation_received) const
+OwnPtr<DevTools::Listener> Application::listen_for_dom_mutations(DevTools::TabDescription const& description, OnDOMMutationReceived on_dom_mutation_received) const
 {
     auto view = ViewImplementation::find_view_by_id(description.id);
     if (!view.has_value())
-        return;
-
-    view->on_dom_mutation_received = move(on_dom_mutation_received);
-    view->set_listen_for_dom_mutations(true);
-}
-
-void Application::stop_listening_for_dom_mutations(DevTools::TabDescription const& description) const
-{
-    auto view = ViewImplementation::find_view_by_id(description.id);
-    if (!view.has_value())
-        return;
-
-    view->on_dom_mutation_received = nullptr;
-    view->set_listen_for_dom_mutations(false);
+        return {};
+    return make<DOMMutationListener>(*view, move(on_dom_mutation_received));
 }
 
 template<typename Edit>
@@ -4099,24 +4305,12 @@ void Application::retrieve_style_sheet_source(DevTools::TabDescription const& de
     view->request_style_sheet_source(style_sheet);
 }
 
-void Application::listen_for_style_sheet_sources(DevTools::TabDescription const& description, OnStyleSheetSourceReceived on_style_sheet_source_received) const
+OwnPtr<DevTools::Listener> Application::listen_for_style_sheet_sources(DevTools::TabDescription const& description, OnStyleSheetSourceReceived on_style_sheet_source_received) const
 {
     auto view = ViewImplementation::find_view_by_id(description.id);
     if (!view.has_value())
-        return;
-
-    view->on_received_style_sheet_source = [&view = *view, on_style_sheet_source_received = move(on_style_sheet_source_received)](auto const& style_sheet, auto const&, auto const& source) {
-        on_style_sheet_source_received(style_sheet, source);
-    };
-}
-
-void Application::stop_listening_for_style_sheet_sources(DevTools::TabDescription const& description) const
-{
-    auto view = ViewImplementation::find_view_by_id(description.id);
-    if (!view.has_value())
-        return;
-
-    view->on_received_style_sheet_source = nullptr;
+        return {};
+    return make<StyleSheetSourceListener>(*view, move(on_style_sheet_source_received));
 }
 
 void Application::retrieve_sources(DevTools::TabDescription const& description, OnSourcesReceived on_complete) const
@@ -4141,32 +4335,20 @@ void Application::retrieve_source(DevTools::TabDescription const& description, W
     view->request_devtools_source(source_id, move(on_complete));
 }
 
-void Application::listen_for_sources(DevTools::TabDescription const& description, OnSourceAvailable on_source_available) const
+OwnPtr<DevTools::Listener> Application::listen_for_sources(DevTools::TabDescription const& description, OnSourceAvailable on_source_available) const
 {
     auto view = ViewImplementation::find_view_by_id(description.id);
     if (!view.has_value())
-        return;
-
-    view->on_devtools_source_available = [on_source_available = move(on_source_available)](Web::HTML::ScriptRegistryDescription source) {
-        on_source_available(move(source));
-    };
+        return {};
+    return make<SourceListener>(*view, move(on_source_available));
 }
 
-void Application::stop_listening_for_sources(DevTools::TabDescription const& description) const
+OwnPtr<DevTools::Listener> Application::attach_debugger(DevTools::TabDescription const& description, OnDebuggerPaused on_paused, OnDebuggerResumed on_resumed) const
 {
     auto view = ViewImplementation::find_view_by_id(description.id);
     if (!view.has_value())
-        return;
-
-    view->on_devtools_source_available = nullptr;
-}
-
-void Application::attach_debugger(DevTools::TabDescription const& description, OnDebuggerPaused on_paused, OnDebuggerResumed on_resumed) const
-{
-    auto view = ViewImplementation::find_view_by_id(description.id);
-    if (!view.has_value())
-        return;
-    view->attach_debugger(move(on_paused), move(on_resumed));
+        return {};
+    return make<DebuggerListener>(*view, move(on_paused), move(on_resumed));
 }
 
 void Application::configure_debugger(DevTools::TabDescription const& description, DebuggerConfiguration configuration) const
@@ -4175,14 +4357,6 @@ void Application::configure_debugger(DevTools::TabDescription const& description
     if (!view.has_value())
         return;
     view->configure_debugger(configuration);
-}
-
-void Application::detach_debugger(DevTools::TabDescription const& description) const
-{
-    auto view = ViewImplementation::find_view_by_id(description.id);
-    if (!view.has_value())
-        return;
-    view->detach_debugger();
 }
 
 void Application::interrupt_debugger(DevTools::TabDescription const& description) const
@@ -4302,22 +4476,12 @@ void Application::evaluate_javascript(DevTools::TabDescription const& descriptio
     view->js_console_input(script, move(on_complete));
 }
 
-void Application::listen_for_console_messages(DevTools::TabDescription const& description, OnConsoleMessage on_console_message) const
+OwnPtr<DevTools::Listener> Application::listen_for_console_messages(DevTools::TabDescription const& description, OnConsoleMessage on_console_message) const
 {
     auto view = ViewImplementation::find_view_by_id(description.id);
     if (!view.has_value())
-        return;
-
-    view->on_console_message = move(on_console_message);
-}
-
-void Application::stop_listening_for_console_messages(DevTools::TabDescription const& description) const
-{
-    auto view = ViewImplementation::find_view_by_id(description.id);
-    if (!view.has_value())
-        return;
-
-    view->on_console_message = nullptr;
+        return {};
+    return make<ConsoleMessageListener>(*view, move(on_console_message));
 }
 
 void Application::start_sending_console_output(DevTools::TabDescription const& description, bool messages, bool errors) const
@@ -4329,101 +4493,28 @@ void Application::start_sending_console_output(DevTools::TabDescription const& d
     view->start_sending_console_output(messages, errors);
 }
 
-void Application::listen_for_network_events(DevTools::TabDescription const& description, OnNetworkRequestStarted on_request_started, OnNetworkResponseHeadersReceived on_response_headers, OnNetworkResponseBodyReceived on_response_body, OnNetworkRequestFinished on_request_finished) const
+OwnPtr<DevTools::Listener> Application::listen_for_network_events(DevTools::TabDescription const& description, OnNetworkRequestStarted on_request_started, OnNetworkResponseHeadersReceived on_response_headers, OnNetworkResponseBodyReceived on_response_body, OnNetworkRequestFinished on_request_finished) const
 {
     auto view = ViewImplementation::find_view_by_id(description.id);
     if (!view.has_value())
-        return;
-
-    view->on_network_request_started = [on_request_started = move(on_request_started)](u64 request_id, URL::URL const& url, ByteString const& method, Vector<HTTP::Header> const& headers, ByteBuffer request_body, Optional<String> initiator_type, String referrer_policy, bool is_navigation_request, Web::Fetch::Infrastructure::RequestPriority priority) {
-        on_request_started({
-            .request_id = request_id,
-            .url = url.to_string(),
-            .method = MUST(String::from_byte_string(method)),
-            .start_time = UnixDateTime::now(),
-            .request_headers = headers,
-            .request_body = move(request_body),
-            .initiator_type = move(initiator_type),
-            .referrer_policy = move(referrer_policy),
-            .is_navigation_request = is_navigation_request,
-            .priority = priority,
-        });
-    };
-
-    view->on_network_response_headers_received = [on_response_headers = move(on_response_headers)](u64 request_id, u32 status_code, Optional<String> const& reason_phrase, Vector<HTTP::Header> const& headers, Requests::CacheState cache_state) {
-        on_response_headers({ request_id, status_code, reason_phrase, headers, cache_state });
-    };
-
-    view->on_network_response_body_received = [on_response_body = move(on_response_body)](u64 request_id, ByteBuffer data) {
-        on_response_body(request_id, move(data));
-    };
-
-    view->on_network_request_finished = [on_request_finished = move(on_request_finished)](u64 request_id, u64 body_size, Requests::RequestTimingInfo const& timing_info, Optional<Requests::NetworkError> const& network_error) {
-        on_request_finished({ request_id, body_size, timing_info, network_error });
-    };
+        return {};
+    return make<NetworkListener>(*view, move(on_request_started), move(on_response_headers), move(on_response_body), move(on_request_finished));
 }
 
-void Application::stop_listening_for_network_events(DevTools::TabDescription const& description) const
+OwnPtr<DevTools::Listener> Application::listen_for_navigation_events(DevTools::TabDescription const& description, OnNavigationStarted on_started, OnNavigationFinished on_finished) const
 {
     auto view = ViewImplementation::find_view_by_id(description.id);
     if (!view.has_value())
-        return;
-
-    view->on_network_request_started = nullptr;
-    view->on_network_response_headers_received = nullptr;
-    view->on_network_response_body_received = nullptr;
-    view->on_network_request_finished = nullptr;
+        return {};
+    return make<NavigationListener>(*view, move(on_started), move(on_finished));
 }
 
-void Application::listen_for_navigation_events(DevTools::TabDescription const& description, OnNavigationStarted on_started, OnNavigationFinished on_finished) const
+OwnPtr<DevTools::Listener> Application::listen_for_inspect_element_requests(DevTools::TabDescription const& description, OnInspectElementRequest on_inspect_element_request) const
 {
     auto view = ViewImplementation::find_view_by_id(description.id);
     if (!view.has_value())
-        return;
-
-    ViewImplementation::NavigationListener listener;
-    listener.on_load_start = [on_started = move(on_started)](URL::URL const& url) {
-        on_started(url.to_string());
-    };
-    listener.on_load_finish = [view_id = view->view_id(), on_finished = move(on_finished)](URL::URL const& url) {
-        auto view = ViewImplementation::find_view_by_id(view_id);
-        if (!view.has_value())
-            return;
-        on_finished(url.to_string(), view->title().to_well_formed_utf8());
-    };
-
-    auto listener_id = view->add_navigation_listener(move(listener));
-    m_navigation_listener_ids.set(description.id, listener_id);
-}
-
-void Application::stop_listening_for_navigation_events(DevTools::TabDescription const& description) const
-{
-    auto view = ViewImplementation::find_view_by_id(description.id);
-    if (!view.has_value())
-        return;
-
-    if (auto listener_id = m_navigation_listener_ids.get(description.id); listener_id.has_value()) {
-        view->remove_navigation_listener(listener_id.value());
-        m_navigation_listener_ids.remove(description.id);
-    }
-}
-
-void Application::listen_for_inspect_element_requests(DevTools::TabDescription const& description, OnInspectElementRequest on_inspect_element_request) const
-{
-    auto view = ViewImplementation::find_view_by_id(description.id);
-    if (!view.has_value())
-        return;
-
-    view->on_inspect_element_request = move(on_inspect_element_request);
-}
-
-void Application::stop_listening_for_inspect_element_requests(DevTools::TabDescription const& description) const
-{
-    auto view = ViewImplementation::find_view_by_id(description.id);
-    if (!view.has_value())
-        return;
-
-    view->on_inspect_element_request = nullptr;
+        return {};
+    return make<InspectElementListener>(*view, move(on_inspect_element_request));
 }
 
 void Application::did_connect_devtools_client(DevTools::TabDescription const& description) const

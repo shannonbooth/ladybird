@@ -12,6 +12,7 @@
 #include <AK/NonnullRefPtr.h>
 #include <LibDevTools/Actor.h>
 #include <LibDevTools/Forward.h>
+#include <LibDevTools/Listener.h>
 #include <LibHTTP/Forward.h>
 
 namespace DevTools {
@@ -43,6 +44,7 @@ private:
     void send_cookie_store_update(String const& host, JsonArray added, JsonArray changed, JsonArray deleted);
 
     WeakPtr<TabActor> m_tab;
+    OwnPtr<Listener> m_host_cookie_listener;
     HashMap<String, HashTable<String>> m_visible_cookie_unique_keys;
 };
 

@@ -186,7 +186,7 @@ CookiesActor::CookiesActor(DevToolsServer& devtools, String name, WeakPtr<TabAct
     , m_tab(move(tab))
 {
     if (auto tab = m_tab.strong_ref()) {
-        devtools.delegate().listen_for_host_cookie_changes(
+        m_host_cookie_listener = devtools.delegate().listen_for_host_cookie_changes(
             tab->description(),
             weak_callback(*this, [](auto& self, Vector<HTTP::Cookie::Cookie> cookies) {
                 self.on_cookies_changed(move(cookies));
@@ -194,11 +194,7 @@ CookiesActor::CookiesActor(DevToolsServer& devtools, String name, WeakPtr<TabAct
     }
 }
 
-CookiesActor::~CookiesActor()
-{
-    if (auto tab = m_tab.strong_ref())
-        devtools().delegate().stop_listening_for_host_cookie_changes(tab->description());
-}
+CookiesActor::~CookiesActor() = default;
 
 Optional<String> CookiesActor::host() const
 {

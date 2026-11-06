@@ -30,7 +30,7 @@ WalkerActor::WalkerActor(DevToolsServer& devtools, String name, WeakPtr<TabActor
     populate_dom_tree_cache();
 
     if (auto tab = m_tab.strong_ref()) {
-        devtools.delegate().listen_for_dom_mutations(tab->description(),
+        m_dom_mutation_listener = devtools.delegate().listen_for_dom_mutations(tab->description(),
             weak_callback(*this, [](auto& self, WebView::Mutation mutation) {
                 self.new_dom_node_mutation(move(mutation));
             }));
@@ -40,9 +40,11 @@ WalkerActor::WalkerActor(DevToolsServer& devtools, String name, WeakPtr<TabActor
 WalkerActor::~WalkerActor()
 {
     stop_node_picker();
+}
 
-    if (auto tab = m_tab.strong_ref())
-        devtools().delegate().stop_listening_for_dom_mutations(tab->description());
+void WalkerActor::stop_listening()
+{
+    m_dom_mutation_listener = nullptr;
 }
 
 void WalkerActor::handle_message(Message const& message)

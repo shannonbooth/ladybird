@@ -633,6 +633,22 @@ static JsonObject make_indexed_database_store_objects(Optional<JsonArray> const&
     return response;
 }
 
+// Runs what stopping to listen does in the delegate it stands for once the actor lets go of it.
+class MockListener final : public DevTools::Listener {
+public:
+    AK_ALLOC_WITH_KMALLOC;
+
+    explicit MockListener(Function<void()> on_stop)
+        : m_on_stop(move(on_stop))
+    {
+    }
+
+    virtual ~MockListener() override { m_on_stop(); }
+
+private:
+    Function<void()> m_on_stop;
+};
+
 class TestDevToolsDelegate final : public DevTools::DevToolsDelegate {
 public:
     virtual Vector<DevTools::TabDescription> tab_list() const override
@@ -733,16 +749,14 @@ public:
             on_host_cookie_change(move(cookies));
     }
 
-    virtual void listen_for_host_cookie_changes(DevTools::TabDescription const&, OnHostCookieChange callback) const override
+    [[nodiscard]] virtual OwnPtr<DevTools::Listener> listen_for_host_cookie_changes(DevTools::TabDescription const&, OnHostCookieChange callback) const override
     {
         ++listen_for_cookie_changes_call_count;
         on_host_cookie_change = move(callback);
-    }
-
-    virtual void stop_listening_for_host_cookie_changes(DevTools::TabDescription const&) const override
-    {
-        ++stop_listening_for_cookie_changes_call_count;
-        on_host_cookie_change = nullptr;
+        return make<MockListener>([this] {
+            ++stop_listening_for_cookie_changes_call_count;
+            on_host_cookie_change = nullptr;
+        });
     }
 
     virtual void inspect_storage(DevTools::TabDescription const&, Web::StorageAPI::StorageEndpointType storage_endpoint, OnStorageItemsReceived callback) const override
@@ -898,15 +912,13 @@ public:
         callback(make_accessibility_tree());
     }
 
-    virtual void listen_for_dom_properties(DevTools::TabDescription const&, OnDOMNodePropertiesReceived callback) const override
+    [[nodiscard]] virtual OwnPtr<DevTools::Listener> listen_for_dom_properties(DevTools::TabDescription const&, OnDOMNodePropertiesReceived callback) const override
     {
         ++listen_for_dom_properties_call_count;
         on_dom_node_properties = move(callback);
-    }
-
-    virtual void stop_listening_for_dom_properties(DevTools::TabDescription const&) const override
-    {
-        ++stop_listening_for_dom_properties_call_count;
+        return make<MockListener>([this] {
+            ++stop_listening_for_dom_properties_call_count;
+        });
     }
 
     virtual void inspect_dom_node(DevTools::TabDescription const&, WebView::DOMNodeProperties::Type type, Web::UniqueNodeID node_id, Optional<Web::CSS::PseudoElement> pseudo_element, JsonObject options = {}) const override
@@ -1017,13 +1029,14 @@ public:
         last_cleared_grid_node = node_id;
     }
 
-    virtual void listen_for_dom_mutations(DevTools::TabDescription const&, OnDOMMutationReceived callback) const override
+    [[nodiscard]] virtual OwnPtr<DevTools::Listener> listen_for_dom_mutations(DevTools::TabDescription const&, OnDOMMutationReceived callback) const override
     {
         ++listen_for_dom_mutations_call_count;
         on_dom_mutation = move(callback);
+        return make<MockListener>([this] {
+            ++stop_listening_for_dom_mutations_call_count;
+        });
     }
-
-    virtual void stop_listening_for_dom_mutations(DevTools::TabDescription const&) const override { ++stop_listening_for_dom_mutations_call_count; }
 
     virtual void get_dom_node_inner_html(DevTools::TabDescription const&, Web::UniqueNodeID node_id, OnDOMNodeHTMLReceived callback) const override
     {
@@ -1128,13 +1141,14 @@ public:
         });
     }
 
-    virtual void listen_for_style_sheet_sources(DevTools::TabDescription const&, OnStyleSheetSourceReceived callback) const override
+    [[nodiscard]] virtual OwnPtr<DevTools::Listener> listen_for_style_sheet_sources(DevTools::TabDescription const&, OnStyleSheetSourceReceived callback) const override
     {
         ++listen_for_style_sheet_sources_call_count;
         on_style_sheet_source = move(callback);
+        return make<MockListener>([this] {
+            ++stop_listening_for_style_sheet_sources_call_count;
+        });
     }
-
-    virtual void stop_listening_for_style_sheet_sources(DevTools::TabDescription const&) const override { ++stop_listening_for_style_sheet_sources_call_count; }
 
     virtual void retrieve_sources(DevTools::TabDescription const&, OnSourcesReceived callback) const override
     {
@@ -1164,36 +1178,32 @@ public:
         });
     }
 
-    virtual void listen_for_sources(DevTools::TabDescription const&, OnSourceAvailable callback) const override
+    [[nodiscard]] virtual OwnPtr<DevTools::Listener> listen_for_sources(DevTools::TabDescription const&, OnSourceAvailable callback) const override
     {
         ++listen_for_sources_call_count;
         on_source_available = move(callback);
+        return make<MockListener>([this] {
+            ++stop_listening_for_sources_call_count;
+            on_source_available = nullptr;
+        });
     }
 
-    virtual void stop_listening_for_sources(DevTools::TabDescription const&) const override
-    {
-        ++stop_listening_for_sources_call_count;
-        on_source_available = nullptr;
-    }
-
-    virtual void attach_debugger(DevTools::TabDescription const&, OnDebuggerPaused on_paused, OnDebuggerResumed on_resumed) const override
+    [[nodiscard]] virtual OwnPtr<DevTools::Listener> attach_debugger(DevTools::TabDescription const&, OnDebuggerPaused on_paused, OnDebuggerResumed on_resumed) const override
     {
         ++attach_debugger_call_count;
         on_debugger_paused = move(on_paused);
         on_debugger_resumed = move(on_resumed);
+        return make<MockListener>([this] {
+            ++detach_debugger_call_count;
+            on_debugger_paused = nullptr;
+            on_debugger_resumed = nullptr;
+        });
     }
 
     virtual void configure_debugger(DevTools::TabDescription const&, WebView::DebuggerConfiguration configuration) const override
     {
         ++configure_debugger_call_count;
         debugger_configuration = configuration;
-    }
-
-    virtual void detach_debugger(DevTools::TabDescription const&) const override
-    {
-        ++detach_debugger_call_count;
-        on_debugger_paused = nullptr;
-        on_debugger_resumed = nullptr;
     }
 
     virtual void interrupt_debugger(DevTools::TabDescription const&) const override
@@ -1353,41 +1363,46 @@ public:
         callback(resolved_dom_node_url);
     }
 
-    virtual void listen_for_console_messages(DevTools::TabDescription const&, OnConsoleMessage callback) const override
+    [[nodiscard]] virtual OwnPtr<DevTools::Listener> listen_for_console_messages(DevTools::TabDescription const&, OnConsoleMessage callback) const override
     {
         ++listen_for_console_messages_call_count;
         on_console_message = move(callback);
+        return make<MockListener>([this] {
+            ++stop_listening_for_console_messages_call_count;
+        });
     }
 
-    virtual void stop_listening_for_console_messages(DevTools::TabDescription const&) const override { ++stop_listening_for_console_messages_call_count; }
-
-    virtual void listen_for_network_events(DevTools::TabDescription const&, OnNetworkRequestStarted on_request_started, OnNetworkResponseHeadersReceived on_headers_received, OnNetworkResponseBodyReceived on_body_received, OnNetworkRequestFinished on_request_finished) const override
+    [[nodiscard]] virtual OwnPtr<DevTools::Listener> listen_for_network_events(DevTools::TabDescription const&, OnNetworkRequestStarted on_request_started, OnNetworkResponseHeadersReceived on_headers_received, OnNetworkResponseBodyReceived on_body_received, OnNetworkRequestFinished on_request_finished) const override
     {
         ++listen_for_network_events_call_count;
         on_network_request_started = move(on_request_started);
         on_network_response_headers_received = move(on_headers_received);
         on_network_response_body_received = move(on_body_received);
         on_network_request_finished = move(on_request_finished);
+        return make<MockListener>([this] {
+            ++stop_listening_for_network_events_call_count;
+        });
     }
 
-    virtual void stop_listening_for_network_events(DevTools::TabDescription const&) const override { ++stop_listening_for_network_events_call_count; }
-
-    virtual void listen_for_navigation_events(DevTools::TabDescription const&, OnNavigationStarted on_started, OnNavigationFinished on_finished) const override
+    [[nodiscard]] virtual OwnPtr<DevTools::Listener> listen_for_navigation_events(DevTools::TabDescription const&, OnNavigationStarted on_started, OnNavigationFinished on_finished) const override
     {
         ++listen_for_navigation_events_call_count;
         navigation_listeners.append({ move(on_started), move(on_finished) });
-    }
-
-    virtual void stop_listening_for_navigation_events(DevTools::TabDescription const&) const override
-    {
-        ++stop_listening_for_navigation_events_call_count;
-        if (!navigation_listeners.is_empty())
-            navigation_listeners.take_first();
+        return make<MockListener>([this] {
+            ++stop_listening_for_navigation_events_call_count;
+            if (!navigation_listeners.is_empty())
+                navigation_listeners.take_first();
+        });
     }
 
     virtual void start_sending_console_output(DevTools::TabDescription const&, bool messages, bool errors) const override { console_output_requests.append({ messages, errors }); }
-    virtual void listen_for_inspect_element_requests(DevTools::TabDescription const&, OnInspectElementRequest callback) const override { on_inspect_element_request = move(callback); }
-    virtual void stop_listening_for_inspect_element_requests(DevTools::TabDescription const&) const override { on_inspect_element_request = nullptr; }
+    [[nodiscard]] virtual OwnPtr<DevTools::Listener> listen_for_inspect_element_requests(DevTools::TabDescription const&, OnInspectElementRequest callback) const override
+    {
+        on_inspect_element_request = move(callback);
+        return make<MockListener>([this] {
+            on_inspect_element_request = nullptr;
+        });
+    }
     virtual void did_connect_devtools_client(DevTools::TabDescription const&) const override { ++did_connect_devtools_client_call_count; }
     virtual void did_disconnect_devtools_client(DevTools::TabDescription const&) const override { ++did_disconnect_devtools_client_call_count; }
 
@@ -2558,7 +2573,9 @@ TEST_CASE(target_bootstrap_and_lifetime)
 
     EXPECT_EQ(client.request(target_actor, "detach"sv).get_string("from"sv).value(), target_actor);
     EXPECT_EQ(session->delegate.stop_listening_for_console_messages_call_count, 1u);
-    EXPECT_EQ(session->delegate.stop_listening_for_dom_mutations_call_count, 1u);
+    // No walker listened for DOM mutations, so there is nothing to stop.
+    EXPECT_EQ(session->delegate.listen_for_dom_mutations_call_count, 0u);
+    EXPECT_EQ(session->delegate.stop_listening_for_dom_mutations_call_count, 0u);
     EXPECT_EQ(session->delegate.clear_highlighted_dom_node_call_count, 1u);
     EXPECT_EQ(session->delegate.clear_inspected_dom_node_call_count, 1u);
 }

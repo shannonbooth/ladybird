@@ -35,6 +35,7 @@ public:
     Optional<String> node_actor_name_for(Web::UniqueNodeID) const;
     void document_unloaded();
     void replace_dom_tree(JsonObject);
+    void stop_listening();
 
 private:
     WalkerActor(DevToolsServer&, String name, WeakPtr<TabActor>, JsonObject dom_tree);
@@ -66,6 +67,7 @@ private:
     JsonObject serialize_disconnected_node(JsonObject const&) const;
 
     WeakPtr<TabActor> m_tab;
+    OwnPtr<Listener> m_dom_mutation_listener;
     WeakPtr<LayoutInspectorActor> m_layout_inspector;
 
     JsonObject m_dom_tree;

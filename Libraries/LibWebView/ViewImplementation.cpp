@@ -41,6 +41,7 @@
 #include <LibWebView/PageTranslation.h>
 #include <LibWebView/PermissionManager.h>
 #include <LibWebView/SessionHistory.h>
+#include <LibWebView/TabObserver.h>
 #include <LibWebView/TabPerformanceMonitor.h>
 #include <LibWebView/URL.h>
 #include <LibWebView/UserAgent.h>
@@ -218,15 +219,10 @@ void ViewImplementation::clear_frontend_callbacks()
     on_before_browser_initiated_navigation = nullptr;
     on_browser_history_traversal_complete = nullptr;
     on_cancel_permission_prompt = nullptr;
-    on_console_message = nullptr;
     on_content_blocking_change = nullptr;
     on_crash_overlay_state_change = nullptr;
     on_crash_report_saved = nullptr;
     on_cursor_change = nullptr;
-    on_debugger_paused = nullptr;
-    on_debugger_resumed = nullptr;
-    on_devtools_source_available = nullptr;
-    on_dom_mutation_received = nullptr;
     on_enter_tooltip_area = nullptr;
     on_exit_fullscreen_window = nullptr;
     on_favicon_change = nullptr;
@@ -236,7 +232,6 @@ void ViewImplementation::clear_frontend_callbacks()
     on_finish_handling_mouse_event = nullptr;
     on_fullscreen_window = nullptr;
     on_input_method_state_change = nullptr;
-    on_inspect_element_request = nullptr;
     on_leave_tooltip_area = nullptr;
     on_link_hover = nullptr;
     on_link_unhover = nullptr;
@@ -245,17 +240,11 @@ void ViewImplementation::clear_frontend_callbacks()
     on_loading_state_change = nullptr;
     on_maximize_window = nullptr;
     on_minimize_window = nullptr;
-    on_network_request_finished = nullptr;
-    on_network_request_started = nullptr;
-    on_network_response_body_received = nullptr;
-    on_network_response_headers_received = nullptr;
     on_new_web_view = nullptr;
     on_page_background_color_change = nullptr;
     on_performance_stats = nullptr;
     on_picture_in_picture_control_activated = nullptr;
     on_ready_to_paint = nullptr;
-    on_received_dom_node_properties = nullptr;
-    on_received_style_sheet_source = nullptr;
     on_reference_test_metadata = nullptr;
     on_reposition_window = nullptr;
     on_request_accept_dialog = nullptr;
@@ -1811,18 +1800,8 @@ void ViewImplementation::notify_cookies_changed(HashTable<String> const& changed
 
     if (!page_cookies.is_empty())
         page().async_cookies_changed(page_cookies);
-    if (m_on_host_cookie_change)
-        m_on_host_cookie_change(Vector<HTTP::Cookie::Cookie> { host_cookies });
-}
-
-void ViewImplementation::listen_for_host_cookie_changes(DevTools::DevToolsDelegate::OnHostCookieChange on_cookie_change)
-{
-    m_on_host_cookie_change = move(on_cookie_change);
-}
-
-void ViewImplementation::stop_listening_for_host_cookie_changes()
-{
-    m_on_host_cookie_change = nullptr;
+    Vector<HTTP::Cookie::Cookie> changed_host_cookies { host_cookies };
+    notify_observers([&](TabObserver& observer) { observer.tab_did_change_host_cookies(changed_host_cookies); });
 }
 
 void ViewImplementation::notify_storage_changed(DevTools::DevToolsDelegate::StorageChange change)
@@ -2287,10 +2266,8 @@ void ViewImplementation::request_devtools_source(Web::HTML::ScriptRegistryIdenti
     page().async_request_devtools_source(expect_reply(page(), move(on_complete), page_closed_before_replying()), source_id);
 }
 
-void ViewImplementation::attach_debugger(DevTools::DevToolsDelegate::OnDebuggerPaused on_paused, DevTools::DevToolsDelegate::OnDebuggerResumed on_resumed)
+void ViewImplementation::attach_debugger()
 {
-    on_debugger_paused = move(on_paused);
-    on_debugger_resumed = move(on_resumed);
     m_debugger_is_attached = true;
     page().async_attach_debugger();
 }
@@ -2304,8 +2281,6 @@ void ViewImplementation::detach_debugger()
 {
     fail_pending_debugger_requests();
     m_debugger_is_attached = false;
-    on_debugger_paused = nullptr;
-    on_debugger_resumed = nullptr;
     page().async_detach_debugger();
 }
 
@@ -2335,15 +2310,13 @@ u64 ViewImplementation::expect_debugger_reply(NonnullRefPtr<PendingReplyBase> re
 void ViewImplementation::did_pause_debugger(DebuggerPause pause)
 {
     set_debugger_paused(true);
-    if (on_debugger_paused)
-        on_debugger_paused(move(pause));
+    notify_observers([&](TabObserver& observer) { observer.tab_debugger_did_pause(pause); });
 }
 
 void ViewImplementation::did_resume_debugger()
 {
     set_debugger_paused(false);
-    if (on_debugger_resumed)
-        on_debugger_resumed();
+    notify_observers([](TabObserver& observer) { observer.tab_debugger_did_resume(); });
 }
 
 void ViewImplementation::did_request_cursor_change(Gfx::Cursor cursor)
@@ -3471,6 +3444,7 @@ void ViewImplementation::did_cancel_loading(Badge<CanonicalNavigable>, bool canc
         if (listener.on_load_finish)
             listener.on_load_finish(client_url);
     }
+    notify_observers([&](TabObserver& observer) { observer.tab_did_finish_loading(client_url); });
 }
 
 void ViewImplementation::did_finish_navigation()
@@ -3698,8 +3672,7 @@ void ViewImplementation::display_page_changed(RefPtr<WebContentPage> previous_pa
             on_link_unhover();
         if (m_debugger_paused) {
             set_debugger_paused(false);
-            if (on_debugger_resumed)
-                on_debugger_resumed();
+            notify_observers([](TabObserver& observer) { observer.tab_debugger_did_resume(); });
         }
         m_debugger_overlay_pointer_state.reset();
         fail_pending_debugger_requests();
@@ -5006,8 +4979,8 @@ void ViewImplementation::initialize_context_menus()
     m_inspect_element_action = Action::create("Inspect Element"sv, ActionID::InspectElement, [this]() {
         if (m_inspect_element_hit_test && m_inspect_element_hit_test->is_pending())
             m_inspect_element_activated_before_hit_test = true;
-        else if (m_inspect_element_node_id.has_value() && on_inspect_element_request)
-            on_inspect_element_request(*m_inspect_element_node_id);
+        else if (m_inspect_element_node_id.has_value())
+            request_inspect_element(*m_inspect_element_node_id);
     });
     m_inspect_element_action->set_visible(false);
 
@@ -5503,6 +5476,14 @@ void ViewImplementation::request_text_fragment_url(Optional<u64> generation_id)
     page().client().async_generate_text_fragment_url(page().id(), page().expect_reply_from_renderer(move(reply)), *generation_id);
 }
 
+void ViewImplementation::request_inspect_element(Web::UniqueNodeID node_id)
+{
+    notify_observers([&](TabObserver& observer) {
+        if (observer.wants_inspect_element_requests())
+            observer.tab_did_request_inspect_element(node_id);
+    });
+}
+
 void ViewImplementation::prepare_inspect_element_action(Gfx::IntPoint content_position)
 {
     m_inspect_element_node_id.clear();
@@ -5510,8 +5491,10 @@ void ViewImplementation::prepare_inspect_element_action(Gfx::IntPoint content_po
         previous_hit_test->cancel();
     m_inspect_element_activated_before_hit_test = false;
 
-    m_inspect_element_action->set_visible(static_cast<bool>(on_inspect_element_request));
-    if (!on_inspect_element_request)
+    auto wants_inspect_element_requests = false;
+    notify_observers([&](TabObserver& observer) { wants_inspect_element_requests |= observer.wants_inspect_element_requests(); });
+    m_inspect_element_action->set_visible(wants_inspect_element_requests);
+    if (!wants_inspect_element_requests)
         return;
 
     // A cancelled hit test answers nothing.
@@ -5523,8 +5506,8 @@ void ViewImplementation::prepare_inspect_element_action(Gfx::IntPoint content_po
             view->m_inspect_element_node_id = *node_id;
 
         // The user chose Inspect Element before the hit test came back.
-        if (exchange(view->m_inspect_element_activated_before_hit_test, false) && view->m_inspect_element_node_id.has_value() && view->on_inspect_element_request)
-            view->on_inspect_element_request(*view->m_inspect_element_node_id);
+        if (exchange(view->m_inspect_element_activated_before_hit_test, false) && view->m_inspect_element_node_id.has_value())
+            view->request_inspect_element(*view->m_inspect_element_node_id);
     },
         {});
     m_inspect_element_hit_test = reply;
@@ -5732,6 +5715,16 @@ void ViewImplementation::remove_navigation_listener(u64 listener_id)
     m_navigation_listeners.remove(listener_id);
 }
 
+void ViewImplementation::add_observer(Badge<TabObserver>, TabObserver& observer)
+{
+    m_observers.append(&observer);
+}
+
+void ViewImplementation::remove_observer(Badge<TabObserver>, TabObserver& observer)
+{
+    m_observers.remove_first_matching([&](auto* candidate) { return candidate == &observer; });
+}
+
 void ViewImplementation::request_close()
 {
     if (m_debugger_paused) {
@@ -5820,6 +5813,7 @@ void ViewImplementation::did_begin_top_level_load(URL::URL const& url)
         if (listener.on_load_start)
             listener.on_load_start(url);
     }
+    notify_observers([&](TabObserver& observer) { observer.tab_did_start_loading(url); });
 }
 
 void ViewImplementation::did_finish_top_level_load(URL::URL const& url)
@@ -5833,6 +5827,7 @@ void ViewImplementation::did_finish_top_level_load(URL::URL const& url)
         if (listener.on_load_finish)
             listener.on_load_finish(url);
     }
+    notify_observers([&](TabObserver& observer) { observer.tab_did_finish_loading(url); });
 }
 
 }

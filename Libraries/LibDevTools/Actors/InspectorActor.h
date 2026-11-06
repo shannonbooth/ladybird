@@ -21,6 +21,7 @@ public:
 
     static RefPtr<TabActor> tab_for(WeakPtr<InspectorActor> const&);
     static RefPtr<WalkerActor> walker_for(WeakPtr<InspectorActor> const&);
+    static RefPtr<PageStyleActor> page_style_for(WeakPtr<InspectorActor> const&);
     static RefPtr<StyleSheetsActor> style_sheets_for(WeakPtr<InspectorActor> const&);
 
     void on_navigation_started();

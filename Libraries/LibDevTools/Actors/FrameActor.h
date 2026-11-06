@@ -13,6 +13,7 @@
 #include <LibDevTools/Actor.h>
 #include <LibDevTools/DevToolsDelegate.h>
 #include <LibDevTools/Forward.h>
+#include <LibDevTools/Listener.h>
 #include <LibWebCommon/Forward.h>
 #include <LibWebView/Forward.h>
 
@@ -70,7 +71,10 @@ private:
 
     Optional<PendingNavigationDocumentEvents> m_pending_navigation_document_events_after_target_switch;
     HashMap<u64, NonnullRefPtr<NetworkEventActor>> m_network_events;
-    bool m_is_listening { false };
+    OwnPtr<Listener> m_console_listener;
+    OwnPtr<Listener> m_network_listener;
+    OwnPtr<Listener> m_navigation_listener;
+    OwnPtr<Listener> m_inspect_element_listener;
 };
 
 }

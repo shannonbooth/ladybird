@@ -402,8 +402,6 @@ public:
     void send_system_theme_to_page(WebContentPage&);
 
     void notify_cookies_changed(HashTable<String> const& changed_domains, ReadonlySpan<HTTP::Cookie::Cookie> page_cookies, ReadonlySpan<HTTP::Cookie::Cookie> host_cookies);
-    void listen_for_host_cookie_changes(DevTools::DevToolsDelegate::OnHostCookieChange);
-    void stop_listening_for_host_cookie_changes();
     void notify_indexed_database_changed(JsonObject);
     u64 add_indexed_database_change_listener(DevTools::DevToolsDelegate::OnIndexedDatabaseChange);
     void remove_indexed_database_change_listener(u64 listener_id);
@@ -465,7 +463,7 @@ public:
     void inspect_current_flexbox(Web::UniqueNodeID node_id, bool only_look_at_parents, DevTools::DevToolsDelegate::OnCurrentFlexboxReceived);
     void retrieve_devtools_sources(DevTools::DevToolsDelegate::OnSourcesReceived);
     void request_devtools_source(Web::HTML::ScriptRegistryIdentifier const&, DevTools::DevToolsDelegate::OnSourceReceived);
-    void attach_debugger(DevTools::DevToolsDelegate::OnDebuggerPaused, DevTools::DevToolsDelegate::OnDebuggerResumed);
+    void attach_debugger();
     void configure_debugger(DebuggerConfiguration);
     void detach_debugger();
     void interrupt_debugger();
@@ -611,6 +609,18 @@ public:
     u64 add_navigation_listener(NavigationListener);
     void remove_navigation_listener(u64 listener_id);
 
+    void add_observer(Badge<TabObserver>, TabObserver&);
+    void remove_observer(Badge<TabObserver>, TabObserver&);
+    // An observer may stop observing as it hears of an event.
+    template<typename Callback>
+    void notify_observers(Callback const& callback)
+    {
+        for (auto* observer : Vector { m_observers }) {
+            if (m_observers.contains_slow(observer))
+                callback(*observer);
+        }
+    }
+
     Function<void()> on_ready_to_paint;
     Function<void(TabPerformanceStats const&)> on_performance_stats;
     Function<String(Web::HTML::ActivateTab, Web::HTML::WebViewHints, CanonicalTraversable&)> on_new_web_view;
@@ -643,18 +653,6 @@ public:
     Function<void()> on_request_website_issue_report;
     Function<void()> on_request_screenshot;
     Function<void()> on_request_dismiss_dialog;
-    Function<void(DOMNodeProperties)> on_received_dom_node_properties;
-    Function<void(Mutation)> on_dom_mutation_received;
-    Function<void(Web::CSS::StyleSheetIdentifier const&, URL::URL const&, Utf16String const&)> on_received_style_sheet_source;
-    Function<void(Web::HTML::ScriptRegistryDescription)> on_devtools_source_available;
-    DevTools::DevToolsDelegate::OnDebuggerPaused on_debugger_paused;
-    DevTools::DevToolsDelegate::OnDebuggerResumed on_debugger_resumed;
-    Function<void(ConsoleOutput)> on_console_message;
-    Function<void(Web::UniqueNodeID)> on_inspect_element_request;
-    Function<void(u64 request_id, URL::URL const&, ByteString const&, Vector<HTTP::Header> const&, ByteBuffer, Optional<String>, String, bool, Web::Fetch::Infrastructure::RequestPriority)> on_network_request_started;
-    Function<void(u64 request_id, u32 status_code, Optional<String> const&, Vector<HTTP::Header> const&, Requests::CacheState)> on_network_response_headers_received;
-    Function<void(u64 request_id, ByteBuffer)> on_network_response_body_received;
-    Function<void(u64 request_id, u64 body_size, Requests::RequestTimingInfo const&, Optional<Requests::NetworkError> const&)> on_network_request_finished;
     Function<void()> on_restore_window;
     Function<void(Gfx::IntPoint)> on_reposition_window;
     Function<void(Gfx::IntSize)> on_resize_window;
@@ -959,6 +957,7 @@ private:
     RefPtr<PendingReplyBase> m_text_fragment_url_reply;
 
     void prepare_inspect_element_action(Gfx::IntPoint content_position);
+    void request_inspect_element(Web::UniqueNodeID);
     RefPtr<Action> m_inspect_element_action;
     RefPtr<PendingReplyBase> m_inspect_element_hit_test;
     Optional<Web::UniqueNodeID> m_inspect_element_node_id;
@@ -1205,7 +1204,6 @@ private:
     Vector<URL::Origin> m_sites_shown_microphone_denied_notice;
     u64 m_microphone_denied_notices_shown { 0 };
 
-    DevTools::DevToolsDelegate::OnHostCookieChange m_on_host_cookie_change;
     HashMap<u64, DevTools::DevToolsDelegate::OnIndexedDatabaseChange> m_indexed_database_change_listeners;
     u64 m_next_indexed_database_change_listener_id { 1 };
 
@@ -1219,6 +1217,7 @@ private:
     u64 m_view_id { 0 };
 
     HashMap<u64, NavigationListener> m_navigation_listeners;
+    Vector<TabObserver*> m_observers;
     u64 m_next_navigation_listener_id { 1 };
 
     enum class NodePickerRequestType : u8 {

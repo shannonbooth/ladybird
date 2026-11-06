@@ -172,6 +172,13 @@ RefPtr<WalkerActor> InspectorActor::walker_for(WeakPtr<InspectorActor> const& we
     return {};
 }
 
+RefPtr<PageStyleActor> InspectorActor::page_style_for(WeakPtr<InspectorActor> const& weak_inspector)
+{
+    if (auto inspector = weak_inspector.strong_ref())
+        return inspector->m_page_style.strong_ref();
+    return {};
+}
+
 RefPtr<StyleSheetsActor> InspectorActor::style_sheets_for(WeakPtr<InspectorActor> const& weak_inspector)
 {
     if (auto inspector = weak_inspector.strong_ref())

@@ -331,7 +331,7 @@ void WatcherActor::switch_frame_target(FrameActor& previous_target, String const
     previous_target_ref->stop_listening();
     unregister_child_actor(*previous_target_ref);
 
-    m_debugger_is_attached = false;
+    m_debugger_listener = nullptr;
     auto& target = create_frame_target();
     send_frame_target_available_message(target);
     target.send_frame_update_message();
@@ -440,7 +440,7 @@ void WatcherActor::start_watching_source_resources()
     if (!tab)
         return;
 
-    devtools().delegate().listen_for_sources(tab->description(), [weak_this = make_weak_ptr<WatcherActor>()](auto source) mutable {
+    m_source_listener = devtools().delegate().listen_for_sources(tab->description(), [weak_this = make_weak_ptr<WatcherActor>()](auto source) mutable {
         auto self = weak_this.strong_ref();
         if (!self)
             return;
@@ -454,11 +454,7 @@ void WatcherActor::stop_watching_source_resources()
         return;
 
     m_is_watching_source_resources = false;
-    auto tab = m_tab.strong_ref();
-    if (!tab)
-        return;
-
-    devtools().delegate().stop_listening_for_sources(tab->description());
+    m_source_listener = nullptr;
 }
 
 void WatcherActor::send_source_resource_available_message(Web::HTML::ScriptRegistryDescription const& source)
@@ -475,15 +471,14 @@ void WatcherActor::start_watching_thread_state_resources()
 
 void WatcherActor::attach_debugger_if_possible()
 {
-    if (!m_is_watching_thread_state_resources || m_debugger_is_attached || !m_thread.strong_ref())
+    if (!m_is_watching_thread_state_resources || m_debugger_listener || !m_thread.strong_ref())
         return;
 
     auto tab = m_tab.strong_ref();
     if (!tab)
         return;
 
-    m_debugger_is_attached = true;
-    devtools().delegate().attach_debugger(
+    m_debugger_listener = devtools().delegate().attach_debugger(
         tab->description(),
         [weak_this = make_weak_ptr<WatcherActor>()](auto pause) mutable {
             auto self = weak_this.strong_ref();
@@ -507,13 +502,7 @@ void WatcherActor::stop_watching_thread_state_resources()
         return;
 
     m_is_watching_thread_state_resources = false;
-    if (m_debugger_is_attached) {
-        m_debugger_is_attached = false;
-        auto tab = m_tab.strong_ref();
-        if (!tab)
-            return;
-        devtools().delegate().detach_debugger(tab->description());
-    }
+    m_debugger_listener = nullptr;
 }
 
 void WatcherActor::send_thread_state_available_message(JsonObject resource)

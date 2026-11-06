@@ -539,8 +539,7 @@ private:
     virtual Vector<HTTP::Cookie::Cookie> cookies(DevTools::TabDescription const&) const override;
     virtual ErrorOr<void> set_cookie(DevTools::TabDescription const&, Optional<HTTP::Cookie::Cookie>, HTTP::Cookie::Cookie) const override;
     virtual void delete_cookies(DevTools::TabDescription const&, Vector<HTTP::Cookie::Cookie>) const override;
-    virtual void listen_for_host_cookie_changes(DevTools::TabDescription const&, OnHostCookieChange) const override;
-    virtual void stop_listening_for_host_cookie_changes(DevTools::TabDescription const&) const override;
+    virtual OwnPtr<DevTools::Listener> listen_for_host_cookie_changes(DevTools::TabDescription const&, OnHostCookieChange) const override;
     virtual void inspect_storage(DevTools::TabDescription const&, Web::StorageAPI::StorageEndpointType, OnStorageItemsReceived) const override;
     virtual ErrorOr<Optional<String>> set_storage_item(DevTools::TabDescription const&, Web::StorageAPI::StorageEndpointType, String const&, String const&, String const&) const override;
     virtual ErrorOr<Optional<String>> remove_storage_item(DevTools::TabDescription const&, Web::StorageAPI::StorageEndpointType, String const&, String const&) const override;
@@ -556,8 +555,7 @@ private:
     virtual void remove_indexed_database_change_listener(DevTools::TabDescription const&, u64) const override;
     virtual void inspect_tab(DevTools::TabDescription const&, OnTabInspectionComplete) const override;
     virtual void inspect_accessibility_tree(DevTools::TabDescription const&, OnAccessibilityTreeInspectionComplete) const override;
-    virtual void listen_for_dom_properties(DevTools::TabDescription const&, OnDOMNodePropertiesReceived) const override;
-    virtual void stop_listening_for_dom_properties(DevTools::TabDescription const&) const override;
+    virtual OwnPtr<DevTools::Listener> listen_for_dom_properties(DevTools::TabDescription const&, OnDOMNodePropertiesReceived) const override;
     virtual void inspect_dom_node(DevTools::TabDescription const&, DOMNodeProperties::Type, Web::UniqueNodeID, Optional<Web::CSS::PseudoElement>, JsonObject options = {}) const override;
     virtual void clear_inspected_dom_node(DevTools::TabDescription const&) const override;
     virtual void start_node_picker(DevTools::TabDescription const&, OnNodePickerEvent) const override;
@@ -572,8 +570,7 @@ private:
     virtual void clear_flexbox_highlight(DevTools::TabDescription const&, Web::UniqueNodeID) const override;
     virtual void highlight_grid(DevTools::TabDescription const&, Web::UniqueNodeID, JsonValue) const override;
     virtual void clear_grid_highlight(DevTools::TabDescription const&, Web::UniqueNodeID) const override;
-    virtual void listen_for_dom_mutations(DevTools::TabDescription const&, OnDOMMutationReceived) const override;
-    virtual void stop_listening_for_dom_mutations(DevTools::TabDescription const&) const override;
+    virtual OwnPtr<DevTools::Listener> listen_for_dom_mutations(DevTools::TabDescription const&, OnDOMMutationReceived) const override;
     virtual void get_dom_node_inner_html(DevTools::TabDescription const&, Web::UniqueNodeID, OnDOMNodeHTMLReceived) const override;
     virtual void get_dom_node_outer_html(DevTools::TabDescription const&, Web::UniqueNodeID, OnDOMNodeHTMLReceived) const override;
     virtual void set_dom_node_outer_html(DevTools::TabDescription const&, Web::UniqueNodeID, String const&, OnDOMNodeEditComplete) const override;
@@ -587,15 +584,12 @@ private:
     virtual void remove_dom_node(DevTools::TabDescription const&, Web::UniqueNodeID, OnDOMNodeEditComplete) const override;
     virtual void retrieve_style_sheets(DevTools::TabDescription const&, OnStyleSheetsReceived) const override;
     virtual void retrieve_style_sheet_source(DevTools::TabDescription const&, Web::CSS::StyleSheetIdentifier const&) const override;
-    virtual void listen_for_style_sheet_sources(DevTools::TabDescription const&, OnStyleSheetSourceReceived) const override;
-    virtual void stop_listening_for_style_sheet_sources(DevTools::TabDescription const&) const override;
+    virtual OwnPtr<DevTools::Listener> listen_for_style_sheet_sources(DevTools::TabDescription const&, OnStyleSheetSourceReceived) const override;
     virtual void retrieve_sources(DevTools::TabDescription const&, OnSourcesReceived) const override;
     virtual void retrieve_source(DevTools::TabDescription const&, Web::HTML::ScriptRegistryIdentifier, OnSourceReceived) const override;
-    virtual void listen_for_sources(DevTools::TabDescription const&, OnSourceAvailable) const override;
-    virtual void stop_listening_for_sources(DevTools::TabDescription const&) const override;
-    virtual void attach_debugger(DevTools::TabDescription const&, OnDebuggerPaused, OnDebuggerResumed) const override;
+    virtual OwnPtr<DevTools::Listener> listen_for_sources(DevTools::TabDescription const&, OnSourceAvailable) const override;
+    virtual OwnPtr<DevTools::Listener> attach_debugger(DevTools::TabDescription const&, OnDebuggerPaused, OnDebuggerResumed) const override;
     virtual void configure_debugger(DevTools::TabDescription const&, DebuggerConfiguration) const override;
-    virtual void detach_debugger(DevTools::TabDescription const&) const override;
     virtual void interrupt_debugger(DevTools::TabDescription const&) const override;
     virtual void resume_debugger(DevTools::TabDescription const&, DebuggerResumeMode) const override;
     virtual void update_debugger_blackboxing(DevTools::TabDescription const&, Utf16String, Vector<DebuggerBlackboxRange>, DebuggerBlackboxingOperation) const override;
@@ -608,15 +602,11 @@ private:
     virtual void complete_console_input(DevTools::TabDescription const&, String const&, OnConsoleInputCompleted) const override;
     virtual void resolve_dom_node_url(DevTools::TabDescription const&, Optional<Web::UniqueNodeID>, String const&, OnResolvedURLReceived) const override;
     virtual void evaluate_javascript(DevTools::TabDescription const&, String const&, OnScriptEvaluationComplete) const override;
-    virtual void listen_for_console_messages(DevTools::TabDescription const&, OnConsoleMessage) const override;
-    virtual void stop_listening_for_console_messages(DevTools::TabDescription const&) const override;
+    virtual OwnPtr<DevTools::Listener> listen_for_console_messages(DevTools::TabDescription const&, OnConsoleMessage) const override;
     virtual void start_sending_console_output(DevTools::TabDescription const&, bool messages, bool errors) const override;
-    virtual void listen_for_network_events(DevTools::TabDescription const&, OnNetworkRequestStarted, OnNetworkResponseHeadersReceived, OnNetworkResponseBodyReceived, OnNetworkRequestFinished) const override;
-    virtual void stop_listening_for_network_events(DevTools::TabDescription const&) const override;
-    virtual void listen_for_navigation_events(DevTools::TabDescription const&, OnNavigationStarted, OnNavigationFinished) const override;
-    virtual void stop_listening_for_navigation_events(DevTools::TabDescription const&) const override;
-    virtual void listen_for_inspect_element_requests(DevTools::TabDescription const&, OnInspectElementRequest) const override;
-    virtual void stop_listening_for_inspect_element_requests(DevTools::TabDescription const&) const override;
+    virtual OwnPtr<DevTools::Listener> listen_for_network_events(DevTools::TabDescription const&, OnNetworkRequestStarted, OnNetworkResponseHeadersReceived, OnNetworkResponseBodyReceived, OnNetworkRequestFinished) const override;
+    virtual OwnPtr<DevTools::Listener> listen_for_navigation_events(DevTools::TabDescription const&, OnNavigationStarted, OnNavigationFinished) const override;
+    virtual OwnPtr<DevTools::Listener> listen_for_inspect_element_requests(DevTools::TabDescription const&, OnInspectElementRequest) const override;
     virtual void did_connect_devtools_client(DevTools::TabDescription const&) const override;
     virtual void did_disconnect_devtools_client(DevTools::TabDescription const&) const override;
     virtual void did_close_devtools_connection() override;
@@ -790,8 +780,6 @@ private:
 
     OwnPtr<DevTools::DevToolsServer> m_devtools;
     OwnPtr<DevTools::FirefoxClient> m_devtools_client;
-
-    mutable HashMap<u64, u64> m_navigation_listener_ids;
 };
 
 }

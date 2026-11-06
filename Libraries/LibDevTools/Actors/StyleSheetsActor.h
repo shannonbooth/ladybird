@@ -10,6 +10,7 @@
 #include <AK/NonnullRefPtr.h>
 #include <LibDevTools/Actor.h>
 #include <LibDevTools/Forward.h>
+#include <LibDevTools/Listener.h>
 #include <LibWebCommon/Forward.h>
 
 namespace DevTools {
@@ -25,6 +26,7 @@ public:
 
     void set_style_sheets(Vector<Web::CSS::StyleSheetIdentifier>);
     Optional<String> resource_id_for(Web::CSS::StyleSheetIdentifier const&) const;
+    void stop_listening();
 
 private:
     StyleSheetsActor(DevToolsServer&, String name, WeakPtr<TabActor>);
@@ -34,6 +36,7 @@ private:
     void style_sheet_source_received(Web::CSS::StyleSheetIdentifier const&, Utf16String source);
 
     WeakPtr<TabActor> m_tab;
+    OwnPtr<Listener> m_style_sheet_source_listener;
 
     Vector<Web::CSS::StyleSheetIdentifier> m_style_sheets;
     HashMap<size_t, Message> m_pending_style_sheet_source_requests;
