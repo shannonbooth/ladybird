@@ -174,10 +174,9 @@ public:
     static ViewImplementation& open_tab(IsPrivate, Web::HTML::VisibilityState);
     // Call after the frontend has installed its callbacks.
     void activate();
-    // Closes the tab without asking its pages. The traversable destroys this view with it.
+    // Destroys the tab without unloading its documents.
     void destroy_tab();
     void did_destroy_traversable(Badge<CanonicalTraversable>);
-    bool is_closing() const { return m_close_pending || m_shutdown_started; }
 
     bool is_activated() const { return m_activated; }
 
@@ -771,6 +770,7 @@ private:
     void update_compositor_display_metadata(WebContentPage&);
 
     void detach_surface(ViewSurface&);
+    void remove_from_user_interface();
     void did_update_url();
     void settle_permission_prompt(PermissionPromptRequest const&, Web::Permissions::PromptOutcome);
     void report_permission_presence();
@@ -1120,10 +1120,10 @@ private:
     CanonicalTraversable& m_traversable;
     ViewSurface* m_surface { nullptr };
     bool m_activated { false };
-    bool m_browsing_context_closed { false };
-    bool m_notifying_close { false };
-    bool m_shutdown_started { false };
+    bool m_removed_from_user_interface { false };
+    // Whether the frontend let go of the tab to close it, which the page has yet to do.
     bool m_close_pending { false };
+    bool m_shutdown_started { false };
     Optional<SessionTabId> m_session_tab_id;
     Optional<SessionHistorySnapshot> m_captured_session_history_snapshot_for_testing;
     RefPtr<Core::Promise<Empty>> m_pending_test_state_reset;

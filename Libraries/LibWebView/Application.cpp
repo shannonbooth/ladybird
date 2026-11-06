@@ -2237,13 +2237,16 @@ static void load_page_for_info_and_exit(Core::EventLoop& event_loop, ViewImpleme
     view.load(url);
 }
 
-static void load_page_and_exit_on_close(Core::EventLoop& event_loop, ViewImplementation& view, URL::URL const& url)
+// A window goes with its tab, and the windows opened from it go on without it.
+static void delete_window_with_its_tab(OwnPtr<HeadlessWebView>& window, Core::EventLoop& event_loop, bool exit_with_the_last_window)
 {
-    view.on_close = [&event_loop]() {
-        event_loop.quit(0);
+    window->tab().on_close = [&window, &event_loop, exit_with_the_last_window] {
+        window = window->hand_child_web_views_to_new_root();
+        if (window)
+            delete_window_with_its_tab(window, event_loop, exit_with_the_last_window);
+        else if (exit_with_the_last_window)
+            event_loop.quit(0);
     };
-
-    view.load(url);
 }
 
 ErrorOr<int> Application::execute()
@@ -2256,6 +2259,7 @@ ErrorOr<int> Application::execute()
         auto theme = TRY(Gfx::load_system_theme(theme_path.string()));
 
         view = HeadlessWebView::create(move(theme), { m_browser_options.window_width, m_browser_options.window_height });
+        delete_window_with_its_tab(view, *m_event_loop, m_browser_options.headless_mode == HeadlessMode::Manual && !m_browser_options.webdriver_browser_endpoint.has_value());
 
         if (!m_browser_options.webdriver_browser_endpoint.has_value()) {
             if (m_browser_options.urls.size() != 1)
@@ -2272,7 +2276,7 @@ ErrorOr<int> Application::execute()
                 load_page_for_info_and_exit(*m_event_loop, view->tab(), m_browser_options.urls.first(), WebView::PageInfoType::Text);
                 break;
             case HeadlessMode::Manual:
-                load_page_and_exit_on_close(*m_event_loop, view->tab(), m_browser_options.urls.first());
+                view->tab().load(m_browser_options.urls.first());
                 break;
             case HeadlessMode::Test:
                 VERIFY_NOT_REACHED();

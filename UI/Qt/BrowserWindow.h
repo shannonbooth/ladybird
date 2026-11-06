@@ -243,6 +243,7 @@ public slots:
     void open_new_tab();
     void activate_tab(int index);
     bool definitely_close_tab(int index);
+    void forget_closed_tab(Tab&, bool window_is_closing);
     void move_tab(int old_index, int new_index);
     void request_to_close_tab(int index);
     void request_to_close_current_tab();
@@ -257,6 +258,7 @@ public slots:
 
 private:
     bool close_tab(int index, WebView::SessionStore::KeepForReopening);
+    void forget_tab(int index, WebView::SessionStore::KeepForReopening);
     virtual bool event(QEvent*) override;
     virtual bool eventFilter(QObject*, QEvent*) override;
     virtual void resizeEvent(QResizeEvent*) override;

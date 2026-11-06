@@ -44,7 +44,9 @@ public:
 
     Function<void(Gfx::IntSize)> on_resize;
     Function<void(VideoKeepsPlaying)> on_close;
+    // The window and its view go when its page's tab does, and once the caller is done when the page crashes.
     Function<void()> on_page_close;
+    Function<void()> on_page_crash;
 
 protected:
     void report_page_close_of(ViewImplementation&);

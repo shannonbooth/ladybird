@@ -49,7 +49,7 @@ TEST_CASE(before_unload)
 
     auto theme_path = LexicalPath::join(WebView::s_ladybird_resource_root, "themes"sv, "Default.ini"sv);
     auto theme = TRY_OR_FAIL(Gfx::load_system_theme(theme_path.string()));
-    auto view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
+    OwnPtr<WebView::HeadlessWebView> view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
     view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
@@ -155,7 +155,10 @@ TEST_CASE(before_unload)
     VERIFY(prompt_count == prompt_count_before_adoption + 1);
 
     bool closed = false;
-    view->tab().on_close = [&] { closed = true; };
+    view->tab().on_close = [&] {
+        view = nullptr;
+        closed = true;
+    };
     auto close_without_prompting = view->tab().prepare_for_close_without_prompting();
     close_without_prompting();
     Core::EventLoop::current().spin_until([&] { return closed; });

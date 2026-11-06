@@ -56,7 +56,7 @@ private:
     Optional<size_t> index_of(PictureInPictureWindow const&) const;
     void retire_window(size_t index);
     void window_did_close(PictureInPictureWindow&, PictureInPictureWindow::VideoKeepsPlaying);
-    void window_page_did_close(PictureInPictureWindow&);
+    OwnPtr<PictureInPictureWindow> take_window(PictureInPictureWindow&);
 
     Vector<Window> m_windows;
     Vector<NonnullOwnPtr<PictureInPictureWindow>> m_retired_windows;

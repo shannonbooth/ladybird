@@ -292,13 +292,12 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
     };
 
     view().tab().on_close = [this] {
-        auto index = tab_index();
         if (m_tab_to_activate_on_close) {
             if (auto index_to_activate = m_window->tab_index(m_tab_to_activate_on_close); index_to_activate >= 0)
                 m_window->activate_tab(index_to_activate);
         }
-        if (!m_window_is_closing)
-            m_window->definitely_close_tab(index);
+        m_window->forget_closed_tab(*this, m_window_is_closing);
+        delete this;
     };
 
     view().on_request_web_compat_report_review = [this](WebCompatReportCapture capture) {
@@ -1644,7 +1643,9 @@ void Tab::request_close()
 
     // If the user has already requested a close, then respect the user's request and just close the tab.
     // For example, the WebContent process may not be responding.
-    m_window->definitely_close_tab(tab_index());
+    auto& tab = view().tab();
+    if (m_window->definitely_close_tab(tab_index()))
+        tab.destroy_tab();
 }
 
 void Tab::request_window_close_preflight(Function<void(bool)> on_complete)

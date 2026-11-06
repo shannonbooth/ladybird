@@ -27,8 +27,8 @@ struct ScreenRects {
     u32 main_screen_index { 0 };
 };
 
-// What a frontend widget shows a tab on. The traversable owns the tab's view, which outlives any surface attached to
-// it. A surface only lives as long as its widget.
+// What a frontend widget shows a tab on. The traversable owns the tab, and the frontend deletes the widget no later
+// than when the tab is removed from the user interface, so that a surface never outlives the tab it shows.
 class WEBVIEW_API ViewSurface {
 public:
     virtual ~ViewSurface();

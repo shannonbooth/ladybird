@@ -35,8 +35,12 @@ public:
                 on_resize(size);
         };
         m_window->on_page_close = [this] {
-            if (on_page_close)
+            if (auto on_page_close = move(this->on_page_close))
                 on_page_close();
+        };
+        m_window->on_page_crash = [this] {
+            if (on_page_crash)
+                on_page_crash();
         };
     }
 

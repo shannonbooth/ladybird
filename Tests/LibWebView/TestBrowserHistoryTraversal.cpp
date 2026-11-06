@@ -107,7 +107,7 @@ TEST_CASE(browser_history_traversal)
     auto theme_path = LexicalPath::join(WebView::s_ladybird_resource_root, "themes"sv, "Default.ini"sv);
     auto theme = TRY_OR_FAIL(Gfx::load_system_theme(theme_path.string()));
 
-    auto view = WebView::HeadlessWebView::create(theme, { 800, 600 });
+    OwnPtr<WebView::HeadlessWebView> view = WebView::HeadlessWebView::create(theme, { 800, 600 });
 
     size_t loads_started = 0;
     view->tab().on_load_start = [&] { ++loads_started; };
@@ -258,6 +258,7 @@ TEST_CASE(browser_history_traversal)
         view->tab().set_window_position({ 0, 0 });
         view->tab().set_window_size({ 800, 600 });
         view->tab().set_system_visibility_state(Web::HTML::VisibilityState::Hidden);
+        view = nullptr;
         did_close = true;
     };
     view->tab().request_close();

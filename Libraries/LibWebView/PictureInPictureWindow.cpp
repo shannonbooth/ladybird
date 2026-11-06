@@ -81,12 +81,12 @@ void PictureInPictureWindow::report_page_close_of(ViewImplementation& view)
 {
     m_page_view = &view;
     view.on_close = [this] {
-        if (on_page_close)
+        if (auto on_page_close = move(this->on_page_close))
             on_page_close();
     };
     view.on_web_content_crashed = [this](auto) {
-        if (on_page_close)
-            on_page_close();
+        if (on_page_crash)
+            on_page_crash();
     };
 }
 

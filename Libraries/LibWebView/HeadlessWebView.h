@@ -38,6 +38,9 @@ public:
     void reset_viewport_size(Web::DevicePixelSize);
 
     void close_child_web_views();
+    // The root window owns every window opened from its windows. Once its own tab is gone, the first of them owns the
+    // others, and is returned for its owner to own in turn.
+    OwnPtr<HeadlessWebView> hand_child_web_views_to_new_root();
     // Child crashes then no longer reach this window. The children stay, as deferred tasks may still reach them.
     void disconnect_child_crash_handlers();
 

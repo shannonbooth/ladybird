@@ -221,10 +221,30 @@ HeadlessWebView& HeadlessWebView::adopt_child_web_view(NonnullOwnPtr<HeadlessWeb
         child_web_view->propagate_web_content_crash(crash_reason);
         discard_child_web_view();
     };
-    web_view->tab().on_close = move(discard_child_web_view);
+    web_view->tab().on_close = [weak_this, child_web_view] {
+        if (weak_this)
+            weak_this->m_child_web_views.remove_first_matching([child_web_view](auto const& child) { return child.ptr() == child_web_view; });
+    };
 
     m_child_web_views.append(move(web_view));
     return *m_child_web_views.last();
+}
+
+OwnPtr<HeadlessWebView> HeadlessWebView::hand_child_web_views_to_new_root()
+{
+    VERIFY(!m_parent_web_view);
+    if (m_child_web_views.is_empty())
+        return {};
+
+    auto child_web_views = move(m_child_web_views);
+    auto new_root = child_web_views.take_first();
+    new_root->m_parent_web_view = nullptr;
+    // Its owner tells it what to do once its own tab is gone, and it has no parent to report crashes to.
+    new_root->tab().on_close = nullptr;
+    new_root->tab().on_web_content_crashed = nullptr;
+    for (auto& child_web_view : child_web_views)
+        new_root->adopt_child_web_view(move(child_web_view));
+    return new_root;
 }
 
 // A headless browser has no tabs or windows, so what the browser UI would open in a new one gets a window of its own.

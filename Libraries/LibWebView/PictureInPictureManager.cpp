@@ -50,7 +50,16 @@ String PictureInPictureManager::open_window(WebContentPage& requesting_page, Can
         window_did_close(*window, video_keeps_playing);
     };
     window->on_page_close = [this, window = window.ptr()] {
-        window_page_did_close(*window);
+        auto closed_window = take_window(*window);
+    };
+    window->on_page_crash = [this, window = window.ptr()] {
+        // The window's page crashes from within a callback of its view, so the window is destroyed once that returns.
+        // The event loop may never get to this, so the window stays here for destroy_all_windows() to find.
+        if (auto closed_window = take_window(*window))
+            m_closed_windows.append(closed_window.release_nonnull());
+        Core::deferred_invoke([this] {
+            auto closed_windows = exchange(m_closed_windows, {});
+        });
     };
 
     auto& opened_window = *window;
@@ -144,19 +153,13 @@ void PictureInPictureManager::window_did_close(PictureInPictureWindow& window, P
         page->async_picture_in_picture_window_did_close(video_keeps_playing == PictureInPictureWindow::VideoKeepsPlaying::No);
 }
 
-void PictureInPictureManager::window_page_did_close(PictureInPictureWindow& window)
+OwnPtr<PictureInPictureWindow> PictureInPictureManager::take_window(PictureInPictureWindow& window)
 {
-    if (auto index = index_of(window); index.has_value()) {
-        m_closed_windows.append(m_windows.take(*index).window);
-    } else if (auto index = m_retired_windows.find_first_index_if([&](auto const& retired_window) { return retired_window.ptr() == &window; }); index.has_value()) {
-        m_closed_windows.append(m_retired_windows.take(*index));
-    }
-
-    // The window's page closes from within a callback of its view, so the window is destroyed once that returns. The
-    // event loop may never get to this, so the window stays here for destroy_all_windows() to find.
-    Core::deferred_invoke([this] {
-        auto closed_windows = exchange(m_closed_windows, {});
-    });
+    if (auto index = index_of(window); index.has_value())
+        return m_windows.take(*index).window;
+    if (auto index = m_retired_windows.find_first_index_if([&](auto const& retired_window) { return retired_window.ptr() == &window; }); index.has_value())
+        return m_retired_windows.take(*index);
+    return {};
 }
 
 void PictureInPictureManager::destroy_all_windows()

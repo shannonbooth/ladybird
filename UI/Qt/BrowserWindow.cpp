@@ -1083,6 +1083,27 @@ bool BrowserWindow::close_tab(int index, WebView::SessionStore::KeepForReopening
     }
 
     auto* tab = m_tabs_container->tab(index);
+    forget_tab(index, keep_for_reopening);
+    tab->deleteLater();
+    return true;
+}
+
+// The traversable a tab shows is destroyed, so the tab goes now: no widget outlives the tab it shows.
+void BrowserWindow::forget_closed_tab(Tab& tab, bool window_is_closing)
+{
+    auto index = m_tabs_container->index_of(&tab);
+    if (index < 0)
+        return;
+    if (window_is_closing) {
+        m_tabs_container->remove_tab(index);
+        return;
+    }
+    forget_tab(index, WebView::SessionStore::KeepForReopening::Yes);
+}
+
+void BrowserWindow::forget_tab(int index, WebView::SessionStore::KeepForReopening keep_for_reopening)
+{
+    auto* tab = m_tabs_container->tab(index);
     m_tabs_container->remove_tab(index);
     if (auto session_tab_id = tab->session_tab_id(); session_tab_id.has_value()) {
         WebView::SessionStore::TabClosed closed {
@@ -1094,12 +1115,9 @@ bool BrowserWindow::close_tab(int index, WebView::SessionStore::KeepForReopening
             dbgln("Unable to record the closed tab in the session store: {}", result.error());
     }
     Application::the().update_reopen_recently_closed_actions();
-    tab->deleteLater();
 
     if (m_tabs_container->count() == 0)
         close();
-
-    return true;
 }
 
 void BrowserWindow::move_tab(int old_index, int new_index)

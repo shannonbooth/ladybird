@@ -107,8 +107,27 @@ ViewImplementation::ViewImplementation(Badge<CanonicalTraversable>, CanonicalTra
     };
 }
 
+// The user agent may destroy a top-level traversable at any time. Its frontend can be asking from within its own
+// widget, so the tab goes once that returns.
 void ViewImplementation::destroy_tab()
 {
+    Core::deferred_invoke([traversable = m_traversable.make_weak_ptr<CanonicalTraversable>()] {
+        if (traversable)
+            traversable->view().remove_from_user_interface();
+    });
+}
+
+// https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-top-level-traversable
+void ViewImplementation::remove_from_user_interface()
+{
+    // 4. Remove traversable from the user interface (e.g., close or hide its tab in a tabbed browser).
+    // NB: The frontend deletes its widget as it hears of it, so that no widget outlives the tab it shows.
+    m_removed_from_user_interface = true;
+    if (auto on_close = move(this->on_close))
+        on_close();
+    VERIFY(!m_surface);
+
+    // 5. Remove traversable from the user agent's top-level traversable set.
     // NB: This destroys the view.
     m_traversable.destroy();
 }
@@ -118,8 +137,7 @@ void ViewImplementation::did_destroy_traversable(Badge<CanonicalTraversable>)
     if (m_shutdown_started)
         return;
     m_shutdown_started = true;
-    if (m_surface)
-        detach_surface(*m_surface);
+    VERIFY(!m_surface);
     bool was_active = m_activated;
     m_traversable.presentation().on_change = nullptr;
     m_traversable.on_session_history_changed = nullptr;
@@ -183,17 +201,18 @@ void ViewImplementation::release_surface(ViewSurface& surface)
 {
     detach_surface(surface);
     clear_frontend_callbacks();
-    if (m_notifying_close || m_shutdown_started)
+    if (m_removed_from_user_interface || m_shutdown_started)
         return;
     // A tab whose frontend asked it to close stays until its page has closed it.
-    if (m_close_pending && !m_browsing_context_closed)
+    if (m_close_pending)
         return;
-    // NB: This destroys the view.
-    destroy_tab();
+    // A tab nothing shows any longer goes now. Nothing is left to tell, as its frontend let go of it.
+    remove_from_user_interface();
 }
 
 void ViewImplementation::clear_frontend_callbacks()
 {
+    on_close = nullptr;
     on_activate_tab = nullptr;
     on_tab_indicator_change = nullptr;
     on_before_browser_initiated_navigation = nullptr;
@@ -3951,7 +3970,7 @@ void ViewImplementation::did_complete_webdriver_content_command(WebContentPage& 
 
 void ViewImplementation::did_close_browsing_context()
 {
-    m_close_pending = true;
+    m_close_pending = false;
     discard_webdriver_input_commands();
     reject_pending_selection_requests();
 
@@ -3993,14 +4012,7 @@ void ViewImplementation::did_close_browsing_context()
         request.value->on_complete(Web::WebDriver::Error::from_code(Web::WebDriver::ErrorCode::NoSuchWindow, "Window closed while waiting for navigation"sv));
     }
 
-    m_browsing_context_closed = true;
-    m_notifying_close = true;
-    if (on_close)
-        on_close();
-    m_notifying_close = false;
-    // NB: This destroys the view.
-    if (!m_surface)
-        destroy_tab();
+    remove_from_user_interface();
 }
 
 void ViewImplementation::run_webdriver_user_prompt_handling(Function<void(Web::WebDriver::Response)> on_complete)
