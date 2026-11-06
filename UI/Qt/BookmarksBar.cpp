@@ -395,16 +395,16 @@ void BookmarksBar::show_context_menu(QPoint position, Optional<WebView::Bookmark
         m_selected_bookmark_menu_parent_folder_id = parent_folder_id.copy();
 
         if (item->is_bookmark())
-            execute_context_menu_later(m_context_menu, *this, view->bookmark_context_menu(), position);
+            execute_context_menu_later(m_context_menu, *this, view->tab().bookmark_context_menu(), position);
         else if (item->is_folder())
-            execute_context_menu_later(m_context_menu, *this, view->bookmark_folder_context_menu(), position);
+            execute_context_menu_later(m_context_menu, *this, view->tab().bookmark_folder_context_menu(), position);
     } else {
         // NB: Empty space in a folder that about:bookmarks shows adds to that folder, and elsewhere to the bar.
         m_selected_bookmark_menu_item_id = {};
         m_selected_bookmark_menu_target_folder_id = target_folder_id.copy();
         m_selected_bookmark_menu_parent_folder_id = {};
 
-        execute_context_menu_later(m_context_menu, *this, view->bookmarks_bar_context_menu(), position);
+        execute_context_menu_later(m_context_menu, *this, view->tab().bookmarks_bar_context_menu(), position);
     }
 }
 
@@ -491,9 +491,9 @@ bool BookmarksBar::handle_right_mouse_click(QMouseEvent* event, QObject* item)
     auto position = event->globalPosition().toPoint();
     auto context_menu_for_selected_item = [&]() -> WebView::Menu* {
         if (m_selected_bookmark_menu_item_type == "bookmark")
-            return &view->bookmark_context_menu();
+            return &view->tab().bookmark_context_menu();
         if (m_selected_bookmark_menu_item_type == "folder")
-            return &view->bookmark_folder_context_menu();
+            return &view->tab().bookmark_folder_context_menu();
         return nullptr;
     };
 
@@ -502,7 +502,7 @@ bool BookmarksBar::handle_right_mouse_click(QMouseEvent* event, QObject* item)
         m_selected_bookmark_menu_target_folder_id = {};
         m_selected_bookmark_menu_parent_folder_id = {};
 
-        replace_context_menu(m_context_menu, *this, view->bookmarks_bar_context_menu()).popup(position);
+        replace_context_menu(m_context_menu, *this, view->tab().bookmarks_bar_context_menu()).popup(position);
     } else if (auto* button = as_if<QToolButton>(item)) {
         extract_item_properties(button->defaultAction());
         auto* menu = context_menu_for_selected_item();

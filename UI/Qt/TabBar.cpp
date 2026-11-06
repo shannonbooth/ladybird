@@ -1173,7 +1173,7 @@ Optional<ToolTipContent> TabBar::tooltip_at(QPoint position) const
     if (tab && hovered_tab == currentIndex() && m_tabs_with_cut_titles.contains(tab)) {
         auto text = tabText(hovered_tab);
         // A URL without a host (about:blank, e.g.) has no site to show.
-        if (auto url = tab->view().url(); url.host().has_value() && !url.serialized_host().is_empty())
+        if (auto url = tab->view().tab().url(); url.host().has_value() && !url.serialized_host().is_empty())
             text = qformatted("{}\n{}", ak_string_from_qstring(text), url.serialized_host());
         return ToolTipContent { .text = AK::move(text), .rect = visual_tab_rect(hovered_tab) };
     }
@@ -2606,14 +2606,14 @@ void TabBar::show_tab_preview()
         m_tab_preview_paint_connection = connect(&tab->view(), &WebContentView::ready_to_paint, this, &TabBar::show_tab_preview);
         // NB: Background tabs may never have painted. Allow rendering while their preview is requested,
         //     without selecting the tab or showing its widget.
-        tab->view().set_system_visibility_state(Web::HTML::VisibilityState::Visible);
+        tab->view().tab().set_system_visibility_state(Web::HTML::VisibilityState::Visible);
     }
 
     auto thumbnail = tab->view().tab_preview_pixmap({ TAB_PREVIEW_THUMBNAIL_WIDTH, TAB_PREVIEW_THUMBNAIL_HEIGHT });
     if (!thumbnail.has_value())
         return;
 
-    m_tab_preview_popup->set_preview(palette(), tab->title(), qstring_from_ak_string(tab->view().url().serialize()), *thumbnail);
+    m_tab_preview_popup->set_preview(palette(), tab->title(), qstring_from_ak_string(tab->view().tab().url().serialize()), *thumbnail);
     m_tab_preview_popup->move(tab_preview_position_for(index, m_tab_preview_popup->sizeHint()));
     m_tab_preview_popup->show();
     m_tab_preview_popup->raise();
@@ -2624,7 +2624,7 @@ void TabBar::hide_tab_preview()
 {
     disconnect(m_tab_preview_paint_connection);
     if (m_previewed_tab) {
-        m_previewed_tab->view().set_system_visibility_state(m_previewed_tab->view().isVisible() ? Web::HTML::VisibilityState::Visible : Web::HTML::VisibilityState::Hidden);
+        m_previewed_tab->view().tab().set_system_visibility_state(m_previewed_tab->view().isVisible() ? Web::HTML::VisibilityState::Visible : Web::HTML::VisibilityState::Hidden);
         m_previewed_tab = nullptr;
     }
 

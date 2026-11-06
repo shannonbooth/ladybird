@@ -114,12 +114,12 @@ FindInPageWidget::FindInPageWidget(Tab* tab, WebContentView* content_view)
 
     m_previous_button = make_button("Previous match");
     connect(m_previous_button, &QPushButton::clicked, this, [this] {
-        m_content_view->find_in_page_previous_match();
+        m_content_view->tab().find_in_page_previous_match();
     });
 
     m_next_button = make_button("Next match");
     connect(m_next_button, &QPushButton::clicked, this, [this] {
-        m_content_view->find_in_page_next_match();
+        m_content_view->tab().find_in_page_next_match();
     });
 
     m_match_case = make_button("Match case");
@@ -218,7 +218,7 @@ void FindInPageWidget::find_text_changed()
 
     auto case_sensitive = m_match_case->isChecked() ? CaseSensitivity::CaseSensitive : CaseSensitivity::CaseInsensitive;
     // Every match on the page is highlighted, with the current one standing out.
-    m_content_view->find_in_page(query, case_sensitive, true);
+    m_content_view->tab().find_in_page(query, case_sensitive, true);
 }
 
 void FindInPageWidget::keyPressEvent(QKeyEvent* event)
@@ -242,7 +242,7 @@ void FindInPageWidget::keyPressEvent(QKeyEvent* event)
 void FindInPageWidget::close_bar()
 {
     ++m_selected_text_request_id;
-    m_content_view->find_in_page_end();
+    m_content_view->tab().find_in_page_end();
     setVisible(false);
     m_content_view->setFocus();
 }
@@ -253,7 +253,7 @@ void FindInPageWidget::focusInEvent(QFocusEvent* event)
     m_find_text->setFocus();
     auto find_text_before_request = m_find_text->text();
     auto request_id = ++m_selected_text_request_id;
-    m_content_view->selected_text()->when_resolved([guarded_this = QPointer<FindInPageWidget> { this }, request_id, find_text_before_request = AK::move(find_text_before_request)](auto& selected_text) {
+    m_content_view->tab().selected_text()->when_resolved([guarded_this = QPointer<FindInPageWidget> { this }, request_id, find_text_before_request = AK::move(find_text_before_request)](auto& selected_text) {
         if (!guarded_this || request_id != guarded_this->m_selected_text_request_id || guarded_this->m_find_text->text() != find_text_before_request)
             return;
         if (!selected_text.is_empty()) {

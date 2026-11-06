@@ -988,7 +988,7 @@ WindowToolbar::WindowToolbar(WebView::IsPrivate is_private, QWidget* parent)
     m_stop_action->setToolTip("Stop loading this page");
     QObject::connect(m_stop_action, &QAction::triggered, this, [this] {
         if (m_tab && m_tab->is_loaded())
-            m_tab->view().stop_loading();
+            m_tab->view().tab().stop_loading();
     });
     m_open_downloads_page_action = create_application_action(*this, application.open_downloads_page_action());
 
@@ -1123,8 +1123,8 @@ void WindowToolbar::show_tab(Tab& tab)
         m_location_edit_layout->addWidget(&location_edit);
     show_location_edit(&location_edit);
 
-    m_navigate_back_action.bind(tab.view().navigate_back_action());
-    m_navigate_forward_action.bind(tab.view().navigate_forward_action());
+    m_navigate_back_action.bind(tab.view().tab().navigate_back_action());
+    m_navigate_forward_action.bind(tab.view().tab().navigate_forward_action());
     m_reload_button->show_loading_at_once(tab.is_loading());
     m_performance_monitor->set_stats(tab.performance_stats());
 
@@ -1185,7 +1185,7 @@ QToolButton* WindowToolbar::create_navigation_history_toolbar_button(QWidget& pa
         if (auto modifiers = QApplication::keyboardModifiers(); modifiers.testFlag(Qt::ControlModifier))
             browser_window().duplicate_tab(*tab, activate_tab_for_modifiers(modifiers), step);
         else
-            tab->view().traverse_the_history_to_step(step);
+            tab->view().tab().traverse_the_history_to_step(step);
     });
     button->setMenu(menu);
     button->setPopupMode(QToolButton::DelayedPopup);

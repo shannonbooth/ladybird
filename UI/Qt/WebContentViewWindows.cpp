@@ -95,7 +95,7 @@ void WebContentView::releaseResources()
 
 void WebContentView::render(QRhiCommandBuffer* command_buffer)
 {
-    auto background_color = page_background_color();
+    auto background_color = tab().page_background_color();
     auto clear_color = QColor(background_color.red(), background_color.green(), background_color.blue());
 
     // The clear covers the part of the render target that the (possibly padded or stale-sized)

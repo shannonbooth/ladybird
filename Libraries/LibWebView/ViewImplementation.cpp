@@ -166,6 +166,176 @@ ViewImplementation::~ViewImplementation()
         m_top_level_traversable->destroy();
 }
 
+void ViewImplementation::clear_frontend_callbacks()
+{
+    on_activate_tab = nullptr;
+    on_tab_indicator_change = nullptr;
+    on_before_browser_initiated_navigation = nullptr;
+    on_browser_history_traversal_complete = nullptr;
+    on_cancel_permission_prompt = nullptr;
+    on_console_message = nullptr;
+    on_content_blocking_change = nullptr;
+    on_crash_overlay_state_change = nullptr;
+    on_crash_report_saved = nullptr;
+    on_cursor_change = nullptr;
+    on_debugger_paused = nullptr;
+    on_debugger_resumed = nullptr;
+    on_devtools_source_available = nullptr;
+    on_dom_mutation_received = nullptr;
+    on_enter_tooltip_area = nullptr;
+    on_exit_fullscreen_window = nullptr;
+    on_favicon_change = nullptr;
+    on_find_in_page = nullptr;
+    on_finish_handling_drag_event = nullptr;
+    on_finish_handling_key_event = nullptr;
+    on_finish_handling_mouse_event = nullptr;
+    on_fullscreen_window = nullptr;
+    on_input_method_state_change = nullptr;
+    on_inspect_element_request = nullptr;
+    on_leave_tooltip_area = nullptr;
+    on_link_hover = nullptr;
+    on_link_unhover = nullptr;
+    on_load_finish = nullptr;
+    on_load_start = nullptr;
+    on_loading_state_change = nullptr;
+    on_maximize_window = nullptr;
+    on_minimize_window = nullptr;
+    on_network_request_finished = nullptr;
+    on_network_request_started = nullptr;
+    on_network_response_body_received = nullptr;
+    on_network_response_headers_received = nullptr;
+    on_new_web_view = nullptr;
+    on_page_background_color_change = nullptr;
+    on_performance_stats = nullptr;
+    on_picture_in_picture_control_activated = nullptr;
+    on_ready_to_paint = nullptr;
+    on_received_dom_node_properties = nullptr;
+    on_received_style_sheet_source = nullptr;
+    on_reference_test_metadata = nullptr;
+    on_reposition_window = nullptr;
+    on_request_accept_dialog = nullptr;
+    on_request_alert = nullptr;
+    on_request_before_unload = nullptr;
+    on_request_color_picker = nullptr;
+    on_request_confirm = nullptr;
+    on_request_date_picker = nullptr;
+    on_request_dictionary_lookup = nullptr;
+    on_request_dismiss_dialog = nullptr;
+    on_request_external_url_confirmation = nullptr;
+    on_request_file_picker = nullptr;
+    on_request_permission = nullptr;
+    on_request_prompt = nullptr;
+    on_request_screenshot = nullptr;
+    on_request_select_dropdown = nullptr;
+    on_request_set_prompt_text = nullptr;
+    on_request_website_issue_report = nullptr;
+    on_resize_window = nullptr;
+    on_restore_window = nullptr;
+    on_screen_wake_lock_state_changed = nullptr;
+    on_set_test_timeout = nullptr;
+    on_test_finish = nullptr;
+    on_title_change = nullptr;
+    on_top_level_navigation_commit = nullptr;
+    on_url_change = nullptr;
+    on_web_content_crashed = nullptr;
+    on_web_content_process_change_for_cross_site_navigation = nullptr;
+}
+
+void ViewImplementation::attach_surface(ViewSurface& surface)
+{
+    VERIFY(!m_surface);
+    VERIFY(!surface.m_view);
+    m_surface = &surface;
+    surface.m_view = this;
+}
+
+void ViewImplementation::detach_surface(ViewSurface& surface)
+{
+    VERIFY(m_surface == &surface);
+    VERIFY(surface.m_view == this);
+    m_surface = nullptr;
+    surface.m_view = nullptr;
+}
+
+Web::DevicePixelSize ViewImplementation::viewport_size() const
+{
+    if (m_surface)
+        return m_surface->viewport_size();
+    return {};
+}
+
+Gfx::IntPoint ViewImplementation::to_content_position(Gfx::IntPoint widget_position) const
+{
+    return m_surface ? m_surface->to_content_position(widget_position) : widget_position;
+}
+
+Gfx::IntPoint ViewImplementation::to_widget_position(Gfx::IntPoint content_position) const
+{
+    return m_surface ? m_surface->to_widget_position(content_position) : content_position;
+}
+
+void ViewImplementation::show_context_menu(Menu& menu, Gfx::IntPoint widget_position)
+{
+    if (m_surface)
+        m_surface->show_context_menu(menu, widget_position);
+}
+
+void ViewImplementation::did_accept_presented_backing_store(i32 bitmap_id, Gfx::IntRect rect)
+{
+    if (m_surface)
+        m_surface->did_accept_presented_backing_store(bitmap_id, rect);
+}
+
+Core::AnonymousBuffer ViewImplementation::system_theme()
+{
+    return m_surface ? m_surface->system_theme() : Core::AnonymousBuffer {};
+}
+
+Optional<ScreenRects> ViewImplementation::screen_rects() const
+{
+    if (m_surface)
+        return m_surface->screen_rects();
+    return {};
+}
+
+void ViewImplementation::did_get_accessibility_tree(u64 sequence, Vector<AccessibilityNodeData> nodes)
+{
+    if (m_surface)
+        m_surface->did_get_accessibility_tree(sequence, move(nodes));
+}
+
+void ViewImplementation::did_change_accessibility_tree(u64 base_sequence, u64 sequence, AccessibilityTreeDelta delta)
+{
+    if (m_surface)
+        m_surface->did_change_accessibility_tree(base_sequence, sequence, move(delta));
+}
+
+void ViewImplementation::did_change_accessibility_focus(i64 node_id)
+{
+    if (m_surface)
+        m_surface->did_change_accessibility_focus(node_id);
+}
+
+ViewSurface::~ViewSurface()
+{
+    release_tab();
+}
+
+void ViewSurface::release_tab()
+{
+    if (!m_view)
+        return;
+    auto& view = *m_view;
+    view.detach_surface(*this);
+    view.clear_frontend_callbacks();
+}
+
+ViewImplementation& ViewSurface::tab() const
+{
+    VERIFY(m_view);
+    return *m_view;
+}
+
 pid_t ViewImplementation::web_content_pid() const
 {
     return page().client().pid();
@@ -516,6 +686,8 @@ void ViewImplementation::server_did_paint(Badge<WebContentPage>, i32 bitmap_id, 
 
 void ViewImplementation::release_backing_store(i32 bitmap_id)
 {
+    if (m_surface && m_surface->release_backing_store(bitmap_id))
+        return;
     page().release_presented_bitmap(bitmap_id);
 }
 
@@ -2986,6 +3158,8 @@ void ViewImplementation::update_zoom()
     traversable().for_each_hosting_page([&](WebContentPage& page) {
         page.async_set_zoom_level(m_zoom_level);
     });
+    if (m_surface)
+        m_surface->did_update_zoom();
 }
 
 void ViewImplementation::apply_zoom_for_current_host()
@@ -3431,6 +3605,8 @@ void ViewImplementation::prepare_page_for_navigable(WebContentPage& page)
     send_preferences_to_page(page);
     if (auto screens = screen_rects(); screens.has_value())
         send_screen_rects_to_page(page, *screens);
+    if (m_surface)
+        m_surface->prepare_page_for_navigable(page);
 }
 
 void ViewImplementation::prepare_page_for_tab(WebContentPage& page)

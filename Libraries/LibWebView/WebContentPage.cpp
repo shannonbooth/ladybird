@@ -1208,26 +1208,20 @@ void WebContentPage::did_inspect_accessibility_tree(u64 request_id, String acces
 
 void WebContentPage::did_get_accessibility_tree(u64 sequence, Vector<AccessibilityNodeData> nodes)
 {
-    if (displays_tab()) {
-        if (view().on_accessibility_tree_received)
-            view().on_accessibility_tree_received(sequence, move(nodes));
-    }
+    if (displays_tab())
+        view().did_get_accessibility_tree(sequence, move(nodes));
 }
 
 void WebContentPage::did_change_accessibility_tree(u64 base_sequence, u64 sequence, AccessibilityTreeDelta delta)
 {
-    if (displays_tab()) {
-        if (view().on_accessibility_tree_changed)
-            view().on_accessibility_tree_changed(base_sequence, sequence, move(delta));
-    }
+    if (displays_tab())
+        view().did_change_accessibility_tree(base_sequence, sequence, move(delta));
 }
 
-void WebContentPage::did_accessibility_focus_change(i64 focused_node_id)
+void WebContentPage::did_accessibility_focus_change(i64 node_id)
 {
-    if (displays_tab()) {
-        if (view().on_accessibility_focus_changed)
-            view().on_accessibility_focus_changed(focused_node_id);
-    }
+    if (displays_tab())
+        view().did_change_accessibility_focus(node_id);
 }
 
 void WebContentPage::did_get_hovered_node_id(Web::UniqueNodeID node_id)

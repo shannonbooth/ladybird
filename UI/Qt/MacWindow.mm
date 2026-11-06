@@ -279,7 +279,7 @@ static bool perform_dictionary_lookup_for_event(NSEvent* event)
     if (!position.has_value())
         return false;
 
-    return view->look_up_selected_text_at(*position);
+    return view->tab().look_up_selected_text_at(*position);
 }
 
 static QPointer<WebContentView> s_view_following_mouse_while_inactive;

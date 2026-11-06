@@ -122,7 +122,7 @@ void FullscreenMode::exit(ExitInitiatedBy initiated_by)
     if (is_api_fullscreen()) {
         qApp->removeEventFilter(this);
         if (initiated_by == ExitInitiatedBy::UI && m_window->tab_index(m_fullscreen_tab) != -1) {
-            m_fullscreen_tab->view().exit_fullscreen();
+            m_fullscreen_tab->view().tab().exit_fullscreen();
         }
         emit on_exit_fullscreen();
     }
@@ -345,7 +345,7 @@ BrowserWindow::BrowserWindow(Vector<URL::URL> const& initial_urls, IsPopupWindow
     };
     m_screen_observer->on_display_metadata_change = [this] {
         for_each_tab([this](auto& tab) {
-            tab.view().set_display_metadata(m_screen_observer->display_id(), m_screen_observer->refresh_rate());
+            tab.view().tab().set_display_metadata(m_screen_observer->display_id(), m_screen_observer->refresh_rate());
         });
     };
 
@@ -585,7 +585,7 @@ void BrowserWindow::update_ladybird_menu_zoom_level()
 {
     if (!m_current_tab || !m_ladybird_menu_zoom_level)
         return;
-    m_ladybird_menu_zoom_level->setText(qformatted("{}%", round_to<int>(m_current_tab->view().zoom_level() * 100)));
+    m_ladybird_menu_zoom_level->setText(qformatted("{}%", round_to<int>(m_current_tab->view().tab().zoom_level() * 100)));
 }
 
 void BrowserWindow::initialize_window_context_menu()
@@ -674,7 +674,7 @@ void BrowserWindow::duplicate_tab(Tab& source_tab, Web::HTML::ActivateTab activa
     // A tab that hasn't loaded keeps its history in the session store.
     Optional<WebView::SessionHistorySnapshot> history;
     if (source_tab.is_loaded())
-        history = source_tab.view().session_history_snapshot();
+        history = source_tab.view().tab().session_history_snapshot();
     else if (auto session_tab_id = source_tab.session_tab_id(); session_tab_id.has_value())
         history = m_session->session_store->load_tab_history(*session_tab_id);
     auto fallback_url = source_tab.url();
@@ -691,13 +691,13 @@ void BrowserWindow::duplicate_tab(Tab& source_tab, Web::HTML::ActivateTab activa
     }
 
     auto& duplicate = create_new_tab(activate_tab, TabLocation::after_tab(source_tab));
-    if (!history.has_value() || duplicate.view().restore_session_history_from_snapshot(history.release_value()).is_error())
+    if (!history.has_value() || duplicate.view().tab().restore_session_history_from_snapshot(history.release_value()).is_error())
         duplicate.navigate(fallback_url);
 }
 
 void BrowserWindow::open_history_entry_in_new_tab(Tab& source_tab, int delta, Web::HTML::ActivateTab activate_tab)
 {
-    auto const& traversable = source_tab.view().traversable();
+    auto const& traversable = source_tab.view().tab().traversable();
     auto used_steps = traversable.session_history().used_steps();
     auto step_index = traversable.effective_current_session_history_step_index() + delta;
     if (step_index >= used_steps.size())
@@ -751,7 +751,7 @@ Tab& BrowserWindow::create_restored_tab(WebView::RestoredSessionTab const& resto
     initialize_tab(tab);
 
     auto history = m_session->session_store->load_tab_history(restored.tab_id);
-    if (!history.has_value() || tab->view().restore_session_history_from_snapshot(history.release_value()).is_error())
+    if (!history.has_value() || tab->view().tab().restore_session_history_from_snapshot(history.release_value()).is_error())
         tab->navigate(restored.url);
     return *tab;
 }
@@ -866,18 +866,18 @@ void BrowserWindow::initialize_tab_view(Tab* tab)
 {
     QObject::connect(&tab->view(), &WebContentView::urls_dropped, this, [this](auto& urls) {
         VERIFY(urls.size());
-        m_current_tab->view().load_from_user_input(ak_url_from_qurl(urls[0]));
+        m_current_tab->view().tab().load_from_user_input(ak_url_from_qurl(urls[0]));
 
         for (qsizetype i = 1; i < urls.size(); ++i) {
             auto url = ak_url_from_qurl(urls[i]);
             if (WebView::is_url_handled_internally(url))
                 new_tab_from_url(url, Web::HTML::ActivateTab::No, TabLocation::end());
             else
-                m_current_tab->view().open_url_in_new_tab(url, Web::HTML::ActivateTab::No);
+                m_current_tab->view().tab().open_url_in_new_tab(url, Web::HTML::ActivateTab::No);
         }
     });
 
-    tab->view().on_new_web_view = [this, tab](auto activate_tab, Web::HTML::WebViewHints hints, WebView::CanonicalTraversable& traversable) {
+    tab->view().tab().on_new_web_view = [this, tab](auto activate_tab, Web::HTML::WebViewHints hints, WebView::CanonicalTraversable& traversable) {
         if (hints.popup) {
             auto cascaded_configuration = Application::the().configuration_for_new_window();
             WindowConfiguration configuration {
@@ -887,10 +887,10 @@ void BrowserWindow::initialize_tab_view(Tab* tab)
                 .height = hints.height,
             };
             auto& window = Application::the().new_window({}, configuration, IsPopupWindow::Yes, m_is_private, tab, traversable);
-            return window.current_tab()->view().handle();
+            return window.current_tab()->view().tab().handle();
         }
         auto& new_tab = create_new_tab(activate_tab, traversable);
-        return new_tab.view().handle();
+        return new_tab.view().tab().handle();
     };
 }
 
@@ -937,7 +937,7 @@ void BrowserWindow::adopt_tab(Tab& tab, int index)
 
     if (tab.is_loaded()) {
         tab.view().set_device_pixel_ratio(m_screen_observer->device_pixel_ratio());
-        tab.view().set_display_metadata(m_screen_observer->display_id(), m_screen_observer->refresh_rate());
+        tab.view().tab().set_display_metadata(m_screen_observer->display_id(), m_screen_observer->refresh_rate());
     }
 
     m_tabs_container->set_current_tab(&tab);
@@ -1028,14 +1028,14 @@ void BrowserWindow::set_current_tab(Tab* tab)
     // What a tab's toolbar showed belongs to that tab, so it goes away with it however another tab is selected.
     if (m_current_tab) {
         m_current_tab->close_popovers();
-        m_current_tab->view().set_system_visibility_state(Web::HTML::VisibilityState::Hidden);
+        m_current_tab->view().tab().set_system_visibility_state(Web::HTML::VisibilityState::Hidden);
     }
 
     m_current_tab = tab;
 
     if (m_current_tab) {
         m_current_tab->clear_attention();
-        m_current_tab->view().set_system_visibility_state(Web::HTML::VisibilityState::Visible);
+        m_current_tab->view().tab().set_system_visibility_state(Web::HTML::VisibilityState::Visible);
 
         if (auto session_tab_id = m_current_tab->session_tab_id(); session_tab_id.has_value())
             m_session->session_store->active_tab_changed(*session_tab_id);
@@ -1422,9 +1422,9 @@ void BrowserWindow::update_tab_audio_button(Tab& tab)
 {
     auto index = tab_index(&tab);
     auto* tab_bar = m_tabs_container->tab_bar();
-    auto shows_playing_audio = tab.is_loaded() && tab.view().tab_indicator_visible(WebView::TabIndicator::PlayingAudio);
+    auto shows_playing_audio = tab.is_loaded() && tab.view().tab().tab_indicator_visible(WebView::TabIndicator::PlayingAudio);
 
-    if (!tab.is_loaded() || (!shows_playing_audio && tab.view().page_mute_state() == Web::HTML::MuteState::Unmuted)) {
+    if (!tab.is_loaded() || (!shows_playing_audio && tab.view().tab().page_mute_state() == Web::HTML::MuteState::Unmuted)) {
         // The tab bar only hides the button it lets go of.
         if (auto* button = tab_bar->tabButton(index, AUDIO_STATE_BUTTON_POSITION))
             button->deleteLater();
@@ -1438,7 +1438,7 @@ void BrowserWindow::update_tab_audio_button(Tab& tab)
         button = new TabBarButton(icon_for_page_mute_state(tab), TabBarButton::Role::Audio);
         button->setObjectName("LadybirdAudioState");
         connect(button, &QPushButton::clicked, this, [this, &tab]() {
-            tab.view().toggle_page_mute_state();
+            tab.view().tab().toggle_page_mute_state();
             update_tab_audio_button(tab);
         });
         tab_bar->setTabButton(index, AUDIO_STATE_BUTTON_POSITION, button);
@@ -1450,7 +1450,7 @@ void BrowserWindow::update_tab_audio_button(Tab& tab)
 
 QIcon BrowserWindow::icon_for_page_mute_state(Tab& tab) const
 {
-    switch (tab.view().page_mute_state()) {
+    switch (tab.view().tab().page_mute_state()) {
     case Web::HTML::MuteState::Muted:
         return create_chrome_icon(ChromeIcon::VolumeMuted, Theme::chrome_palette(*this));
     case Web::HTML::MuteState::Unmuted:
@@ -1462,7 +1462,7 @@ QIcon BrowserWindow::icon_for_page_mute_state(Tab& tab) const
 
 QString BrowserWindow::tool_tip_for_page_mute_state(Tab& tab) const
 {
-    switch (tab.view().page_mute_state()) {
+    switch (tab.view().tab().page_mute_state()) {
     case Web::HTML::MuteState::Muted:
         return "Unmute tab";
     case Web::HTML::MuteState::Unmuted:
@@ -1802,7 +1802,7 @@ void BrowserWindow::resizeEvent(QResizeEvent* event)
     QWidget::resizeEvent(event);
 
     for_each_tab([&](auto& tab) {
-        tab.view().set_window_size({ width(), height() });
+        tab.view().tab().set_window_size({ width(), height() });
     });
 
     report_session_window_geometry();
@@ -1827,9 +1827,9 @@ void BrowserWindow::changeEvent(QEvent* event)
         if (is_fullscreen && !was_fullscreen) {
             m_fullscreen_mode->entered_fullscreen();
             if (m_fullscreen_mode->is_api_fullscreen())
-                view().set_is_fullscreen(Web::ViewportIsFullscreen::Yes);
+                view().tab().set_is_fullscreen(Web::ViewportIsFullscreen::Yes);
         } else if (!is_fullscreen && was_fullscreen) {
-            view().set_is_fullscreen(Web::ViewportIsFullscreen::No);
+            view().tab().set_is_fullscreen(Web::ViewportIsFullscreen::No);
         }
     }
     QWidget::changeEvent(event);
@@ -1885,7 +1885,7 @@ void BrowserWindow::moveEvent(QMoveEvent* event)
     QWidget::moveEvent(event);
 
     for_each_tab([&](auto& tab) {
-        tab.view().set_window_position({ x(), y() });
+        tab.view().tab().set_window_position({ x(), y() });
     });
 
     report_session_window_geometry();
@@ -1901,9 +1901,9 @@ void BrowserWindow::wheelEvent(QWheelEvent* event)
 
     if ((event->modifiers() & Qt::ControlModifier) != 0) {
         if (event->angleDelta().y() > 0)
-            m_current_tab->view().zoom_in();
+            m_current_tab->view().tab().zoom_in();
         else if (event->angleDelta().y() < 0)
-            m_current_tab->view().zoom_out();
+            m_current_tab->view().tab().zoom_out();
     }
 }
 
@@ -2003,7 +2003,7 @@ Tab* BrowserWindow::tab_for_view(WebView::ViewImplementation const& view) const
 {
     for (int index = 0; index < m_tabs_container->count(); ++index) {
         auto* tab = m_tabs_container->tab(index);
-        if (tab && &tab->view() == &view)
+        if (tab && &tab->view().tab() == &view)
             return tab;
     }
     return nullptr;

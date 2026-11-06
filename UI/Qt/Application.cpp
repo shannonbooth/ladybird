@@ -703,7 +703,7 @@ Web::CSS::PreferredColorScheme Application::interface_color_scheme() const
 // Bookmarking the page from the menu or its shortcut does what the star in the address field does.
 void Application::toggle_bookmark_for_view(WebView::ViewImplementation& view)
 {
-    if (auto* tab = active_tab(); tab && &tab->view() == &view) {
+    if (auto* tab = active_tab(); tab && &tab->view().tab() == &view) {
         tab->show_bookmark_popover();
         return;
     }
@@ -789,7 +789,7 @@ BrowserWindow& Application::new_window(Vector<URL::URL> const& initial_urls, Win
         if (initial_url_index >= initial_urls.size())
             return;
         if (initial_url_index++ == 0 && initial_navigation.has_value())
-            tab.view().load(initial_navigation.release_value());
+            tab.view().tab().load(initial_navigation.release_value());
         else
             tab.navigate(initial_urls[initial_url_index - 1]);
     });
@@ -897,7 +897,7 @@ void Application::offer_to_restore_unexpectedly_closed_tabs(BrowserWindow& windo
         QPointer<Tab> new_tab_page;
         if (window && window->tab_count() == 1) {
             auto* tab = window->tab_at(0);
-            if (tab->view().url() == WebView::Application::settings().new_tab_page_url() && !tab->view().navigate_back_action().enabled())
+            if (tab->view().tab().url() == WebView::Application::settings().new_tab_page_url() && !tab->view().tab().navigate_back_action().enabled())
                 new_tab_page = tab;
         }
 
@@ -1119,7 +1119,7 @@ void Application::reopen_recently_closed_tab(BrowserWindow* target_window, Optio
         if (restored_tab_index == unit.active_tab_index)
             tab_to_activate = &tab;
 
-        if (!closed_tab.history.has_value() || tab.view().restore_session_history_from_snapshot(closed_tab.history.release_value()).is_error())
+        if (!closed_tab.history.has_value() || tab.view().tab().restore_session_history_from_snapshot(closed_tab.history.release_value()).is_error())
             tab.navigate(closed_tab.active_url);
 
         if (closed_tab.pinned) {
@@ -1377,7 +1377,7 @@ void Application::open_url_in_new_tab_from_notification(URL::URL const& url, Web
 Optional<WebView::ViewImplementation&> Application::active_web_view() const
 {
     if (auto* active_tab = this->active_tab())
-        return active_tab->view();
+        return active_tab->view().tab();
     return {};
 }
 
@@ -1393,9 +1393,9 @@ Vector<WebView::BookmarkItem::Bookmark> Application::bookmarks_for_all_tabs_in_c
         if (tab.is_loaded()) {
             auto const& view = tab.view();
             bookmarks.append(WebView::BookmarkItem::Bookmark {
-                .url = view.url(),
-                .title = view.title().is_empty() ? Optional<String> {} : view.title().to_utf8(),
-                .favicon_hash = view.favicon_hash(),
+                .url = view.tab().url(),
+                .title = view.tab().title().is_empty() ? Optional<String> {} : view.tab().title().to_utf8(),
+                .favicon_hash = view.tab().favicon_hash(),
             });
             continue;
         }
@@ -1429,7 +1429,7 @@ Optional<WebView::ViewImplementation&> Application::activate_tab_with_url(URL::U
             window->setWindowState(window->windowState() & ~Qt::WindowMinimized);
         window->raise();
         window->activateWindow();
-        return tab->view();
+        return tab->view().tab();
     }
     return {};
 }
@@ -1439,12 +1439,12 @@ Optional<WebView::ViewImplementation&> Application::open_blank_new_tab(Web::HTML
     if (!m_active_window) {
         auto& window = const_cast<Application&>(*this).new_window({ WebView::Application::settings().new_tab_page_url() });
         if (auto* tab = window.current_tab())
-            return tab->view();
+            return tab->view().tab();
         return {};
     }
 
     auto& tab = active_window().create_new_tab(activate_tab, BrowserWindow::TabLocation::end());
-    return tab.view();
+    return tab.view().tab();
 }
 
 void Application::open_url_in_new_tab(URL::URL const& url, Web::HTML::ActivateTab activate_tab) const
@@ -1497,7 +1497,7 @@ void Application::open_navigation_in_new_tab(Web::HTML::PreparedNavigationDescri
     }
 
     auto& tab = active_window().create_new_tab(activate_tab, BrowserWindow::TabLocation::after_current_tab());
-    tab.view().load(move(navigation));
+    tab.view().tab().load(move(navigation));
 }
 
 void Application::open_navigation_in_new_window(Web::HTML::PreparedNavigationDescriptor navigation, WebView::IsPrivate is_private)
@@ -1954,7 +1954,7 @@ QMenuBar* Application::create_application_menu_bar(ForBrowserWindow for_browser_
             auto* translation_menu = view_menu->addMenu("&Translation");
             QObject::connect(translation_menu, &QMenu::aboutToShow, translation_menu, [translation_menu] {
                 if (auto* tab = Application::the().active_tab())
-                    repopulate_application_menu(*translation_menu, tab->view().page_translation().translation_menu());
+                    repopulate_application_menu(*translation_menu, tab->view().tab().page_translation().translation_menu());
                 else
                     translation_menu->clear();
             });

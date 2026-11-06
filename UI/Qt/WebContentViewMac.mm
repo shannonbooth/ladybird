@@ -73,7 +73,7 @@ void WebContentView::present_current_paintable_as_layer_contents()
     ScopeGuard update_painting_for_new_contents = [this] { update_whether_qt_paints_view(); };
 
     auto* layer = as_layer(m_iosurface_layer);
-    layer.contentsScale = m_device_pixel_ratio;
+    layer.contentsScale = tab().m_device_pixel_ratio;
 
     auto paintable = current_paintable();
     if (!paintable.has_value()) {
@@ -99,7 +99,7 @@ void WebContentView::present_current_paintable_as_layer_contents()
     // and the unit rectangle upside down.
     bool y_axis_points_down = [layer contentsAreFlipped];
     auto top_left_gravity = y_axis_points_down ? kCAGravityBottomLeft : kCAGravityTopLeft;
-    layer.contentsGravity = m_scales_frames_to_fit ? kCAGravityResizeAspect : top_left_gravity;
+    layer.contentsGravity = tab().m_scales_frames_to_fit ? kCAGravityResizeAspect : top_left_gravity;
     layer.contentsRect = y_axis_points_down
         ? CGRectMake(0, 0, painted_unit_width, painted_unit_height)
         : CGRectMake(0, 1 - painted_unit_height, painted_unit_width, painted_unit_height);
@@ -157,7 +157,7 @@ void WebContentView::update_iosurface_layer_background_color()
 {
     if (!m_iosurface_layer)
         return;
-    auto color = page_background_color();
+    auto color = tab().page_background_color();
     auto* background_color = CGColorCreateSRGB(color.red() / 255.0, color.green() / 255.0, color.blue() / 255.0, 1.0);
     as_layer(m_iosurface_layer).backgroundColor = background_color;
     CGColorRelease(background_color);

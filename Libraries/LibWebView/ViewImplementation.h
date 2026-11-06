@@ -84,9 +84,16 @@
 #include <LibWebView/SpellChecker.h>
 #include <LibWebView/TabIndicators.h>
 #include <LibWebView/TabPerformanceStats.h>
+#include <LibWebView/ViewSurface.h>
 #include <LibWebView/WebContentClient.h>
 #include <LibWebView/WebContentPage.h>
 #include <LibWebView/WebDriverSessionConfig.h>
+
+namespace Ladybird {
+
+class WebContentView;
+
+}
 
 namespace WebView {
 
@@ -141,8 +148,20 @@ class WEBVIEW_API ViewImplementation
     friend class WebContentClient;
     friend class WebContentPage;
     friend class CanonicalTraversable;
+    friend class ::Ladybird::WebContentView;
 
 public:
+    AK_ALLOC_WITH_KMALLOC;
+
+    explicit ViewImplementation(IsPrivate = IsPrivate::No);
+    void attach_surface(ViewSurface&);
+    void detach_surface(ViewSurface&);
+    ViewSurface* surface() const { return m_surface; }
+    void clear_frontend_callbacks();
+    void did_get_accessibility_tree(u64 sequence, Vector<AccessibilityNodeData>);
+    virtual void did_change_accessibility_tree(u64 base_sequence, u64 sequence, AccessibilityTreeDelta);
+    void did_change_accessibility_focus(i64);
+
     virtual ~ViewImplementation();
 
     static void for_each_view(Function<IterationDecision(ViewImplementation&)>);
@@ -294,12 +313,7 @@ public:
     void set_display_metadata(Optional<u64> display_id, double maximum_frames_per_second);
     void set_frame_rate_capped(bool);
 
-    struct ScreenRects {
-        Vector<Web::DevicePixelRect> rects;
-        // The available rects leave out what the system keeps for itself, such as a menu bar or a dock.
-        Vector<Web::DevicePixelRect> available_rects;
-        u32 main_screen_index { 0 };
-    };
+    using ScreenRects = WebView::ScreenRects;
     // Sends the screens that screen_rects() reports to every page hosting documents of the tab.
     void update_screen_rects();
     void set_scales_frames_to_fit(bool scales_frames_to_fit) { m_scales_frames_to_fit = scales_frames_to_fit; }
@@ -597,9 +611,6 @@ public:
     Function<void()> on_request_screenshot;
     Function<void()> on_request_dismiss_dialog;
     Function<void(DOMNodeProperties)> on_received_dom_node_properties;
-    Function<void(u64 sequence, Vector<AccessibilityNodeData>)> on_accessibility_tree_received;
-    Function<void(u64 base_sequence, u64 sequence, AccessibilityTreeDelta)> on_accessibility_tree_changed;
-    Function<void(i64)> on_accessibility_focus_changed;
     Function<void(Web::UniqueNodeID)> on_received_hovered_node_id;
     Function<void(Mutation)> on_dom_mutation_received;
     Function<void(Web::CSS::StyleSheetIdentifier const&, URL::URL const&, Utf16String const&)> on_received_style_sheet_source;
@@ -682,12 +693,12 @@ public:
 
     WebContentPage& page() const;
 
-    virtual Web::DevicePixelSize viewport_size() const = 0;
-    virtual Gfx::IntPoint to_content_position(Gfx::IntPoint widget_position) const = 0;
-    virtual Gfx::IntPoint to_widget_position(Gfx::IntPoint content_position) const = 0;
+    virtual Web::DevicePixelSize viewport_size() const;
+    virtual Gfx::IntPoint to_content_position(Gfx::IntPoint widget_position) const;
+    virtual Gfx::IntPoint to_widget_position(Gfx::IntPoint content_position) const;
 
 protected:
-    virtual void show_context_menu(Menu&, [[maybe_unused]] Gfx::IntPoint widget_position) { }
+    virtual void show_context_menu(Menu&, Gfx::IntPoint widget_position);
 
     void will_apply_history_traversal_step(Web::HTML::CrossProcessId operation_id);
     void did_apply_top_level_history_traversal_step(Web::HTML::CrossProcessId operation_id);
@@ -697,7 +708,7 @@ protected:
     virtual Web::Clipboard::SystemClipboardItem clipboard_item() const;
     virtual void insert_clipboard_item(Web::Clipboard::SystemClipboardItem);
 
-    virtual void did_accept_presented_backing_store(i32, Gfx::IntRect) { }
+    virtual void did_accept_presented_backing_store(i32, Gfx::IntRect);
     // Lets the Compositor paint into a backing store again. A view whose frames something else still reads may wait
     // for that to finish first.
     virtual void release_backing_store(i32 bitmap_id);
@@ -705,11 +716,9 @@ protected:
 
     static constexpr auto ZOOM_STEP = 0.1;
 
-    virtual Core::AnonymousBuffer system_theme() { return {}; }
-    virtual Optional<ScreenRects> screen_rects() const { return {}; }
+    virtual Core::AnonymousBuffer system_theme();
+    virtual Optional<ScreenRects> screen_rects() const;
     void update_compositor_display_metadata(WebContentPage&);
-
-    explicit ViewImplementation(IsPrivate = IsPrivate::No);
 
     void set_owner_view(ViewImplementation const&);
 
@@ -1166,6 +1175,7 @@ protected:
     bool m_devtools_connected { false };
     bool m_devtools_takes_console_messages { false };
     bool m_devtools_takes_console_errors { false };
+    ViewSurface* m_surface { nullptr };
 };
 
 }

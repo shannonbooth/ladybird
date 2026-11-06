@@ -117,7 +117,7 @@ struct WebContentViewInitialState {
 
 class WebContentView final
     : public WebContentViewBase
-    , public WebView::ViewImplementation
+    , public WebView::ViewSurface
 #if !defined(Q_OS_WIN)
     , public QAccessible::ActivationObserver
 #endif
@@ -143,6 +143,9 @@ public:
 #if !defined(LADYBIRD_QT_USE_RHI_WIDGET)
     virtual void paintEvent(QPaintEvent*) override;
 #endif
+    virtual void did_get_accessibility_tree(u64 sequence, Vector<WebView::AccessibilityNodeData>) override;
+    virtual void did_change_accessibility_tree(u64 base_sequence, u64 sequence, WebView::AccessibilityTreeDelta) override;
+    virtual void did_change_accessibility_focus(i64 node_id) override;
     virtual void resizeEvent(QResizeEvent*) override;
     virtual void leaveEvent(QEvent* event) override;
     virtual void mouseMoveEvent(QMouseEvent*) override;
@@ -216,11 +219,11 @@ signals:
     void urls_dropped(QList<QUrl> const&);
 
 private:
-    // ^WebView::ViewImplementation
+    // ^WebView::ViewSurface
     virtual void prepare_page_for_navigable(WebView::WebContentPage&) override;
     virtual Core::AnonymousBuffer system_theme() override;
-    virtual Optional<ScreenRects> screen_rects() const override;
-    virtual void update_zoom() override;
+    virtual Optional<WebView::ScreenRects> screen_rects() const override;
+    virtual void did_update_zoom() override;
     virtual Web::DevicePixelSize viewport_size() const override;
     virtual Gfx::IntPoint to_content_position(Gfx::IntPoint widget_position) const override;
     virtual Gfx::IntPoint to_widget_position(Gfx::IntPoint content_position) const override;
@@ -430,7 +433,7 @@ private:
     bool vulkan_window_update_would_only_resize() const;
     void remap_unexposed_vulkan_window();
 
-    virtual void release_backing_store(i32 bitmap_id) override;
+    virtual bool release_backing_store(i32 bitmap_id) override;
 
 #    ifdef LADYBIRD_HAS_WAYLAND_GPU_QUERY
     bool create_page_surface();
@@ -499,6 +502,7 @@ private:
     int m_vertical_tab_overlay_right { 0 };
     int m_bookmarks_bar_overlay_height { 0 };
 #endif
+    OwnPtr<WebView::ViewImplementation> m_owned_tab;
 };
 
 bool wheel_event_scrolls_continuously(QWheelEvent const&);

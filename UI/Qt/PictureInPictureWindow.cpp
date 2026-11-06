@@ -60,7 +60,7 @@ public:
         : QWidget(nullptr, window_flags())
     {
         // The window's native window and view are created for the screen of the browser window it is opened from.
-        auto* screen = static_cast<WebContentView const&>(owner_view).screen();
+        auto* screen = static_cast<WebContentView const*>(owner_view.surface())->screen();
         setScreen(screen);
 
         setAttribute(Qt::WA_ShowWithoutActivating);
@@ -89,23 +89,23 @@ public:
             m_view->set_device_pixel_ratio(m_screen_observer->device_pixel_ratio());
         };
         m_screen_observer->on_display_metadata_change = [this] {
-            m_view->set_display_metadata(m_screen_observer->display_id(), m_screen_observer->refresh_rate());
+            m_view->tab().set_display_metadata(m_screen_observer->display_id(), m_screen_observer->refresh_rate());
         };
-        report_page_close_of(*m_view);
+        report_page_close_of(m_view->tab());
         m_view->installEventFilter(this);
         // The window's controls, and its page's, show on hover, which works while Ladybird is in the background too.
         m_view->set_follows_mouse_while_inactive(true);
-        m_view->on_finish_handling_mouse_event = [this](Web::MouseEvent const& event, Web::EventResult result) {
+        m_view->tab().on_finish_handling_mouse_event = [this](Web::MouseEvent const& event, Web::EventResult result) {
             if (event.type == Web::MouseEvent::Type::MouseDown)
                 page_did_handle_press(result);
         };
 
         // The page lays out a new window size only once its main thread is free, so until then its last frame is
         // scaled to keep the video filling the window.
-        m_view->set_scales_frames_to_fit(true);
+        m_view->tab().set_scales_frames_to_fit(true);
 
-        m_view->enable_picture_in_picture_controls();
-        m_view->on_picture_in_picture_control_activated = [this, owner_view_id = owner_view.view_id()](auto control) {
+        m_view->tab().enable_picture_in_picture_controls();
+        m_view->tab().on_picture_in_picture_control_activated = [this, owner_view_id = owner_view.view_id()](auto control) {
             switch (control) {
             case Compositing::PictureInPictureControl::BackToTab:
                 go_back_to_tab(owner_view_id);
@@ -143,8 +143,13 @@ public:
         });
     }
 
+    virtual ~PictureInPictureWindow() override
+    {
+        m_view->release_tab();
+    }
+
     virtual Gfx::IntSize size() const override { return { width(), height() }; }
-    virtual String handle() const override { return m_view->handle(); }
+    virtual String handle() const override { return m_view->tab().handle(); }
     virtual void hide() override { QWidget::hide(); }
 
     virtual void set_video_size(Gfx::IntSize video_size) override
@@ -232,7 +237,7 @@ private:
     void go_back_to_tab(u64 owner_view_id)
     {
         if (auto owner = WebView::ViewImplementation::find_view_by_id(owner_view_id); owner.has_value()) {
-            auto* browser_window = static_cast<WebContentView&>(*owner).window();
+            auto* browser_window = static_cast<WebContentView*>(owner->surface())->window();
             browser_window->setWindowState(browser_window->windowState() & ~Qt::WindowMinimized);
             browser_window->raise();
             browser_window->activateWindow();

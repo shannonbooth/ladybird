@@ -383,7 +383,7 @@ static QAction* create_session_history_traversal_menu_action(QMenu& menu, WebVie
 
 static bool append_session_history_traversal_menu_items(QMenu& menu, WebContentView& view, int direction)
 {
-    auto items = view.session_history_traversal_menu_items(direction);
+    auto items = view.tab().session_history_traversal_menu_items(direction);
     if (items.is_empty())
         return false;
 
@@ -483,7 +483,7 @@ static QAction* create_recent_history_menu_action(QMenu& menu, WebContentView& v
     auto url = URL::Parser::basic_parse(entry.url);
     if (url.has_value()) {
         QObject::connect(action, &QAction::triggered, &view, [&view, url = url.release_value()] {
-            view.load_from_user_input(url);
+            view.tab().load_from_user_input(url);
         });
     } else {
         action->setEnabled(false);
@@ -505,11 +505,11 @@ void update_history_menu(QMenu& menu, WebContentView* view)
         return;
 
     auto* insertion_point = menu.actions().isEmpty() ? nullptr : menu.actions().first();
-    insert_dynamic_history_action(menu, insertion_point, *create_history_navigation_action(menu, *view, view->navigate_back_action(), QKeySequence::StandardKey::Back));
-    insert_dynamic_history_action(menu, insertion_point, *create_history_navigation_action(menu, *view, view->navigate_forward_action(), QKeySequence::StandardKey::Forward));
+    insert_dynamic_history_action(menu, insertion_point, *create_history_navigation_action(menu, *view, view->tab().navigate_back_action(), QKeySequence::StandardKey::Back));
+    insert_dynamic_history_action(menu, insertion_point, *create_history_navigation_action(menu, *view, view->tab().navigate_forward_action(), QKeySequence::StandardKey::Forward));
     insert_dynamic_history_action(menu, insertion_point, *create_dynamic_history_separator(menu));
 
-    auto entries = view->recent_history_entries(RECENT_HISTORY_MENU_ITEM_LIMIT);
+    auto entries = view->tab().recent_history_entries(RECENT_HISTORY_MENU_ITEM_LIMIT);
     for (auto const& entry : entries) {
         auto* action = create_recent_history_menu_action(menu, *view, entry);
         insert_dynamic_history_action(menu, insertion_point, *action);

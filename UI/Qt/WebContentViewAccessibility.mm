@@ -93,7 +93,7 @@ extern "C" void NSAccessibilityHandleFocusChanged();
     // pixel ratio that LocalAccessible::Bounds() converts with), so a CSS pixel is zoom_level() points. No device-
     // pixel-ratio scaling on top of that — convertRect works in points. (Blink and WebKit zoom in layout instead, so
     // their AX bounds come out zoomed already.)
-    auto zoom = _webContentView->zoom_level();
+    auto zoom = _webContentView->tab().zoom_level();
     NSRect zoomed_rect = NSMakeRect(viewRect.origin.x * zoom, viewRect.origin.y * zoom, viewRect.size.width * zoom, viewRect.size.height * zoom);
     NSRect window_rect = [self convertRect:zoomed_rect toView:nil];
     return [self.window convertRectToScreen:window_rect];
@@ -105,7 +105,7 @@ extern "C" void NSAccessibilityHandleFocusChanged();
     NSRect screen_rect = NSMakeRect(screenPoint.x, screenPoint.y, 0, 0);
     NSRect window_rect = [self.window convertRectFromScreen:screen_rect];
     NSPoint view_point = [self convertPoint:window_rect.origin fromView:nil];
-    auto zoom = _webContentView->zoom_level();
+    auto zoom = _webContentView->tab().zoom_level();
     return NSMakeRect(view_point.x / zoom, view_point.y / zoom, 0, 0);
 }
 
@@ -125,14 +125,14 @@ extern "C" void NSAccessibilityHandleFocusChanged();
     }
 
     auto action_string = MUST(String::from_utf8(StringView { [action UTF8String], strlen([action UTF8String]) }));
-    _webContentView->perform_accessibility_action(nodeID, AK::move(action_string));
+    _webContentView->tab().perform_accessibility_action(nodeID, AK::move(action_string));
 }
 
 - (NSURL*)accessibilityPageURL
 {
     if (!_webContentView)
         return nil;
-    auto const& url = _webContentView->url();
+    auto const& url = _webContentView->tab().url();
     if (url.scheme().is_empty())
         return nil;
     auto serialized = url.serialize();
