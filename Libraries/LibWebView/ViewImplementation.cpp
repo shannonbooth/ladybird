@@ -4467,7 +4467,7 @@ void ViewImplementation::reset_site_permissions(URL::Origin const& origin)
     session().permission_manager->reset_origin(origin);
 }
 
-void ViewImplementation::did_request_permission(Badge<WebContentPage>, Web::Permissions::PermissionName name)
+void ViewImplementation::did_request_permission(Badge<CanonicalTraversable>, Web::Permissions::PermissionName name)
 {
     if (!m_permissions_requested_by_page.contains_slow(name))
         m_permissions_requested_by_page.append(name);
@@ -5245,29 +5245,27 @@ SpellChecker::DocumentTag ViewImplementation::spell_document_tag()
     return *m_spell_document_tag;
 }
 
-void ViewImplementation::did_request_spell_check(Badge<WebContentPage>, WebContentPage& requesting_page, u64 request_id, Utf16String text)
+void ViewImplementation::request_spell_check(Badge<CanonicalTraversable>, Utf16String const& text, NonnullRefPtr<SpellCheckReply> reply)
 {
     auto* spell_checker = Application::the().spell_checker();
     if (!spell_checker) {
-        requesting_page.async_did_check_spelling(request_id, {});
+        reply->cancel();
         return;
     }
-    spell_checker->check(spell_document_tag(), text, [page = NonnullRefPtr { requesting_page }, request_id](Vector<Web::SpellingError> errors) {
-        if (page->is_open())
-            page->async_did_check_spelling(request_id, move(errors));
+    spell_checker->check(spell_document_tag(), text, [reply](Vector<Web::SpellingError> errors) {
+        reply->complete(move(errors));
     });
 }
 
-void ViewImplementation::did_request_writing_suggestion(Badge<WebContentPage>, WebContentPage& requesting_page, u64 request_id, Utf16String text, u32 caret_offset)
+void ViewImplementation::request_writing_suggestion(Badge<CanonicalTraversable>, Utf16String const& text, u32 caret_offset, NonnullRefPtr<WritingSuggestionReply> reply)
 {
     auto* spell_checker = Application::the().spell_checker();
     if (!spell_checker) {
-        requesting_page.async_did_get_writing_suggestion(request_id, {});
+        reply->cancel();
         return;
     }
-    spell_checker->suggest(spell_document_tag(), text, caret_offset, [page = NonnullRefPtr { requesting_page }, request_id](Optional<Web::WritingSuggestion> suggestion) {
-        if (page->is_open())
-            page->async_did_get_writing_suggestion(request_id, move(suggestion));
+    spell_checker->suggest(spell_document_tag(), text, caret_offset, [reply](Optional<Web::WritingSuggestion> suggestion) {
+        reply->complete(move(suggestion));
     });
 }
 

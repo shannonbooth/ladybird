@@ -22,6 +22,7 @@
 #include <LibCore/AnonymousBuffer.h>
 #include <LibCore/SharedVersion.h>
 #include <LibWebCommon/Bindings/Navigation.h>
+#include <LibWebCommon/Clipboard/SystemClipboard.h>
 #include <LibWebCommon/HTML/FileFilter.h>
 #include <LibWebCommon/HTML/HistoryOperation.h>
 #include <LibWebCommon/HTML/SelectItem.h>
@@ -31,6 +32,7 @@
 #include <LibWebView/BrowsingSession.h>
 #include <LibWebView/CanonicalNavigable.h>
 #include <LibWebView/Export.h>
+#include <LibWebView/MicrophoneAuthorizer.h>
 #include <LibWebView/PendingReply.h>
 #include <LibWebView/SessionHistory.h>
 #include <LibWebView/SessionHistoryTraversalQueue.h>
@@ -143,6 +145,28 @@ public:
     void request_date_picker(Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, NonnullRefPtr<DatePickerReply>);
     void request_file_picker(Web::HTML::FileFilter const&, Web::HTML::AllowMultipleFiles, NonnullRefPtr<FilePickerReply>);
     void request_select_dropdown(Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem>, NonnullRefPtr<SelectDropdownReply>);
+    void did_request_permission(Web::Permissions::PermissionName);
+    void request_permission_prompt(PermissionPromptRequest, NonnullRefPtr<PermissionPromptReply>);
+    MicrophoneAuthorization microphone_authorization() const;
+    void ensure_microphone_authorization(NonnullRefPtr<MicrophoneAuthorizationReply>);
+    void show_microphone_denied_notice();
+    void request_spell_check(Utf16String const& text, NonnullRefPtr<SpellCheckReply>);
+    void request_writing_suggestion(Utf16String const& text, u32 caret_offset, NonnullRefPtr<WritingSuggestionReply>);
+    Web::Clipboard::SystemClipboardItem clipboard_item() const;
+    void insert_clipboard_item(Web::Clipboard::SystemClipboardItem);
+    void restore_window();
+    void reposition_window(Gfx::IntPoint);
+    void resize_window(Gfx::IntSize);
+    void maximize_window();
+    void minimize_window();
+    void request_fullscreen_window(WebContentPage&);
+    void exit_fullscreen_window();
+    void fully_exit_fullscreen();
+    // Positions keep coming for a watch, so the view tracks geolocation requests by page and request id.
+    void request_geolocation_position(WebContentPage&, u64 request_id, Web::HTML::CrossProcessId document_id);
+    void cancel_geolocation_position_request(WebContentPage&, u64 request_id);
+    void start_geolocation_position_watch(WebContentPage&, u64 request_id, Web::HTML::CrossProcessId document_id);
+    void stop_geolocation_position_watch(WebContentPage&, u64 request_id);
 
     TabPresentationState& presentation() { return m_presentation; }
     TabPresentationState const& presentation() const { return m_presentation; }

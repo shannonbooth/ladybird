@@ -1547,16 +1547,14 @@ void WebContentPage::did_request_restore_window()
 {
     if (!may_change_window(*this, "did_request_restore_window"sv))
         return;
-    if (view().on_restore_window)
-        view().on_restore_window();
+    traversable().restore_window();
 }
 
 void WebContentPage::did_request_reposition_window(Gfx::IntPoint position, u64 completion_id)
 {
     if (!may_change_window(*this, "did_request_reposition_window"sv))
         return;
-    if (view().on_reposition_window)
-        view().on_reposition_window(position);
+    traversable().reposition_window(position);
     async_did_complete_window_rect_request(completion_id);
 }
 
@@ -1564,8 +1562,7 @@ void WebContentPage::did_request_resize_window(Gfx::IntSize size, u64 completion
 {
     if (!may_change_window(*this, "did_request_resize_window"sv))
         return;
-    if (view().on_resize_window)
-        view().on_resize_window(size);
+    traversable().resize_window(size);
     async_did_complete_window_rect_request(completion_id);
 }
 
@@ -1573,8 +1570,7 @@ void WebContentPage::did_request_maximize_window(u64 completion_id)
 {
     if (!may_change_window(*this, "did_request_maximize_window"sv))
         return;
-    if (view().on_maximize_window)
-        view().on_maximize_window();
+    traversable().maximize_window();
     async_did_complete_window_rect_request(completion_id);
 }
 
@@ -1582,8 +1578,7 @@ void WebContentPage::did_request_minimize_window()
 {
     if (!may_change_window(*this, "did_request_minimize_window"sv))
         return;
-    if (view().on_minimize_window)
-        view().on_minimize_window();
+    traversable().minimize_window();
 }
 
 void WebContentPage::did_request_fullscreen_window()
@@ -1594,14 +1589,12 @@ void WebContentPage::did_request_fullscreen_window()
         async_deny_fullscreen_window();
         return;
     }
-    if (view().on_fullscreen_window)
-        view().on_fullscreen_window();
+    traversable().request_fullscreen_window(*this);
 }
 
 void WebContentPage::did_request_exit_fullscreen()
 {
-    if (view().on_exit_fullscreen_window)
-        view().on_exit_fullscreen_window();
+    traversable().exit_fullscreen_window();
 }
 
 void WebContentPage::did_exit_picture_in_picture()
@@ -1762,8 +1755,7 @@ void WebContentPage::did_request_geolocation_position(u64 request_id, Web::HTML:
         async_geolocation_position_response(request_id, {}, to_underlying(Web::Geolocation::GeolocationPositionErrorCode::PermissionDenied));
         return;
     }
-    if (view().on_request_geolocation_position)
-        view().on_request_geolocation_position(*this, request_id, document_id);
+    traversable().request_geolocation_position(*this, request_id, document_id);
 }
 
 bool WebContentPage::hosts_a_document_with_top_level_origin(URL::Origin const& origin) const
@@ -1800,7 +1792,7 @@ void WebContentPage::did_request_permission(u64 request_id, Web::HTML::CrossProc
 
     auto deny = [&] { async_permission_request_completed(request_id, Web::Permissions::EffectiveState::Denied); };
 
-    view().did_request_permission({}, *permission_name);
+    traversable().did_request_permission(*permission_name);
 
     // The UI process decides from what it knows of the requesting document, never from what the renderer says of it.
     auto document = hosted_document_with_id(document_id);
@@ -1827,7 +1819,7 @@ void WebContentPage::did_request_permission(u64 request_id, Web::HTML::CrossProc
     }
 
     // A file: page has an opaque origin, and it's the only one that gets to ask. Its answer lasts as long as the page.
-    auto is_file = top_level_origin->is_opaque() && view().url().scheme() == "file"sv;
+    auto is_file = top_level_origin->is_opaque() && traversable().active_document_url().scheme() == "file"sv;
     if (!is_file) {
         auto is_trustworthy = [](URL::Origin const& origin) {
             return Web::SecureContexts::is_origin_potentially_trustworthy(origin) == Web::SecureContexts::Trustworthiness::PotentiallyTrustworthy;
@@ -1859,8 +1851,8 @@ void WebContentPage::did_request_permission(u64 request_id, Web::HTML::CrossProc
 
     // Allowing the site the microphone the system keeps from the browser would get it nothing, so the user is told why
     // instead of being asked. Nothing is decided for the site, which may ask again once the system relents.
-    if (*permission_name == Web::Permissions::PermissionName::Microphone && view().microphone_authorization() == MicrophoneAuthorization::Denied) {
-        view().show_microphone_denied_notice();
+    if (*permission_name == Web::Permissions::PermissionName::Microphone && traversable().microphone_authorization() == MicrophoneAuthorization::Denied) {
+        traversable().show_microphone_denied_notice();
         async_permission_request_completed(request_id, Web::Permissions::EffectiveState::Prompt);
         return;
     }
@@ -1874,15 +1866,22 @@ void WebContentPage::did_request_permission(u64 request_id, Web::HTML::CrossProc
         case Web::Permissions::PermissionName::Notifications:
             return NotificationManager::the().backend().os_authorization_is_undetermined();
         case Web::Permissions::PermissionName::Microphone:
-            return view().microphone_authorization() == MicrophoneAuthorization::NotDetermined;
+            return traversable().microphone_authorization() == MicrophoneAuthorization::NotDetermined;
         }
         VERIFY_NOT_REACHED();
     }();
     PermissionPromptRequest request { *permission_name, *top_level_origin, is_file, show_os_hint };
 
-    view().request_permission_prompt(move(request), [page = NonnullRefPtr(*this), request_id, document_id, permission_name = *permission_name, top_level_origin = *top_level_origin, is_file, generation_when_asked](Web::Permissions::PromptOutcome outcome) {
+    auto reply = PermissionPromptReply::create([page = NonnullRefPtr(*this), request_id, document_id, permission_name = *permission_name, top_level_origin = *top_level_origin, is_file, generation_when_asked](Optional<Web::Permissions::PromptOutcome> response) {
         if (!page->is_open())
             return;
+
+        // With no one to ask, the request is denied without deciding anything for the site.
+        if (!response.has_value()) {
+            page->async_permission_request_completed(request_id, Web::Permissions::EffectiveState::Denied);
+            return;
+        }
+        auto outcome = *response;
 
         auto state = Web::Permissions::EffectiveState::Prompt;
         if (is_file) {
@@ -1893,7 +1892,7 @@ void WebContentPage::did_request_permission(u64 request_id, Web::HTML::CrossProc
             if (state == Web::Permissions::EffectiveState::Granted)
                 page->m_file_permission_grants.append({ document_id, permission_name });
             if (state == Web::Permissions::EffectiveState::Granted && permission_name == Web::Permissions::PermissionName::Microphone) {
-                if (auto result = page->client().grant_audio_capture_to_file(page->view().url()); result.is_error())
+                if (auto result = page->client().grant_audio_capture_to_file(page->traversable().active_document_url()); result.is_error())
                     warnln("Unable to grant audio capture: {}", result.error());
             }
         } else {
@@ -1920,14 +1919,20 @@ void WebContentPage::did_request_permission(u64 request_id, Web::HTML::CrossProc
 
         // The system may only now ask the user for the microphone. If it keeps it from the browser, the site keeps the
         // user's answer for when it relents, but this request gets nothing.
-        page->view().ensure_microphone_authorization([page, request_id, document_id](bool authorized) {
+        auto microphone_reply = MicrophoneAuthorizationReply::create([page, request_id, document_id](bool authorized) {
             if (!page->is_open())
                 return;
             // The user may have taken the permission away while the system asked.
             auto granted = authorized && page->document_may_use(document_id, Web::Permissions::PermissionName::Microphone);
             page->async_permission_request_completed(request_id, granted ? Web::Permissions::EffectiveState::Granted : Web::Permissions::EffectiveState::Prompt);
-        });
-    });
+        },
+            false);
+        page->expect_reply_from_ui(microphone_reply);
+        page->traversable().ensure_microphone_authorization(move(microphone_reply));
+    },
+        {});
+    expect_reply_from_ui(reply);
+    traversable().request_permission_prompt(move(request), move(reply));
 }
 
 Web::Permissions::PermissionSnapshot WebContentPage::set_permission_for_testing(Web::HTML::CrossProcessId document_id, String const& name, String const& state)
@@ -2077,8 +2082,7 @@ void WebContentPage::did_request_dismiss_notification_for_testing(u64 notificati
 
 void WebContentPage::did_cancel_geolocation_position_request(u64 request_id)
 {
-    if (view().on_cancel_geolocation_position_request)
-        view().on_cancel_geolocation_position_request(*this, request_id);
+    traversable().cancel_geolocation_position_request(*this, request_id);
 }
 
 void WebContentPage::did_start_geolocation_position_watch(u64 request_id, Web::HTML::CrossProcessId document_id)
@@ -2087,14 +2091,12 @@ void WebContentPage::did_start_geolocation_position_watch(u64 request_id, Web::H
         async_geolocation_position_response(request_id, {}, to_underlying(Web::Geolocation::GeolocationPositionErrorCode::PermissionDenied));
         return;
     }
-    if (view().on_start_geolocation_position_watch)
-        view().on_start_geolocation_position_watch(*this, request_id, document_id);
+    traversable().start_geolocation_position_watch(*this, request_id, document_id);
 }
 
 void WebContentPage::did_stop_geolocation_position_watch(u64 request_id)
 {
-    if (view().on_stop_geolocation_position_watch)
-        view().on_stop_geolocation_position_watch(*this, request_id);
+    traversable().stop_geolocation_position_watch(*this, request_id);
 }
 
 void WebContentPage::did_request_file_picker(Web::HTML::FileFilter accepted_file_types, Web::HTML::AllowMultipleFiles allow_multiple_files)
@@ -2155,7 +2157,7 @@ void WebContentPage::did_insert_clipboard_item(Web::Clipboard::SystemClipboardIt
 {
     if (!has_transient_user_activation())
         return;
-    view().insert_clipboard_item(move(item));
+    traversable().insert_clipboard_item(move(item));
 }
 
 void WebContentPage::set_audibility(Audio::Audibility audibility)
@@ -2315,7 +2317,7 @@ void WebContentPage::navigable_container_unfullscreen_complete(Web::HTML::CrossP
 // The document of the tab's top-level traversable runs the steps, wherever a close request reached fullscreen.
 void WebContentPage::request_fully_exit_fullscreen()
 {
-    view().exit_fullscreen();
+    traversable().fully_exit_fullscreen();
 }
 
 RefPtr<WebContentPage> WebContentPage::page_hosting_container_of(Web::HTML::CrossProcessId navigable_id) const
@@ -2478,7 +2480,7 @@ void WebContentPage::did_request_clipboard_entries(u64 request_id)
         async_retrieved_clipboard_entries(request_id, items);
         return;
     }
-    if (auto item = view().clipboard_item(); !item.system_clipboard_representations.is_empty())
+    if (auto item = traversable().clipboard_item(); !item.system_clipboard_representations.is_empty())
         items.append(move(item));
 
     async_retrieved_clipboard_entries(request_id, items);
@@ -2486,12 +2488,22 @@ void WebContentPage::did_request_clipboard_entries(u64 request_id)
 
 void WebContentPage::did_request_spell_check(u64 request_id, Utf16String text)
 {
-    view().did_request_spell_check({}, *this, request_id, move(text));
+    auto reply = SpellCheckReply::create([page = NonnullRefPtr { *this }, request_id](Vector<Web::SpellingError> errors) {
+        page->async_did_check_spelling(request_id, move(errors));
+    },
+        {});
+    expect_reply_from_ui(reply);
+    traversable().request_spell_check(text, move(reply));
 }
 
 void WebContentPage::did_request_writing_suggestion(u64 request_id, Utf16String text, u32 caret_offset)
 {
-    view().did_request_writing_suggestion({}, *this, request_id, move(text), caret_offset);
+    auto reply = WritingSuggestionReply::create([page = NonnullRefPtr { *this }, request_id](Optional<Web::WritingSuggestion> suggestion) {
+        page->async_did_get_writing_suggestion(request_id, move(suggestion));
+    },
+        {});
+    expect_reply_from_ui(reply);
+    traversable().request_writing_suggestion(text, caret_offset, move(reply));
 }
 
 void WebContentPage::did_get_translation_language_sample(u64 request_id, Web::TranslationLanguageSample sample)
