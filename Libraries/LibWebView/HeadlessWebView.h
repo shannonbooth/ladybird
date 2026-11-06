@@ -6,75 +6,65 @@
 
 #pragma once
 
+#include <AK/NonnullOwnPtr.h>
 #include <AK/Utf16String.h>
+#include <AK/Vector.h>
+#include <AK/WeakPtr.h>
+#include <AK/Weakable.h>
+#include <LibCore/AnonymousBuffer.h>
 #include <LibCore/Forward.h>
-#include <LibCore/Timer.h>
 #include <LibGfx/Forward.h>
-#include <LibWebCommon/Page/PageId.h>
 #include <LibWebCommon/PixelUnits.h>
 #include <LibWebView/Forward.h>
+#include <LibWebView/PendingReply.h>
 #include <LibWebView/ViewImplementation.h>
+#include <LibWebView/ViewSurface.h>
 
 namespace WebView {
 
-class WEBVIEW_API HeadlessWebView : public WebView::ViewImplementation {
+// A window that is never shown, which shows a tab for as long as it lives.
+class WEBVIEW_API HeadlessWebView
+    : public ViewSurface
+    , public Weakable<HeadlessWebView> {
 public:
     AK_ALLOC_WITH_KMALLOC;
 
     virtual ~HeadlessWebView() override;
 
-    static TabHandle<HeadlessWebView> create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size, IsPrivate = IsPrivate::No, Function<void(HeadlessWebView&)> configure = {});
-    enum class IsOwnedByParent : bool {
-        No,
-        Yes,
-    };
-    static TabHandle<HeadlessWebView> create_child(HeadlessWebView&, CanonicalTraversable&, IsOwnedByParent = IsOwnedByParent::No);
-    static NonnullOwnPtr<PictureInPictureWindow> create_picture_in_picture_window(HeadlessWebView& requesting_view, CanonicalTraversable&, Gfx::IntSize video_size);
+    static NonnullOwnPtr<HeadlessWebView> create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size, IsPrivate = IsPrivate::No);
+    static NonnullOwnPtr<HeadlessWebView> create_child(HeadlessWebView& parent, CanonicalTraversable&);
+    static NonnullOwnPtr<PictureInPictureWindow> create_picture_in_picture_window(CanonicalTraversable&, ViewImplementation const& owner, Gfx::IntSize video_size);
 
     void reset_viewport_size(Web::DevicePixelSize);
 
-    void close_child_web_views()
-    {
-        for (auto& child : m_child_web_views) {
-            // Children sharing a crashed WebContent process are discarded by their pending crash callbacks.
-            if (!child->handle().is_empty() && child->page().is_open()) {
-                child->request_close();
-                child->schedule_forced_close();
-            }
-        }
-    }
-
-    void disconnect_child_crash_handlers()
-    {
-        // Disconnect crash handlers so child crashes don't propagate to parent.
-        // We don't destroy the children because there may be pending deferred_invokes
-        // that would cause use-after-free.
-        for (auto& child : m_child_web_views)
-            child->m_propagate_crashes_to_parent = false;
-    }
-
-protected:
-    HeadlessWebView(Core::AnonymousBuffer theme, Web::DevicePixelSize viewport_size, IsPrivate = IsPrivate::No);
-
-    void propagate_web_content_crash(WebContentCrashReason);
-    HeadlessWebView& adopt_child_web_view(TabHandle<HeadlessWebView>);
-    void discard_child_web_view(HeadlessWebView&);
-    void schedule_forced_close();
-    virtual Core::AnonymousBuffer system_theme() override { return m_theme; }
-    virtual Optional<ScreenRects> screen_rects() const override;
-    void update_zoom() override;
-    ViewImplementation* create_view_for_new_tab_or_window(IsPrivate) override;
-    virtual NonnullOwnPtr<ViewImplementation> create_view_for_new_traversable() override;
+    void close_child_web_views();
+    // Child crashes then no longer reach this window. The children stay, as deferred tasks may still reach them.
+    void disconnect_child_crash_handlers();
 
     virtual Web::DevicePixelSize viewport_size() const override { return m_viewport_size; }
     virtual Gfx::IntPoint to_content_position(Gfx::IntPoint widget_position) const override { return widget_position; }
     virtual Gfx::IntPoint to_widget_position(Gfx::IntPoint content_position) const override { return content_position; }
+    virtual Core::AnonymousBuffer system_theme() override { return m_theme; }
+    virtual Optional<ScreenRects> screen_rects() const override;
+    virtual ViewImplementation* create_view_for_new_tab_or_window(IsPrivate) override;
 
-    Core::AnonymousBuffer m_theme;
-    Web::DevicePixelSize m_viewport_size;
+protected:
+    HeadlessWebView(Core::AnonymousBuffer theme, Web::DevicePixelSize viewport_size, ViewImplementation&);
+
+    static ViewImplementation& open_tab(IsPrivate);
+
+    HeadlessWebView& adopt_child_web_view(NonnullOwnPtr<HeadlessWebView>);
 
     RefPtr<DialogReply> m_pending_dialog_reply;
     Optional<Utf16String> m_pending_prompt_text;
+
+private:
+    void propagate_web_content_crash(ViewImplementation::WebContentCrashReason);
+    void discard_child_web_view(HeadlessWebView&);
+    void schedule_forced_close();
+
+    Core::AnonymousBuffer m_theme;
+    Web::DevicePixelSize m_viewport_size;
 
     // When restoring from fullscreen, we need to know to what dimension.
     Web::DevicePixelRect m_previous_dimensions;
@@ -82,7 +72,7 @@ protected:
     RefPtr<Core::Timer> m_forced_close_timer;
     WeakPtr<HeadlessWebView> m_parent_web_view;
     bool m_propagate_crashes_to_parent { true };
-    Vector<TabHandle<HeadlessWebView>> m_child_web_views;
+    Vector<NonnullOwnPtr<HeadlessWebView>> m_child_web_views;
 };
 
 }

@@ -352,6 +352,16 @@ ViewSurface::~ViewSurface()
     release_tab();
 }
 
+Web::Clipboard::SystemClipboardItem ViewSurface::clipboard_item() const
+{
+    return Application::the().clipboard_item();
+}
+
+void ViewSurface::insert_clipboard_item(Web::Clipboard::SystemClipboardItem item)
+{
+    Application::the().insert_clipboard_item(move(item));
+}
+
 void ViewSurface::release_tab()
 {
     if (!m_view)
@@ -413,11 +423,6 @@ void ViewImplementation::did_create_traversable(Badge<CanonicalTraversable>, Can
     VERIFY(&session() == &traversable.session());
     m_top_level_traversable = &traversable;
     traversable.set_owner_tab_id({}, m_pending_owner_tab_id);
-}
-
-NonnullOwnPtr<ViewImplementation> ViewImplementation::create_view_for_new_traversable()
-{
-    return make<ViewImplementation>(m_is_private);
 }
 
 WebContentPage& ViewImplementation::page() const
@@ -3022,12 +3027,21 @@ void ViewImplementation::set_input_method_state(InputMethodState state)
 
 Web::Clipboard::SystemClipboardItem ViewImplementation::clipboard_item() const
 {
+    if (m_surface)
+        return m_surface->clipboard_item();
     return Application::the().clipboard_item();
 }
 
 void ViewImplementation::insert_clipboard_item(Web::Clipboard::SystemClipboardItem item)
 {
+    if (m_surface)
+        return m_surface->insert_clipboard_item(move(item));
     Application::the().insert_clipboard_item(move(item));
+}
+
+ViewImplementation* ViewImplementation::create_view_for_new_tab_or_window(IsPrivate is_private)
+{
+    return m_surface ? m_surface->create_view_for_new_tab_or_window(is_private) : nullptr;
 }
 
 void ViewImplementation::toggle_page_mute_state()
@@ -3167,6 +3181,13 @@ void ViewImplementation::set_device_pixel_ratio_for_testing(WebContentPage& page
 {
     m_device_pixel_ratio = device_pixel_ratio;
     page.async_set_viewport(viewport_size(), m_device_pixel_ratio, m_is_fullscreen);
+}
+
+void ViewImplementation::reset_viewport_for_testing()
+{
+    m_is_fullscreen = Web::ViewportIsFullscreen::No;
+    m_device_pixel_ratio = 1.0;
+    page().async_set_viewport(viewport_size(), m_device_pixel_ratio, m_is_fullscreen);
 }
 
 Gfx::IntRect ViewImplementation::rect_fitting_frame(Gfx::IntSize frame_size, Gfx::IntSize target_size)

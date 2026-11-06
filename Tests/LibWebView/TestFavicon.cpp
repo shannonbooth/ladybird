@@ -22,7 +22,7 @@ TEST_CASE(favicon)
     auto view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->on_load_finish = [&](auto const&) { ++loads_finished; };
+    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
 
     // Wait out the initial about:blank load; navigating before it completes would drop the navigation.
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 1; });
@@ -30,7 +30,7 @@ TEST_CASE(favicon)
     {
         bool favicon_changed = false;
 
-        view->on_favicon_change = [&](Optional<Gfx::Bitmap const&> bitmap) {
+        view->tab().on_favicon_change = [&](Optional<Gfx::Bitmap const&> bitmap) {
             if (bitmap.has_value()) {
                 VERIFY(bitmap->width() == 32);
                 VERIFY(bitmap->height() == 32);
@@ -39,7 +39,7 @@ TEST_CASE(favicon)
             }
         };
 
-        view->load_html(R"(<!doctype html>
+        view->tab().load_html(R"(<!doctype html>
             <html>
                 <link
                     rel="icon"
@@ -55,7 +55,7 @@ TEST_CASE(favicon)
         bool favicon_changed = false;
         Gfx::Color expected_color = Gfx::Color::Blue;
 
-        view->on_favicon_change = [&](Optional<Gfx::Bitmap const&> bitmap) {
+        view->tab().on_favicon_change = [&](Optional<Gfx::Bitmap const&> bitmap) {
             if (bitmap.has_value()) {
                 VERIFY(bitmap->width() == 32);
                 VERIFY(bitmap->height() == 32);
@@ -64,7 +64,7 @@ TEST_CASE(favicon)
             }
         };
 
-        view->load_html(R"(<!doctype html>
+        view->tab().load_html(R"(<!doctype html>
             <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="blue"/></svg>'>
             <link id="preferred" rel="icon">
         )"sv);
@@ -74,7 +74,7 @@ TEST_CASE(favicon)
         for (auto invalid_icon : { "data:image/png,invalid"sv, "data:image/svg+xml,invalid"sv }) {
             expected_color = Gfx::Color::from_named_css_color_string("lime"sv).value();
             favicon_changed = false;
-            view->run_javascript(R"(
+            view->tab().run_javascript(R"(
                 document.getElementById("preferred").href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="lime"/></svg>';
             )"_string);
             Core::EventLoop::current().spin_until([&]() { return favicon_changed; });
@@ -82,7 +82,7 @@ TEST_CASE(favicon)
             // A failed replacement must discard this icon's cached bitmap and if it was the preferred icon, select the next most appropriate one.
             expected_color = Gfx::Color::Blue;
             favicon_changed = false;
-            view->run_javascript(MUST(String::formatted("document.getElementById('preferred').href = '{}';", invalid_icon)));
+            view->tab().run_javascript(MUST(String::formatted("document.getElementById('preferred').href = '{}';", invalid_icon)));
             Core::EventLoop::current().spin_until([&]() { return favicon_changed; });
         }
     }
@@ -90,7 +90,7 @@ TEST_CASE(favicon)
     {
         bool favicon_changed = false;
 
-        view->on_favicon_change = [&](Optional<Gfx::Bitmap const&> bitmap) {
+        view->tab().on_favicon_change = [&](Optional<Gfx::Bitmap const&> bitmap) {
             if (bitmap.has_value()) {
                 VERIFY(bitmap->width() == 32);
                 VERIFY(bitmap->height() == 32);
@@ -100,7 +100,7 @@ TEST_CASE(favicon)
         };
 
         // Favicon with a red background and a dark green PNG. We should wait until the PNG is loaded before rasterizing the favicon.
-        view->load_html(R"(<!doctype html>
+        view->tab().load_html(R"(<!doctype html>
             <html>
                 <link
                     rel="icon"

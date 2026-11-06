@@ -80,7 +80,7 @@ TEST_CASE(renderer_cookie_access)
     };
 
     auto view = create_view();
-    auto& cookie_jar = *view->page().client().session().cookie_jar;
+    auto& cookie_jar = *view->tab().page().client().session().cookie_jar;
     cookie_jar.set_cookie(victim_url, HTTP::Cookie::ParsedCookie { .name = "session"_string, .value = "secret"_string, .http_only_attribute_present = true }, HTTP::Cookie::Source::Http, {});
     VERIFY(victim_cookie_value(cookie_jar) == "secret"sv);
 
@@ -88,9 +88,9 @@ TEST_CASE(renderer_cookie_access)
     // other access sees and changes nothing, but is not misbehavior: a document can outlive the UI process's record
     // of it.
     cookie_jar.set_cookie(victim_url, HTTP::Cookie::ParsedCookie { .name = "visible"_string, .value = "secret"_string }, HTTP::Cookie::Source::Http, {});
-    auto& stub = static_cast<WebContentClientStub&>(view->page().client());
-    auto page_id = view->page().id();
-    auto page_environment_id = view->traversable().active_document().relevant_global_object().relevant_settings_object().id();
+    auto& stub = static_cast<WebContentClientStub&>(view->tab().page().client());
+    auto page_id = view->tab().page().id();
+    auto page_environment_id = view->tab().traversable().active_document().relevant_global_object().relevant_settings_object().id();
     for (auto const& environment_id : { Web::HTML::EnvironmentId::generate(), page_environment_id }) {
         VERIFY(stub.did_request_cookie(page_id, environment_id, victim_url, HTTP::Cookie::Source::NonHttp).cookie().cookie.is_empty());
         VERIFY(stub.did_request_all_cookies_cookiestore(page_id, environment_id, victim_url).cookies().is_empty());
@@ -99,7 +99,7 @@ TEST_CASE(renderer_cookie_access)
     }
 
     // A blob URL entry has the origin of the environment that added it, and only that origin revokes it.
-    auto& blob_url_store = *view->page().client().session().blob_url_store;
+    auto& blob_url_store = *view->tab().page().client().session().blob_url_store;
     auto victim_blob_url = "blob:https://victim.example/entry"_utf16;
     auto forged_blob_url = "blob:https://victim.example/forged"_utf16;
     Web::FileAPI::SerializedBlobURLEntry victim_entry { .object = Web::FileAPI::SerializedBlobURLEntry::MediaSource {}, .origin = victim_url.origin(), .environment_policy_container = {} };
@@ -115,9 +115,9 @@ TEST_CASE(renderer_cookie_access)
     auto expect_rejected = [&](StringView what, Function<void(WebContentClientStub&, Web::PageId)> send) {
         auto view = create_view();
         Optional<WebView::ViewImplementation::WebContentCrashReason> crash_reason;
-        view->on_web_content_crashed = [&](auto reason) { crash_reason = reason; };
+        view->tab().on_web_content_crashed = [&](auto reason) { crash_reason = reason; };
 
-        send(static_cast<WebContentClientStub&>(view->page().client()), view->page().id());
+        send(static_cast<WebContentClientStub&>(view->tab().page().client()), view->tab().page().id());
         Core::EventLoop::current().spin_until([&]() { return crash_reason.has_value(); });
 
         if (crash_reason != WebView::ViewImplementation::WebContentCrashReason::RejectedIPC) {
@@ -155,10 +155,10 @@ TEST_CASE(renderer_cookie_access)
 
     // The UI's navigation record permits the destination client before any document is bound to it.
     auto navigation_view = create_view();
-    auto& navigation_client = navigation_view->page().client();
+    auto& navigation_client = navigation_view->tab().page().client();
     auto& navigation_stub = static_cast<WebContentClientStub&>(navigation_client);
     auto loader = WebView::NavigationLoader::create(navigation_client.is_private(), Web::HTML::NavigationPopulationRequest {
-                                                                                        .navigable_id = navigation_view->traversable().id(),
+                                                                                        .navigable_id = navigation_view->tab().traversable().id(),
                                                                                         .history_entry = {},
                                                                                         .source_snapshot_params = Web::HTML::create_navigation_source_snapshot_without_a_source_document(),
                                                                                         .target_snapshot_params = {},
@@ -167,18 +167,18 @@ TEST_CASE(renderer_cookie_access)
                                                                                         .user_involvement = Web::HTML::UserNavigationInvolvement::None,
                                                                                         .navigation_id = "authorized-navigation"_utf16,
                                                                                     });
-    navigation_view->traversable().set_ongoing_navigation({
+    navigation_view->tab().traversable().set_ongoing_navigation({
         .url = victim_url,
         .navigation_id = "authorized-navigation"_utf16,
         .state = WebView::CanonicalNavigation::CreatingNavigationParams { loader },
-        .page = &navigation_view->page(),
+        .page = &navigation_view->tab().page(),
     });
     expect_rejected("using another renderer's navigation to create a RequestServer client"sv, [&](auto& stub, auto) {
         VERIFY(!stub.did_lose_request_server_connection(victim_site).handle().has_value());
     });
     auto authorized_connection = navigation_stub.did_lose_request_server_connection(victim_site);
     VERIFY(authorized_connection.handle().has_value());
-    navigation_view->traversable().clear_ongoing_navigation();
+    navigation_view->tab().traversable().clear_ongoing_navigation();
     VERIFY(navigation_stub.did_lose_request_server_connection(victim_site).handle().has_value());
     VERIFY(navigation_stub.did_lose_request_server_connection({}).handle().has_value());
 

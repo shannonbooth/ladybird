@@ -51,22 +51,22 @@ TEST_CASE(renderer_attention_claims)
     auto theme = TRY_OR_FAIL(Gfx::load_system_theme(theme_path.string()));
 
     auto focus_view = WebView::HeadlessWebView::create(theme, { 800, 600 });
-    auto& focus_client = focus_view->page().client();
-    auto& focus_traversable = focus_view->traversable();
+    auto& focus_client = focus_view->tab().page().client();
+    auto& focus_traversable = focus_view->tab().traversable();
     auto has_system_focus = focus_traversable.has_system_focus();
 
-    static_cast<WebContentClientStub&>(focus_client).did_request_set_system_focus(focus_view->page().id(), !has_system_focus);
+    static_cast<WebContentClientStub&>(focus_client).did_request_set_system_focus(focus_view->tab().page().id(), !has_system_focus);
     VERIFY(focus_traversable.has_system_focus() == has_system_focus);
     VERIFY(!focus_client.is_open());
 
     auto visibility_view = WebView::HeadlessWebView::create(theme, { 800, 600 });
-    auto& visibility_client = visibility_view->page().client();
+    auto& visibility_client = visibility_view->tab().page().client();
     VERIFY(&visibility_client != &focus_client);
-    auto& visibility_traversable = visibility_view->traversable();
+    auto& visibility_traversable = visibility_view->tab().traversable();
     auto visibility_state = visibility_traversable.system_visibility_state();
     auto claimed_visibility_state = visibility_state == Web::HTML::VisibilityState::Visible ? Web::HTML::VisibilityState::Hidden : Web::HTML::VisibilityState::Visible;
 
-    static_cast<WebContentClientStub&>(visibility_client).did_request_set_system_visibility_state(visibility_view->page().id(), claimed_visibility_state);
+    static_cast<WebContentClientStub&>(visibility_client).did_request_set_system_visibility_state(visibility_view->tab().page().id(), claimed_visibility_state);
     VERIFY(visibility_traversable.system_visibility_state() == visibility_state);
     VERIFY(!visibility_client.is_open());
 

@@ -11,8 +11,10 @@
 #include <LibCore/AnonymousBuffer.h>
 #include <LibGfx/Point.h>
 #include <LibGfx/Rect.h>
+#include <LibWebCommon/Clipboard/SystemClipboard.h>
 #include <LibWebCommon/PixelUnits.h>
 #include <LibWebCommon/WebView/AccessibilityNodeData.h>
+#include <LibWebView/BrowsingSession.h>
 #include <LibWebView/Export.h>
 #include <LibWebView/Forward.h>
 
@@ -51,6 +53,12 @@ public:
     virtual void did_get_accessibility_tree(u64, Vector<AccessibilityNodeData>) { }
     virtual void did_change_accessibility_tree(u64, u64, AccessibilityTreeDelta) { }
     virtual void did_change_accessibility_focus(i64) { }
+
+    virtual Web::Clipboard::SystemClipboardItem clipboard_item() const;
+    virtual void insert_clipboard_item(Web::Clipboard::SystemClipboardItem);
+
+    // The tab to show a tab or window opened from this one in, or null for the application to open one of its own.
+    virtual ViewImplementation* create_view_for_new_tab_or_window(IsPrivate) { return nullptr; }
 
 private:
     friend class ViewImplementation;

@@ -52,24 +52,24 @@ TEST_CASE(before_unload)
     auto view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->on_load_finish = [&](auto const&) { ++loads_finished; };
+    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
     Core::EventLoop::current().spin_until([&] { return loads_finished == 1; });
 
     auto source_url = URL::Parser::basic_parse("data:text/html,<title>source</title><button style='width:100px;height:100px' onclick=\"document.title='activated'\">Activate</button><script>onbeforeunload=e=>e.preventDefault()</script>"sv).release_value();
     auto destination_url = URL::Parser::basic_parse("data:text/html,<title>destination</title>Destination"sv).release_value();
 
-    auto view_is_at = [&](URL::URL const& url) { return view->url().serialize() == url.serialize(); };
+    auto view_is_at = [&](URL::URL const& url) { return view->tab().url().serialize() == url.serialize(); };
     auto load_and_wait = [&](URL::URL const& url) {
         auto expected_loads_finished = loads_finished + 1;
-        view->load(url);
+        view->tab().load(url);
         Core::EventLoop::current().spin_until([&] { return loads_finished >= expected_loads_finished && view_is_at(url); });
     };
     auto activate_page = [&] {
         bool activated = false;
-        view->on_title_change = [&](auto const& title) { activated = title == "activated"sv; };
-        click(*view);
+        view->tab().on_title_change = [&](auto const& title) { activated = title == "activated"sv; };
+        click(view->tab());
         Core::EventLoop::current().spin_until([&] { return activated; });
-        view->on_title_change = {};
+        view->tab().on_title_change = {};
     };
 
     // Frontends without a beforeunload handler must act as if the user chose Leave.
@@ -82,11 +82,11 @@ TEST_CASE(before_unload)
     bool adopt_navigation_prompt_for_close = false;
     Optional<bool> adopted_close_preflight_result;
     Optional<String> prompt_source;
-    view->on_request_before_unload = [&](auto const& source, auto reply) {
+    view->tab().on_request_before_unload = [&](auto const& source, auto reply) {
         ++prompt_count;
         prompt_source = source;
         if (adopt_navigation_prompt_for_close) {
-            view->request_close_preflight([&](bool approved) {
+            view->tab().request_close_preflight([&](bool approved) {
                 adopted_close_preflight_result = approved;
             });
         }
@@ -102,7 +102,7 @@ TEST_CASE(before_unload)
     load_and_wait(source_url);
     activate_page();
     auto loads_finished_before_cancellation = loads_finished;
-    view->load(destination_url);
+    view->tab().load(destination_url);
     Core::EventLoop::current().spin_until([&] { return loads_finished > loads_finished_before_cancellation; });
     VERIFY(prompt_count == 1);
     VERIFY(prompt_source == "data://"sv);
@@ -115,7 +115,7 @@ TEST_CASE(before_unload)
 
     auto request_close_preflight = [&] {
         Optional<bool> result;
-        view->request_close_preflight([&](bool approved) {
+        view->tab().request_close_preflight([&](bool approved) {
             result = approved;
         });
         Core::EventLoop::current().spin_until([&] { return result.has_value(); });
@@ -139,7 +139,7 @@ TEST_CASE(before_unload)
     adopt_navigation_prompt_for_close = true;
     accept_prompt = false;
     auto prompt_count_before_adoption = prompt_count;
-    view->load(destination_url);
+    view->tab().load(destination_url);
     Core::EventLoop::current().spin_until([&] { return adopted_close_preflight_result.has_value(); });
     VERIFY(!*adopted_close_preflight_result);
     VERIFY(view_is_at(source_url));
@@ -148,15 +148,15 @@ TEST_CASE(before_unload)
     adopted_close_preflight_result.clear();
     accept_prompt = true;
     prompt_count_before_adoption = prompt_count;
-    view->load(destination_url);
+    view->tab().load(destination_url);
     Core::EventLoop::current().spin_until([&] { return adopted_close_preflight_result.has_value(); });
     VERIFY(*adopted_close_preflight_result);
     VERIFY(view_is_at(source_url));
     VERIFY(prompt_count == prompt_count_before_adoption + 1);
 
     bool closed = false;
-    view->on_close = [&] { closed = true; };
-    auto close_without_prompting = view->prepare_for_close_without_prompting();
+    view->tab().on_close = [&] { closed = true; };
+    auto close_without_prompting = view->tab().prepare_for_close_without_prompting();
     close_without_prompting();
     Core::EventLoop::current().spin_until([&] { return closed; });
 

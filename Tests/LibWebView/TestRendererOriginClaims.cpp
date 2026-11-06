@@ -55,9 +55,9 @@ TEST_CASE(renderer_origin_claims)
     auto theme = TRY_OR_FAIL(Gfx::load_system_theme(theme_path.string()));
 
     auto view = WebView::HeadlessWebView::create(theme, { 800, 600 });
-    auto& stub = static_cast<WebContentClientStub&>(view->page().client());
-    auto page_id = view->page().id();
-    auto& traversable = view->traversable();
+    auto& stub = static_cast<WebContentClientStub&>(view->tab().page().client());
+    auto page_id = view->tab().page().id();
+    auto& traversable = view->tab().traversable();
 
     auto start_navigation = [&](URL::Origin initiator_origin) {
         auto uuid = generate_random_uuid();

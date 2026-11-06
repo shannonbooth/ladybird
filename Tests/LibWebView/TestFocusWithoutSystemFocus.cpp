@@ -27,15 +27,15 @@ TEST_CASE(focus_already_focused_area_without_system_focus)
     auto view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->on_load_finish = [&](auto const&) { ++loads_finished; };
+    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 1; });
 
     Optional<Utf16String> title;
-    view->on_title_change = [&](Utf16String const& new_title) { title = new_title; };
+    view->tab().on_title_change = [&](Utf16String const& new_title) { title = new_title; };
 
     // Each focus handler focuses its own target again, at most once more, so a target that fires focus again for a
     // focus() on itself counts two events.
-    view->load_html(R"html(<!DOCTYPE html>
+    view->tab().load_html(R"html(<!DOCTYPE html>
 <div id="first" tabindex="0">first</div>
 <div id="second" tabindex="0">second</div>
 <iframe id="frame" srcdoc="<div id=inner tabindex=0>inner</div>"></iframe>
@@ -100,17 +100,17 @@ TEST_CASE(focus_already_focused_area_without_system_focus)
 
     auto focus_and_report = [&](StringView focus) {
         // Reset the page title so identical reports still notify the view.
-        view->run_javascript("document.title = 'pending'"_string);
+        view->tab().run_javascript("document.title = 'pending'"_string);
         Core::EventLoop::current().spin_until([&]() { return title == "pending"sv; });
         title.clear();
-        view->run_javascript(MUST(String::formatted("focus_and_report(() => {})", focus)));
+        view->tab().run_javascript(MUST(String::formatted("focus_and_report(() => {})", focus)));
         Core::EventLoop::current().spin_until([&]() { return title.has_value(); });
         return title->to_utf8();
     };
 
     auto run_and_report = [&](StringView script) {
         title.clear();
-        view->run_javascript(MUST(String::from_utf8(script)));
+        view->tab().run_javascript(MUST(String::from_utf8(script)));
         Core::EventLoop::current().spin_until([&]() { return title.has_value(); });
         return title->to_utf8();
     };
@@ -122,7 +122,7 @@ TEST_CASE(focus_already_focused_area_without_system_focus)
     // With system focus, a target gets focus once, and its handler's focus() does nothing.
     VERIFY(focus_and_report("first.focus()"sv) == "first:1 true"sv);
 
-    view->set_has_system_focus(false);
+    view->tab().set_has_system_focus(false);
 
     // Without system focus, focusing the target that keeps focus fires nothing.
     VERIFY(focus_and_report("first.focus()"sv) == "none false"sv);
@@ -144,7 +144,7 @@ TEST_CASE(focus_already_focused_area_without_system_focus)
     auto focused_in_host_after = [&](StringView focus) {
         title.clear();
         ++host_step;
-        view->run_javascript(MUST(String::formatted("{}; document.title = '{}: ' + focused_in_host()", focus, host_step)));
+        view->tab().run_javascript(MUST(String::formatted("{}; document.title = '{}: ' + focused_in_host()", focus, host_step)));
         Core::EventLoop::current().spin_until([&]() { return title.has_value(); });
         return title->to_utf8();
     };

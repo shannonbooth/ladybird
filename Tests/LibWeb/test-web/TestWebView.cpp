@@ -18,69 +18,68 @@
 
 namespace TestWeb {
 
-WebView::TabHandle<TestWebView> TestWebView::create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size)
+NonnullOwnPtr<TestWebView> TestWebView::create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size)
 {
-    auto& view = static_cast<TestWebView&>(open_tab(adopt_own(*new TestWebView(move(theme), window_size)), Web::HTML::VisibilityState::Visible));
-    view.activate();
-
-    return WebView::TabHandle<TestWebView> { view };
+    auto view = adopt_own(*new TestWebView(move(theme), window_size, open_tab(WebView::IsPrivate::No)));
+    view->tab().activate();
+    return view;
 }
 
-TestWebView::TestWebView(Core::AnonymousBuffer theme, Web::DevicePixelSize viewport_size)
-    : WebView::HeadlessWebView(move(theme), viewport_size)
+TestWebView::TestWebView(Core::AnonymousBuffer theme, Web::DevicePixelSize viewport_size, WebView::ViewImplementation& tab)
+    : WebView::HeadlessWebView(move(theme), viewport_size, tab)
     , m_test_promise(TestPromise::construct())
 {
 }
 
 void TestWebView::clear_content_blockers()
 {
-    page().client().async_set_content_blockers(MUST(Core::AnonymousBuffer::create_with_size(0)));
+    tab().page().client().async_set_content_blockers(MUST(Core::AnonymousBuffer::create_with_size(0)));
 }
 
 // Force-dark rides on the navigable, so a test that turns it on leaves it on for whatever runs next in this view.
 void TestWebView::reset_force_dark()
 {
-    debug_request("set-force-dark"sv, "off"sv);
+    tab().debug_request("set-force-dark"sv, "off"sv);
 }
 
 // Same story as force-dark above: the flag lives on the navigable and would otherwise outlive the test that set it.
 void TestWebView::reset_line_box_borders()
 {
-    debug_request("set-line-box-borders"sv, "off"sv);
+    tab().debug_request("set-line-box-borders"sv, "off"sv);
 }
 
 // The user style lives on the page too, so one that a test sets would otherwise style every test after it in this view.
 void TestWebView::reset_user_style()
 {
-    debug_request("clear-user-style"sv);
+    tab().debug_request("clear-user-style"sv);
 }
 
 // The emulated position lives on the page, so a test that moves it would otherwise hand its position to the next test.
 void TestWebView::reset_geolocation_emulated_position()
 {
-    geolocation_settings_changed();
+    tab().geolocation_settings_changed();
 }
 
 // Permissions live in the UI process, and outlive the test that changed them. Each test has an origin of its own, and
 // tests run concurrently, so only this test's origin is reset.
 void TestWebView::reset_permissions()
 {
-    session().permission_manager->reset_origin(url().origin());
-    reset_permission_prompts_for_testing();
+    tab().session().permission_manager->reset_origin(tab().url().origin());
+    tab().reset_permission_prompts_for_testing();
 }
 
 // A test's notifications live in the UI process, keyed by a page id the next test in this view gets too, so they may
 // not reach the next test.
 void TestWebView::reset_notifications()
 {
-    WebView::NotificationManager::the().reset_page_for_testing(page());
+    WebView::NotificationManager::the().reset_page_for_testing(tab().page());
     if (auto* recording_backend = WebView::NotificationManager::the().backend().as_recording_backend())
-        recording_backend->forget_page(page().id());
+        recording_backend->forget_page(tab().page().id());
 }
 
 NonnullRefPtr<Core::Promise<Empty>> TestWebView::reset_state_for_next_test()
 {
-    return WebView::ViewImplementation::reset_state_for_testing();
+    return tab().reset_state_for_testing();
 }
 
 NonnullRefPtr<Core::Promise<RefPtr<Gfx::Bitmap const>>> TestWebView::take_screenshot()
@@ -98,7 +97,7 @@ NonnullRefPtr<Core::Promise<RefPtr<Gfx::Bitmap const>>> TestWebView::take_screen
         pending_screenshot->resolve(screenshot.value().bitmap());
     },
         Error::from_string_literal("The page closed before taking the screenshot"));
-    page().async_take_document_screenshot(page().expect_reply_from_renderer(move(reply)));
+    tab().page().async_take_document_screenshot(tab().page().expect_reply_from_renderer(move(reply)));
 
     return *m_pending_screenshot;
 }
@@ -109,10 +108,7 @@ void TestWebView::on_test_complete(TestCompletion completion)
     if (auto reply = move(m_pending_dialog_reply))
         reply->cancel();
     m_pending_prompt_text.clear();
-    m_is_fullscreen = Web::ViewportIsFullscreen::No;
-
-    m_device_pixel_ratio = 1.0;
-    page().async_set_viewport(viewport_size(), m_device_pixel_ratio, Web::ViewportIsFullscreen::No);
+    tab().reset_viewport_for_testing();
 
     m_test_promise->resolve(move(completion));
 }

@@ -182,7 +182,7 @@ void expect(bool condition, StringView what)
 }
 
 // The liar's page holds a child frame whose document has the given environment's id.
-void claim_environment(WebView::HeadlessWebView& liar, Web::HTML::EnvironmentId const& environment_id, u64 namespace_id)
+void claim_environment(WebView::ViewImplementation& liar, Web::HTML::EnvironmentId const& environment_id, u64 namespace_id)
 {
     auto& stub = static_cast<WebContentClientStub&>(liar.page().client());
     auto& traversable = liar.traversable();
@@ -274,14 +274,14 @@ TEST_CASE(renderer_violation_reports)
     pages.set("/source-replacement"sv, { .headers = {}, .body = "<!DOCTYPE html>replacement" });
     TestHttpServer server { move(pages) };
 
-    Vector<WebView::TabHandle<WebView::HeadlessWebView>> liars;
+    Vector<OwnPtr<WebView::HeadlessWebView>> liars;
     auto create_liar = [&] {
         auto liar = WebView::HeadlessWebView::create(theme, { 800, 600 });
         bool loaded = false;
-        liar->on_load_finish = [&](auto const&) { loaded = true; };
-        liar->load(server.url("liar.test"sv, "/target"sv));
+        liar->tab().on_load_finish = [&](auto const&) { loaded = true; };
+        liar->tab().load(server.url("liar.tab().test"sv, "/target"sv));
         expect(spin_until_or_timeout([&] { return loaded; }, 10'000), "a liar's page loads"sv);
-        liar->on_load_finish = {};
+        liar->tab().on_load_finish = {};
         liars.append(move(liar));
     };
 
@@ -293,21 +293,21 @@ TEST_CASE(renderer_violation_reports)
     create_liar();
 
     Vector<ByteString> titles;
-    source_view->on_title_change = [&](auto const& title) { titles.append(title.to_utf8().to_byte_string()); };
+    source_view->tab().on_title_change = [&](auto const& title) { titles.append(title.to_utf8().to_byte_string()); };
     auto saw_title = [&](StringView title) { return titles.contains_slow(title); };
 
-    source_view->load(server.url("source.test"sv, "/source"sv));
+    source_view->tab().load(server.url("source.test"sv, "/source"sv));
     expect(spin_until_or_timeout([&] { return saw_title("loaded 1"sv); }, 10'000), "the source's frame loads"sv);
 
-    auto& target = *source_view->traversable().children().first();
-    auto environment_id = source_view->traversable().active_document().relevant_global_object().relevant_settings_object().id();
+    auto& target = *source_view->tab().traversable().children().first();
+    auto environment_id = source_view->tab().traversable().active_document().relevant_global_object().relevant_settings_object().id();
     for (size_t i = 0; i < liars.size(); ++i)
-        claim_environment(*liars[i], environment_id, 0xfeed0000 + i);
+        claim_environment(liars[i]->tab(), environment_id, 0xfeed0000 + i);
 
-    source_view->run_javascript("navigateTarget('blocked.test', '/blocked')"_string);
+    source_view->tab().run_javascript("navigateTarget('blocked.test', '/blocked')"_string);
     expect(spin_until_or_timeout([&] { return saw_title("violation 1: frame-src"sv) && saw_title("loaded 2"sv); }, 10'000), "the source sees the violation of its frame-src"sv);
 
-    source_view->run_javascript("navigateTarget('target.test', '/held')"_string);
+    source_view->tab().run_javascript("navigateTarget('target.test', '/held')"_string);
     RefPtr<WebView::CanonicalNavigation> held_navigation;
     expect(spin_until_or_timeout([&] {
         held_navigation = target.uncommitted_navigation();
@@ -318,7 +318,7 @@ TEST_CASE(renderer_violation_reports)
 
     // The page running a navigation's population is its worker.
     auto worker = held_navigation->page;
-    auto& source_page = source_view->page();
+    auto& source_page = source_view->tab().page();
     expect(worker && &worker->client() != &source_page.client(), "another renderer runs the frame's navigation"sv);
 
     auto report = [&](WebView::WebContentPage& page, WebView::CanonicalNavigable& navigable, Utf16String navigation_id, Web::ContentSecurityPolicy::RemoteViolationDirective directive, u64 policy_index = 0) {
@@ -343,7 +343,7 @@ TEST_CASE(renderer_violation_reports)
     expect(saw_title("violation 2: frame-src"sv), "the source drops a report for a policy it does not have"sv);
 
     // A title the source sets two tasks after a later script comes after every violation the reports above add.
-    source_view->run_javascript("setTimeout(() => setTimeout(() => (document.title = 'reports handled')))"_string);
+    source_view->tab().run_javascript("setTimeout(() => setTimeout(() => (document.title = 'reports handled')))"_string);
     expect(spin_until_or_timeout([&] { return saw_title("reports handled"sv); }, 10'000), "the source handles every report it was sent"sv);
     expect(!any_of(titles, [](auto const& title) { return title.starts_with("violation 4"sv); }), "neither a report for another navigation nor one from a page that is not the navigation's worker adds a violation"sv);
 
@@ -353,20 +353,20 @@ TEST_CASE(renderer_violation_reports)
     // A source replaced while its navigation runs is no longer reported in, though its document is still alive.
     auto frames_view = WebView::HeadlessWebView::create(theme, { 800, 600 });
     Vector<ByteString> frames_titles;
-    frames_view->on_title_change = [&](auto const& title) { frames_titles.append(title.to_utf8().to_byte_string()); };
+    frames_view->tab().on_title_change = [&](auto const& title) { frames_titles.append(title.to_utf8().to_byte_string()); };
     auto frames_saw_title = [&](StringView title) { return frames_titles.contains_slow(title); };
 
-    frames_view->load(server.url("source.test"sv, "/frames"sv));
+    frames_view->tab().load(server.url("source.test"sv, "/frames"sv));
     expect(spin_until_or_timeout([&] { return frames_saw_title("source loaded 1"sv) && frames_saw_title("sibling loaded 1"sv); }, 10'000), "the source and its sibling load"sv);
 
-    frames_view->run_javascript("sourceFrame.contentWindow.navigateSibling('blocked.test', '/blocked')"_string);
+    frames_view->tab().run_javascript("sourceFrame.contentWindow.navigateSibling('blocked.test', '/blocked')"_string);
     expect(spin_until_or_timeout([&] { return server.violation_reports() == 1; }, 10'000), "the source posts its violation's report"sv);
 
-    frames_view->run_javascript("sourceFrame.contentWindow.navigateSibling('target.test', '/held')"_string);
+    frames_view->tab().run_javascript("sourceFrame.contentWindow.navigateSibling('target.test', '/held')"_string);
     RefPtr<WebView::CanonicalNavigation> sibling_navigation;
     WebView::CanonicalNavigable* sibling = nullptr;
     expect(spin_until_or_timeout([&] {
-        for (auto& child : frames_view->traversable().children()) {
+        for (auto& child : frames_view->tab().traversable().children()) {
             auto navigation = child->uncommitted_navigation();
             if (navigation && navigation->state.has<WebView::CanonicalNavigation::CreatingNavigationParams>()) {
                 sibling_navigation = navigation;
@@ -379,15 +379,15 @@ TEST_CASE(renderer_violation_reports)
                10'000),
         "the sibling's navigation is fetching"sv);
     auto sibling_worker = sibling_navigation->page;
-    expect(sibling_worker && &sibling_worker->client() != &frames_view->page().client(), "another renderer runs the sibling's navigation"sv);
+    expect(sibling_worker && &sibling_worker->client() != &frames_view->tab().page().client(), "another renderer runs the sibling's navigation"sv);
 
-    frames_view->run_javascript("replaceSource()"_string);
+    frames_view->tab().run_javascript("replaceSource()"_string);
     expect(spin_until_or_timeout([&] { return frames_saw_title("source replaced, new global"sv); }, 10'000), "the source is replaced by a document with an environment of its own"sv);
 
     // Listeners on a replaced document do not run, but a report its policy sent would reach the report endpoint soon
     // after a request the parent makes in a later task.
     report(*sibling_worker, *sibling, sibling_navigation->navigation_id, Web::ContentSecurityPolicy::RemoteViolationDirective::FrameSrc);
-    frames_view->run_javascript("setTimeout(() => fetch('/report-barrier', { method: 'POST', keepalive: true }))"_string);
+    frames_view->tab().run_javascript("setTimeout(() => fetch('/report-barrier', { method: 'POST', keepalive: true }))"_string);
     expect(spin_until_or_timeout([&] { return server.report_barriers() == 1; }, 10'000), "the parent makes a request in a later task"sv);
     expect(!spin_until_or_timeout([&] { return server.violation_reports() > 1; }, 500), "a report for a replaced source is dropped"sv);
     expect(sibling_worker->client().is_open(), "a report for a replaced source is no fault of its worker"sv);

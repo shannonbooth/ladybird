@@ -110,13 +110,13 @@ TEST_CASE(browser_history_traversal)
     auto view = WebView::HeadlessWebView::create(theme, { 800, 600 });
 
     size_t loads_started = 0;
-    view->on_load_start = [&] { ++loads_started; };
+    view->tab().on_load_start = [&] { ++loads_started; };
 
     size_t loads_finished = 0;
-    view->on_load_finish = [&](auto const&) { ++loads_finished; };
+    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
 
     size_t browser_history_traversals_completed = 0;
-    view->on_browser_history_traversal_complete = [&] { ++browser_history_traversals_completed; };
+    view->tab().on_browser_history_traversal_complete = [&] { ++browser_history_traversals_completed; };
 
     size_t expected_loads = 1;
     // Wait out the initial about:blank load; navigating before it completes would drop the navigation.
@@ -130,97 +130,97 @@ TEST_CASE(browser_history_traversal)
         return IterationDecision::Continue;
     });
     auto spare_view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
-    VERIFY(spare_view->traversable().session_history().current_step() == 0);
-    VERIFY(spare_view->traversable().session_history().current_entry().url == URL::about_blank());
+    VERIFY(spare_view->tab().traversable().session_history().current_step() == 0);
+    VERIFY(spare_view->tab().traversable().session_history().current_entry().url == URL::about_blank());
 
     size_t spare_view_loads_finished = 0;
-    spare_view->on_load_finish = [&](auto const&) { ++spare_view_loads_finished; };
+    spare_view->tab().on_load_finish = [&](auto const&) { ++spare_view_loads_finished; };
     auto spare_view_url = URL::Parser::basic_parse("data:text/html,spare-process-navigation"sv).release_value();
-    spare_view->load(spare_view_url);
+    spare_view->tab().load(spare_view_url);
     Core::EventLoop::current().spin_until([&]() { return spare_view_loads_finished == 1; });
-    VERIFY(spare_view->url() == spare_view_url);
+    VERIFY(spare_view->tab().url() == spare_view_url);
     // The page a spare process was started with is one its client may act for, and a page ID the client
     // was never given stays refused.
-    VERIFY(spare_view->page().client().may_act_for_page(spare_view->page().id()));
-    VERIFY(!spare_view->page().client().may_act_for_page(0));
+    VERIFY(spare_view->tab().page().client().may_act_for_page(spare_view->tab().page().id()));
+    VERIFY(!spare_view->tab().page().client().may_act_for_page(0));
 
     auto url_a = URL::Parser::basic_parse("data:text/html,<title>A</title>first"sv).release_value();
     auto url_b = URL::Parser::basic_parse("data:text/html,<title>B</title>second"sv).release_value();
     auto url_c = URL::Parser::basic_parse("data:text/html,<title>C</title>third"sv).release_value();
     auto url_d = URL::Parser::basic_parse("data:text/html,<title>D</title><script>window.preventNextKeydown=true;addEventListener('keydown',e=>{if(window.preventNextKeydown){window.preventNextKeydown=false;e.preventDefault()}});window.preventNextMouseup=true;addEventListener('mouseup',e=>{if(window.preventNextMouseup){window.preventNextMouseup=false;e.preventDefault()}})</script>fourth"sv).release_value();
 
-    auto view_is_at = [&](URL::URL const& url) { return view->url().serialize() == url.serialize(); };
+    auto view_is_at = [&](URL::URL const& url) { return view->tab().url().serialize() == url.serialize(); };
     // Waiting for the load count as well as the URL keeps the next step from racing the destination document.
     auto wait_until_at = [&](URL::URL const& url, size_t new_loads = 1) {
         expected_loads += new_loads;
         Core::EventLoop::current().spin_until([&]() { return loads_finished >= expected_loads && view_is_at(url); });
     };
 
-    view->load(url_a);
+    view->tab().load(url_a);
     wait_until_at(url_a);
-    view->load(url_b);
+    view->tab().load(url_b);
     wait_until_at(url_b);
-    view->load(url_c);
+    view->tab().load(url_c);
     wait_until_at(url_c);
-    view->load(url_d);
+    view->tab().load(url_d);
     wait_until_at(url_d);
 
-    auto back_menu_items = view->session_history_traversal_menu_items(-1);
+    auto back_menu_items = view->tab().session_history_traversal_menu_items(-1);
     VERIFY(back_menu_items.size() == 3);
     VERIFY(back_menu_items[0].step == 2);
     VERIFY(back_menu_items[1].step == 1);
     VERIFY(back_menu_items[2].step == 0);
 
-    view->traverse_the_history_by_delta(-1);
+    view->tab().traverse_the_history_by_delta(-1);
     wait_until_at(url_c);
-    view->traverse_the_history_by_delta(-1);
+    view->tab().traverse_the_history_by_delta(-1);
     wait_until_at(url_b);
-    view->traverse_the_history_by_delta(-1);
+    view->tab().traverse_the_history_by_delta(-1);
     wait_until_at(url_a);
 
     // The Back at the start of history has no entry to select. The Forwards behind it, queued in the same turn,
     // traverse one entry each, through B to C.
-    view->traverse_the_history_by_delta(-1);
-    view->traverse_the_history_by_delta(1);
-    view->traverse_the_history_by_delta(1);
+    view->tab().traverse_the_history_by_delta(-1);
+    view->tab().traverse_the_history_by_delta(1);
+    view->tab().traverse_the_history_by_delta(1);
     wait_until_at(url_c);
 
-    view->traverse_the_history_by_delta(1);
+    view->tab().traverse_the_history_by_delta(1);
     wait_until_at(url_d);
 
     // Page D consumes the first keydown, so only the second press may traverse. A consumed press that wrongly
     // traversed would shift every traversal below by one entry and leave the final wait stuck short of C.
-    press_history_traversal_key(*view, Web::UIEvents::KeyCode::Key_Left);
-    press_history_traversal_key(*view, Web::UIEvents::KeyCode::Key_Left);
+    press_history_traversal_key(view->tab(), Web::UIEvents::KeyCode::Key_Left);
+    press_history_traversal_key(view->tab(), Web::UIEvents::KeyCode::Key_Left);
     wait_until_at(url_c);
 
-    press_history_traversal_key(*view, Web::UIEvents::KeyCode::Key_Left);
+    press_history_traversal_key(view->tab(), Web::UIEvents::KeyCode::Key_Left);
     wait_until_at(url_b);
 
-    press_history_traversal_key(*view, Web::UIEvents::KeyCode::Key_Right);
+    press_history_traversal_key(view->tab(), Web::UIEvents::KeyCode::Key_Right);
     wait_until_at(url_c);
 
-    view->traverse_the_history_by_delta(1);
+    view->tab().traverse_the_history_by_delta(1);
     wait_until_at(url_d);
 
     // Page D cancels the first mouseup, so only the second back button press may traverse.
-    press_history_traversal_button(*view, Web::UIEvents::MouseButton::Backward);
-    press_history_traversal_button(*view, Web::UIEvents::MouseButton::Backward);
+    press_history_traversal_button(view->tab(), Web::UIEvents::MouseButton::Backward);
+    press_history_traversal_button(view->tab(), Web::UIEvents::MouseButton::Backward);
     wait_until_at(url_c);
 
-    press_history_traversal_button(*view, Web::UIEvents::MouseButton::Backward);
+    press_history_traversal_button(view->tab(), Web::UIEvents::MouseButton::Backward);
     wait_until_at(url_b);
 
-    press_history_traversal_button(*view, Web::UIEvents::MouseButton::Forward);
+    press_history_traversal_button(view->tab(), Web::UIEvents::MouseButton::Forward);
     wait_until_at(url_c);
 
     // An absolute target selected from the history menu queues like a button press. The Forward queued behind it
     // selects its entry once A is current, and traverses to B.
-    view->traverse_the_history_to_step(back_menu_items.last().step);
-    view->traverse_the_history_by_delta(1);
+    view->tab().traverse_the_history_to_step(back_menu_items.last().step);
+    view->tab().traverse_the_history_by_delta(1);
     wait_until_at(url_b);
 
-    view->traverse_the_history_by_delta(1);
+    view->tab().traverse_the_history_by_delta(1);
     wait_until_at(url_c);
 
     // A javascript: URL that evaluates without producing a document still terminates the UI-initiated load. Keep its
@@ -228,39 +228,39 @@ TEST_CASE(browser_history_traversal)
     auto javascript_url = URL::Parser::basic_parse("javascript:void(0)"sv).release_value();
     auto loads_started_before_javascript_url = loads_started;
     auto loads_finished_before_javascript_url = loads_finished;
-    view->load(javascript_url);
+    view->tab().load(javascript_url);
     Core::EventLoop::current().spin_until([&] { return loads_finished > loads_finished_before_javascript_url; });
     VERIFY(loads_started == loads_started_before_javascript_url + 1);
     VERIFY(view_is_at(url_c));
 
-    view->traverse_the_history_to_step(back_menu_items.last().step);
+    view->tab().traverse_the_history_to_step(back_menu_items.last().step);
     wait_until_at(url_a);
 
     auto completed_traversals_before_history_boundary = browser_history_traversals_completed;
     bool history_boundary_traversal_ready = false;
-    view->traverse_the_history_by_delta(-1, WebView::CheckForCancelation::Yes, [&] {
+    view->tab().traverse_the_history_by_delta(-1, WebView::CheckForCancelation::Yes, [&] {
         history_boundary_traversal_ready = true;
     });
     Core::EventLoop::current().spin_until([&] { return history_boundary_traversal_ready; });
     VERIFY(browser_history_traversals_completed == completed_traversals_before_history_boundary + 1);
 
     // Reopening a closed tab restores its history into a view whose process is still starting up.
-    auto closed_tab_history = view->session_history_snapshot();
-    auto closed_tab_url = view->url();
+    auto closed_tab_history = view->tab().session_history_snapshot();
+    auto closed_tab_url = view->tab().url();
 
     // Closing a view may synchronously cause the UI to generate input, geometry, and visibility events while removing
     // the view from its container. Events received after the browsing context closes must be discarded.
     bool did_close = false;
-    view->on_close = [&] {
+    view->tab().on_close = [&] {
         Web::MouseEvent event {};
         event.type = Web::MouseEvent::Type::MouseLeave;
-        view->enqueue_input_event(move(event));
-        view->set_window_position({ 0, 0 });
-        view->set_window_size({ 800, 600 });
-        view->set_system_visibility_state(Web::HTML::VisibilityState::Hidden);
+        view->tab().enqueue_input_event(move(event));
+        view->tab().set_window_position({ 0, 0 });
+        view->tab().set_window_size({ 800, 600 });
+        view->tab().set_system_visibility_state(Web::HTML::VisibilityState::Hidden);
         did_close = true;
     };
-    view->request_close();
+    view->tab().request_close();
     Core::EventLoop::current().spin_until([&] { return did_close; });
     Core::EventLoop::current().spin_until([&] { return app->has_spare_web_content_process(); });
 
@@ -271,36 +271,36 @@ TEST_CASE(browser_history_traversal)
     VERIFY(!app->has_spare_web_content_process());
 
     auto restored_view = WebView::HeadlessWebView::create(restored_theme, { 800, 600 });
-    VERIFY(&restored_view->page().client() != &spare_consumer->page().client());
+    VERIFY(&restored_view->tab().page().client() != &spare_consumer->tab().page().client());
 
     // The restored URL is shown before the traversal runs, so wait for the document behind it to load.
     size_t restored_view_loads_finished = 0;
     bool restored_view_traversal_completed = false;
-    restored_view->on_load_finish = [&](auto const&) { ++restored_view_loads_finished; };
-    restored_view->on_browser_history_traversal_complete = [&] { restored_view_traversal_completed = true; };
-    MUST(restored_view->restore_session_history_from_snapshot(move(closed_tab_history)));
+    restored_view->tab().on_load_finish = [&](auto const&) { ++restored_view_loads_finished; };
+    restored_view->tab().on_browser_history_traversal_complete = [&] { restored_view_traversal_completed = true; };
+    MUST(restored_view->tab().restore_session_history_from_snapshot(move(closed_tab_history)));
     Core::EventLoop::current().spin_until([&] {
         return restored_view_loads_finished >= 1
-            && restored_view->url() == closed_tab_url
+            && restored_view->tab().url() == closed_tab_url
             && restored_view_traversal_completed;
     });
-    VERIFY(restored_view->traversable().session_history().current_entry().url == closed_tab_url);
+    VERIFY(restored_view->tab().traversable().session_history().current_entry().url == closed_tab_url);
 
     // Exercise the record of pages the client was given across popup detachment and close
     // acknowledgement, without pumping the event loop between those transitions.
-    WebView::TabHandle<WebView::HeadlessWebView> popup;
+    OwnPtr<WebView::HeadlessWebView> popup;
     bool popup_loaded = false;
     Web::PageId popup_page_id = 0;
-    restored_view->on_new_web_view = [&](auto, auto, WebView::CanonicalTraversable& traversable) {
+    restored_view->tab().on_new_web_view = [&](auto, auto, WebView::CanonicalTraversable& traversable) {
         popup_page_id = traversable.display_page()->id();
         popup = WebView::HeadlessWebView::create_child(*restored_view, traversable);
-        popup->on_load_finish = [&](auto const&) { popup_loaded = true; };
-        return popup->handle();
+        popup->tab().on_load_finish = [&](auto const&) { popup_loaded = true; };
+        return popup->tab().handle();
     };
-    restored_view->run_javascript("window.open('about:blank')"_string);
+    restored_view->tab().run_javascript("window.open('about:blank')"_string);
     Core::EventLoop::current().spin_until([&] { return popup_loaded; });
-    auto& client = restored_view->page().client();
-    VERIFY(&popup->page().client() == &client);
+    auto& client = restored_view->tab().page().client();
+    VERIFY(&popup->tab().page().client() == &client);
     VERIFY(client.may_act_for_page(popup_page_id));
     VERIFY(!client.may_act_for_page(0));
     auto cookie_url = URL::Parser::basic_parse("https://example.com/"sv).release_value();
@@ -310,7 +310,7 @@ TEST_CASE(browser_history_traversal)
     VERIFY(cookie_jar.get_named_cookie(cookie_url, cookie.name).has_value());
     auto& stub = static_cast<WebContentClientStub&>(client);
     size_t sources_received = 0;
-    auto source_request_id = popup->page().expect_reply_from_renderer(WebView::PendingReply<Optional<String>>::create([&](auto source) {
+    auto source_request_id = popup->tab().page().expect_reply_from_renderer(WebView::PendingReply<Optional<String>>::create([&](auto source) {
         if (source.has_value())
             ++sources_received;
     },
@@ -322,7 +322,7 @@ TEST_CASE(browser_history_traversal)
     VERIFY(!cookie_jar.get_named_cookie(cookie_url, cookie.name).has_value());
     cookie_jar.set_cookie(cookie_url, cookie, HTTP::Cookie::Source::Http, {});
     client.page(popup_page_id)->set_detached_close_pending(true);
-    popup.close();
+    popup.clear();
     VERIFY(!client.page(popup_page_id));
     // The page is gone, but messages sent while the client had it can still arrive, so the client may
     // still name it.
@@ -344,15 +344,15 @@ TEST_CASE(browser_history_traversal)
 
     // Rejecting a popup must not authorize an ID that was never assigned to a page.
     Web::PageId rejected_page_id = 0;
-    restored_view->on_new_web_view = [&](auto, auto, WebView::CanonicalTraversable& traversable) {
+    restored_view->tab().on_new_web_view = [&](auto, auto, WebView::CanonicalTraversable& traversable) {
         rejected_page_id = traversable.display_page()->id();
         return String {};
     };
-    auto rejected_popup = stub.did_request_new_web_view(restored_view->page().id(), Web::HTML::ActivateTab::No, {}, restored_view->traversable().id(), {}, true, {});
+    auto rejected_popup = stub.did_request_new_web_view(restored_view->tab().page().id(), Web::HTML::ActivateTab::No, {}, restored_view->tab().traversable().id(), {}, true, {});
     VERIFY(!rejected_popup.new_page_id().has_value());
     VERIFY(rejected_page_id != 0);
     VERIFY(!client.may_act_for_page(rejected_page_id));
-    restored_view->on_new_web_view = nullptr;
+    restored_view->tab().on_new_web_view = nullptr;
 
     // An initial page can read cookies before the UI adopts it into a view.
     {
@@ -373,23 +373,23 @@ TEST_CASE(browser_history_traversal)
         reload_page->close();
         auto reload_url = URL::create_with_file_scheme(reload_page_path).release_value();
         size_t reload_url_loads_finished = 0;
-        reload_view->on_load_finish = [&](URL::URL const& url) {
+        reload_view->tab().on_load_finish = [&](URL::URL const& url) {
             if (url == reload_url)
                 ++reload_url_loads_finished;
         };
         size_t navigate_events = 0;
-        reload_view->on_request_alert = [&](auto const&, auto reply) {
+        reload_view->tab().on_request_alert = [&](auto const&, auto reply) {
             ++navigate_events;
             reply->complete(true, {});
         };
-        reload_view->load(reload_url);
+        reload_view->tab().load(reload_url);
         Core::EventLoop::current().spin_until([&] { return reload_url_loads_finished == 1; });
-        reload_view->reload();
+        reload_view->tab().reload();
         Core::EventLoop::current().spin_until([&] { return reload_url_loads_finished == 2; });
         VERIFY(navigate_events == 0);
 
         // A reload by script does fire one.
-        reload_view->run_javascript("location.reload()"_string);
+        reload_view->tab().run_javascript("location.reload()"_string);
         Core::EventLoop::current().spin_until([&] { return reload_url_loads_finished == 3; });
         VERIFY(navigate_events == 1);
     }
@@ -408,25 +408,25 @@ TEST_CASE(browser_history_traversal)
         auto activated_url = TRY_OR_FAIL(write_page("activated.html"sv, "activated"sv));
         auto newer_url = TRY_OR_FAIL(write_page("newer.html"sv, "newer"sv));
         Vector<URL::URL> loads_finished;
-        view->on_load_finish = [&](URL::URL const& url) { loads_finished.append(url); };
-        view->load(slow_unload_url);
+        view->tab().on_load_finish = [&](URL::URL const& url) { loads_finished.append(url); };
+        view->tab().load(slow_unload_url);
         Core::EventLoop::current().spin_until([&] { return loads_finished.contains_slow(slow_unload_url); });
 
         // The displayed document is still unloading, after its successor's history job was found ready.
-        view->load(activated_url);
+        view->tab().load(activated_url);
         bool unloading = false;
         auto timer = Core::Timer::create_single_shot(AK::Duration::from_milliseconds(300), [&] { unloading = true; });
         timer->start();
         Core::EventLoop::current().spin_until([&] { return unloading; });
-        view->load(newer_url);
+        view->tab().load(newer_url);
         Core::EventLoop::current().spin_until([&] { return loads_finished.contains_slow(newer_url); });
-        VERIFY(view->url() == newer_url);
+        VERIFY(view->tab().url() == newer_url);
     }
 
-    auto const& active_entry = restored_view->traversable().active_session_history_entry();
+    auto const& active_entry = restored_view->tab().traversable().active_session_history_entry();
     VERIFY(active_entry);
     auto invalid_mode = static_cast<Web::HTML::ScrollRestorationMode>(to_underlying(Web::HTML::ScrollRestorationMode::Manual) + 1);
-    stub.did_update_session_history_entry_scroll_restoration_mode(restored_view->page().id(), restored_view->traversable().id(), active_entry->identity(), invalid_mode);
+    stub.did_update_session_history_entry_scroll_restoration_mode(restored_view->tab().page().id(), restored_view->tab().traversable().id(), active_entry->identity(), invalid_mode);
     VERIFY(!client.is_open());
 
     outln("PASS: browser history traversal");

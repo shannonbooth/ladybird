@@ -105,11 +105,11 @@ TEST_CASE(user_activation)
     auto view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->on_load_finish = [&](auto const&) { ++loads_finished; };
+    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
 
     // NB: The UI process counts the popups it lets the page open. The view creates no window for them.
     size_t popups_opened = 0;
-    view->on_new_web_view = [&](auto, auto, auto&) {
+    view->tab().on_new_web_view = [&](auto, auto, auto&) {
         ++popups_opened;
         return String {};
     };
@@ -119,20 +119,20 @@ TEST_CASE(user_activation)
 
     // A button over the left half of the viewport opens a popup per click, and a link filling the right half opens one
     // per middle-click too, before the browser opens the link in a new tab.
-    view->load_html("<!DOCTYPE html>"
-                    "<button onclick=\"window.open('about:blank')\" style=\"position:fixed;left:0;top:0;width:400px;height:600px\">Popup</button>"
-                    "<a href=\"https://example.com/\" onauxclick=\"window.open('about:blank')\" style=\"position:fixed;left:400px;top:0;width:400px;height:600px\">Link</a>"sv);
+    view->tab().load_html("<!DOCTYPE html>"
+                          "<button onclick=\"window.open('about:blank')\" style=\"position:fixed;left:0;top:0;width:400px;height:600px\">Popup</button>"
+                          "<a href=\"https://example.com/\" onauxclick=\"window.open('about:blank')\" style=\"position:fixed;left:400px;top:0;width:400px;height:600px\">Link</a>"sv);
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 2; });
 
-    click(*view, { 200, 300 }, Web::UIEvents::MouseButton::Primary);
-    click(*view, { 200, 300 }, Web::UIEvents::MouseButton::Primary);
+    click(view->tab(), { 200, 300 }, Web::UIEvents::MouseButton::Primary);
+    click(view->tab(), { 200, 300 }, Web::UIEvents::MouseButton::Primary);
     Core::EventLoop::current().spin_until([&]() { return popups_opened >= 2; });
     outln("two queued clicks open two popups");
 
     // NB: The headless view opens each new tab in a view of its own.
     auto views_before_links = view_count();
-    click(*view, { 600, 300 }, Web::UIEvents::MouseButton::Middle);
-    click(*view, { 600, 300 }, Web::UIEvents::MouseButton::Middle);
+    click(view->tab(), { 600, 300 }, Web::UIEvents::MouseButton::Middle);
+    click(view->tab(), { 600, 300 }, Web::UIEvents::MouseButton::Middle);
     Core::EventLoop::current().spin_until([&]() { return view_count() >= views_before_links + 2 && popups_opened >= 4; });
     outln("two queued middle-clicks open two popups and two tabs");
 
@@ -140,10 +140,10 @@ TEST_CASE(user_activation)
 
     // A gamepad user gesture gives activation too, to a page with the user's attention.
     auto gamepad_view = WebView::HeadlessWebView::create(TRY_OR_FAIL(Gfx::load_system_theme(theme_path.string())), { 800, 600 });
-    auto& gamepad_page = gamepad_view->page();
-    gamepad_view->set_system_visibility_state(Web::HTML::VisibilityState::Visible);
-    gamepad_view->set_has_system_focus(true);
-    start_using_gamepads(*gamepad_view);
+    auto& gamepad_page = gamepad_view->tab().page();
+    gamepad_view->tab().set_system_visibility_state(Web::HTML::VisibilityState::Visible);
+    gamepad_view->tab().set_has_system_focus(true);
+    start_using_gamepads(gamepad_view->tab());
     auto gamepad = WebView::GamepadManager::the().create_virtual_gamepad(gamepad_page.client()).release_value();
     (void)WebView::GamepadManager::the().pump_gamepad_events(gamepad_page.client());
     VERIFY(!gamepad_page.has_transient_user_activation());
@@ -153,14 +153,14 @@ TEST_CASE(user_activation)
     outln("a gamepad user gesture gives activation");
 
     VERIFY(gamepad_page.consume_transient_user_activation());
-    gamepad_view->set_has_system_focus(false);
+    gamepad_view->tab().set_has_system_focus(false);
     press_gamepad_button(gamepad_page.client(), gamepad);
     VERIFY(!gamepad_page.has_transient_user_activation());
     outln("a gamepad user gesture without the user's attention gives none");
 
     // Only a document allowed to use gamepads starts the activation of a gesture, in a process that has the gamepad.
-    gamepad_view->set_has_system_focus(true);
-    auto& gamepad_document = gamepad_view->traversable().active_document();
+    gamepad_view->tab().set_has_system_focus(true);
+    auto& gamepad_document = gamepad_view->tab().traversable().active_document();
     auto permissions_policy = gamepad_document.permissions_policy();
     auto permissions_policy_without_gamepads = permissions_policy;
     permissions_policy_without_gamepads.inherited_policy[to_underlying(Web::PermissionsPolicy::PolicyControlledFeature::Gamepad)] = Web::PermissionsPolicy::FeatureValue::Disabled;

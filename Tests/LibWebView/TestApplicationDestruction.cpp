@@ -99,7 +99,7 @@ TEST_CASE(hsts_store_synchronized_on_destruction)
         database_path = app->profile().paths().data;
 
         // Push a HSTS policy into transient storage and immediately destroy the application to check persistence.
-        view->session().hsts_store->store_policy("example.test"_string, HTTP::HSTS::ParsedHSTSPolicy { AK::Duration::from_seconds(3600), false });
+        view->tab().session().hsts_store->store_policy("example.test"_string, HTTP::HSTS::ParsedHSTSPolicy { AK::Duration::from_seconds(3600), false });
     }
 
     auto database = TRY_OR_FAIL(Database::Database::create(database_path, "Ladybird"sv));
@@ -113,7 +113,7 @@ TEST_CASE(closing_a_page_drops_its_web_ui)
     auto app = TRY_OR_FAIL(environment.create_application());
     auto theme = TRY_OR_FAIL(load_test_theme());
     auto view = WebView::HeadlessWebView::create(theme, { 1000, 700 });
-    auto& page = view->page();
+    auto& page = view->tab().page();
     auto web_ui = TRY_OR_FAIL(WebView::WebUI::create(page.client(), page.id(), "settings"_string));
     VERIFY(web_ui);
     page.set_web_ui(move(web_ui));
@@ -139,7 +139,7 @@ TEST_CASE(application_destruction_with_pending_web_ui_callbacks)
         for (auto host : { "settings"sv, "bookmarks"sv, "downloads"sv }) {
             for (bool retained_by_callback : { false, true }) {
                 auto view = WebView::HeadlessWebView::create(theme, { 1000, 700 });
-                auto& page = view->page();
+                auto& page = view->tab().page();
                 auto web_ui = TRY_OR_FAIL(WebView::WebUI::create(page.client(), page.id(), MUST(String::from_utf8(host))));
                 VERIFY(web_ui);
                 web_ui_lifetimes.append({ page.client(), web_ui, retained_by_callback });

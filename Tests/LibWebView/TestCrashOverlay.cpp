@@ -52,43 +52,43 @@ static void test_crash_overlay(bool bidi_reload_only)
     auto theme = TRY_OR_FAIL(Gfx::load_system_theme(theme_path.string()));
     auto view = WebView::HeadlessWebView::create(theme, { 1000, 700 });
     size_t loads_finished = 0;
-    view->on_load_finish = [&](auto const&) { ++loads_finished; };
+    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
     Core::EventLoop::current().spin_until([&] { return loads_finished >= 1; });
 
     auto evaluate = [&](StringView source) {
         Optional<JsonValue> result;
-        view->on_request_alert = [&](Utf16String const& value, auto reply) {
+        view->tab().on_request_alert = [&](Utf16String const& value, auto reply) {
             result = MUST(JsonValue::from_string(value.to_utf8()));
             reply->complete(true, {});
         };
-        view->run_javascript(MUST(String::formatted("alert(JSON.stringify(({}) ?? null))", source)));
+        view->tab().run_javascript(MUST(String::formatted("alert(JSON.stringify(({}) ?? null))", source)));
         Core::EventLoop::current().spin_until([&] { return result.has_value(); });
-        view->on_request_alert = nullptr;
+        view->tab().on_request_alert = nullptr;
         return result.release_value();
     };
     auto first_url = URL::Parser::basic_parse("data:text/html,<title>First</title>first-page"sv).release_value();
     auto failed_url = URL::Parser::basic_parse("data:text/html,<title>Failed page</title>original-page-content"sv).release_value();
-    view->load(first_url);
+    view->tab().load(first_url);
     Core::EventLoop::current().spin_until([&] { return loads_finished >= 2; });
-    view->load(failed_url);
+    view->tab().load(failed_url);
     Core::EventLoop::current().spin_until([&] { return loads_finished >= 3; });
-    auto history_step = view->traversable().session_history().current_step();
+    auto history_step = view->tab().traversable().session_history().current_step();
 
     auto crash_and_wait_for_screen = [&] {
-        view->debug_request("crash-current-page"sv);
-        Core::EventLoop::current().spin_until([&] { return view->crash_overlay_active(); });
-        VERIFY(view->url() == failed_url);
-        VERIFY(view->title() == "Failed page"_utf16);
-        VERIFY(view->traversable().session_history().current_step() == history_step);
-        VERIFY(view->traversable().session_history().current_entry().url == failed_url);
-        VERIFY(view->crash_overlay_failed_url() == failed_url.serialize());
+        view->tab().debug_request("crash-current-page"sv);
+        Core::EventLoop::current().spin_until([&] { return view->tab().crash_overlay_active(); });
+        VERIFY(view->tab().url() == failed_url);
+        VERIFY(view->tab().title() == "Failed page"_utf16);
+        VERIFY(view->tab().traversable().session_history().current_step() == history_step);
+        VERIFY(view->tab().traversable().session_history().current_entry().url == failed_url);
+        VERIFY(view->tab().crash_overlay_failed_url() == failed_url.serialize());
     };
 
-    auto const& session_history = view->traversable().session_history();
+    auto const& session_history = view->tab().traversable().session_history();
     auto crash_and_load = [&](auto load) {
-        Core::EventLoop::current().spin_until([&] { return !view->crash_overlay_active(); });
-        view->debug_request("crash-current-page"sv);
-        Core::EventLoop::current().spin_until([&] { return view->crash_overlay_active(); });
+        Core::EventLoop::current().spin_until([&] { return !view->tab().crash_overlay_active(); });
+        view->tab().debug_request("crash-current-page"sv);
+        Core::EventLoop::current().spin_until([&] { return view->tab().crash_overlay_active(); });
         auto loads_before = loads_finished;
         load();
         Core::EventLoop::current().spin_until([&] { return loads_finished > loads_before; });
@@ -97,23 +97,23 @@ static void test_crash_overlay(bool bidi_reload_only)
     auto check_bidi_reload = [&] {
         // A BiDi reload recovers the active document with its command's navigation ID, and dismisses the crash screen
         // once the replacement document paints.
-        auto document_before_crash = view->traversable().active_document().id();
+        auto document_before_crash = view->tab().traversable().active_document().id();
         // NB: The callback is cleared below before its captured state leaves scope.
         IGNORE_USE_IN_ESCAPING_LAMBDA bool recovered_document_painted = false;
-        view->on_ready_to_paint = [view = view->make_weak_ptr(), document_before_crash, &recovered_document_painted] {
+        view->tab().on_ready_to_paint = [view = view->tab().make_weak_ptr(), document_before_crash, &recovered_document_painted] {
             if (view && view->traversable().active_document().id() != document_before_crash)
                 recovered_document_painted = true;
         };
         auto navigation_id = Utf16String::from_utf8(generate_random_uuid());
-        crash_and_load([view = view.ptr(), navigation_id] { view->reload_for_webdriver_bidi(WebView::BypassCache::No, navigation_id); });
+        crash_and_load([view = view.ptr(), navigation_id] { view->tab().reload_for_webdriver_bidi(WebView::BypassCache::No, navigation_id); });
         Core::EventLoop::current().spin_until([&] { return recovered_document_painted; });
-        VERIFY(!view->crash_overlay_active());
-        view->on_ready_to_paint = nullptr;
+        VERIFY(!view->tab().crash_overlay_active());
+        view->tab().on_ready_to_paint = nullptr;
     };
 
     if (bidi_reload_only) {
         check_bidi_reload();
-        VERIFY(view->url() == failed_url);
+        VERIFY(view->tab().url() == failed_url);
         VERIFY(evaluate("document.body.textContent === 'original-page-content'"sv).as_bool());
         VERIFY(session_history.used_step_count() == 2);
         outln("PASS: BiDi reload recovers the crash overlay");
@@ -121,44 +121,44 @@ static void test_crash_overlay(bool bidi_reload_only)
     }
 
     crash_and_wait_for_screen();
-    view->reload();
+    view->tab().reload();
     Core::EventLoop::current().spin_until([&] { return loads_finished >= 4; });
     VERIFY(evaluate("document.body.textContent === 'original-page-content'"sv).as_bool());
     VERIFY(evaluate("typeof ladybird === 'undefined'"sv).as_bool());
-    VERIFY(view->traversable().session_history().current_step() == history_step);
+    VERIFY(view->tab().traversable().session_history().current_step() == history_step);
 
     // Back from the crash screen must traverse the original history, without an
     // extra crash-document entry or losing the original forward destination.
-    Core::EventLoop::current().spin_until([&] { return !view->crash_overlay_active(); });
+    Core::EventLoop::current().spin_until([&] { return !view->tab().crash_overlay_active(); });
     crash_and_wait_for_screen();
-    view->traverse_the_history_by_delta(-1);
+    view->tab().traverse_the_history_by_delta(-1);
     Core::EventLoop::current().spin_until([&] { return loads_finished >= 5; });
-    VERIFY(view->url() == first_url);
+    VERIFY(view->tab().url() == first_url);
     VERIFY(evaluate("document.body.textContent === 'first-page'"sv).as_bool());
-    view->traverse_the_history_by_delta(1);
+    view->tab().traverse_the_history_by_delta(1);
     Core::EventLoop::current().spin_until([&] { return loads_finished >= 6; });
-    VERIFY(view->url() == failed_url);
+    VERIFY(view->tab().url() == failed_url);
     VERIFY(evaluate("document.body.textContent === 'original-page-content'"sv).as_bool());
 
     // A load from the browser's UI navigates the tab whose document was lost as it would the document: to its URL, it
     // replaces its entry, to another it pushes one, and to a fragment of its URL it loads the URL again.
-    crash_and_load([&] { view->load(failed_url); });
+    crash_and_load([&] { view->tab().load(failed_url); });
     VERIFY(session_history.current_step() == history_step);
     VERIFY(session_history.used_step_count() == 2);
     VERIFY(evaluate("document.body.textContent === 'original-page-content'"sv).as_bool());
 
-    crash_and_load([&] { view->load(first_url); });
+    crash_and_load([&] { view->tab().load(first_url); });
     VERIFY(session_history.used_step_count() == 3);
     VERIFY(evaluate("document.body.textContent === 'first-page'"sv).as_bool());
 
     auto first_url_with_fragment = first_url;
     first_url_with_fragment.set_fragment("fragment"sv);
-    crash_and_load([&] { view->load(first_url_with_fragment); });
+    crash_and_load([&] { view->tab().load(first_url_with_fragment); });
     VERIFY(session_history.used_step_count() == 4);
-    VERIFY(view->url() == first_url_with_fragment);
+    VERIFY(view->tab().url() == first_url_with_fragment);
     VERIFY(evaluate("document.body.textContent === 'first-page'"sv).as_bool());
 
-    crash_and_load([&] { view->load_html("<title>HTML</title>loaded-html"sv); });
+    crash_and_load([&] { view->tab().load_html("<title>HTML</title>loaded-html"sv); });
     VERIFY(session_history.used_step_count() == 5);
     VERIFY(evaluate("document.body.textContent === 'loaded-html'"sv).as_bool());
 

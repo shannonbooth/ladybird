@@ -139,24 +139,24 @@ TEST_CASE(picture_in_picture_window_controls)
     auto view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->on_load_finish = [&](auto const&) { ++loads_finished; };
+    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 1; });
 
     Utf16String last_title;
-    view->on_title_change = [&](auto const& title) { last_title = title; };
+    view->tab().on_title_change = [&](auto const& title) { last_title = title; };
     Gfx::Cursor last_cursor { Gfx::StandardCursor::Arrow };
-    view->on_cursor_change = [&](auto const& cursor) { last_cursor = cursor; };
+    view->tab().on_cursor_change = [&](auto const& cursor) { last_cursor = cursor; };
     Optional<ByteString> tooltip;
-    view->on_enter_tooltip_area = [&](auto const& text) { tooltip = text; };
-    view->on_leave_tooltip_area = [&]() { tooltip.clear(); };
+    view->tab().on_enter_tooltip_area = [&](auto const& text) { tooltip = text; };
+    view->tab().on_leave_tooltip_area = [&]() { tooltip.clear(); };
     Vector<Compositing::PictureInPictureControl> activated_controls;
-    view->on_picture_in_picture_control_activated = [&](auto control) { activated_controls.append(control); };
+    view->tab().on_picture_in_picture_control_activated = [&](auto control) { activated_controls.append(control); };
 
-    view->enable_picture_in_picture_controls();
+    view->tab().enable_picture_in_picture_controls();
 
     // The page logs where it is pressed, released and dragged, and its top-left corner has a cursor and tooltip of its
     // own.
-    view->load_html(R"~~~(<!DOCTYPE html>
+    view->tab().load_html(R"~~~(<!DOCTYPE html>
 <title>page saw</title>
 <body style="margin:0">
 <div title="Page tooltip" style="position:fixed;top:0;left:0;width:100px;height:100px;cursor:crosshair"></div>
@@ -177,64 +177,64 @@ addEventListener("pointermove", event => { if (event.buttons) log("drag", event)
     Web::DevicePixelPoint corner_beside_close_button { 11, 11 };
     Web::DevicePixelPoint middle_of_page { 400, 300 };
 
-    move_mouse_to(*view, close_button);
+    move_mouse_to(view->tab(), close_button);
     VERIFY(is_cursor(last_cursor, Gfx::StandardCursor::Hand));
     VERIFY(tooltip == "Close"sv);
     // The page reports its cursor and tooltip apart from finishing the move, so the wait is for those.
     Core::EventLoop::current().spin_until([&]() {
-        return is_cursor(view->page_cursor_for_testing(), Gfx::StandardCursor::Crosshair) && view->page_tooltip_for_testing() == "Page tooltip"sv;
+        return is_cursor(view->tab().page_cursor_for_testing(), Gfx::StandardCursor::Crosshair) && view->tab().page_tooltip_for_testing() == "Page tooltip"sv;
     });
     VERIFY(is_cursor(last_cursor, Gfx::StandardCursor::Hand));
     VERIFY(tooltip == "Close"sv);
     outln("a hovered control shows its own cursor and tooltip over the page's");
 
-    move_mouse_to(*view, corner_beside_close_button);
+    move_mouse_to(view->tab(), corner_beside_close_button);
     VERIFY(is_cursor(last_cursor, Gfx::StandardCursor::Crosshair));
     VERIFY(tooltip == "Page tooltip"sv);
     outln("the page's cursor and tooltip return outside the round control");
 
-    move_mouse_to(*view, close_button);
-    click_at(*view, close_button);
+    move_mouse_to(view->tab(), close_button);
+    click_at(view->tab(), close_button);
     VERIFY(activated_controls.size() == 1 && activated_controls[0] == Compositing::PictureInPictureControl::Close);
     outln("a click on a control activates it");
 
-    move_mouse_to(*view, back_to_tab_button);
-    press_mouse_at(*view, back_to_tab_button);
-    move_mouse_to(*view, middle_of_page, Web::UIEvents::MouseButton::Primary);
-    release_mouse_at(*view, middle_of_page);
+    move_mouse_to(view->tab(), back_to_tab_button);
+    press_mouse_at(view->tab(), back_to_tab_button);
+    move_mouse_to(view->tab(), middle_of_page, Web::UIEvents::MouseButton::Primary);
+    release_mouse_at(view->tab(), middle_of_page);
     VERIFY(activated_controls.size() == 1);
     outln("a press on a control released elsewhere does nothing");
 
-    click_at(*view, corner_beside_close_button);
+    click_at(view->tab(), corner_beside_close_button);
 
     // Once the pointer leaves, the controls hide and a press where one was is the page's.
-    send_mouse_event(*view, Web::MouseEvent::Type::MouseLeave, {}, Web::UIEvents::MouseButton::None, Web::UIEvents::MouseButton::None);
-    click_at(*view, close_button);
+    send_mouse_event(view->tab(), Web::MouseEvent::Type::MouseLeave, {}, Web::UIEvents::MouseButton::None, Web::UIEvents::MouseButton::None);
+    click_at(view->tab(), close_button);
     VERIFY(activated_controls.size() == 1);
 
-    click_at(*view, middle_of_page);
+    click_at(view->tab(), middle_of_page);
     Core::EventLoop::current().spin_until([&]() { return last_title.ends_with(" up 400"sv); });
     VERIFY(last_title == "page saw down 11 up 11 down 24 up 24 down 400 up 400"sv);
     outln("the page sees only the presses off the shown controls");
 
     signal_renderers(SIGSTOP);
-    move_mouse_to(*view, close_button);
-    click_at(*view, close_button);
+    move_mouse_to(view->tab(), close_button);
+    click_at(view->tab(), close_button);
     signal_renderers(SIGCONT);
     VERIFY(activated_controls.size() == 2 && activated_controls[1] == Compositing::PictureInPictureControl::Close);
     outln("a control works while the page's renderer is stopped");
 
     // The window cancels a press on the page that it takes over to move itself.
-    move_mouse_to(*view, middle_of_page);
-    VERIFY(view->picture_in_picture_controls_are_shown_for_testing());
-    press_mouse_at(*view, middle_of_page);
-    send_mouse_event(*view, Web::MouseEvent::Type::MouseCancel, {}, Web::UIEvents::MouseButton::None, Web::UIEvents::MouseButton::None);
-    VERIFY(!view->picture_in_picture_controls_are_shown_for_testing());
+    move_mouse_to(view->tab(), middle_of_page);
+    VERIFY(view->tab().picture_in_picture_controls_are_shown_for_testing());
+    press_mouse_at(view->tab(), middle_of_page);
+    send_mouse_event(view->tab(), Web::MouseEvent::Type::MouseCancel, {}, Web::UIEvents::MouseButton::None, Web::UIEvents::MouseButton::None);
+    VERIFY(!view->tab().picture_in_picture_controls_are_shown_for_testing());
     outln("a cancelled press hides the controls at once");
 
     // A real window's page shows a player, whose controls fade together with the window's. The video is moved off its
     // first frame, as its controls otherwise stay shown over it.
-    view->load_html(MUST(String::formatted(
+    view->tab().load_html(MUST(String::formatted(
         "<!DOCTYPE html>"
         "<button onclick=\"video.requestPictureInPicture().then(() => {{ document.title = 'entered'; }})\" style=\"position:fixed;left:0;top:0;width:800px;height:600px\"></button>"
         "<video id=video src=\"{}\"></video>"
@@ -244,7 +244,7 @@ addEventListener("pointermove", event => { if (event.buttons) log("drag", event)
         "</script>",
         video_url)));
     Core::EventLoop::current().spin_until([&]() { return last_title == "ready"sv; });
-    click_at(*view, middle_of_page);
+    click_at(view->tab(), middle_of_page);
     Core::EventLoop::current().spin_until([&]() { return last_title == "entered"sv; });
 
     auto& window_view = WebView::ViewImplementation::find_view_by_handle(app->picture_in_picture_window_handle).value();

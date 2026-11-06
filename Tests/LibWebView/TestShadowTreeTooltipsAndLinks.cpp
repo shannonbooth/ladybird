@@ -21,18 +21,18 @@ namespace {
 // A view that records the URL each tab it opens is loaded with.
 class TestWebView final : public WebView::HeadlessWebView {
 public:
-    static WebView::TabHandle<TestWebView> create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size)
+    static NonnullOwnPtr<TestWebView> create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size)
     {
-        auto& view = static_cast<TestWebView&>(open_tab(adopt_own(*new TestWebView(move(theme), window_size)), Web::HTML::VisibilityState::Visible));
-        view.activate();
-        return WebView::TabHandle<TestWebView> { view };
+        auto view = adopt_own(*new TestWebView(move(theme), window_size, open_tab(WebView::IsPrivate::No)));
+        view->tab().activate();
+        return view;
     }
 
     Vector<URL::URL> const& new_tab_urls() const { return m_new_tab_urls; }
 
 private:
-    TestWebView(Core::AnonymousBuffer theme, Web::DevicePixelSize viewport_size)
-        : HeadlessWebView(move(theme), viewport_size)
+    TestWebView(Core::AnonymousBuffer theme, Web::DevicePixelSize viewport_size, WebView::ViewImplementation& tab)
+        : HeadlessWebView(move(theme), viewport_size, tab)
     {
     }
 
@@ -98,7 +98,7 @@ TEST_CASE(shadow_tree_tooltips_and_links)
     auto view = TestWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->on_load_finish = [&](auto const&) { ++loads_finished; };
+    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
 
     // Wait out the initial about:blank load; navigating before it completes would drop the navigation.
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 1; });
@@ -108,7 +108,7 @@ TEST_CASE(shadow_tree_tooltips_and_links)
     // element with a title; text in an element whose title has carriage returns; and text in a link, in an element with
     // a title. The pointer's target is always an
     // element, so the shadow tree and the slot each hold one: Bare text would make its host the target.
-    view->load_html(R"~~~(<!DOCTYPE html>
+    view->tab().load_html(R"~~~(<!DOCTYPE html>
 <style>
 body { margin: 0; font: 80px/100px monospace }
 .row { position: fixed; left: 0; width: 800px; height: 100px }
@@ -129,11 +129,11 @@ document.getElementById("carriage-returns").setAttribute("title", "One\r\nTwo\rT
     size_t tooltip_enters = 0;
     size_t tooltip_leaves = 0;
     Optional<ByteString> tooltip;
-    view->on_enter_tooltip_area = [&](auto const& text) {
+    view->tab().on_enter_tooltip_area = [&](auto const& text) {
         ++tooltip_enters;
         tooltip = text;
     };
-    view->on_leave_tooltip_area = [&] {
+    view->tab().on_leave_tooltip_area = [&] {
         ++tooltip_leaves;
         tooltip.clear();
     };
@@ -141,11 +141,11 @@ document.getElementById("carriage-returns").setAttribute("title", "One\r\nTwo\rT
     size_t link_hovers = 0;
     size_t link_unhovers = 0;
     Optional<URL::URL> hovered_url;
-    view->on_link_hover = [&](auto const& url) {
+    view->tab().on_link_hover = [&](auto const& url) {
         ++link_hovers;
         hovered_url = url;
     };
-    view->on_link_unhover = [&] {
+    view->tab().on_link_unhover = [&] {
         ++link_unhovers;
         hovered_url.clear();
     };
@@ -167,7 +167,7 @@ document.getElementById("carriage-returns").setAttribute("title", "One\r\nTwo\rT
     // Each check below starts from a tooltip and a link that the move under test changes, so a broken walk shows up as
     // the wrong report, rather than as no report at all.
     auto since = report_counts();
-    move_mouse_to(*view, { 20, 550 });
+    move_mouse_to(view->tab(), { 20, 550 });
     wait_for_tooltip_report(since);
     VERIFY(tooltip == "Start"sv);
     wait_for_link_report(since);
@@ -176,7 +176,7 @@ document.getElementById("carriage-returns").setAttribute("title", "One\r\nTwo\rT
 
     // An element in a shadow tree: The host's title and the link around the host apply to it.
     since = report_counts();
-    move_mouse_to(*view, { 20, 50 });
+    move_mouse_to(view->tab(), { 20, 50 });
     wait_for_tooltip_report(since);
     VERIFY(tooltip == "Title on the host"sv);
     wait_for_link_report(since);
@@ -184,14 +184,14 @@ document.getElementById("carriage-returns").setAttribute("title", "One\r\nTwo\rT
     VERIFY(hovered_url->serialize() == "data:text/html,around-host"sv);
 
     // A middle-click on it opens that link in a new tab.
-    middle_click_at(*view, { 20, 50 });
+    middle_click_at(view->tab(), { 20, 50 });
     Core::EventLoop::current().spin_until([&]() {
         return view->new_tab_urls().contains_slow(URL::Parser::basic_parse("data:text/html,around-host"sv).release_value());
     });
 
     // An element assigned to a slot: The title and the link around the slot apply to it.
     since = report_counts();
-    move_mouse_to(*view, { 20, 150 });
+    move_mouse_to(view->tab(), { 20, 150 });
     wait_for_tooltip_report(since);
     VERIFY(tooltip == "Title in the shadow tree"sv);
     wait_for_link_report(since);
@@ -200,7 +200,7 @@ document.getElementById("carriage-returns").setAttribute("title", "One\r\nTwo\rT
 
     // Plain text has neither.
     since = report_counts();
-    move_mouse_to(*view, { 20, 250 });
+    move_mouse_to(view->tab(), { 20, 250 });
     wait_for_tooltip_report(since);
     VERIFY(!tooltip.has_value());
     wait_for_link_report(since);
@@ -209,17 +209,17 @@ document.getElementById("carriage-returns").setAttribute("title", "One\r\nTwo\rT
     // An empty title is no advisory information, and hides the outer element's: From a title over to it, the tooltip
     // goes away.
     since = report_counts();
-    move_mouse_to(*view, { 20, 50 });
+    move_mouse_to(view->tab(), { 20, 50 });
     wait_for_tooltip_report(since);
     VERIFY(tooltip == "Title on the host"sv);
     since = report_counts();
-    move_mouse_to(*view, { 20, 350 });
+    move_mouse_to(view->tab(), { 20, 350 });
     wait_for_tooltip_report(since);
     VERIFY(!tooltip.has_value());
 
     // Newlines in a title are normalized: Each CR LF pair and each lone CR becomes an LF.
     since = report_counts();
-    move_mouse_to(*view, { 20, 450 });
+    move_mouse_to(view->tab(), { 20, 450 });
     wait_for_tooltip_report(since);
     VERIFY(tooltip == "One\nTwo\nThree"sv);
 

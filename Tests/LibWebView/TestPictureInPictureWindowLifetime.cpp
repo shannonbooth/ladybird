@@ -107,19 +107,19 @@ bool process_is_running(pid_t pid)
     return ::kill(pid, 0) == 0;
 }
 
-WebView::TabHandle<WebView::HeadlessWebView> open_tab_with_picture_in_picture_window(TestApplication& app, Core::AnonymousBuffer theme)
+OwnPtr<WebView::HeadlessWebView> open_tab_with_picture_in_picture_window(TestApplication& app, Core::AnonymousBuffer theme)
 {
     // A view that takes the spare process finds its initial document loaded already.
     auto takes_spare_process = app.has_spare_web_content_process();
     auto view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
     size_t loads_finished = 0;
-    view->on_load_finish = [&](auto const&) { ++loads_finished; };
+    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
     if (!takes_spare_process)
         Core::EventLoop::current().spin_until([&] { return loads_finished >= 1; });
 
     Utf16String title;
-    view->on_title_change = [&](auto const& new_title) { title = new_title; };
-    view->load_html(MUST(String::formatted(
+    view->tab().on_title_change = [&](auto const& new_title) { title = new_title; };
+    view->tab().load_html(MUST(String::formatted(
         "<!DOCTYPE html>"
         "<button onclick=\"video.requestPictureInPicture().then(() => {{ document.title = 'entered'; }})\" style=\"position:fixed;left:0;top:0;width:800px;height:600px\"></button>"
         "<video id=video src=\"{}\"></video>"
@@ -130,17 +130,17 @@ WebView::TabHandle<WebView::HeadlessWebView> open_tab_with_picture_in_picture_wi
     Core::EventLoop::current().spin_until([&] { return title == "ready"sv; });
 
     app.picture_in_picture_window = nullptr;
-    click_at(*view, { 400, 300 });
+    click_at(view->tab(), { 400, 300 });
     Core::EventLoop::current().spin_until([&] { return title == "entered"sv && app.picture_in_picture_window; });
-    view->on_title_change = {};
-    view->on_load_finish = {};
+    view->tab().on_title_change = {};
+    view->tab().on_load_finish = {};
     return view;
 }
 
 // A browser window closes its tabs without waiting for their processes, and destroys their views at once.
-void close_tab_as_a_browser_window_does(WebView::TabHandle<WebView::HeadlessWebView> view)
+void close_tab_as_a_browser_window_does(OwnPtr<WebView::HeadlessWebView> view)
 {
-    auto close = view->prepare_for_close_without_prompting();
+    auto close = view->tab().prepare_for_close_without_prompting();
     close();
 }
 
@@ -167,7 +167,7 @@ TEST_CASE(picture_in_picture_window_lifetime)
     {
         auto view = open_tab_with_picture_in_picture_window(*app, theme);
         auto window_handle = app->picture_in_picture_window_handle;
-        auto pid = view->page().client().pid();
+        auto pid = view->tab().page().client().pid();
 
         close_tab_as_a_browser_window_does(move(view));
         VERIFY(window_and_process_are_gone(window_handle, pid));
@@ -177,7 +177,7 @@ TEST_CASE(picture_in_picture_window_lifetime)
     {
         auto view = open_tab_with_picture_in_picture_window(*app, theme);
         auto window_handle = app->picture_in_picture_window_handle;
-        auto pid = view->page().client().pid();
+        auto pid = view->tab().page().client().pid();
 
         // The user closes the window while the tab's renderer cannot answer, so the window is retired with its page open.
         signal_renderers(SIGSTOP);

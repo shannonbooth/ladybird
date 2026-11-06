@@ -97,21 +97,21 @@ TEST_CASE(request_server_client_sessions)
     auto theme = TRY_OR_FAIL(Gfx::load_system_theme(LexicalPath::join(WebView::s_ladybird_resource_root, "themes"sv, "Default.ini"sv).string()));
     app->reset_private_browsing_session();
     auto old_private_view = WebView::HeadlessWebView::create(theme, { 800, 600 }, WebView::IsPrivate::Yes);
-    auto& old_private_session = old_private_view->page().client().session();
+    auto& old_private_session = old_private_view->tab().page().client().session();
     app->reset_private_browsing_session();
     auto new_private_view = WebView::HeadlessWebView::create(theme, { 800, 600 }, WebView::IsPrivate::Yes);
-    auto& new_private_session = new_private_view->page().client().session();
+    auto& new_private_session = new_private_view->tab().page().client().session();
     VERIFY(&old_private_session != &new_private_session);
 
     // Pages that a private view opens are private too, whether they share its process or get their own.
     Vector<bool> popups_are_private;
-    auto open_popup = move(new_private_view->on_new_web_view);
-    new_private_view->on_new_web_view = [&](auto activate_tab, auto hints, WebView::CanonicalTraversable& traversable) {
+    auto open_popup = move(new_private_view->tab().on_new_web_view);
+    new_private_view->tab().on_new_web_view = [&](auto activate_tab, auto hints, WebView::CanonicalTraversable& traversable) {
         auto handle = open_popup(activate_tab, hints, traversable);
         popups_are_private.append(WebView::ViewImplementation::find_view_by_handle(handle)->is_private() == WebView::IsPrivate::Yes);
         return handle;
     };
-    new_private_view->run_javascript("window.open('about:blank'); window.open('about:blank', '_blank', 'noopener');"_string);
+    new_private_view->tab().run_javascript("window.open('about:blank'); window.open('about:blank', '_blank', 'noopener');"_string);
     Core::EventLoop::current().spin_until([&] { return popups_are_private.size() == 2; });
     VERIFY(popups_are_private[0] && popups_are_private[1]);
 

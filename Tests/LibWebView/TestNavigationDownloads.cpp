@@ -191,7 +191,7 @@ ByteBuffer make_body(size_t size)
     return body;
 }
 
-void load_page(WebView::HeadlessWebView& view, URL::URL const& url)
+void load_page(WebView::ViewImplementation& view, URL::URL const& url)
 {
     IGNORE_USE_IN_ESCAPING_LAMBDA bool loaded = false;
     view.on_load_finish = [&](URL::URL const&) { loaded = true; };
@@ -207,7 +207,7 @@ void load_page(WebView::HeadlessWebView& view, URL::URL const& url)
     }
 }
 
-WebView::FileDownloader::Download download_navigation_response(WebView::HeadlessWebView& view, URL::URL const& url)
+WebView::FileDownloader::Download download_navigation_response(WebView::ViewImplementation& view, URL::URL const& url)
 {
     FinishedDownloadRecorder recorder;
 
@@ -243,7 +243,7 @@ void expect_navigation_downloads_body(Core::AnonymousBuffer const& theme, String
 {
     TestHttpServer server { move(headers), body, pause_after };
     auto view = WebView::HeadlessWebView::create(theme, { 800, 600 });
-    expect_download_holds_body(what, download_navigation_response(*view, server.url()), body);
+    expect_download_holds_body(what, download_navigation_response(view->tab(), server.url()), body);
 }
 
 void expect_navigation_downloads_cached_body(Core::AnonymousBuffer const& theme, StringView what, ByteString headers, ByteBuffer const& body)
@@ -252,12 +252,12 @@ void expect_navigation_downloads_cached_body(Core::AnonymousBuffer const& theme,
 
     // Both downloads start from a document of the server's site, whose process reads and writes that site's cache.
     auto view = WebView::HeadlessWebView::create(theme, { 800, 600 });
-    load_page(*view, server.page_url());
-    expect_download_holds_body(what, download_navigation_response(*view, server.url()), body);
+    load_page(view->tab(), server.page_url());
+    expect_download_holds_body(what, download_navigation_response(view->tab(), server.url()), body);
 
     // The first download completes only after RequestServer has written its cache entry.
     auto request_count = server.request_count();
-    expect_download_holds_body(what, download_navigation_response(*view, server.url()), body);
+    expect_download_holds_body(what, download_navigation_response(view->tab(), server.url()), body);
     if (server.request_count() != request_count) {
         warnln("FAIL: {}: the second download did not come from the disk cache", what);
         VERIFY_NOT_REACHED();
@@ -268,10 +268,10 @@ void expect_cross_site_navigation_downloads_body(Core::AnonymousBuffer const& th
 {
     TestHttpServer server { move(headers), body, pause_after };
     auto view = WebView::HeadlessWebView::create(theme, { 800, 600 });
-    load_page(*view, server.page_url());
-    expect_download_holds_body(what, download_navigation_response(*view, redirect ? server.redirect_url() : server.url(true)), body);
-    EXPECT(!view->is_loading());
-    EXPECT_EQ(view->url(), server.page_url());
+    load_page(view->tab(), server.page_url());
+    expect_download_holds_body(what, download_navigation_response(view->tab(), redirect ? server.redirect_url() : server.url(true)), body);
+    EXPECT(!view->tab().is_loading());
+    EXPECT_EQ(view->tab().url(), server.page_url());
 }
 
 }

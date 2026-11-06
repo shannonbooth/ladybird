@@ -2194,7 +2194,7 @@ ErrorOr<void> Application::launch_devtools_client()
     return m_devtools_client->ensure_running(*m_browser_options.devtools_port, view->view_id());
 }
 
-static NonnullRefPtr<Core::Timer> load_page_for_screenshot_and_exit(Core::EventLoop& event_loop, HeadlessWebView& view, URL::URL const& url, u32 screenshot_timeout)
+static NonnullRefPtr<Core::Timer> load_page_for_screenshot_and_exit(Core::EventLoop& event_loop, ViewImplementation& view, URL::URL const& url, u32 screenshot_timeout)
 {
     outln("Taking screenshot after {} seconds", screenshot_timeout);
 
@@ -2218,7 +2218,7 @@ static NonnullRefPtr<Core::Timer> load_page_for_screenshot_and_exit(Core::EventL
     return timer;
 }
 
-static void load_page_for_info_and_exit(Core::EventLoop& event_loop, HeadlessWebView& view, URL::URL const& url, WebView::PageInfoType type)
+static void load_page_for_info_and_exit(Core::EventLoop& event_loop, ViewImplementation& view, URL::URL const& url, WebView::PageInfoType type)
 {
     view.on_load_finish = [&view, &event_loop, url, type](auto const& loaded_url) {
         if (!url.equals(loaded_url, URL::ExcludeFragment::Yes))
@@ -2238,7 +2238,7 @@ static void load_page_for_info_and_exit(Core::EventLoop& event_loop, HeadlessWeb
     view.load(url);
 }
 
-static void load_page_and_exit_on_close(Core::EventLoop& event_loop, HeadlessWebView& view, URL::URL const& url)
+static void load_page_and_exit_on_close(Core::EventLoop& event_loop, ViewImplementation& view, URL::URL const& url)
 {
     view.on_close = [&event_loop]() {
         event_loop.quit(0);
@@ -2249,7 +2249,7 @@ static void load_page_and_exit_on_close(Core::EventLoop& event_loop, HeadlessWeb
 
 ErrorOr<int> Application::execute()
 {
-    TabHandle<HeadlessWebView> view;
+    OwnPtr<HeadlessWebView> view;
     RefPtr<Core::Timer> screenshot_timer;
 
     if (m_browser_options.headless_mode.has_value()) {
@@ -2264,16 +2264,16 @@ ErrorOr<int> Application::execute()
 
             switch (*m_browser_options.headless_mode) {
             case HeadlessMode::Screenshot:
-                screenshot_timer = load_page_for_screenshot_and_exit(*m_event_loop, *view, m_browser_options.urls.first(), m_browser_options.screenshot_delay);
+                screenshot_timer = load_page_for_screenshot_and_exit(*m_event_loop, view->tab(), m_browser_options.urls.first(), m_browser_options.screenshot_delay);
                 break;
             case HeadlessMode::LayoutTree:
-                load_page_for_info_and_exit(*m_event_loop, *view, m_browser_options.urls.first(), WebView::PageInfoType::LayoutTree);
+                load_page_for_info_and_exit(*m_event_loop, view->tab(), m_browser_options.urls.first(), WebView::PageInfoType::LayoutTree);
                 break;
             case HeadlessMode::Text:
-                load_page_for_info_and_exit(*m_event_loop, *view, m_browser_options.urls.first(), WebView::PageInfoType::Text);
+                load_page_for_info_and_exit(*m_event_loop, view->tab(), m_browser_options.urls.first(), WebView::PageInfoType::Text);
                 break;
             case HeadlessMode::Manual:
-                load_page_and_exit_on_close(*m_event_loop, *view, m_browser_options.urls.first());
+                load_page_and_exit_on_close(*m_event_loop, view->tab(), m_browser_options.urls.first());
                 break;
             case HeadlessMode::Test:
                 VERIFY_NOT_REACHED();
@@ -2522,9 +2522,7 @@ OwnPtr<PictureInPictureWindow> Application::create_picture_in_picture_window(Web
     if (!browser_options().headless_mode.has_value())
         return {};
 
-    // Every view in a headless browser is a HeadlessWebView.
-    auto& requesting_view = static_cast<HeadlessWebView&>(requesting_page.traversable().view());
-    return HeadlessWebView::create_picture_in_picture_window(requesting_view, traversable, video_size);
+    return HeadlessWebView::create_picture_in_picture_window(traversable, requesting_page.traversable().view(), video_size);
 }
 
 Utf16String Application::clipboard_text(ClipboardType) const

@@ -104,7 +104,6 @@
 #include <LibWebView/SessionStore.h>
 #include <LibWebView/Settings.h>
 #include <LibWebView/SpellChecker.h>
-#include <LibWebView/TabHandle.h>
 #include <LibWebView/TabIndicators.h>
 #include <LibWebView/TabPerformanceStats.h>
 #include <LibWebView/ViewSurface.h>
@@ -182,8 +181,6 @@ public:
     // Opens a new tab whose traversable is created with this view, and owns it.
     static ViewImplementation& open_tab(NonnullOwnPtr<ViewImplementation>, Web::HTML::VisibilityState);
     void did_create_traversable(Badge<CanonicalTraversable>, CanonicalTraversable&);
-    // The view of a traversable this tab's content opens, such as a popup or a Picture-in-Picture window.
-    virtual NonnullOwnPtr<ViewImplementation> create_view_for_new_traversable();
     // Call after the frontend has installed its callbacks.
     void activate();
     // Closes the tab without asking its pages. The traversable destroys this view with it.
@@ -191,7 +188,7 @@ public:
     void did_destroy_traversable(Badge<CanonicalTraversable>);
     bool is_closing() const { return m_close_pending || m_shutdown_started; }
 
-    // A frontend holds the tab while it shows it: an attached surface or a TabHandle is a hold. Once the tab's last
+    // A frontend holds the tab while it shows it: an attached surface is a hold. Once the tab's last
     // hold goes, a tab that is not closing closes, and one whose browsing context has closed is destroyed.
     void add_frontend_hold() { ++m_frontend_holds; }
     bool has_frontend() const { return m_frontend_holds > 0; }
@@ -344,6 +341,7 @@ public:
     void zoom_out();
     void set_zoom(double zoom_level);
     void set_device_pixel_ratio_for_testing(WebContentPage&, double device_pixel_ratio);
+    void reset_viewport_for_testing();
     void reset_zoom();
     double zoom_level() const { return m_zoom_level; }
     double device_pixel_ratio() const { return m_device_pixel_ratio; }
@@ -726,7 +724,7 @@ public:
 
     WebContentPage& page() const;
 
-    // A headless view is its own surface and overrides these. Any other view asks the surface attached to it.
+    // The surface attached to the view answers these.
     virtual Web::DevicePixelSize viewport_size() const;
     virtual Gfx::IntPoint to_content_position(Gfx::IntPoint widget_position) const;
     virtual Gfx::IntPoint to_widget_position(Gfx::IntPoint content_position) const;
@@ -744,8 +742,13 @@ public:
     void did_finish_top_level_load(URL::URL const&);
     void did_pause_debugger(DebuggerPause);
 
-    virtual Web::Clipboard::SystemClipboardItem clipboard_item() const;
-    virtual void insert_clipboard_item(Web::Clipboard::SystemClipboardItem);
+    Web::Clipboard::SystemClipboardItem clipboard_item() const;
+    void insert_clipboard_item(Web::Clipboard::SystemClipboardItem);
+
+    virtual void geolocation_settings_changed() override;
+    void set_owner_view(ViewImplementation const&);
+    void handle_resize();
+    NonnullRefPtr<Core::Promise<Empty>> reset_state_for_testing();
 
 protected:
     virtual void show_context_menu(Menu&, Gfx::IntPoint widget_position);
@@ -766,8 +769,6 @@ protected:
     virtual Core::AnonymousBuffer system_theme();
     virtual Optional<ScreenRects> screen_rects() const;
     void update_compositor_display_metadata(WebContentPage&);
-
-    void set_owner_view(ViewImplementation const&);
 
     void did_update_url();
     void settle_permission_prompt(PermissionPromptRequest const&, Web::Permissions::PromptOutcome);
@@ -802,15 +803,11 @@ protected:
     void dump_session_history(StringView reason, SessionHistoryDumpMode = SessionHistoryDumpMode::IfDebuggingEnabled) const;
     void recover_current_session_history_entry_with_history_operation();
     void reconstruct_current_session_history_entry_with_history_operation(StringView reason);
-    NonnullRefPtr<Core::Promise<Empty>> reset_state_for_testing();
-
     virtual void update_zoom();
 
-    // The view to show a tab or window opened from this view in, or null for the application to open one of its own.
-    virtual ViewImplementation* create_view_for_new_tab_or_window(IsPrivate) { return nullptr; }
+    ViewImplementation* create_view_for_new_tab_or_window(IsPrivate);
     void apply_zoom_for_current_host();
 
-    void handle_resize();
     void fail_pending_debugger_requests();
     u64 expect_debugger_reply(NonnullRefPtr<PendingReplyBase>);
     void set_debugger_paused(bool);
@@ -870,7 +867,6 @@ protected:
     virtual void content_settings_changed() override;
     virtual void browsing_behavior_changed() override;
     virtual void autoplay_settings_changed() override;
-    virtual void geolocation_settings_changed() override;
     virtual void global_privacy_control_changed() override;
 
     virtual void bookmarks_changed() override;

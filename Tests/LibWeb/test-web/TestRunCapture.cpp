@@ -141,7 +141,7 @@ static ByteString format_exit_status(Optional<int> exit_status)
 
 void TestRunCapture::setup_output_capture_for_view(TestWebView& view, ViewOutputCapture& view_capture)
 {
-    auto process = Application::the().find_process(view.web_content_pid());
+    auto process = Application::the().find_process(view.tab().web_content_pid());
     if (!process.has_value())
         return;
 

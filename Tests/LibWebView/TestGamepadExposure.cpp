@@ -87,29 +87,29 @@ TEST_CASE(gamepad_exposure)
 
     {
         auto view = WebView::HeadlessWebView::create(theme, { 800, 600 });
-        auto& client = view->page().client();
-        give_user_attention(*view, true);
+        auto& client = view->tab().page().client();
+        give_user_attention(view->tab(), true);
         auto gamepad = gamepad_manager.create_virtual_gamepad(client).release_value();
 
         press_button(client, gamepad);
         VERIFY(!gamepad_is_announced_to(client));
         outln("PASS: a process with no page using gamepads learns of none");
 
-        start_using_gamepads(*view);
+        start_using_gamepads(view->tab());
 
-        view->set_has_system_focus(false);
+        view->tab().set_has_system_focus(false);
         press_button(client, gamepad);
         VERIFY(!gamepad_is_announced_to(client));
-        view->set_has_system_focus(true);
+        view->tab().set_has_system_focus(true);
         outln("PASS: a gesture while the page has no system focus is not one");
 
-        view->set_system_visibility_state(Web::HTML::VisibilityState::Hidden);
+        view->tab().set_system_visibility_state(Web::HTML::VisibilityState::Hidden);
         press_button(client, gamepad);
         VERIFY(!gamepad_is_announced_to(client));
-        view->set_system_visibility_state(Web::HTML::VisibilityState::Visible);
+        view->tab().set_system_visibility_state(Web::HTML::VisibilityState::Visible);
         outln("PASS: a gesture while the page is hidden is not one");
 
-        auto& document = view->traversable().active_document();
+        auto& document = view->tab().traversable().active_document();
         auto permissions_policy = document.permissions_policy();
         auto permissions_policy_without_gamepads = permissions_policy;
         permissions_policy_without_gamepads.inherited_policy[to_underlying(Web::PermissionsPolicy::PolicyControlledFeature::Gamepad)] = Web::PermissionsPolicy::FeatureValue::Disabled;
@@ -126,24 +126,24 @@ TEST_CASE(gamepad_exposure)
 
     {
         auto view = WebView::HeadlessWebView::create(theme, { 800, 600 });
-        auto& client = view->page().client();
-        give_user_attention(*view, true);
+        auto& client = view->tab().page().client();
+        give_user_attention(view->tab(), true);
 
-        WebView::TabHandle<WebView::HeadlessWebView> popup;
+        OwnPtr<WebView::HeadlessWebView> popup;
         bool popup_loaded = false;
-        view->on_new_web_view = [&](auto, auto, WebView::CanonicalTraversable& traversable) {
+        view->tab().on_new_web_view = [&](auto, auto, WebView::CanonicalTraversable& traversable) {
             popup = WebView::HeadlessWebView::create_child(*view, traversable);
-            popup->on_load_finish = [&](auto const&) { popup_loaded = true; };
-            return popup->handle();
+            popup->tab().on_load_finish = [&](auto const&) { popup_loaded = true; };
+            return popup->tab().handle();
         };
-        view->run_javascript("window.open('about:blank')"_string);
+        view->tab().run_javascript("window.open('about:blank')"_string);
         Core::EventLoop::current().spin_until([&] { return popup_loaded; });
-        VERIFY(&popup->page().client() == &client);
+        VERIFY(&popup->tab().page().client() == &client);
 
-        start_using_gamepads(*view);
-        start_using_gamepads(*popup);
-        give_user_attention(*view, false);
-        give_user_attention(*popup, true);
+        start_using_gamepads(view->tab());
+        start_using_gamepads(popup->tab());
+        give_user_attention(view->tab(), false);
+        give_user_attention(popup->tab(), true);
 
         auto gamepad = gamepad_manager.create_virtual_gamepad(client).release_value();
         press_button(client, gamepad);
@@ -153,15 +153,15 @@ TEST_CASE(gamepad_exposure)
 
     {
         auto view = WebView::HeadlessWebView::create(theme, { 800, 600 });
-        auto& page = view->page();
+        auto& page = view->tab().page();
         auto& client = page.client();
-        auto& traversable = view->traversable();
-        give_user_attention(*view, true);
+        auto& traversable = view->tab().traversable();
+        give_user_attention(view->tab(), true);
 
         size_t loads_finished = 0;
-        view->on_load_finish = [&](auto const&) { ++loads_finished; };
+        view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
         Core::EventLoop::current().spin_until([&] { return loads_finished >= 1; });
-        view->load_html("<!DOCTYPE html><iframe srcdoc=\"<!DOCTYPE html>\"></iframe>"sv);
+        view->tab().load_html("<!DOCTYPE html><iframe srcdoc=\"<!DOCTYPE html>\"></iframe>"sv);
         WebView::CanonicalNavigable* iframe = nullptr;
         Core::EventLoop::current().spin_until([&] {
             traversable.for_each_in_subtree([&](WebView::CanonicalNavigable& navigable) {
@@ -170,7 +170,7 @@ TEST_CASE(gamepad_exposure)
             });
             return loads_finished >= 2 && iframe && page.hosts_active_document_of(*iframe);
         });
-        start_using_gamepads(*view);
+        start_using_gamepads(view->tab());
         VERIFY(iframe->active_document_is_fully_active_descendant_of_a_top_level_traversable_with_user_attention());
         VERIFY(iframe->active_document().is_allowed_to_use(Web::PermissionsPolicy::PolicyControlledFeature::Gamepad));
 

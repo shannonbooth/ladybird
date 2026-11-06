@@ -147,17 +147,17 @@ TEST_CASE(picture_in_picture_user_activation)
     auto view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->on_load_finish = [&](auto const&) { ++loads_finished; };
+    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
 
     Utf16String last_title;
-    view->on_title_change = [&](auto const& title) { last_title = title; };
+    view->tab().on_title_change = [&](auto const& title) { last_title = title; };
 
     // Wait out the initial about:blank load; navigating before it completes would drop the navigation.
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 1; });
 
     // A button filling the viewport asks for a window for the first of two videos, and the page reports how each request
     // went through its title.
-    view->load_html(MUST(String::formatted(
+    view->tab().load_html(MUST(String::formatted(
         "<!DOCTYPE html>"
         "<button onclick=\"enter(first)\" style=\"position:fixed;left:0;top:0;width:800px;height:600px\">Enter</button>"
         "<video id=first src=\"{0}\"></video>"
@@ -173,14 +173,14 @@ TEST_CASE(picture_in_picture_user_activation)
         video_url)));
     Core::EventLoop::current().spin_until([&]() { return last_title == "ready"sv; });
 
-    click(*view, { 400, 300 });
+    click(view->tab(), { 400, 300 });
     Core::EventLoop::current().spin_until([&]() { return last_title.starts_with("first "sv); });
     VERIFY(last_title == "first entered"sv);
     VERIFY(app->opened_windows.size() == 1);
     outln("a click opens a window");
 
     // The window took the click's activation, so the document opens the next window as the one with a window open.
-    view->run_javascript("enter(second)"_string);
+    view->tab().run_javascript("enter(second)"_string);
     Core::EventLoop::current().spin_until([&]() { return last_title.starts_with("second "sv); });
     VERIFY(last_title == "second entered"sv);
     VERIFY(app->opened_windows.size() == 2);
@@ -195,7 +195,7 @@ TEST_CASE(picture_in_picture_user_activation)
 
     // The page hears that the user closed the window only after it asks for another, so it asks as a document that has a
     // window open.
-    view->run_javascript("enter(first)"_string);
+    view->tab().run_javascript("enter(first)"_string);
     signal_renderers(SIGCONT);
     Core::EventLoop::current().spin_until([&]() { return last_title.starts_with("first "sv); });
     VERIFY(last_title == "first InvalidStateError"sv);

@@ -22,7 +22,7 @@ class TestWebView final : public WebView::HeadlessWebView {
 public:
     virtual ~TestWebView() override = default;
 
-    static WebView::TabHandle<TestWebView> create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size);
+    static NonnullOwnPtr<TestWebView> create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size);
 
     void clear_content_blockers();
     void reset_force_dark();
@@ -40,7 +40,7 @@ public:
     void on_test_complete(TestCompletion);
 
 private:
-    TestWebView(Core::AnonymousBuffer theme, Web::DevicePixelSize viewport_size);
+    TestWebView(Core::AnonymousBuffer theme, Web::DevicePixelSize viewport_size, WebView::ViewImplementation&);
 
     virtual Web::Clipboard::SystemClipboardItem clipboard_item() const override { return m_clipboard_item; }
     virtual void insert_clipboard_item(Web::Clipboard::SystemClipboardItem item) override { m_clipboard_item = move(item); }

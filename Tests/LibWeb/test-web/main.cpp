@@ -563,11 +563,11 @@ static void run_dump_test(TestWebView& view, TestRunContext& context, Test& test
     };
 
     if (test.mode == TestMode::Accessibility) {
-        view.on_load_finish = [&view, &context, test_index, url, on_test_complete = move(on_test_complete)](auto const& loaded_url) {
+        view.tab().on_load_finish = [&view, &context, test_index, url, on_test_complete = move(on_test_complete)](auto const& loaded_url) {
             if (!url.equals(loaded_url, URL::ExcludeFragment::Yes))
                 return;
 
-            auto promise = view.request_internal_page_info(WebView::PageInfoType::AccessibilityTree);
+            auto promise = view.tab().request_internal_page_info(WebView::PageInfoType::AccessibilityTree);
 
             promise->when_resolved([&context, test_index, on_test_complete = move(on_test_complete)](auto const& text) {
                 context.tests[test_index].text = text;
@@ -575,7 +575,7 @@ static void run_dump_test(TestWebView& view, TestRunContext& context, Test& test
             });
         };
     } else if (test.mode == TestMode::Layout) {
-        view.on_load_finish = [&view, &context, test_index, url](auto const& loaded_url) {
+        view.tab().on_load_finish = [&view, &context, test_index, url](auto const& loaded_url) {
             // We don't want subframe loads to trigger the test finish.
             if (!url.equals(loaded_url, URL::ExcludeFragment::Yes))
                 return;
@@ -584,14 +584,14 @@ static void run_dump_test(TestWebView& view, TestRunContext& context, Test& test
             auto const& script = LexicalPath(test.input_path).extension() == "pdf"sv
                 ? wait_for_pdf_done
                 : wait_for_test_completion;
-            view.run_javascript(script);
+            view.tab().run_javascript(script);
         };
 
-        view.on_test_finish = [&view, &context, test_index, on_test_complete = move(on_test_complete)](auto const&) {
+        view.tab().on_test_finish = [&view, &context, test_index, on_test_complete = move(on_test_complete)](auto const&) {
             // NOTE: We take a screenshot here to force the lazy layout of SVG-as-image documents to happen.
             //       It also causes a lot more code to run, which is good for finding bugs. :^)
             view.take_screenshot()->when_resolved([&view, &context, test_index, on_test_complete = move(on_test_complete)](auto const&) {
-                auto promise = view.request_internal_page_info(WebView::PageInfoType::LayoutTree | WebView::PageInfoType::StackingContextTree);
+                auto promise = view.tab().request_internal_page_info(WebView::PageInfoType::LayoutTree | WebView::PageInfoType::StackingContextTree);
 
                 promise->when_resolved([&context, test_index, on_test_complete = move(on_test_complete)](auto const& text) {
                     context.tests[test_index].text = text;
@@ -600,7 +600,7 @@ static void run_dump_test(TestWebView& view, TestRunContext& context, Test& test
             });
         };
     } else if (test.mode == TestMode::Text) {
-        view.on_load_finish = [&view, &context, test_index, on_test_complete](auto const& loaded_url) {
+        view.tab().on_load_finish = [&view, &context, test_index, on_test_complete](auto const& loaded_url) {
             // page_did_finish_loading is already top-level-only (Document.cpp gates it on navigable->is_traversable()).
             // We accept *any* top-level URL here — not just the test's original URL; otherwise a test that navigates
             // away will hang forever — because the original page's load IPC may arrive after the navigation target's
@@ -614,7 +614,7 @@ static void run_dump_test(TestWebView& view, TestRunContext& context, Test& test
                 return;
 
             if (test.expectation_path.is_empty()) {
-                auto promise = view.request_internal_page_info(WebView::PageInfoType::Text);
+                auto promise = view.tab().request_internal_page_info(WebView::PageInfoType::Text);
 
                 promise->when_resolved([&context, test_index, on_test_complete = move(on_test_complete)](auto const& text) {
                     auto& test = context.tests[test_index];
@@ -626,7 +626,7 @@ static void run_dump_test(TestWebView& view, TestRunContext& context, Test& test
             }
         };
 
-        view.on_test_finish = [&context, test_index, on_test_complete](auto const& text) {
+        view.tab().on_test_finish = [&context, test_index, on_test_complete](auto const& text) {
             auto& test = context.tests[test_index];
             if (test.expected_outcome != ExpectedOutcome::Normal)
                 return;
@@ -638,20 +638,20 @@ static void run_dump_test(TestWebView& view, TestRunContext& context, Test& test
                 on_test_complete();
         };
     } else if (test.mode == TestMode::Crash) {
-        view.on_load_finish = [on_test_complete, url, &view, &context, test_index](auto const& loaded_url) {
+        view.tab().on_load_finish = [on_test_complete, url, &view, &context, test_index](auto const& loaded_url) {
             // We don't want subframe loads to trigger the test finish.
             if (!url.equals(loaded_url, URL::ExcludeFragment::Yes))
                 return;
 
             auto& test = context.tests[test_index];
             test.did_finish_loading = true;
-            view.run_javascript(wait_for_test_completion);
+            view.tab().run_javascript(wait_for_test_completion);
 
             if (test.did_finish_test)
                 on_test_complete();
         };
 
-        view.on_test_finish = [&context, test_index, on_test_complete](auto const&) {
+        view.tab().on_test_finish = [&context, test_index, on_test_complete](auto const&) {
             auto& test = context.tests[test_index];
             test.did_finish_test = true;
 
@@ -660,7 +660,7 @@ static void run_dump_test(TestWebView& view, TestRunContext& context, Test& test
         };
     }
 
-    view.load(url);
+    view.tab().load(url);
 }
 
 static ErrorOr<void> dump_screenshot_to_file(Gfx::Bitmap const& bitmap, StringView path)
@@ -724,7 +724,7 @@ static void run_ref_test(TestWebView& view, TestRunContext& context, Test& test,
 {
     auto test_index = test.index;
 
-    view.on_load_finish = [&view, &context, test_index, url](auto const& loaded_url) {
+    view.tab().on_load_finish = [&view, &context, test_index, url](auto const& loaded_url) {
         auto& test = context.tests[test_index];
 
         // We don't want subframe loads to trigger this.
@@ -743,18 +743,18 @@ static void run_ref_test(TestWebView& view, TestRunContext& context, Test& test,
 
         if (!test.did_inject_js) {
             test.did_inject_js = true;
-            view.run_javascript(wait_for_reftest_completion);
+            view.tab().run_javascript(wait_for_reftest_completion);
         }
     };
 
-    view.on_test_finish = [&view, &context, test_index, url](auto const&) {
+    view.tab().on_test_finish = [&view, &context, test_index, url](auto const&) {
         auto& test = context.tests[test_index];
         if (test.actual_screenshot) {
             // The reference has finished loading; take another screenshot and move on to handling the result.
             view.take_screenshot()->when_resolved([&view, &context, test_index, url](RefPtr<Gfx::Bitmap const> screenshot) {
                 auto& test = context.tests[test_index];
                 test.expectation_screenshot = move(screenshot);
-                view.reset_zoom();
+                view.tab().reset_zoom();
                 if (!test.expectation_screenshot) {
                     view.on_test_complete({ test_index, TestResult::Fail });
                     return;
@@ -792,23 +792,23 @@ static void run_ref_test(TestWebView& view, TestRunContext& context, Test& test,
 
                 test.expectation_screenshot.clear();
                 test.did_inject_js = false;
-                view.load(test.ref_test_expectations[test.ref_test_expectation_index].url);
+                view.tab().load(test.ref_test_expectations[test.ref_test_expectation_index].url);
             });
         } else {
             // When the test initially finishes, we take a screenshot and request the reference test metadata.
             view.take_screenshot()->when_resolved([&view, &context, test_index](RefPtr<Gfx::Bitmap const> screenshot) {
                 context.tests[test_index].actual_screenshot = move(screenshot);
-                view.reset_zoom();
+                view.tab().reset_zoom();
                 if (!context.tests[test_index].actual_screenshot) {
                     view.on_test_complete({ test_index, TestResult::Fail });
                     return;
                 }
-                view.run_javascript("internals.loadReferenceTestMetadata();"_string);
+                view.tab().run_javascript("internals.loadReferenceTestMetadata();"_string);
             });
         }
     };
 
-    view.on_reference_test_metadata = [&view, &context, test_index](JsonValue const& metadata) {
+    view.tab().on_reference_test_metadata = [&view, &context, test_index](JsonValue const& metadata) {
         auto& test = context.tests[test_index];
         auto metadata_object = metadata.as_object();
 
@@ -860,10 +860,10 @@ static void run_ref_test(TestWebView& view, TestRunContext& context, Test& test,
 
         // Clear flag so we can inject the JS into the reference page.
         test.did_inject_js = false;
-        view.load(test.ref_test_expectations[test.ref_test_expectation_index].url);
+        view.tab().load(test.ref_test_expectations[test.ref_test_expectation_index].url);
     };
 
-    view.load(url);
+    view.tab().load(url);
 }
 
 static void run_screenshot_test(TestWebView& view, TestRunContext& context, Test& test, URL::URL const& url)
@@ -929,7 +929,7 @@ static void run_screenshot_test(TestWebView& view, TestRunContext& context, Test
             view.on_test_complete({ test_index, result.value() });
     };
 
-    view.on_load_finish = [&view, &context, test_index, url](auto const& loaded_url) {
+    view.tab().on_load_finish = [&view, &context, test_index, url](auto const& loaded_url) {
         // We don't want subframe loads to trigger this.
         if (!url.equals(loaded_url, URL::ExcludeFragment::Yes))
             return;
@@ -937,19 +937,19 @@ static void run_screenshot_test(TestWebView& view, TestRunContext& context, Test
         auto& test = context.tests[test_index];
         if (!test.did_inject_js) {
             test.did_inject_js = true;
-            view.run_javascript(wait_for_reftest_completion);
+            view.tab().run_javascript(wait_for_reftest_completion);
         }
     };
 
-    view.on_test_finish = [&view, &context, test_index, on_test_complete = move(on_test_complete)](auto const&) {
+    view.tab().on_test_finish = [&view, &context, test_index, on_test_complete = move(on_test_complete)](auto const&) {
         // Take a screenshot of the rendered test page.
         view.take_screenshot()->when_resolved([&view, &context, test_index, on_test_complete = move(on_test_complete)](RefPtr<Gfx::Bitmap const> screenshot) {
             context.tests[test_index].actual_screenshot = move(screenshot);
-            view.reset_zoom();
+            view.tab().reset_zoom();
             // Load reference test metadata for fuzzy matching config.
-            view.run_javascript("internals.loadReferenceTestMetadata();"_string);
+            view.tab().run_javascript("internals.loadReferenceTestMetadata();"_string);
 
-            view.on_reference_test_metadata = [&context, test_index, on_test_complete = move(on_test_complete)](JsonValue const& metadata) {
+            view.tab().on_reference_test_metadata = [&context, test_index, on_test_complete = move(on_test_complete)](JsonValue const& metadata) {
                 auto& test = context.tests[test_index];
                 auto metadata_object = metadata.as_object();
 
@@ -974,12 +974,12 @@ static void run_screenshot_test(TestWebView& view, TestRunContext& context, Test
         });
     };
 
-    view.load(url);
+    view.tab().load(url);
 }
 
 static void run_test(TestWebView& view, TestRunContext& context, size_t test_index, Application& app, TestRunCapture& test_run_capture)
 {
-    s_current_test_index_by_view.set(&view, test_index);
+    s_current_test_index_by_view.set(&view.tab(), test_index);
 
     auto& test = context.tests[test_index];
     test_run_capture.begin_test_output_capture(view, test);
@@ -994,7 +994,7 @@ static void run_test(TestWebView& view, TestRunContext& context, size_t test_ind
     });
     test.timeout_timer->start();
 
-    view.on_set_test_timeout = [&context, test_index](double milliseconds) {
+    view.tab().on_set_test_timeout = [&context, test_index](double milliseconds) {
         auto& test = context.tests[test_index];
         if (milliseconds <= 0)
             return;
@@ -1004,7 +1004,7 @@ static void run_test(TestWebView& view, TestRunContext& context, size_t test_ind
     // Clear the current document.
     auto promise = Core::Promise<Empty>::construct();
 
-    view.on_load_finish = [promise](auto const& url) {
+    view.tab().on_load_finish = [promise](auto const& url) {
         if (!url.equals(URL::about_blank()))
             return;
 
@@ -1013,14 +1013,14 @@ static void run_test(TestWebView& view, TestRunContext& context, size_t test_ind
         });
     };
 
-    view.on_test_finish = {};
+    view.tab().on_test_finish = {};
 
     promise->when_resolved([&view, test_index, &app, &context](auto) {
         view.reset_state_for_next_test()->when_resolved([&view, test_index, &app, &context](auto) {
             auto& test = context.tests[test_index];
             test.did_start_test = true;
 
-            view.set_frame_rate_capped(s_frame_rate_capped.contains_slow(test.input_path));
+            view.tab().set_frame_rate_capped(s_frame_rate_capped.contains_slow(test.input_path));
 
             auto real_path = MUST(FileSystem::real_path(test.input_path));
             auto headers_path = ByteString::formatted("{}.headers", real_path);
@@ -1064,12 +1064,12 @@ static void run_test(TestWebView& view, TestRunContext& context, size_t test_ind
         });
     });
 
-    view.load(URL::about_blank());
+    view.tab().load(URL::about_blank());
 }
 
 static void set_ui_callbacks_for_tests(TestWebView& view, TestRunContext& context, TestRunCapture& test_run_capture)
 {
-    view.on_request_file_picker = [&](auto const& accepted_file_types, auto allow_multiple_files, auto reply) {
+    view.tab().on_request_file_picker = [&](auto const& accepted_file_types, auto allow_multiple_files, auto reply) {
         // Create some dummy files for tests.
         Vector<Web::HTML::SelectedFile> selected_files;
 
@@ -1110,15 +1110,15 @@ static void set_ui_callbacks_for_tests(TestWebView& view, TestRunContext& contex
         reply->complete(move(selected_files));
     };
 
-    view.on_request_alert = [&](auto const&, auto reply) {
+    view.tab().on_request_alert = [&](auto const&, auto reply) {
         // For tests, just close the alert right away to unblock JS execution.
         reply->complete(true, {});
     };
 
-    view.on_web_content_crashed = [&view, &context, &test_run_capture](auto crash_reason) {
+    view.tab().on_web_content_crashed = [&view, &context, &test_run_capture](auto crash_reason) {
         test_run_capture.write_test_output(view);
 
-        if (auto index = s_current_test_index_by_view.get(&view); index.has_value()) {
+        if (auto index = s_current_test_index_by_view.get(&view.tab()); index.has_value()) {
             using enum WebView::ViewImplementation::WebContentCrashReason;
             auto expected_outcome = context.tests[*index].expected_outcome;
             auto result = (expected_outcome == ExpectedOutcome::WebContentTermination && crash_reason == RejectedIPC)
@@ -1129,7 +1129,7 @@ static void set_ui_callbacks_for_tests(TestWebView& view, TestRunContext& contex
         }
     };
 
-    view.on_web_content_process_change_for_cross_site_navigation = [&view, &test_run_capture]() {
+    view.tab().on_web_content_process_change_for_cross_site_navigation = [&view, &test_run_capture]() {
         test_run_capture.rebind_test_output_capture(view);
     };
 }
@@ -1235,17 +1235,17 @@ static ErrorOr<int> run_tests(Core::AnonymousBuffer const& theme, Web::DevicePix
     size_t total_tests = tests.size();
     auto concurrency = min(app.test_concurrency, total_tests);
     InitialLoadTracker initial_load_tracker { concurrency };
-    Vector<WebView::TabHandle<TestWebView>> views;
+    Vector<NonnullOwnPtr<TestWebView>> views;
     views.ensure_capacity(concurrency);
 
     TestRunCapture test_run_capture;
 
     for (size_t i = 0; i < concurrency; ++i) {
         auto view = TestWebView::create(theme, window_size);
-        view->on_load_finish = [&, i](auto const&) { initial_load_tracker.mark_ready(i); };
+        view->tab().on_load_finish = [&, i](auto const&) { initial_load_tracker.mark_ready(i); };
         // A process that crashes during the initial load never finishes it. The view is ready for its next navigation
         // though, and the first test's about:blank load runs with the test's timeout armed.
-        view->on_web_content_crashed = [&, i](auto) {
+        view->tab().on_web_content_crashed = [&, i](auto) {
             warnln("test-web: WebContent crashed during the initial about:blank load");
             initial_load_tracker.mark_ready(i);
         };
@@ -1273,9 +1273,9 @@ static ErrorOr<int> run_tests(Core::AnonymousBuffer const& theme, Web::DevicePix
     // Initialize view display states (used for idle tracking even when not on TTY)
     s_view_display_states.resize(concurrency);
     for (auto [i, view] : enumerate(views)) {
-        s_view_display_states[i].pid = view->web_content_pid();
+        s_view_display_states[i].pid = view->tab().web_content_pid();
         s_view_display_states[i].active = false;
-        s_view_index_by_view.set(view.ptr(), i);
+        s_view_index_by_view.set(&view->tab(), i);
     }
 
     auto tests_remaining = tests.size();
@@ -1300,7 +1300,7 @@ static ErrorOr<int> run_tests(Core::AnonymousBuffer const& theme, Web::DevicePix
     app.on_compositor_process_death = [&]() {
         warnln("test-web: Compositor process died; failing all in-flight tests as crashed");
         for (auto& view : views) {
-            if (auto index = s_current_test_index_by_view.get(view.ptr()); index.has_value()) {
+            if (auto index = s_current_test_index_by_view.get(&view->tab()); index.has_value()) {
                 test_run_capture.write_test_output(*view);
                 view->on_test_complete({ *index, TestResult::Crashed });
             }
@@ -1313,22 +1313,22 @@ static ErrorOr<int> run_tests(Core::AnonymousBuffer const& theme, Web::DevicePix
         view->clear_content_blockers();
 
         auto cleanup_test = [&, view = view.ptr()](size_t test_index, TestResult test_result) {
-            view->on_load_finish = {};
-            view->on_test_finish = {};
-            view->on_reference_test_metadata = {};
-            view->on_set_test_timeout = {};
+            view->tab().on_load_finish = {};
+            view->tab().on_test_finish = {};
+            view->tab().on_reference_test_metadata = {};
+            view->tab().on_set_test_timeout = {};
 
             // Disconnect child crash handlers so old child crashes don't affect the next test
             view->disconnect_child_crash_handlers();
             view->close_child_web_views();
 
             // A test's ignored and learned words live in this process, so they outlive a crashed WebContent.
-            view->reset_spell_checking();
+            view->tab().reset_spell_checking();
 
             // Don't try to reset state if WebContent crashed - it's gone
             if (test_result != TestResult::Crashed) {
                 view->clear_content_blockers();
-                view->reset_zoom();
+                view->tab().reset_zoom();
                 view->reset_force_dark();
                 view->reset_line_box_borders();
                 view->reset_user_style();
@@ -1341,7 +1341,7 @@ static ErrorOr<int> run_tests(Core::AnonymousBuffer const& theme, Web::DevicePix
             // The system visibility state lives in this view's traversable, and a test that hid the page only puts it
             // back from signalTestIsDone(). A test that times out or crashes while hidden would otherwise hand the
             // hidden state to every test that follows in this view, a respawned WebContent included.
-            view->set_system_visibility_state(Web::HTML::VisibilityState::Visible);
+            view->tab().set_system_visibility_state(Web::HTML::VisibilityState::Visible);
 
             auto& test = tests[test_index];
             if (test.timeout_timer) {
@@ -1349,7 +1349,7 @@ static ErrorOr<int> run_tests(Core::AnonymousBuffer const& theme, Web::DevicePix
                 test.timeout_timer.clear();
             }
 
-            s_current_test_index_by_view.remove(view);
+            s_current_test_index_by_view.remove(&view->tab());
         };
 
         // run_next_test handles: reset promise, attach callback, pick test, run test
@@ -1374,7 +1374,7 @@ static ErrorOr<int> run_tests(Core::AnonymousBuffer const& theme, Web::DevicePix
             test.index = index;
 
             // Mark this view as active (for variant wake-up tracking)
-            display.on_test_started(view_id, test, view->web_content_pid());
+            display.on_test_started(view_id, test, view->tab().web_content_pid());
             try_write_harness_status(ByteString::formatted("running {}", test.relative_path));
 
             // Reset promise and attach completion callback
@@ -1406,7 +1406,7 @@ static ErrorOr<int> run_tests(Core::AnonymousBuffer const& theme, Web::DevicePix
 
                 if (app.fail_fast && !fail_fast_triggered && should_trigger_fail_fast) {
                     fail_fast_triggered = true;
-                    auto const pid = view->web_content_pid();
+                    auto const pid = view->tab().web_content_pid();
                     Display::the().on_fail_fast(test, result.result, pid);
                     try_write_harness_status(ByteString::formatted("fail-fast after {}: {}", test.relative_path, test_result_to_string(result.result)));
 
@@ -1475,7 +1475,7 @@ static ErrorOr<int> run_tests(Core::AnonymousBuffer const& theme, Web::DevicePix
 
     if (app.dump_gc_graph) {
         for (auto& view : views) {
-            if (auto path = view->dump_gc_graph(); path.is_error()) {
+            if (auto path = view->tab().dump_gc_graph(); path.is_error()) {
                 warnln("Failed to dump GC graph: {}", path.error());
             } else {
                 outln("GC graph dumped to {}", path.value());

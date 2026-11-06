@@ -34,29 +34,29 @@ TEST_CASE(input_method_state)
     auto view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->on_load_finish = [&](auto const&) { ++loads_finished; };
+    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
 
     // Wait out the initial about:blank load; navigating before it completes would drop the navigation.
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 1; });
 
-    view->load_html("<!DOCTYPE html><input>"sv);
+    view->tab().load_html("<!DOCTYPE html><input>"sv);
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 2; });
 
     // Runs synchronously inside WebContent's handler, so it is ordered before the commits below.
-    view->run_javascript("document.querySelector('input').focus()"_string);
+    view->tab().run_javascript("document.querySelector('input').focus()"_string);
 
     size_t state_changes = 0;
     WebView::ViewImplementation::InputMethodState observed_state;
-    view->on_input_method_state_change = [&]() {
+    view->tab().on_input_method_state_change = [&]() {
         ++state_changes;
         // The new state must already be stored when the notification fires: The notified view re-queries the state from
         // inside the callback. Qt's updateMicroFocus() makes the platform IME call inputMethodQuery(), which answers
         // from input_method_state().
-        observed_state = view->input_method_state();
+        observed_state = view->tab().input_method_state();
     };
 
     // Each committed character round-trips through WebContent, which pushes a fresh input-method state.
-    view->commit_text_from_input_method("あ"_utf16);
+    view->tab().commit_text_from_input_method("あ"_utf16);
     Core::EventLoop::current().spin_until([&]() { return state_changes >= 1; });
     VERIFY(observed_state.is_enabled);
     VERIFY(observed_state.cursor_position == 1);
@@ -64,14 +64,14 @@ TEST_CASE(input_method_state)
     VERIFY(observed_state.text_after_cursor.is_empty());
 
     // Composing past the first character depends on the UI being notified for the SECOND push as well (#9712).
-    view->commit_text_from_input_method("い"_utf16);
+    view->tab().commit_text_from_input_method("い"_utf16);
     Core::EventLoop::current().spin_until([&]() { return state_changes >= 2; });
     VERIFY(observed_state.cursor_position == 2);
     VERIFY(observed_state.text_before_cursor == "あい"_utf16);
 
     // The disabled transition must be pushed and notified too, so the platform IME is turned off for the view.
-    view->run_javascript("document.querySelector('input').blur()"_string);
-    view->commit_text_from_input_method("x"_utf16);
+    view->tab().run_javascript("document.querySelector('input').blur()"_string);
+    view->tab().commit_text_from_input_method("x"_utf16);
     Core::EventLoop::current().spin_until([&]() { return state_changes >= 3; });
     VERIFY(!observed_state.is_enabled);
     VERIFY(observed_state.text_before_cursor.is_empty());
@@ -79,13 +79,13 @@ TEST_CASE(input_method_state)
     // Editing hosts must report IME state too: The Qt UI refuses to start composition at all when ImEnabled is false —
     // which drops input from dead keys and IMEs into contenteditable editors entirely (#11182). The state values are
     // derived from the DOM selection; the surrounding text is the content of the Text node holding the selection focus.
-    view->load_html("<!DOCTYPE html><div contenteditable>abc</div>"sv);
+    view->tab().load_html("<!DOCTYPE html><div contenteditable>abc</div>"sv);
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 3; });
 
-    view->run_javascript("document.querySelector('div').focus(); getSelection().collapse(document.querySelector('div').firstChild, 2)"_string);
+    view->tab().run_javascript("document.querySelector('div').focus(); getSelection().collapse(document.querySelector('div').firstChild, 2)"_string);
 
     // Unmarking with no composition in progress leaves the page alone, but still pushes fresh IME state.
-    view->unmark_text_from_input_method();
+    view->tab().unmark_text_from_input_method();
     Core::EventLoop::current().spin_until([&]() { return state_changes >= 4; });
     VERIFY(observed_state.is_enabled);
     VERIFY(observed_state.cursor_position == 2);
@@ -94,7 +94,7 @@ TEST_CASE(input_method_state)
     VERIFY(observed_state.text_after_cursor == "c"_utf16);
 
     // Committing composes into the editing host; the pushed state reflects the mutated Text node.
-    view->commit_text_from_input_method("ü"_utf16);
+    view->tab().commit_text_from_input_method("ü"_utf16);
     Core::EventLoop::current().spin_until([&]() { return state_changes >= 5; });
     VERIFY(observed_state.is_enabled);
     VERIFY(observed_state.cursor_position == 3);
@@ -102,8 +102,8 @@ TEST_CASE(input_method_state)
     VERIFY(observed_state.text_after_cursor == "c"_utf16);
 
     // A range selection within one Text node reports the focus as the cursor and the anchor separately.
-    view->run_javascript("getSelection().setBaseAndExtent(document.querySelector('div').firstChild, 1, document.querySelector('div').firstChild, 3)"_string);
-    view->unmark_text_from_input_method();
+    view->tab().run_javascript("getSelection().setBaseAndExtent(document.querySelector('div').firstChild, 1, document.querySelector('div').firstChild, 3)"_string);
+    view->tab().unmark_text_from_input_method();
     Core::EventLoop::current().spin_until([&]() { return state_changes >= 6; });
     VERIFY(observed_state.cursor_position == 3);
     VERIFY(observed_state.anchor_position == 1);
@@ -111,10 +111,10 @@ TEST_CASE(input_method_state)
     VERIFY(observed_state.text_after_cursor == "c"_utf16);
 
     // A selection whose anchor lies in a different node is reported as collapsed at the cursor.
-    view->load_html("<!DOCTYPE html><div contenteditable><b>xy</b>zw</div>"sv);
+    view->tab().load_html("<!DOCTYPE html><div contenteditable><b>xy</b>zw</div>"sv);
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 4; });
-    view->run_javascript("document.querySelector('div').focus(); getSelection().setBaseAndExtent(document.querySelector('b').firstChild, 1, document.querySelector('div').lastChild, 1)"_string);
-    view->unmark_text_from_input_method();
+    view->tab().run_javascript("document.querySelector('div').focus(); getSelection().setBaseAndExtent(document.querySelector('b').firstChild, 1, document.querySelector('div').lastChild, 1)"_string);
+    view->tab().unmark_text_from_input_method();
     Core::EventLoop::current().spin_until([&]() { return state_changes >= 7; });
     VERIFY(observed_state.is_enabled);
     VERIFY(observed_state.cursor_position == 1);
@@ -123,10 +123,10 @@ TEST_CASE(input_method_state)
     VERIFY(observed_state.text_after_cursor == "w"_utf16);
 
     // An empty editing host is still IME-enabled, with no surrounding text to draw context from.
-    view->load_html("<!DOCTYPE html><div contenteditable></div>"sv);
+    view->tab().load_html("<!DOCTYPE html><div contenteditable></div>"sv);
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 5; });
-    view->run_javascript("document.querySelector('div').focus()"_string);
-    view->unmark_text_from_input_method();
+    view->tab().run_javascript("document.querySelector('div').focus()"_string);
+    view->tab().unmark_text_from_input_method();
     Core::EventLoop::current().spin_until([&]() { return state_changes >= 8; });
     VERIFY(observed_state.is_enabled);
     VERIFY(observed_state.cursor_position == 0);
@@ -135,17 +135,17 @@ TEST_CASE(input_method_state)
     VERIFY(observed_state.text_after_cursor.is_empty());
 
     // Composing into it creates the Text node; the pushed state reflects it.
-    view->commit_text_from_input_method("あ"_utf16);
+    view->tab().commit_text_from_input_method("あ"_utf16);
     Core::EventLoop::current().spin_until([&]() { return state_changes >= 9; });
     VERIFY(observed_state.is_enabled);
     VERIFY(observed_state.cursor_position == 1);
     VERIFY(observed_state.text_before_cursor == "あ"_utf16);
 
     // designMode makes the document an editing host.
-    view->load_html("<!DOCTYPE html><p>hi</p>"sv);
+    view->tab().load_html("<!DOCTYPE html><p>hi</p>"sv);
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 6; });
-    view->run_javascript("document.designMode = 'on'; getSelection().collapse(document.querySelector('p').firstChild, 2)"_string);
-    view->unmark_text_from_input_method();
+    view->tab().run_javascript("document.designMode = 'on'; getSelection().collapse(document.querySelector('p').firstChild, 2)"_string);
+    view->tab().unmark_text_from_input_method();
     Core::EventLoop::current().spin_until([&]() { return state_changes >= 10; });
     VERIFY(observed_state.is_enabled);
     VERIFY(observed_state.cursor_position == 2);
@@ -153,10 +153,10 @@ TEST_CASE(input_method_state)
     VERIFY(observed_state.text_after_cursor.is_empty());
 
     // A focused element that's not editable must not enable the IME.
-    view->load_html("<!DOCTYPE html><div tabindex=\"0\">plain</div>"sv);
+    view->tab().load_html("<!DOCTYPE html><div tabindex=\"0\">plain</div>"sv);
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 7; });
-    view->run_javascript("document.querySelector('div').focus()"_string);
-    view->unmark_text_from_input_method();
+    view->tab().run_javascript("document.querySelector('div').focus()"_string);
+    view->tab().unmark_text_from_input_method();
     Core::EventLoop::current().spin_until([&]() { return state_changes >= 11; });
     VERIFY(!observed_state.is_enabled);
     VERIFY(observed_state.text_before_cursor.is_empty());

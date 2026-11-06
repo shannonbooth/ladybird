@@ -37,10 +37,10 @@ public:
     virtual Optional<WebView::ViewImplementation&> open_blank_new_tab(Web::HTML::ActivateTab) const override
     {
         m_opened_tabs.append(WebView::HeadlessWebView::create(load_theme(), { 800, 600 }));
-        auto& tab = m_opened_tabs.last();
-        tab->on_load_finish = [this](auto const&) { ++m_opened_tab_loads; };
-        m_active_view = tab.ptr();
-        return *tab;
+        auto& tab = m_opened_tabs.last()->tab();
+        tab.on_load_finish = [this](auto const&) { ++m_opened_tab_loads; };
+        m_active_view = &tab;
+        return tab;
     }
 
     virtual Optional<WebView::ViewImplementation&> active_web_view() const override
@@ -57,11 +57,11 @@ public:
     }
 
     size_t opened_tab_count() const { return m_opened_tabs.size(); }
-    WebView::HeadlessWebView& opened_tab(size_t index) { return *m_opened_tabs[index]; }
+    WebView::ViewImplementation& opened_tab(size_t index) { return m_opened_tabs[index]->tab(); }
     size_t opened_tab_loads() const { return m_opened_tab_loads; }
 
 private:
-    mutable Vector<WebView::TabHandle<WebView::HeadlessWebView>> m_opened_tabs;
+    mutable Vector<OwnPtr<WebView::HeadlessWebView>> m_opened_tabs;
     mutable WebView::ViewImplementation* m_active_view { nullptr };
     mutable size_t m_opened_tab_loads { 0 };
 };
@@ -80,14 +80,14 @@ TEST_CASE(view_source_of_source_page)
     auto view = WebView::HeadlessWebView::create(load_theme(), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->on_load_finish = [&](auto const&) { ++loads_finished; };
+    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 1; });
 
-    view->load_html("<!DOCTYPE html><p>A page</p>"sv);
+    view->tab().load_html("<!DOCTYPE html><p>A page</p>"sv);
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 2; });
 
-    app->activate(*view);
-    VERIFY(view->can_view_source());
+    app->activate(view->tab());
+    VERIFY(view->tab().can_view_source());
     VERIFY(app->view_source_action().enabled());
 
     app->view_source_action().activate();
@@ -107,7 +107,7 @@ TEST_CASE(view_source_of_source_page)
     Core::EventLoop::current().spin_until([&]() { return source_tab.url().fragment() == "fragment"sv; });
     VERIFY(!source_tab.can_view_source());
 
-    app->activate(*view);
+    app->activate(view->tab());
     VERIFY(app->view_source_action().enabled());
 
     app->activate(source_tab);

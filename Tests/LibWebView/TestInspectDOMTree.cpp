@@ -68,12 +68,12 @@ TEST_CASE(inspect_dom_tree_with_stale_nested_layout)
 
     size_t loads_finished = 0;
     bool crashed = false;
-    view->on_load_finish = [&](auto const&) { ++loads_finished; };
-    view->on_web_content_crashed = [&](auto) { crashed = true; };
+    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
+    view->tab().on_web_content_crashed = [&](auto) { crashed = true; };
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 1; });
 
     // The iframe's text changes every millisecond, so its document's layout is stale nearly all the time.
-    view->load_html(R"html(<!DOCTYPE html>
+    view->tab().load_html(R"html(<!DOCTYPE html>
 <iframe srcdoc="<span id=counter>0</span>" onload="
     let n = 0;
     const counter = this.contentDocument.getElementById('counter');
@@ -86,7 +86,7 @@ TEST_CASE(inspect_dom_tree_with_stale_nested_layout)
     Optional<u64> last_counter;
     static constexpr size_t tree_requests = 50;
     for (size_t request = 1; request <= tree_requests; ++request) {
-        view->inspect_dom_tree([&](ErrorOr<JsonValue> tree) {
+        view->tab().inspect_dom_tree([&](ErrorOr<JsonValue> tree) {
             VERIFY(!tree.is_error());
             last_counter = counter_in_iframe_document(tree.value().as_object());
             VERIFY(last_counter.has_value());
