@@ -111,12 +111,6 @@
 #include <LibWebView/WebContentPage.h>
 #include <LibWebView/WebDriverSessionConfig.h>
 
-namespace Ladybird {
-
-class WebContentView;
-
-}
-
 namespace WebView {
 
 class MicrophoneAuthorizerForTesting;
@@ -170,7 +164,6 @@ class WEBVIEW_API ViewImplementation final
     friend class WebContentClient;
     friend class WebContentPage;
     friend class CanonicalTraversable;
-    friend class ::Ladybird::WebContentView;
 
 public:
     AK_ALLOC_WITH_KMALLOC;
@@ -348,7 +341,22 @@ public:
     using ScreenRects = WebView::ScreenRects;
     // Sends the screens that screen_rects() reports to every page hosting documents of the tab.
     void update_screen_rects();
+    bool scales_frames_to_fit() const { return m_scales_frames_to_fit; }
     void set_scales_frames_to_fit(bool scales_frames_to_fit) { m_scales_frames_to_fit = scales_frames_to_fit; }
+    void set_device_pixel_ratio(double device_pixel_ratio) { m_device_pixel_ratio = device_pixel_ratio; }
+    void set_page_background_color_to_system_canvas(bool dark);
+
+    struct PresentedFrame {
+        Gfx::SharedImageBuffer const* shared_image_buffer { nullptr };
+        Gfx::IntSize bitmap_size;
+        // The backing store's ID, or -1 for a frame kept from backing stores that are gone.
+        i32 bitmap_id { -1 };
+        // The page that the backing store belongs to.
+        u64 page_id { 0 };
+    };
+    Optional<PresentedFrame> presented_frame() const;
+    Vector<Gfx::SharedImageBuffer const*> backing_stores() const;
+    static Gfx::IntRect rect_fitting_frame(Gfx::IntSize frame_size, Gfx::IntSize target_size);
     void enable_picture_in_picture_controls();
     void enqueue_input_event(Web::InputEvent);
     // The page reporting on an event must be the one handling it.
@@ -755,7 +763,6 @@ private:
     // Lets the Compositor paint into a backing store again. A view whose frames something else still reads may wait
     // for that to finish first.
     void release_backing_store(i32 bitmap_id);
-    static Gfx::IntRect rect_fitting_frame(Gfx::IntSize frame_size, Gfx::IntSize target_size);
 
     static constexpr auto ZOOM_STEP = 0.1;
 
@@ -825,7 +832,6 @@ private:
     void apply_cursor();
     void apply_tooltip();
     void update_ui_overlays();
-    void set_page_background_color_to_system_canvas(bool dark);
     void set_page_background_color(Gfx::Color);
     Gfx::Color preferred_canvas_background_color() const;
     Web::CSS::PreferredColorScheme preferred_color_scheme_for_page(WebContentPage const&) const;

@@ -170,7 +170,6 @@ public:
     void set_viewport_rect(Gfx::IntRect);
     void push_viewport_size();
     void set_device_pixel_ratio(double);
-    void set_zoom_level(double);
     void set_vertical_tab_overlay_insets(int left, int right);
     void set_bookmarks_bar_overlay_height(int);
     // How much the page is dimmed under a page dialog, from 0 to 1, where the page is presented above anything Qt paints
@@ -219,7 +218,6 @@ signals:
 
 private:
     // ^WebView::ViewSurface
-    virtual void prepare_page_for_navigable(WebView::WebContentPage&) override;
     virtual Core::AnonymousBuffer system_theme() override;
     virtual Optional<WebView::ScreenRects> screen_rects() const override;
     virtual void did_update_zoom() override;
@@ -236,16 +234,8 @@ private:
     virtual void releaseResources() override;
 #endif
 
-    struct Paintable {
-        Gfx::SharedImageBuffer const* shared_image_buffer { nullptr };
-        Gfx::IntSize bitmap_size;
-        // The backing store's ID, or -1 for a frame kept from backing stores that are gone.
-        i32 bitmap_id { -1 };
-        // The page that the backing store belongs to.
-        u64 page_id { 0 };
-    };
+    using Paintable = WebView::ViewImplementation::PresentedFrame;
 
-    Optional<Paintable> current_paintable() const;
     // The pixels of a frame, which a frame that lives only in GPU memory has once they are read back from there.
     RefPtr<Gfx::Bitmap const> cpu_bitmap_of(Paintable const&) const;
     // The pixels of a frame for Qt to paint, which there is no need to read back while the page's window covers them.
@@ -447,7 +437,6 @@ private:
     void destroy_page_surface();
     void release_retired_backing_stores_no_longer_painted();
     void release_all_retired_backing_stores();
-    Vector<Gfx::SharedImageBuffer const*> backing_stores() const;
     QRect rect_shown_in_window() const;
 
     // Shows the page's frames on Wayland by handing their dma-bufs to the compositor of the desktop. Without it, the

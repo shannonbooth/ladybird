@@ -42,7 +42,6 @@ public:
     virtual Gfx::IntPoint to_content_position(Gfx::IntPoint widget_position) const = 0;
     virtual Gfx::IntPoint to_widget_position(Gfx::IntPoint content_position) const = 0;
 
-    virtual void prepare_page_for_navigable(WebContentPage&) { }
     virtual void did_update_zoom() { }
     virtual Core::AnonymousBuffer system_theme() { return {}; }
     virtual Optional<ScreenRects> screen_rects() const { return {}; }

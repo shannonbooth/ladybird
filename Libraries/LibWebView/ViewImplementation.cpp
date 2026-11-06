@@ -2527,6 +2527,31 @@ void ViewImplementation::did_change_picture_in_picture_player_controls_visibilit
         update_ui_overlays();
 }
 
+Optional<ViewImplementation::PresentedFrame> ViewImplementation::presented_frame() const
+{
+    if (m_has_usable_bitmap) {
+        VERIFY(m_front_bitmap.shared_image_buffer);
+        return PresentedFrame { m_front_bitmap.shared_image_buffer.ptr(), m_front_bitmap.last_painted_size.to_type<int>(), m_front_bitmap.id, page().id().value() };
+    }
+    if (m_backup_shared_image_buffer)
+        return PresentedFrame { m_backup_shared_image_buffer.ptr(), m_backup_bitmap_size.to_type<int>() };
+    return {};
+}
+
+Vector<Gfx::SharedImageBuffer const*> ViewImplementation::backing_stores() const
+{
+    Vector<Gfx::SharedImageBuffer const*> backing_stores;
+    if (m_front_bitmap.shared_image_buffer)
+        backing_stores.append(m_front_bitmap.shared_image_buffer.ptr());
+    for (auto const& bitmap : m_other_bitmaps) {
+        if (bitmap.shared_image_buffer)
+            backing_stores.append(bitmap.shared_image_buffer.ptr());
+    }
+    if (m_backup_shared_image_buffer)
+        backing_stores.append(m_backup_shared_image_buffer.ptr());
+    return backing_stores;
+}
+
 Optional<ViewImplementation::DisplayedFrame> ViewImplementation::displayed_frame() const
 {
     if (m_has_usable_bitmap)
@@ -3644,8 +3669,7 @@ void ViewImplementation::prepare_page_for_navigable(WebContentPage& page)
     send_preferences_to_page(page);
     if (auto screens = screen_rects(); screens.has_value())
         send_screen_rects_to_page(page, *screens);
-    if (m_surface)
-        m_surface->prepare_page_for_navigable(page);
+    update_compositor_display_metadata(page);
 }
 
 void ViewImplementation::prepare_page_for_tab(WebContentPage& page)

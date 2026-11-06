@@ -103,7 +103,7 @@ void WebContentView::render(QRhiCommandBuffer* command_buffer)
     command_buffer->beginPass(renderTarget(), clear_color, { 1.0f, 0 });
     command_buffer->endPass();
 
-    auto paintable = current_paintable();
+    auto paintable = tab().presented_frame();
     if (!paintable.has_value() || paintable->bitmap_size.is_empty() || !rhi() || !colorTexture())
         return;
 
