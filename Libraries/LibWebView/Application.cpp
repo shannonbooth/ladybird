@@ -2449,49 +2449,87 @@ static NonnullRefPtr<Core::Timer> load_page_for_screenshot_and_exit(Core::EventL
     return timer;
 }
 
-static void load_page_for_info_and_exit(Core::EventLoop& event_loop, ViewImplementation& view, URL::URL const& url, WebView::PageInfoType type)
-{
-    view.on_load_finish = [&view, &event_loop, url, type](auto const& loaded_url) {
-        if (!url.equals(loaded_url, URL::ExcludeFragment::Yes))
+namespace {
+
+// Prints a page's info once it has loaded, and exits.
+class PageInfoPrinter final : public TabObserver {
+public:
+    AK_ALLOC_WITH_KMALLOC;
+
+    PageInfoPrinter(Core::EventLoop& event_loop, ViewImplementation& tab, URL::URL url, WebView::PageInfoType type)
+        : TabObserver(tab)
+        , m_event_loop(event_loop)
+        , m_url(move(url))
+        , m_type(type)
+    {
+        tab.load(m_url);
+    }
+
+private:
+    virtual void tab_did_finish_loading(URL::URL const& url) override
+    {
+        if (!m_url.equals(url, URL::ExcludeFragment::Yes))
             return;
 
-        view.request_internal_page_info(type)
-            ->when_resolved([&event_loop](auto const& text) {
-                outln("{}", text);
-                event_loop.quit(0);
-            })
-            .when_rejected([&event_loop](auto const& error) {
+        observed_tab()->request_internal_page_info(m_type)->when_resolved([&event_loop = m_event_loop](auto const& text) {
+                                                              outln("{}", text);
+                                                              event_loop.quit(0);
+                                                          })
+            .when_rejected([&event_loop = m_event_loop](auto const& error) {
                 warnln("Unable to get page info: {}", error);
                 event_loop.quit(1);
             });
-    };
+    }
 
-    view.load(url);
-}
+    Core::EventLoop& m_event_loop;
+    URL::URL m_url;
+    WebView::PageInfoType m_type;
+};
 
-// A window goes with its tab, and the windows opened from it go on without it.
-static void delete_window_with_its_tab(OwnPtr<HeadlessWebView>& window, Core::EventLoop& event_loop, bool exit_with_the_last_window)
-{
-    window->tab().on_close = [&window, &event_loop, exit_with_the_last_window] {
-        window = window->hand_child_web_views_to_new_root();
-        if (window)
-            delete_window_with_its_tab(window, event_loop, exit_with_the_last_window);
-        else if (exit_with_the_last_window)
-            event_loop.quit(0);
-    };
+// The window a headless browser starts with. Once its tab goes, the windows opened from it go on without it.
+class HeadlessRootWindow final : public TabObserver {
+public:
+    AK_ALLOC_WITH_KMALLOC;
+
+    HeadlessRootWindow(NonnullOwnPtr<HeadlessWebView> window, Core::EventLoop& event_loop, bool exit_with_the_last_window)
+        : TabObserver(window->tab())
+        , m_window(move(window))
+        , m_event_loop(event_loop)
+        , m_exit_with_the_last_window(exit_with_the_last_window)
+    {
+    }
+
+    HeadlessWebView& window() { return *m_window; }
+
+private:
+    virtual void tab_was_removed_from_user_interface() override
+    {
+        m_window = m_window->hand_child_web_views_to_new_root();
+        if (m_window)
+            observe(m_window->tab());
+        else if (m_exit_with_the_last_window)
+            m_event_loop.quit(0);
+    }
+
+    OwnPtr<HeadlessWebView> m_window;
+    Core::EventLoop& m_event_loop;
+    bool m_exit_with_the_last_window { false };
+};
+
 }
 
 ErrorOr<int> Application::execute()
 {
-    OwnPtr<HeadlessWebView> view;
+    OwnPtr<HeadlessRootWindow> root_window;
+    OwnPtr<PageInfoPrinter> page_info_printer;
     RefPtr<Core::Timer> screenshot_timer;
 
     if (m_browser_options.headless_mode.has_value()) {
         auto theme_path = LexicalPath::join(WebView::s_ladybird_resource_root, "themes"sv, "Default.ini"sv);
         auto theme = TRY(Gfx::load_system_theme(theme_path.string()));
 
-        view = HeadlessWebView::create(move(theme), { m_browser_options.window_width, m_browser_options.window_height });
-        delete_window_with_its_tab(view, *m_event_loop, m_browser_options.headless_mode == HeadlessMode::Manual && !m_browser_options.webdriver_browser_endpoint.has_value());
+        root_window = make<HeadlessRootWindow>(HeadlessWebView::create(move(theme), { m_browser_options.window_width, m_browser_options.window_height }), *m_event_loop, m_browser_options.headless_mode == HeadlessMode::Manual && !m_browser_options.webdriver_browser_endpoint.has_value());
+        auto& tab = root_window->window().tab();
 
         if (!m_browser_options.webdriver_browser_endpoint.has_value()) {
             if (m_browser_options.urls.size() != 1)
@@ -2499,16 +2537,16 @@ ErrorOr<int> Application::execute()
 
             switch (*m_browser_options.headless_mode) {
             case HeadlessMode::Screenshot:
-                screenshot_timer = load_page_for_screenshot_and_exit(*m_event_loop, view->tab(), m_browser_options.urls.first(), m_browser_options.screenshot_delay);
+                screenshot_timer = load_page_for_screenshot_and_exit(*m_event_loop, tab, m_browser_options.urls.first(), m_browser_options.screenshot_delay);
                 break;
             case HeadlessMode::LayoutTree:
-                load_page_for_info_and_exit(*m_event_loop, view->tab(), m_browser_options.urls.first(), WebView::PageInfoType::LayoutTree);
+                page_info_printer = make<PageInfoPrinter>(*m_event_loop, tab, m_browser_options.urls.first(), WebView::PageInfoType::LayoutTree);
                 break;
             case HeadlessMode::Text:
-                load_page_for_info_and_exit(*m_event_loop, view->tab(), m_browser_options.urls.first(), WebView::PageInfoType::Text);
+                page_info_printer = make<PageInfoPrinter>(*m_event_loop, tab, m_browser_options.urls.first(), WebView::PageInfoType::Text);
                 break;
             case HeadlessMode::Manual:
-                view->tab().load(m_browser_options.urls.first());
+                tab.load(m_browser_options.urls.first());
                 break;
             case HeadlessMode::Test:
                 VERIFY_NOT_REACHED();

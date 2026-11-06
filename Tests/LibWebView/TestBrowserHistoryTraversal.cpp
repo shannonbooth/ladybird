@@ -110,13 +110,14 @@ TEST_CASE(browser_history_traversal)
     OwnPtr<WebView::HeadlessWebView> view = WebView::HeadlessWebView::create(theme, { 800, 600 });
 
     size_t loads_started = 0;
-    view->tab().on_load_start = [&] { ++loads_started; };
+    Test::TabEvents view_events { view->tab() };
+    view_events.on_load_start = [&] { ++loads_started; };
 
     size_t loads_finished = 0;
-    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
+    view_events.on_load_finish = [&](auto const&) { ++loads_finished; };
 
     size_t browser_history_traversals_completed = 0;
-    view->tab().on_browser_history_traversal_complete = [&] { ++browser_history_traversals_completed; };
+    view_events.on_browser_history_traversal_complete = [&] { ++browser_history_traversals_completed; };
 
     size_t expected_loads = 1;
     // Wait out the initial about:blank load; navigating before it completes would drop the navigation.
@@ -134,7 +135,8 @@ TEST_CASE(browser_history_traversal)
     VERIFY(spare_view->tab().traversable().session_history().current_entry().url == URL::about_blank());
 
     size_t spare_view_loads_finished = 0;
-    spare_view->tab().on_load_finish = [&](auto const&) { ++spare_view_loads_finished; };
+    Test::TabEvents spare_view_events { spare_view->tab() };
+    spare_view_events.on_load_finish = [&](auto const&) { ++spare_view_loads_finished; };
     auto spare_view_url = URL::Parser::basic_parse("data:text/html,spare-process-navigation"sv).release_value();
     spare_view->tab().load(spare_view_url);
     Core::EventLoop::current().spin_until([&]() { return spare_view_loads_finished == 1; });
@@ -251,7 +253,7 @@ TEST_CASE(browser_history_traversal)
     // Closing a view may synchronously cause the UI to generate input, geometry, and visibility events while removing
     // the view from its container. Events received after the browsing context closes must be discarded.
     bool did_close = false;
-    view->tab().on_close = [&] {
+    view_events.on_close = [&] {
         Web::MouseEvent event {};
         event.type = Web::MouseEvent::Type::MouseLeave;
         view->tab().enqueue_input_event(move(event));
@@ -277,8 +279,9 @@ TEST_CASE(browser_history_traversal)
     // The restored URL is shown before the traversal runs, so wait for the document behind it to load.
     size_t restored_view_loads_finished = 0;
     bool restored_view_traversal_completed = false;
-    restored_view->tab().on_load_finish = [&](auto const&) { ++restored_view_loads_finished; };
-    restored_view->tab().on_browser_history_traversal_complete = [&] { restored_view_traversal_completed = true; };
+    Test::TabEvents restored_view_events { restored_view->tab() };
+    restored_view_events.on_load_finish = [&](auto const&) { ++restored_view_loads_finished; };
+    restored_view_events.on_browser_history_traversal_complete = [&] { restored_view_traversal_completed = true; };
     MUST(restored_view->tab().restore_session_history_from_snapshot(move(closed_tab_history)));
     Core::EventLoop::current().spin_until([&] {
         return restored_view_loads_finished >= 1
@@ -292,10 +295,12 @@ TEST_CASE(browser_history_traversal)
     OwnPtr<WebView::HeadlessWebView> popup;
     bool popup_loaded = false;
     Web::PageId popup_page_id = 0;
+    OwnPtr<Test::TabEvents> popup_events;
     restored_view->tab().on_new_web_view = [&](auto, auto, WebView::CanonicalTraversable& traversable) {
         popup_page_id = traversable.display_page()->id();
         popup = WebView::HeadlessWebView::create_child(*restored_view, traversable);
-        popup->tab().on_load_finish = [&](auto const&) { popup_loaded = true; };
+        popup_events = make<Test::TabEvents>(popup->tab());
+        popup_events->on_load_finish = [&](auto const&) { popup_loaded = true; };
         return popup->tab().handle();
     };
     restored_view->tab().run_javascript("window.open('about:blank')"_string);
@@ -374,7 +379,8 @@ TEST_CASE(browser_history_traversal)
         reload_page->close();
         auto reload_url = URL::create_with_file_scheme(reload_page_path).release_value();
         size_t reload_url_loads_finished = 0;
-        reload_view->tab().on_load_finish = [&](URL::URL const& url) {
+        Test::TabEvents reload_view_events { reload_view->tab() };
+        reload_view_events.on_load_finish = [&](URL::URL const& url) {
             if (url == reload_url)
                 ++reload_url_loads_finished;
         };
@@ -409,7 +415,8 @@ TEST_CASE(browser_history_traversal)
         auto activated_url = TRY_OR_FAIL(write_page("activated.html"sv, "activated"sv));
         auto newer_url = TRY_OR_FAIL(write_page("newer.html"sv, "newer"sv));
         Vector<URL::URL> loads_finished;
-        view->tab().on_load_finish = [&](URL::URL const& url) { loads_finished.append(url); };
+        Test::TabEvents view_events { view->tab() };
+        view_events.on_load_finish = [&](URL::URL const& url) { loads_finished.append(url); };
         view->tab().load(slow_unload_url);
         Core::EventLoop::current().spin_until([&] { return loads_finished.contains_slow(slow_unload_url); });
 

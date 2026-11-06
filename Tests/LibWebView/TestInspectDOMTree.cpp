@@ -68,8 +68,9 @@ TEST_CASE(inspect_dom_tree_with_stale_nested_layout)
 
     size_t loads_finished = 0;
     bool crashed = false;
-    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
-    view->tab().on_web_content_crashed = [&](auto) { crashed = true; };
+    Test::TabEvents view_events { view->tab() };
+    view_events.on_load_finish = [&](auto const&) { ++loads_finished; };
+    view_events.on_web_content_crashed = [&](auto) { crashed = true; };
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 1; });
 
     // The iframe's text changes every millisecond, so its document's layout is stale nearly all the time.

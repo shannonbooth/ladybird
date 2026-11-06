@@ -34,7 +34,8 @@ TEST_CASE(input_method_state)
     auto view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
+    Test::TabEvents view_events { view->tab() };
+    view_events.on_load_finish = [&](auto const&) { ++loads_finished; };
 
     // Wait out the initial about:blank load; navigating before it completes would drop the navigation.
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 1; });
@@ -47,7 +48,7 @@ TEST_CASE(input_method_state)
 
     size_t state_changes = 0;
     WebView::ViewImplementation::InputMethodState observed_state;
-    view->tab().on_input_method_state_change = [&]() {
+    view_events.on_input_method_state_change = [&]() {
         ++state_changes;
         // The new state must already be stored when the notification fires: The notified view re-queries the state from
         // inside the callback. Qt's updateMicroFocus() makes the platform IME call inputMethodQuery(), which answers

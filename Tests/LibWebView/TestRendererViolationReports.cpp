@@ -278,10 +278,11 @@ TEST_CASE(renderer_violation_reports)
     auto create_liar = [&] {
         auto liar = WebView::HeadlessWebView::create(theme, { 800, 600 });
         bool loaded = false;
-        liar->tab().on_load_finish = [&](auto const&) { loaded = true; };
+        Test::TabEvents liar_events { liar->tab() };
+        liar_events.on_load_finish = [&](auto const&) { loaded = true; };
         liar->tab().load(server.url("liar.tab().test"sv, "/target"sv));
         expect(spin_until_or_timeout([&] { return loaded; }, 10'000), "a liar's page loads"sv);
-        liar->tab().on_load_finish = {};
+        liar_events.on_load_finish = {};
         liars.append(move(liar));
     };
 
@@ -293,7 +294,8 @@ TEST_CASE(renderer_violation_reports)
     create_liar();
 
     Vector<ByteString> titles;
-    source_view->tab().on_title_change = [&](auto const& title) { titles.append(title.to_utf8().to_byte_string()); };
+    Test::TabEvents source_view_events { source_view->tab() };
+    source_view_events.on_title_change = [&](auto const& title) { titles.append(title.to_utf8().to_byte_string()); };
     auto saw_title = [&](StringView title) { return titles.contains_slow(title); };
 
     source_view->tab().load(server.url("source.test"sv, "/source"sv));
@@ -353,7 +355,8 @@ TEST_CASE(renderer_violation_reports)
     // A source replaced while its navigation runs is no longer reported in, though its document is still alive.
     auto frames_view = WebView::HeadlessWebView::create(theme, { 800, 600 });
     Vector<ByteString> frames_titles;
-    frames_view->tab().on_title_change = [&](auto const& title) { frames_titles.append(title.to_utf8().to_byte_string()); };
+    Test::TabEvents frames_view_events { frames_view->tab() };
+    frames_view_events.on_title_change = [&](auto const& title) { frames_titles.append(title.to_utf8().to_byte_string()); };
     auto frames_saw_title = [&](StringView title) { return frames_titles.contains_slow(title); };
 
     frames_view->tab().load(server.url("source.test"sv, "/frames"sv));

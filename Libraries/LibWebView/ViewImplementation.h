@@ -602,52 +602,28 @@ public:
     Function<void()> prepare_for_immediate_close();
     bool needs_beforeunload_check() const;
 
-    struct NavigationListener {
-        Function<void(URL::URL const&)> on_load_start;
-        Function<void(URL::URL const&)> on_load_finish;
-    };
-    u64 add_navigation_listener(NavigationListener);
-    void remove_navigation_listener(u64 listener_id);
-
     void add_observer(Badge<TabObserver>, TabObserver&);
     void remove_observer(Badge<TabObserver>, TabObserver&);
-    // An observer may stop observing as it hears of an event.
+    // An observer may stop observing as it hears of an event. A tab that is going away tells no one.
     template<typename Callback>
     void notify_observers(Callback const& callback)
     {
+        if (m_shutdown_started)
+            return;
         for (auto* observer : Vector { m_observers }) {
             if (m_observers.contains_slow(observer))
                 callback(*observer);
         }
     }
 
-    Function<void()> on_ready_to_paint;
-    Function<void(TabPerformanceStats const&)> on_performance_stats;
     Function<String(Web::HTML::ActivateTab, Web::HTML::WebViewHints, CanonicalTraversable&)> on_new_web_view;
     Function<void()> on_activate_tab;
-    Function<void()> on_close;
-    Function<void(URL::URL const&)> on_link_hover;
-    Function<void()> on_link_unhover;
-    Function<void(Utf16String const&)> on_title_change;
-    Function<void(URL::URL const&)> on_url_change;
-    Function<void()> on_load_start;
-    Function<void(URL::URL const&)> on_load_finish;
-    Function<void(bool)> on_loading_state_change;
-    Function<void()> on_top_level_navigation_commit;
-    Function<void()> on_browser_history_traversal_complete;
     Function<void(DictionaryLookup const&, Gfx::IntPoint)> on_request_dictionary_lookup;
-    Function<void(Optional<Gfx::Bitmap const&>)> on_favicon_change;
-    Function<void(Gfx::Cursor const&)> on_cursor_change;
-    Function<void()> on_input_method_state_change;
-    Function<void(ByteString const&)> on_enter_tooltip_area;
-    Function<void()> on_leave_tooltip_area;
-    Function<void(ContentBlockingSnapshot const&)> on_content_blocking_change;
     Function<void(Utf16String const& message, NonnullRefPtr<DialogReply>)> on_request_alert;
     Function<void(String const& source, NonnullRefPtr<DialogReply>)> on_request_before_unload;
     Function<void(Utf16String const& message, NonnullRefPtr<DialogReply>)> on_request_confirm;
     Function<void(Utf16String const& message, Utf16String const& default_, NonnullRefPtr<DialogReply>)> on_request_prompt;
     Function<void(Utf16String const& message)> on_request_set_prompt_text;
-    Function<void()> on_before_browser_initiated_navigation;
     Function<void(URL::URL const&, URL::Origin const&, ExternalURLHandler const&, Function<void(bool)>)> on_request_external_url_confirmation;
     Function<void()> on_request_accept_dialog;
     Function<void()> on_request_website_issue_report;
@@ -664,27 +640,12 @@ public:
     Function<void(Utf16String const& input_type, Utf16String const& value, Utf16String const& minimum, Utf16String const& maximum, NonnullRefPtr<DatePickerReply>)> on_request_date_picker;
     Function<void(PermissionPromptRequest const&, PermissionPromptCallback)> on_request_permission;
     Function<void(PermissionPromptRequest const&)> on_cancel_permission_prompt;
-    Function<void(TabIndicator, bool visible)> on_tab_indicator_change;
     Function<void(Web::HTML::FileFilter const& accepted_file_types, Web::HTML::AllowMultipleFiles, NonnullRefPtr<FilePickerReply>)> on_request_file_picker;
     Function<void(Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items, NonnullRefPtr<SelectDropdownReply>)> on_request_select_dropdown;
-    Function<void(Web::KeyEvent const&)> on_finish_handling_key_event;
-    Function<void(Web::MouseEvent const&, Web::EventResult)> on_finish_handling_mouse_event;
-    Function<void(Compositing::PictureInPictureControl)> on_picture_in_picture_control_activated;
-    Function<void(Web::DragEvent const&)> on_finish_handling_drag_event;
-    Function<void(String const&)> on_test_finish;
-    Function<void(double milliseconds)> on_set_test_timeout;
-    Function<void(JsonValue)> on_reference_test_metadata;
-    Function<void(size_t current_match_index, Optional<size_t> const& total_match_count)> on_find_in_page;
-    Function<void(Gfx::Color)> on_page_background_color_change;
-    Function<void(Web::ScreenWakeLockState)> on_screen_wake_lock_state_changed;
     enum class WebContentCrashReason {
         ProcessCrash,
         RejectedIPC,
     };
-    Function<void(WebContentCrashReason)> on_web_content_crashed;
-    Function<void(bool)> on_crash_overlay_state_change;
-    Function<void()> on_crash_report_saved;
-    Function<void()> on_web_content_process_change_for_cross_site_navigation;
 
     Menu& bookmarks_bar_context_menu() { return *m_bookmarks_bar_context_menu; }
     Menu& bookmark_context_menu() { return *m_bookmark_context_menu; }
@@ -1216,9 +1177,7 @@ private:
     //        is required to be globally unique for Firefox DevTools.
     u64 m_view_id { 0 };
 
-    HashMap<u64, NavigationListener> m_navigation_listeners;
     Vector<TabObserver*> m_observers;
-    u64 m_next_navigation_listener_id { 1 };
 
     enum class NodePickerRequestType : u8 {
         Hovered,

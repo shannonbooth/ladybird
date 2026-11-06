@@ -133,6 +133,7 @@ WebContentView::WebContentView(QWidget* window, Optional<WebView::CanonicalTrave
     } else {
         WebView::ViewImplementation::open_tab(initial_state.is_private, Web::HTML::VisibilityState::Hidden).attach_surface(*this);
     }
+    observe(tab());
 
 #ifdef LADYBIRD_QT_USE_RHI_WIDGET
     // Keep the QRhiWidget out of the top-level QWidget backing store. If it is
@@ -153,13 +154,6 @@ WebContentView::WebContentView(QWidget* window, Optional<WebView::CanonicalTrave
 
     setAttribute(Qt::WA_InputMethodEnabled, true);
 
-    // Push-based IME state (ViewImplementation::set_input_method_state) must nudge Qt to re-query inputMethodQuery().
-    // Without that, the platform IME keeps the stale first-keystroke caret and surrounding text — and composition stops
-    // after one character.
-    tab().on_input_method_state_change = [this] {
-        updateMicroFocus();
-    };
-
     setMouseTracking(true);
     setAcceptDrops(true);
 
@@ -178,11 +172,6 @@ WebContentView::WebContentView(QWidget* window, Optional<WebView::CanonicalTrave
     tab().set_system_theme(make_system_theme_from_qt_palette(*this, PaletteMode::Default));
 
     tab().set_page_background_color_to_system_canvas(websites_prefer_dark());
-#ifdef LADYBIRD_QT_USE_IOSURFACE_LAYER
-    tab().on_page_background_color_change = [this](Gfx::Color) {
-        update_iosurface_layer_background_color();
-    };
-#endif
 
     QObject::connect(qGuiApp, &QGuiApplication::screenRemoved, this, [this](QScreen*) {
         tab().set_screen_rects(screen_rects());
@@ -226,25 +215,6 @@ WebContentView::WebContentView(QWidget* window, Optional<WebView::CanonicalTrave
 
     // Windows has no bridge for the tree, so it never fetches one.
 #if !defined(Q_OS_WIN)
-    // A navigation listener rather than on_load_finish: Tab installs its own on_load_finish handler on the view right
-    // after constructing it, which would replace one set here and leave the accessibility tree never requested.
-    WebView::ViewImplementation::NavigationListener navigation_listener;
-    navigation_listener.on_load_finish = [this](auto const&) {
-        // Reset the document-root focus gate so that *each* page navigation posts a fresh accessibility focus event on
-        // the newly-loaded document. Otherwise, without this reset, only the *first* page load (often an empty default
-        // page) would trigger the gate — and subsequent user-initiated navigations (type URL, Enter) would never let
-        // Orca know that a new document is ready for browse-mode navigation. macOS gates its load announcement on the
-        // same flag, so it needs the per-navigation reset too.
-        m_posted_initial_accessibility_focus = false;
-        m_report_accessibility_focus_with_next_tree = false;
-        // Fetch the new page's tree only for an assistive technology: Qt's accessibility is active once one is running
-        // (on Linux, AT-SPI's org.a11y.Status reports IsEnabled or ScreenReaderEnabled, which Gecko's a11y::
-        // ShouldA11yBeEnabled() checks too) or has queried a window (-[QNSView activateQtAccessibility] on macOS). One
-        // that turns up later gets the tree from accessibilityActiveChanged().
-        if (QAccessible::isActive())
-            fetch_accessibility_tree();
-    };
-    tab().add_navigation_listener(AK::move(navigation_listener));
     QAccessible::installActivationObserver(this);
 #endif
 
@@ -253,36 +223,6 @@ WebContentView::WebContentView(QWidget* window, Optional<WebView::CanonicalTrave
         Ladybird::post_accessibility_announcement(text, live_value);
     };
 #endif
-
-    tab().on_ready_to_paint = [this]() {
-        if (m_screenshot_selection_overlay)
-            m_screenshot_selection_overlay->page_did_paint();
-
-        // Nothing of the page shows while an overlay covers it, which repaints the page once it goes away.
-        if (!is_page_covered_by_overlay()) {
-#ifdef LADYBIRD_QT_USE_RHI_WIDGET
-            schedule_frame_damage_repaint();
-#else
-            schedule_repaint();
-#endif
-        }
-        emit ready_to_paint();
-    };
-
-    tab().on_cursor_change = [this](auto cursor) {
-        update_cursor(cursor);
-    };
-
-    tab().on_crash_overlay_state_change = [this](bool active) {
-        if (active)
-            close_select_dropdown_after_crash();
-        set_crash_overlay_visible(active);
-        emit crash_overlay_changed();
-    };
-
-    tab().on_crash_report_saved = [this] {
-        show_crash_report_review();
-    };
 
     tab().on_request_website_issue_report = [this] {
         start_web_compat_report();
@@ -297,22 +237,6 @@ WebContentView::WebContentView(QWidget* window, Optional<WebView::CanonicalTrave
         show_appkit_dictionary_lookup(*this, lookup, position);
     };
 #endif
-
-    tab().on_enter_tooltip_area = [this](auto const& tooltip) {
-        m_tooltip_text = tooltip;
-    };
-
-    tab().on_leave_tooltip_area = [this]() {
-        m_tooltip_text.clear();
-    };
-
-    tab().on_finish_handling_key_event = [this](auto const& event) {
-        finish_handling_key_event(event);
-    };
-
-    tab().on_finish_handling_drag_event = [this](auto const& event) {
-        finish_handling_drag_event(event);
-    };
 
     m_select_dropdown = new SelectDropdown(this);
 
@@ -331,6 +255,94 @@ WebContentView::WebContentView(QWidget* window, Optional<WebView::CanonicalTrave
         m_select_dropdown->open(map_point_to_global_position(content_position), minimum_width, items);
     };
 }
+
+// Push-based IME state (ViewImplementation::set_input_method_state) must nudge Qt to re-query inputMethodQuery().
+// Without that, the platform IME keeps the stale first-keystroke caret and surrounding text — and composition stops
+// after one character.
+void WebContentView::tab_did_change_input_method_state()
+{
+    updateMicroFocus();
+}
+
+#ifdef LADYBIRD_QT_USE_IOSURFACE_LAYER
+void WebContentView::tab_did_change_page_background_color(Gfx::Color)
+{
+    update_iosurface_layer_background_color();
+}
+#endif
+
+void WebContentView::tab_is_ready_to_paint()
+{
+    if (m_screenshot_selection_overlay)
+        m_screenshot_selection_overlay->page_did_paint();
+
+    // Nothing of the page shows while an overlay covers it, which repaints the page once it goes away.
+    if (!is_page_covered_by_overlay()) {
+#ifdef LADYBIRD_QT_USE_RHI_WIDGET
+        schedule_frame_damage_repaint();
+#else
+        schedule_repaint();
+#endif
+    }
+    emit ready_to_paint();
+}
+
+void WebContentView::tab_did_change_cursor(Gfx::Cursor const& cursor)
+{
+    update_cursor(cursor);
+}
+
+void WebContentView::tab_did_change_crash_overlay_state(bool active)
+{
+    if (active)
+        close_select_dropdown_after_crash();
+    set_crash_overlay_visible(active);
+    emit crash_overlay_changed();
+}
+
+void WebContentView::tab_did_save_crash_report()
+{
+    show_crash_report_review();
+}
+
+void WebContentView::tab_did_enter_tooltip_area(ByteString const& tooltip)
+{
+    m_tooltip_text = tooltip;
+}
+
+void WebContentView::tab_did_leave_tooltip_area()
+{
+    m_tooltip_text.clear();
+}
+
+void WebContentView::tab_did_finish_handling_key_event(Web::KeyEvent const& event)
+{
+    finish_handling_key_event(event);
+}
+
+void WebContentView::tab_did_finish_handling_drag_event(Web::DragEvent const& event)
+{
+    finish_handling_drag_event(event);
+}
+
+#if !defined(Q_OS_WIN)
+void WebContentView::tab_did_finish_loading(URL::URL const&)
+{
+    // Reset the document-root focus gate so that *each* page navigation posts a fresh accessibility focus event on
+    // the newly-loaded document. Otherwise, without this reset, only the *first* page load (often an empty default
+    // page) would trigger the gate — and subsequent user-initiated navigations (type URL, Enter) would never let
+    // Orca know that a new document is ready for browse-mode navigation. macOS gates its load announcement on the
+    // same flag, so it needs the per-navigation reset too.
+    m_posted_initial_accessibility_focus = false;
+    m_report_accessibility_focus_with_next_tree = false;
+    // Fetch the new page's tree only for an assistive technology: Qt's accessibility is active once one is running
+    // (on Linux, AT-SPI's org.a11y.Status reports IsEnabled or ScreenReaderEnabled, which Gecko's a11y::
+    // ShouldA11yBeEnabled() checks too) or has queried a window (-[QNSView activateQtAccessibility] on macOS). One
+    // that turns up later gets the tree from accessibilityActiveChanged().
+    if (QAccessible::isActive())
+        fetch_accessibility_tree();
+}
+#endif
 
 WebContentView::~WebContentView()
 {
@@ -1596,8 +1608,7 @@ void WebContentView::review_web_compat_report(WebCompatReportCapture capture)
         };
     };
     review->on_exit = [this] {
-        if (tab().on_close)
-            tab().on_close();
+        emit close_requested();
     };
     review->on_close_tab = [this] {
         if (on_close_web_compat_report_tab)
@@ -1761,8 +1772,7 @@ void WebContentView::show_crash_report_review(Optional<ByteString> const& hidden
         if (is_hidden_crash) {
             if (auto result = WebView::CrashReportStore::the().mark_all_seen(); result.is_error())
                 warnln("Could not mark crash reports as seen: {}", result.error());
-            if (tab().on_close)
-                tab().on_close();
+            emit close_requested();
             return;
         }
         tab().reload();

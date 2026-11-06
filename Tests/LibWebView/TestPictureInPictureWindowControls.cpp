@@ -139,18 +139,19 @@ TEST_CASE(picture_in_picture_window_controls)
     auto view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
+    Test::TabEvents view_events { view->tab() };
+    view_events.on_load_finish = [&](auto const&) { ++loads_finished; };
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 1; });
 
     Utf16String last_title;
-    view->tab().on_title_change = [&](auto const& title) { last_title = title; };
+    view_events.on_title_change = [&](auto const& title) { last_title = title; };
     Gfx::Cursor last_cursor { Gfx::StandardCursor::Arrow };
-    view->tab().on_cursor_change = [&](auto const& cursor) { last_cursor = cursor; };
+    view_events.on_cursor_change = [&](auto const& cursor) { last_cursor = cursor; };
     Optional<ByteString> tooltip;
-    view->tab().on_enter_tooltip_area = [&](auto const& text) { tooltip = text; };
-    view->tab().on_leave_tooltip_area = [&]() { tooltip.clear(); };
+    view_events.on_enter_tooltip_area = [&](auto const& text) { tooltip = text; };
+    view_events.on_leave_tooltip_area = [&]() { tooltip.clear(); };
     Vector<Compositing::PictureInPictureControl> activated_controls;
-    view->tab().on_picture_in_picture_control_activated = [&](auto control) { activated_controls.append(control); };
+    view_events.on_picture_in_picture_control_activated = [&](auto control) { activated_controls.append(control); };
 
     view->tab().enable_picture_in_picture_controls();
 
@@ -277,10 +278,11 @@ addEventListener("pointermove", event => { if (event.buttons) log("drag", event)
 
     // A press on the page can move onto a control before the window takes it over.
     Gfx::Cursor window_cursor { Gfx::StandardCursor::Arrow };
-    window_view.on_cursor_change = [&](auto const& cursor) { window_cursor = cursor; };
+    Test::TabEvents window_view_events { window_view };
+    window_view_events.on_cursor_change = [&](auto const& cursor) { window_cursor = cursor; };
     Optional<ByteString> window_tooltip;
-    window_view.on_enter_tooltip_area = [&](auto const& text) { window_tooltip = text; };
-    window_view.on_leave_tooltip_area = [&]() { window_tooltip.clear(); };
+    window_view_events.on_enter_tooltip_area = [&](auto const& text) { window_tooltip = text; };
+    window_view_events.on_leave_tooltip_area = [&]() { window_tooltip.clear(); };
     move_mouse_to(window_view, beside_play_button);
     press_mouse_at(window_view, beside_play_button);
     move_mouse_to(window_view, window_close_button, Web::UIEvents::MouseButton::Primary);
@@ -309,7 +311,7 @@ addEventListener("pointermove", event => { if (event.buttons) log("drag", event)
     // The controls are where the displayed frame shows them, at the pixel ratio it was painted at, until a frame at a new
     // ratio replaces it. (16, 16) is inside Close at 1x but outside it at 2x, and (48, 48) is the reverse.
     Vector<Compositing::PictureInPictureControl> window_activated_controls;
-    window_view.on_picture_in_picture_control_activated = [&](auto control) { window_activated_controls.append(control); };
+    window_view_events.on_picture_in_picture_control_activated = [&](auto control) { window_activated_controls.append(control); };
     Web::DevicePixelPoint close_button_at_1x { 16, 16 };
     Web::DevicePixelPoint close_button_at_2x { 48, 48 };
 

@@ -11,12 +11,13 @@
 #include <AK/kmalloc.h>
 #include <LibGfx/Size.h>
 #include <LibWebView/Forward.h>
+#include <LibWebView/TabObserver.h>
 
 namespace WebView {
 
 // The floating window that shows a page's Picture-in-Picture video, and keeps that video's aspect ratio. Sizes are in
 // CSS pixels.
-class WEBVIEW_API PictureInPictureWindow {
+class WEBVIEW_API PictureInPictureWindow : public TabObserver {
 public:
     AK_ALLOC_WITH_KMALLOC;
 
@@ -27,7 +28,7 @@ public:
     // The window keeps its width as its video changes shape, as far as its minimum and maximum sizes allow.
     static Gfx::IntSize size_for_video_size(Gfx::IntSize window_size, Gfx::IntSize video_size, Gfx::IntSize screen_size);
 
-    virtual ~PictureInPictureWindow() = default;
+    virtual ~PictureInPictureWindow() override = default;
 
     virtual Gfx::IntSize size() const = 0;
     virtual String handle() const = 0;
@@ -49,10 +50,11 @@ public:
     Function<void()> on_page_crash;
 
 protected:
-    void report_page_close_of(ViewImplementation&);
+    void report_page_close_of(ViewImplementation& view) { observe(view); }
 
-private:
-    ViewImplementation* m_page_view { nullptr };
+    // ^TabObserver
+    virtual void tab_was_removed_from_user_interface() override;
+    virtual void tab_web_content_did_crash(ViewImplementation::WebContentCrashReason) override;
 };
 
 }

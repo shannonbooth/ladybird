@@ -43,6 +43,7 @@
 #include <LibWebView/PictureInPictureManager.h>
 #include <LibWebView/RecordingNotificationBackend.h>
 #include <LibWebView/RequestServerManager.h>
+#include <LibWebView/TabObserver.h>
 #include <LibWebView/ViewImplementation.h>
 #include <LibWebView/WebContentClient.h>
 #include <LibWebView/WebContentTestClient.h>
@@ -575,8 +576,7 @@ void WebContentClient::did_lose_process()
                 return;
             if (shows_crash_screen)
                 view->handle_web_content_process_crash();
-            if (view->on_web_content_crashed)
-                view->on_web_content_crashed(crash_reason);
+            view->notify_observers([&](TabObserver& observer) { observer.tab_web_content_did_crash(crash_reason); });
         });
     }
 }

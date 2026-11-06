@@ -26,6 +26,7 @@
 #include <LibWebCommon/Page/PageId.h>
 #include <LibWebView/AccessibilityTreeManager.h>
 #include <LibWebView/BrowsingSession.h>
+#include <LibWebView/TabObserver.h>
 #include <LibWebView/ViewImplementation.h>
 #include <LibWebView/WebCompatReport.h>
 #include <UI/Qt/BackingStoreRelease.h>
@@ -117,6 +118,7 @@ struct WebContentViewInitialState {
 class WebContentView final
     : public WebContentViewBase
     , public WebView::ViewSurface
+    , public WebView::TabObserver
 #if !defined(Q_OS_WIN)
     , public QAccessible::ActivationObserver
 #endif
@@ -212,11 +214,29 @@ public:
 
 signals:
     void ready_to_paint();
+    void close_requested();
     void crash_overlay_changed();
     void image_overlay_unavailable();
     void urls_dropped(QList<QUrl> const&);
 
 private:
+    // ^WebView::TabObserver
+    virtual void tab_did_change_input_method_state() override;
+#ifdef LADYBIRD_QT_USE_IOSURFACE_LAYER
+    virtual void tab_did_change_page_background_color(Gfx::Color) override;
+#endif
+    virtual void tab_is_ready_to_paint() override;
+    virtual void tab_did_change_cursor(Gfx::Cursor const& cursor) override;
+    virtual void tab_did_change_crash_overlay_state(bool active) override;
+    virtual void tab_did_save_crash_report() override;
+    virtual void tab_did_enter_tooltip_area(ByteString const& tooltip) override;
+    virtual void tab_did_leave_tooltip_area() override;
+    virtual void tab_did_finish_handling_key_event(Web::KeyEvent const& event) override;
+    virtual void tab_did_finish_handling_drag_event(Web::DragEvent const& event) override;
+#if !defined(Q_OS_WIN)
+    virtual void tab_did_finish_loading(URL::URL const&) override;
+#endif
+
     // ^WebView::ViewSurface
     virtual void did_update_zoom() override;
     virtual void show_context_menu(WebView::Menu&, Gfx::IntPoint content_position) override;

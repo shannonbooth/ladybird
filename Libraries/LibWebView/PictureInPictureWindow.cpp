@@ -71,23 +71,23 @@ Gfx::IntSize PictureInPictureWindow::size_for_video_size(Gfx::IntSize window_siz
 
 void PictureInPictureWindow::close_page()
 {
-    if (!m_page_view)
+    auto* tab = observed_tab();
+    if (!tab)
         return;
-    if (auto& page = m_page_view->page(); page.is_open())
+    if (auto& page = tab->page(); page.is_open())
         page.async_request_close_without_prompting();
 }
 
-void PictureInPictureWindow::report_page_close_of(ViewImplementation& view)
+void PictureInPictureWindow::tab_was_removed_from_user_interface()
 {
-    m_page_view = &view;
-    view.on_close = [this] {
-        if (auto on_page_close = move(this->on_page_close))
-            on_page_close();
-    };
-    view.on_web_content_crashed = [this](auto) {
-        if (on_page_crash)
-            on_page_crash();
-    };
+    if (auto on_page_close = move(this->on_page_close))
+        on_page_close();
+}
+
+void PictureInPictureWindow::tab_web_content_did_crash(ViewImplementation::WebContentCrashReason)
+{
+    if (on_page_crash)
+        on_page_crash();
 }
 
 }

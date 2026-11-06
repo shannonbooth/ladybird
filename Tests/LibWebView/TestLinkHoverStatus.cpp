@@ -60,7 +60,8 @@ TEST_CASE(link_hover_status)
     auto view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
+    Test::TabEvents view_events { view->tab() };
+    view_events.on_load_finish = [&](auto const&) { ++loads_finished; };
 
     // Wait out the initial about:blank load; navigating before it completes would drop the navigation.
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 1; });
@@ -72,11 +73,11 @@ TEST_CASE(link_hover_status)
     size_t hovers_reported = 0;
     size_t unhovers_reported = 0;
     Optional<URL::URL> hovered_url;
-    view->tab().on_link_hover = [&](auto const& url) {
+    view_events.on_link_hover = [&](auto const& url) {
         ++hovers_reported;
         hovered_url = url;
     };
-    view->tab().on_link_unhover = [&] {
+    view_events.on_link_unhover = [&] {
         ++unhovers_reported;
         hovered_url.clear();
     };
@@ -138,7 +139,7 @@ TEST_CASE(link_hover_status)
     // A page with an iframe over the top-left quarter, holding a link that fills it, and a link of the page's own over
     // the top-right quarter. The page retitles itself on each load of the iframe, so the test can wait one out.
     Utf16String last_title;
-    view->tab().on_title_change = [&](auto const& title) { last_title = title; };
+    view_events.on_title_change = [&](auto const& title) { last_title = title; };
     view->tab().load_html(R"~~~(<!DOCTYPE html>
 <iframe id="frame" style="position:fixed;left:0;top:0;width:400px;height:300px;border:0" srcdoc="<a href='https://example.com/in-iframe' style='position:fixed;left:0;top:0;width:400px;height:300px'>Link</a>"></iframe>
 <a href="https://example.com/parent" style="position:fixed;left:400px;top:0;width:400px;height:300px">Link</a>

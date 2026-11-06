@@ -52,7 +52,8 @@ TEST_CASE(before_unload)
     OwnPtr<WebView::HeadlessWebView> view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
+    Test::TabEvents view_events { view->tab() };
+    view_events.on_load_finish = [&](auto const&) { ++loads_finished; };
     Core::EventLoop::current().spin_until([&] { return loads_finished == 1; });
 
     auto source_url = URL::Parser::basic_parse("data:text/html,<title>source</title><button style='width:100px;height:100px' onclick=\"document.title='activated'\">Activate</button><script>onbeforeunload=e=>e.preventDefault()</script>"sv).release_value();
@@ -66,10 +67,10 @@ TEST_CASE(before_unload)
     };
     auto activate_page = [&] {
         bool activated = false;
-        view->tab().on_title_change = [&](auto const& title) { activated = title == "activated"sv; };
+        view_events.on_title_change = [&](auto const& title) { activated = title == "activated"sv; };
         click(view->tab());
         Core::EventLoop::current().spin_until([&] { return activated; });
-        view->tab().on_title_change = {};
+        view_events.on_title_change = {};
     };
 
     // Frontends without a beforeunload handler must act as if the user chose Leave.
@@ -155,7 +156,7 @@ TEST_CASE(before_unload)
     VERIFY(prompt_count == prompt_count_before_adoption + 1);
 
     bool closed = false;
-    view->tab().on_close = [&] {
+    view_events.on_close = [&] {
         view = nullptr;
         closed = true;
     };

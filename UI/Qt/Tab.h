@@ -19,6 +19,7 @@
 #include <LibWebView/FileDownloader.h>
 #include <LibWebView/SessionStore.h>
 #include <LibWebView/Settings.h>
+#include <LibWebView/TabObserver.h>
 #include <LibWebView/TabPerformanceStats.h>
 #include <UI/Qt/FindInPageWidget.h>
 #include <UI/Qt/LocationEdit.h>
@@ -84,7 +85,8 @@ class Popover;
 class SiteSettingsPopover;
 class Tab final
     : public QWidget
-    , public WebView::SettingsObserver {
+    , public WebView::SettingsObserver
+    , public WebView::TabObserver {
     Q_OBJECT
 
 public:
@@ -196,6 +198,26 @@ signals:
 private:
     void create_tab_shell();
     void create_tab_context_menu();
+    // ^WebView::TabObserver
+    virtual void tab_did_change_content_blocking(WebView::ContentBlockingSnapshot const&) override;
+    virtual void tab_did_update_performance_stats(WebView::TabPerformanceStats const& stats) override;
+    virtual void tab_was_removed_from_user_interface() override;
+    virtual void tab_did_hover_link(URL::URL const& url) override;
+    virtual void tab_did_unhover_link() override;
+    virtual void tab_did_change_loading_state(bool is_loading) override;
+    virtual void tab_did_start_loading(URL::URL const&) override;
+    virtual void tab_did_finish_loading(URL::URL const&) override;
+    virtual void tab_did_commit_top_level_navigation() override;
+    virtual void tab_did_complete_browser_history_traversal() override;
+    virtual void tab_did_change_url(URL::URL const& url) override;
+    virtual void tab_did_change_title(Utf16String const& title) override;
+    virtual void tab_did_change_favicon(Optional<Gfx::Bitmap const&> bitmap) override;
+    virtual void tab_will_begin_browser_initiated_navigation() override;
+    virtual void tab_web_content_did_crash(WebView::ViewImplementation::WebContentCrashReason) override;
+    virtual void tab_did_change_indicator(WebView::TabIndicator indicator, bool visible) override;
+    virtual void tab_did_find_in_page(size_t current_match_index, Optional<size_t> const& total_match_count) override;
+    virtual void tab_did_change_screen_wake_lock_state(Web::ScreenWakeLockState wake_lock_state) override;
+
     void initialize(Optional<WebView::CanonicalTraversable&>);
 
     void location_edit_return_pressed(String, Optional<URL::URL>, WebView::OmniboxDestinationKind);
@@ -240,7 +262,7 @@ private:
     BrowserWindow* m_window { nullptr };
     QString m_title;
     Optional<QString> m_fixed_title;
-    Optional<u64> m_report_review_navigation_listener;
+    bool m_is_in_report_review { false };
     bool m_has_loaded_report_review_page { false };
     HyperlinkLabel* m_hover_label { nullptr };
     // The address of the hovered link, which shows over the bottom corner of the page that the pointer is not over.

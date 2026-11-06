@@ -103,8 +103,7 @@ ViewImplementation::ViewImplementation(Badge<CanonicalTraversable>, CanonicalTra
     m_tab_indicators.on_visibility_change = [this](TabIndicator indicator, bool visible) {
         if (indicator == TabIndicator::PlayingAudio)
             ++m_playing_audio_indicator_change_count;
-        if (on_tab_indicator_change)
-            on_tab_indicator_change(indicator, visible);
+        notify_observers([&](TabObserver& observer) { observer.tab_did_change_indicator(indicator, visible); });
     };
 }
 
@@ -124,8 +123,7 @@ void ViewImplementation::remove_from_user_interface()
     // 4. Remove traversable from the user interface (e.g., close or hide its tab in a tabbed browser).
     // NB: The frontend deletes its widget as it hears of it, so that no widget outlives the tab it shows.
     m_removed_from_user_interface = true;
-    if (auto on_close = move(this->on_close))
-        on_close();
+    notify_observers([](TabObserver& observer) { observer.tab_was_removed_from_user_interface(); });
     VERIFY(!m_surface);
 
     // 5. Remove traversable from the user agent's top-level traversable set.
@@ -161,8 +159,6 @@ void ViewImplementation::did_destroy_traversable(Badge<CanonicalTraversable>)
     // The frontend may be torn down already, so clearing the ongoing navigation must not report a URL change to it, nor
     // cancelling the view's location requests or closing the view's page (which revokes its audio playback) a change
     // in what the tab shows.
-    on_url_change = nullptr;
-    on_tab_indicator_change = nullptr;
     // Stop routing to this view before destroying its traversable and revoking its one-time permissions.
     all_views().remove(m_view_id);
     m_traversable.clear_ongoing_navigation();
@@ -207,45 +203,20 @@ void ViewImplementation::release_surface(ViewSurface& surface)
     // A tab whose frontend asked it to close stays until its page has closed it.
     if (m_close_pending)
         return;
-    // A tab nothing shows any longer goes now. Nothing is left to tell, as its frontend let go of it.
-    remove_from_user_interface();
+    // A tab nothing shows any longer goes now. Its frontend let go of it, so it is not told.
+    m_removed_from_user_interface = true;
+    m_traversable.destroy();
 }
 
 void ViewImplementation::clear_frontend_callbacks()
 {
-    on_close = nullptr;
     on_activate_tab = nullptr;
-    on_tab_indicator_change = nullptr;
-    on_before_browser_initiated_navigation = nullptr;
-    on_browser_history_traversal_complete = nullptr;
     on_cancel_permission_prompt = nullptr;
-    on_content_blocking_change = nullptr;
-    on_crash_overlay_state_change = nullptr;
-    on_crash_report_saved = nullptr;
-    on_cursor_change = nullptr;
-    on_enter_tooltip_area = nullptr;
     on_exit_fullscreen_window = nullptr;
-    on_favicon_change = nullptr;
-    on_find_in_page = nullptr;
-    on_finish_handling_drag_event = nullptr;
-    on_finish_handling_key_event = nullptr;
-    on_finish_handling_mouse_event = nullptr;
     on_fullscreen_window = nullptr;
-    on_input_method_state_change = nullptr;
-    on_leave_tooltip_area = nullptr;
-    on_link_hover = nullptr;
-    on_link_unhover = nullptr;
-    on_load_finish = nullptr;
-    on_load_start = nullptr;
-    on_loading_state_change = nullptr;
     on_maximize_window = nullptr;
     on_minimize_window = nullptr;
     on_new_web_view = nullptr;
-    on_page_background_color_change = nullptr;
-    on_performance_stats = nullptr;
-    on_picture_in_picture_control_activated = nullptr;
-    on_ready_to_paint = nullptr;
-    on_reference_test_metadata = nullptr;
     on_reposition_window = nullptr;
     on_request_accept_dialog = nullptr;
     on_request_alert = nullptr;
@@ -265,14 +236,6 @@ void ViewImplementation::clear_frontend_callbacks()
     on_request_website_issue_report = nullptr;
     on_resize_window = nullptr;
     on_restore_window = nullptr;
-    on_screen_wake_lock_state_changed = nullptr;
-    on_set_test_timeout = nullptr;
-    on_test_finish = nullptr;
-    on_title_change = nullptr;
-    on_top_level_navigation_commit = nullptr;
-    on_url_change = nullptr;
-    on_web_content_crashed = nullptr;
-    on_web_content_process_change_for_cross_site_navigation = nullptr;
 }
 
 void ViewImplementation::attach_surface(ViewSurface& surface)
@@ -573,8 +536,7 @@ void ViewImplementation::update_displayed_url()
     if (m_displayed_url == displayed_url)
         return;
     m_displayed_url = move(displayed_url);
-    if (on_url_change)
-        on_url_change(m_displayed_url);
+    notify_observers([&](TabObserver& observer) { observer.tab_did_change_url(m_displayed_url); });
 }
 
 Utf16String const& ViewImplementation::title() const
@@ -626,8 +588,8 @@ void ViewImplementation::server_did_paint(i32 bitmap_id, Gfx::IntSize size, Gfx:
     if (did_swap_bitmap)
         TabPerformanceMonitor::did_present(traversable().tab_id());
 
-    if (did_swap_bitmap && on_ready_to_paint)
-        on_ready_to_paint();
+    if (did_swap_bitmap)
+        notify_observers([](TabObserver& observer) { observer.tab_is_ready_to_paint(); });
 }
 
 void ViewImplementation::release_backing_store(i32 bitmap_id)
@@ -700,8 +662,7 @@ void ViewImplementation::load(URL::URL const& url, Web::Bindings::NavigationHist
 // source is still that page.
 void ViewImplementation::load(Web::HTML::PreparedNavigationDescriptor navigation)
 {
-    if (on_before_browser_initiated_navigation)
-        on_before_browser_initiated_navigation();
+    notify_observers([&](TabObserver& observer) { observer.tab_will_begin_browser_initiated_navigation(); });
 
     prepare_for_navigation_after_crash(NavigationToRetry { navigation.url, prepare_navigation_to_retry(navigation) });
     m_last_stopped_navigation.clear();
@@ -827,8 +788,7 @@ void ViewImplementation::open_url_in_new_window(URL::URL const& url, IsPrivate i
 
 void ViewImplementation::load_html(StringView html)
 {
-    if (on_before_browser_initiated_navigation)
-        on_before_browser_initiated_navigation();
+    notify_observers([&](TabObserver& observer) { observer.tab_will_begin_browser_initiated_navigation(); });
 
     prepare_for_navigation_after_crash();
     m_last_stopped_navigation.clear();
@@ -863,8 +823,7 @@ void ViewImplementation::reload(BypassCache bypass_cache)
         return;
     }
 
-    if (on_before_browser_initiated_navigation)
-        on_before_browser_initiated_navigation();
+    notify_observers([&](TabObserver& observer) { observer.tab_will_begin_browser_initiated_navigation(); });
 
     set_loading_state(true);
     if (m_crash_state.has_value()) {
@@ -881,8 +840,7 @@ void ViewImplementation::reload(BypassCache bypass_cache)
 void ViewImplementation::reload_for_webdriver_bidi(BypassCache bypass_cache, Utf16String navigation_id)
 {
     m_history_visit_transition_for_next_load = HistoryVisitTransition::Reload;
-    if (on_before_browser_initiated_navigation)
-        on_before_browser_initiated_navigation();
+    notify_observers([&](TabObserver& observer) { observer.tab_will_begin_browser_initiated_navigation(); });
 
     // NB: BiDi reloads the active document, rather than retrying a stopped or failed navigation.
     m_last_stopped_navigation.clear();
@@ -928,8 +886,7 @@ void ViewImplementation::traverse_the_history_by_delta(
     CheckForCancelation check_for_cancelation,
     Function<void()> on_ready)
 {
-    if (on_before_browser_initiated_navigation)
-        on_before_browser_initiated_navigation();
+    notify_observers([&](TabObserver& observer) { observer.tab_will_begin_browser_initiated_navigation(); });
 
     prepare_for_navigation_after_crash();
     traversable().traverse_the_history_by_delta(delta, check_for_cancelation, move(on_ready));
@@ -940,8 +897,7 @@ void ViewImplementation::traverse_the_history_to_step(
     CheckForCancelation check_for_cancelation,
     Function<void()> on_ready)
 {
-    if (on_before_browser_initiated_navigation)
-        on_before_browser_initiated_navigation();
+    notify_observers([&](TabObserver& observer) { observer.tab_will_begin_browser_initiated_navigation(); });
 
     prepare_for_navigation_after_crash();
     traversable().traverse_the_history_to_step(step, check_for_cancelation, move(on_ready));
@@ -985,8 +941,7 @@ void ViewImplementation::did_finish_history_traversal(Web::HTML::CrossProcessId 
 {
     complete_webdriver_history_traversal(operation_id);
     update_navigation_action_state();
-    if (on_browser_history_traversal_complete)
-        on_browser_history_traversal_complete();
+    notify_observers([&](TabObserver& observer) { observer.tab_did_complete_browser_history_traversal(); });
     dump_session_history("webcontent-history-traversal-complete"sv);
 }
 
@@ -1517,8 +1472,7 @@ void ViewImplementation::did_finish_handling_input_event(WebContentPage const& r
     if (auto const* mouse_event = event.get_pointer<Web::MouseEvent>()) {
         if (mouse_event->pointer_data.ptr())
             return;
-        if (on_finish_handling_mouse_event)
-            on_finish_handling_mouse_event(*mouse_event, event_result);
+        notify_observers([&](TabObserver& observer) { observer.tab_did_finish_handling_mouse_event(*mouse_event, event_result); });
 
         // The back and forward buttons traverse the session history once released, unless the page cancelled the
         // mouseup.
@@ -1543,12 +1497,10 @@ void ViewImplementation::did_finish_handling_input_event(WebContentPage const& r
     // to the concrete view implementation.
     event.visit(
         [this](Web::KeyEvent const& event) {
-            if (on_finish_handling_key_event)
-                on_finish_handling_key_event(event);
+            notify_observers([&](TabObserver& observer) { observer.tab_did_finish_handling_key_event(event); });
         },
         [this](Web::DragEvent const& event) {
-            if (on_finish_handling_drag_event)
-                on_finish_handling_drag_event(event);
+            notify_observers([&](TabObserver& observer) { observer.tab_did_finish_handling_drag_event(event); });
         },
         [](auto const&) { });
 }
@@ -2354,8 +2306,7 @@ Optional<Action> ViewImplementation::handle_ui_overlay_mouse_event(Compositing::
 
 void ViewImplementation::apply_cursor()
 {
-    if (on_cursor_change)
-        on_cursor_change(is_ui_overlay_hovered() ? Gfx::Cursor { Gfx::StandardCursor::Hand } : m_page_cursor);
+    notify_observers([&](TabObserver& observer) { observer.tab_did_change_cursor(is_ui_overlay_hovered() ? Gfx::Cursor { Gfx::StandardCursor::Hand } : m_page_cursor); });
 }
 
 static StringView paused_debugger_overlay_action_tooltip(Compositing::PausedDebuggerOverlayAction action)
@@ -2388,12 +2339,10 @@ void ViewImplementation::apply_tooltip()
     if (auto control = m_picture_in_picture_controls_pointer_state.hovered_action(); control.has_value())
         tooltip = picture_in_picture_control_tooltip(*control);
 
-    if (tooltip.has_value()) {
-        if (on_enter_tooltip_area)
-            on_enter_tooltip_area(*tooltip);
-    } else if (on_leave_tooltip_area) {
-        on_leave_tooltip_area();
-    }
+    if (tooltip.has_value())
+        notify_observers([&](TabObserver& observer) { observer.tab_did_enter_tooltip_area(*tooltip); });
+    else
+        notify_observers([](TabObserver& observer) { observer.tab_did_leave_tooltip_area(); });
 }
 
 void ViewImplementation::set_debugger_paused(bool paused)
@@ -2459,8 +2408,8 @@ bool ViewImplementation::handle_picture_in_picture_controls_mouse_event(Web::Mou
     });
     if (auto is_in_use = controls_in_use(); is_in_use != was_in_use)
         page().async_set_picture_in_picture_window_controls_in_use(is_in_use);
-    if (activated_control.has_value() && on_picture_in_picture_control_activated)
-        on_picture_in_picture_control_activated(*activated_control);
+    if (activated_control.has_value())
+        notify_observers([&](TabObserver& observer) { observer.tab_did_activate_picture_in_picture_control(*activated_control); });
 
     // The page still learns that the pointer left, even during a press on a control.
     if (event.type == Web::MouseEvent::Type::MouseLeave)
@@ -2765,8 +2714,7 @@ void ViewImplementation::reset_blocked_resources()
 
 void ViewImplementation::notify_content_blocking_changed()
 {
-    if (on_content_blocking_change)
-        on_content_blocking_change(content_blocking_snapshot());
+    notify_observers([&](TabObserver& observer) { observer.tab_did_change_content_blocking(content_blocking_snapshot()); });
 }
 
 ContentBlockingSnapshot ViewImplementation::content_blocking_snapshot() const
@@ -2977,8 +2925,7 @@ void ViewImplementation::set_input_method_state(InputMethodState state)
 {
     m_input_method_state = move(state);
 
-    if (on_input_method_state_change)
-        on_input_method_state_change();
+    notify_observers([&](TabObserver& observer) { observer.tab_did_change_input_method_state(); });
 }
 
 Web::Clipboard::SystemClipboardItem ViewImplementation::clipboard_item() const
@@ -3041,8 +2988,7 @@ void ViewImplementation::set_page_background_color_to_system_canvas(bool dark)
 void ViewImplementation::set_page_background_color(Gfx::Color color)
 {
     m_page_background_color = color;
-    if (on_page_background_color_change)
-        on_page_background_color_change(m_page_background_color);
+    notify_observers([&](TabObserver& observer) { observer.tab_did_change_page_background_color(m_page_background_color); });
 }
 
 Gfx::Color ViewImplementation::preferred_canvas_background_color() const
@@ -3206,19 +3152,16 @@ void ViewImplementation::activate()
         auto& state = this->traversable().presentation();
         switch (change) {
         case TabPresentationState::Change::Title:
-            if (on_title_change)
-                on_title_change(state.title());
+            notify_observers([&](TabObserver& observer) { observer.tab_did_change_title(state.title()); });
             break;
         case TabPresentationState::Change::URL:
             did_update_url();
             break;
         case TabPresentationState::Change::Favicon:
-            if (on_favicon_change)
-                on_favicon_change(state.favicon() ? Optional<Gfx::Bitmap const&> { *state.favicon() } : Optional<Gfx::Bitmap const&> {});
+            notify_observers([&](TabObserver& observer) { observer.tab_did_change_favicon(state.favicon() ? Optional<Gfx::Bitmap const&> { *state.favicon() } : Optional<Gfx::Bitmap const&> {}); });
             break;
         case TabPresentationState::Change::Loading:
-            if (on_loading_state_change)
-                on_loading_state_change(state.is_loading());
+            notify_observers([&](TabObserver& observer) { observer.tab_did_change_loading_state(state.is_loading()); });
             break;
         case TabPresentationState::Change::Audibility:
             m_tab_indicators.set_active(TabIndicator::PlayingAudio, state.audibility() == Audio::Audibility::Audible, MonotonicTime::now());
@@ -3231,8 +3174,7 @@ void ViewImplementation::activate()
                 set_page_background_color(*color);
             break;
         case TabPresentationState::Change::ScreenWakeLock:
-            if (on_screen_wake_lock_state_changed)
-                on_screen_wake_lock_state_changed(state.screen_wake_lock_state());
+            notify_observers([&](TabObserver& observer) { observer.tab_did_change_screen_wake_lock_state(state.screen_wake_lock_state()); });
             break;
         case TabPresentationState::Change::TextFragmentIndication:
             update_displayed_url();
@@ -3437,13 +3379,6 @@ void ViewImplementation::did_cancel_loading(Badge<CanonicalNavigable>, bool canc
         complete_webdriver_navigation();
 
     auto const& client_url = url();
-    if (on_load_finish)
-        on_load_finish(client_url);
-
-    for (auto const& [id, listener] : m_navigation_listeners) {
-        if (listener.on_load_finish)
-            listener.on_load_finish(client_url);
-    }
     notify_observers([&](TabObserver& observer) { observer.tab_did_finish_loading(client_url); });
 }
 
@@ -3668,8 +3603,7 @@ void ViewImplementation::display_page_changed(RefPtr<WebContentPage> previous_pa
     auto& page = this->page();
     if (previous_page) {
         // NB: The page has no hovered link and cannot clear the outgoing page's status label.
-        if (on_link_unhover)
-            on_link_unhover();
+        notify_observers([&](TabObserver& observer) { observer.tab_did_unhover_link(); });
         if (m_debugger_paused) {
             set_debugger_paused(false);
             notify_observers([](TabObserver& observer) { observer.tab_debugger_did_resume(); });
@@ -3736,8 +3670,8 @@ void ViewImplementation::display_page_changed(RefPtr<WebContentPage> previous_pa
     handle_resize();
     update_ui_overlays();
 
-    if (previous_page && &previous_page->client() != &page.client() && on_web_content_process_change_for_cross_site_navigation)
-        on_web_content_process_change_for_cross_site_navigation();
+    if (previous_page && &previous_page->client() != &page.client())
+        notify_observers([](TabObserver& observer) { observer.tab_did_change_web_content_process_for_cross_site_navigation(); });
     dump_session_history("display-page-changed"sv);
 }
 
@@ -4440,8 +4374,7 @@ void ViewImplementation::set_crash_state(Optional<CrashState> state)
     m_crash_state = move(state);
     notify_content_blocking_changed();
     update_report_website_issue_action();
-    if (on_crash_overlay_state_change)
-        on_crash_overlay_state_change(active);
+    notify_observers([&](TabObserver& observer) { observer.tab_did_change_crash_overlay_state(active); });
 }
 
 // The report is written once the process has exited, which can be after this view was told the process was lost.
@@ -4450,8 +4383,7 @@ void ViewImplementation::did_save_crash_report(ByteString report_name)
     if (!m_crash_state.has_value())
         return;
     m_crash_state->report_name = move(report_name);
-    if (on_crash_report_saved)
-        on_crash_report_saved();
+    notify_observers([&](TabObserver& observer) { observer.tab_did_save_crash_report(); });
 }
 
 String ViewImplementation::crash_overlay_failed_url() const
@@ -5703,18 +5635,6 @@ void ViewImplementation::did_request_media_context_menu(WebContentPage& requesti
     open_context_menu(move(menu), content_position);
 }
 
-u64 ViewImplementation::add_navigation_listener(NavigationListener listener)
-{
-    auto id = m_next_navigation_listener_id++;
-    m_navigation_listeners.set(id, move(listener));
-    return id;
-}
-
-void ViewImplementation::remove_navigation_listener(u64 listener_id)
-{
-    m_navigation_listeners.remove(listener_id);
-}
-
 void ViewImplementation::add_observer(Badge<TabObserver>, TabObserver& observer)
 {
     m_observers.append(&observer);
@@ -5806,13 +5726,6 @@ void ViewImplementation::did_begin_top_level_load(URL::URL const& url)
 
     set_editing_history_state(false, false);
 
-    if (on_load_start)
-        on_load_start();
-
-    for (auto const& [id, listener] : m_navigation_listeners) {
-        if (listener.on_load_start)
-            listener.on_load_start(url);
-    }
     notify_observers([&](TabObserver& observer) { observer.tab_did_start_loading(url); });
 }
 
@@ -5820,13 +5733,6 @@ void ViewImplementation::did_finish_top_level_load(URL::URL const& url)
 {
     did_finish_navigation();
 
-    if (on_load_finish)
-        on_load_finish(url);
-
-    for (auto const& [id, listener] : m_navigation_listeners) {
-        if (listener.on_load_finish)
-            listener.on_load_finish(url);
-    }
     notify_observers([&](TabObserver& observer) { observer.tab_did_finish_loading(url); });
 }
 

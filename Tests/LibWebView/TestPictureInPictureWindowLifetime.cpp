@@ -113,12 +113,13 @@ OwnPtr<WebView::HeadlessWebView> open_tab_with_picture_in_picture_window(TestApp
     auto takes_spare_process = app.has_spare_web_content_process();
     auto view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
     size_t loads_finished = 0;
-    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
+    Test::TabEvents view_events { view->tab() };
+    view_events.on_load_finish = [&](auto const&) { ++loads_finished; };
     if (!takes_spare_process)
         Core::EventLoop::current().spin_until([&] { return loads_finished >= 1; });
 
     Utf16String title;
-    view->tab().on_title_change = [&](auto const& new_title) { title = new_title; };
+    view_events.on_title_change = [&](auto const& new_title) { title = new_title; };
     view->tab().load_html(MUST(String::formatted(
         "<!DOCTYPE html>"
         "<button onclick=\"video.requestPictureInPicture().then(() => {{ document.title = 'entered'; }})\" style=\"position:fixed;left:0;top:0;width:800px;height:600px\"></button>"
@@ -132,8 +133,8 @@ OwnPtr<WebView::HeadlessWebView> open_tab_with_picture_in_picture_window(TestApp
     app.picture_in_picture_window = nullptr;
     click_at(view->tab(), { 400, 300 });
     Core::EventLoop::current().spin_until([&] { return title == "entered"sv && app.picture_in_picture_window; });
-    view->tab().on_title_change = {};
-    view->tab().on_load_finish = {};
+    view_events.on_title_change = {};
+    view_events.on_load_finish = {};
     return view;
 }
 

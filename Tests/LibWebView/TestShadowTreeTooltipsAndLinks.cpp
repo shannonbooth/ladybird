@@ -39,11 +39,13 @@ private:
     virtual WebView::ViewImplementation* create_view_for_new_tab_or_window(WebView::IsPrivate is_private) override
     {
         auto* view = HeadlessWebView::create_view_for_new_tab_or_window(is_private);
-        view->on_url_change = [this](auto const& url) { m_new_tab_urls.append(url); };
+        m_new_tab_events.append(make<Test::TabEvents>(*view));
+        m_new_tab_events.last()->on_url_change = [this](auto const& url) { m_new_tab_urls.append(url); };
         return view;
     }
 
     Vector<URL::URL> m_new_tab_urls;
+    Vector<NonnullOwnPtr<Test::TabEvents>> m_new_tab_events;
 };
 
 void move_mouse_to(WebView::ViewImplementation& view, Web::DevicePixelPoint position)
@@ -98,7 +100,8 @@ TEST_CASE(shadow_tree_tooltips_and_links)
     auto view = TestWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
+    Test::TabEvents view_events { view->tab() };
+    view_events.on_load_finish = [&](auto const&) { ++loads_finished; };
 
     // Wait out the initial about:blank load; navigating before it completes would drop the navigation.
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 1; });
@@ -129,11 +132,11 @@ document.getElementById("carriage-returns").setAttribute("title", "One\r\nTwo\rT
     size_t tooltip_enters = 0;
     size_t tooltip_leaves = 0;
     Optional<ByteString> tooltip;
-    view->tab().on_enter_tooltip_area = [&](auto const& text) {
+    view_events.on_enter_tooltip_area = [&](auto const& text) {
         ++tooltip_enters;
         tooltip = text;
     };
-    view->tab().on_leave_tooltip_area = [&] {
+    view_events.on_leave_tooltip_area = [&] {
         ++tooltip_leaves;
         tooltip.clear();
     };
@@ -141,11 +144,11 @@ document.getElementById("carriage-returns").setAttribute("title", "One\r\nTwo\rT
     size_t link_hovers = 0;
     size_t link_unhovers = 0;
     Optional<URL::URL> hovered_url;
-    view->tab().on_link_hover = [&](auto const& url) {
+    view_events.on_link_hover = [&](auto const& url) {
         ++link_hovers;
         hovered_url = url;
     };
-    view->tab().on_link_unhover = [&] {
+    view_events.on_link_unhover = [&] {
         ++link_unhovers;
         hovered_url.clear();
     };

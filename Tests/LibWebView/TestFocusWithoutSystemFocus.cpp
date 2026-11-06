@@ -27,11 +27,12 @@ TEST_CASE(focus_already_focused_area_without_system_focus)
     auto view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
+    Test::TabEvents view_events { view->tab() };
+    view_events.on_load_finish = [&](auto const&) { ++loads_finished; };
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 1; });
 
     Optional<Utf16String> title;
-    view->tab().on_title_change = [&](Utf16String const& new_title) { title = new_title; };
+    view_events.on_title_change = [&](Utf16String const& new_title) { title = new_title; };
 
     // Each focus handler focuses its own target again, at most once more, so a target that fires focus again for a
     // focus() on itself counts two events.

@@ -52,7 +52,8 @@ static void test_crash_overlay(bool bidi_reload_only)
     auto theme = TRY_OR_FAIL(Gfx::load_system_theme(theme_path.string()));
     auto view = WebView::HeadlessWebView::create(theme, { 1000, 700 });
     size_t loads_finished = 0;
-    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
+    Test::TabEvents view_events { view->tab() };
+    view_events.on_load_finish = [&](auto const&) { ++loads_finished; };
     Core::EventLoop::current().spin_until([&] { return loads_finished >= 1; });
 
     auto evaluate = [&](StringView source) {
@@ -100,7 +101,7 @@ static void test_crash_overlay(bool bidi_reload_only)
         auto document_before_crash = view->tab().traversable().active_document().id();
         // NB: The callback is cleared below before its captured state leaves scope.
         IGNORE_USE_IN_ESCAPING_LAMBDA bool recovered_document_painted = false;
-        view->tab().on_ready_to_paint = [view = view->tab().make_weak_ptr(), document_before_crash, &recovered_document_painted] {
+        view_events.on_ready_to_paint = [view = view->tab().make_weak_ptr(), document_before_crash, &recovered_document_painted] {
             if (view && view->traversable().active_document().id() != document_before_crash)
                 recovered_document_painted = true;
         };
@@ -108,7 +109,7 @@ static void test_crash_overlay(bool bidi_reload_only)
         crash_and_load([view = view.ptr(), navigation_id] { view->tab().reload_for_webdriver_bidi(WebView::BypassCache::No, navigation_id); });
         Core::EventLoop::current().spin_until([&] { return recovered_document_painted; });
         VERIFY(!view->tab().crash_overlay_active());
-        view->tab().on_ready_to_paint = nullptr;
+        view_events.on_ready_to_paint = nullptr;
     };
 
     if (bidi_reload_only) {

@@ -1039,8 +1039,7 @@ void WebContentPage::did_find_in_page(size_t current_match_index, Optional<size_
 {
     if (!hosts_top_level_document())
         return;
-    if (view().on_find_in_page)
-        view().on_find_in_page(current_match_index, total_match_count);
+    view().notify_observers([&](TabObserver& observer) { observer.tab_did_find_in_page(current_match_index, total_match_count); });
 }
 
 void WebContentPage::did_request_cursor_change(Gfx::Cursor cursor)
@@ -1074,14 +1073,12 @@ void WebContentPage::did_leave_tooltip_area()
 
 void WebContentPage::did_hover_link(URL::URL url)
 {
-    if (view().on_link_hover)
-        view().on_link_hover(url);
+    view().notify_observers([&](TabObserver& observer) { observer.tab_did_hover_link(url); });
 }
 
 void WebContentPage::did_unhover_link()
 {
-    if (view().on_link_unhover)
-        view().on_link_unhover();
+    view().notify_observers([&](TabObserver& observer) { observer.tab_did_unhover_link(); });
 }
 
 static Optional<URL::Origin> initiator_origin_snapshot(URL::Origin const& given_origin, Web::HTML::NavigationSourceSnapshot const& source_snapshot_params, WebContentClient& hosting_client);
@@ -3414,20 +3411,17 @@ void WebContentPage::rtc_transform_encoded_audio_frame(Web::HTML::WorkerAgentId 
 
 void WebContentPage::did_finish_test(String text)
 {
-    if (view().on_test_finish)
-        view().on_test_finish(text);
+    view().notify_observers([&](TabObserver& observer) { observer.tab_did_finish_test(text); });
 }
 
 void WebContentPage::did_set_test_timeout(double milliseconds)
 {
-    if (view().on_set_test_timeout)
-        view().on_set_test_timeout(milliseconds);
+    view().notify_observers([&](TabObserver& observer) { observer.tab_did_set_test_timeout(milliseconds); });
 }
 
 void WebContentPage::did_receive_reference_test_metadata(JsonValue metadata)
 {
-    if (view().on_reference_test_metadata)
-        view().on_reference_test_metadata(metadata);
+    view().notify_observers([&](TabObserver& observer) { observer.tab_did_receive_reference_test_metadata(metadata); });
 }
 
 void WebContentPage::did_simulate_worker_request_server_connection_loss()

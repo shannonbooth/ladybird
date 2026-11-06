@@ -10,6 +10,7 @@
 #include <LibWebView/CanonicalTraversable.h>
 #include <LibWebView/ProcessManager.h>
 #include <LibWebView/RequestServerManager.h>
+#include <LibWebView/TabObserver.h>
 #include <LibWebView/TabPerformanceMonitor.h>
 #include <LibWebView/ViewImplementation.h>
 #include <LibWebView/WebContentClient.h>
@@ -119,8 +120,7 @@ void TabPerformanceMonitor::sample()
         if (auto page = view.traversable().display_page())
             top_level_process = page->client().pid();
         auto stats = m_tabs.ensure(view.traversable().tab_id()).sample(now, processes.ensure(view.traversable().tab_id()), top_level_process);
-        if (view.on_performance_stats)
-            view.on_performance_stats(stats);
+        view.notify_observers([&](TabObserver& observer) { observer.tab_did_update_performance_stats(stats); });
         return IterationDecision::Continue;
     });
 }

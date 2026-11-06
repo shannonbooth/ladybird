@@ -210,6 +210,10 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
     };
 
     m_view = new WebContentView(this, traversable, AK::move(view_initial_state));
+    observe(m_view->tab());
+    QObject::connect(m_view, &WebContentView::close_requested, this, [this] {
+        m_window->definitely_close_tab(tab_index());
+    });
     // The window reports its geometry to its tabs as it is moved and resized, so a tab opened later has to be told
     // where the window stands now.
     m_view->tab().set_window_position({ m_window->x(), m_window->y() });
@@ -250,10 +254,6 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
         if (m_site_settings_popover && m_site_settings_popover->isVisible())
             m_site_settings_popover->set_content_blocking(view().tab().content_blocking_snapshot());
     });
-    view().tab().on_content_blocking_change = [this](auto const&) {
-        if (m_site_settings_popover && m_site_settings_popover->isVisible() && !m_content_blocking_update_timer->isActive())
-            m_content_blocking_update_timer->start();
-    };
 
     // The star bookmarks the page, then shows the bookmark to name it or file it, rather than toggling it.
     auto* bookmark_action = create_application_action(*m_location_edit, view().tab().toggle_bookmark_action());
@@ -264,11 +264,6 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
     // The translate button shows the page's translation menu, rather than translating the page at once.
     m_translate_action = create_application_action(*m_location_edit, view().tab().page_translation().translate_action());
     m_location_edit->set_translate_action(m_translate_action);
-
-    view().tab().on_performance_stats = [this](WebView::TabPerformanceStats const& stats) {
-        m_performance_stats = stats;
-        emit performance_stats_changed();
-    };
 
     recreate_location_edit_icons();
     update_chrome_style();
@@ -291,20 +286,11 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
         m_window->activate_tab(tab_index());
     };
 
-    view().tab().on_close = [this] {
-        if (m_tab_to_activate_on_close) {
-            if (auto index_to_activate = m_window->tab_index(m_tab_to_activate_on_close); index_to_activate >= 0)
-                m_window->activate_tab(index_to_activate);
-        }
-        m_window->forget_closed_tab(*this, m_window_is_closing);
-        delete this;
-    };
-
     view().on_request_web_compat_report_review = [this](WebCompatReportCapture capture) {
         auto& tab = m_window->new_tab_from_url(URL::about_blank(), Web::HTML::ActivateTab::Yes, BrowserWindow::TabLocation::after_tab(*this));
         tab.view().on_close_web_compat_report_tab = [&tab] {
             tab.m_tab_to_activate_on_close = nullptr;
-            tab.view().tab().on_close();
+            tab.m_window->definitely_close_tab(tab.tab_index());
         };
         tab.view().review_web_compat_report(AK::move(capture));
         tab.enter_report_review(this, tr("Report Website Issue"));
@@ -324,44 +310,7 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
 
     QObject::connect(m_view, &WebContentView::image_overlay_unavailable, this, &Tab::update_hover_label);
 
-    view().tab().on_link_hover = [this](auto const& url) {
-        m_hover_text = qstring_from_ak_string(url.to_byte_string());
-        m_hover_text_is_on_right = false;
-        update_hover_label();
-    };
-
-    view().tab().on_link_unhover = [this]() {
-        hide_hover_label();
-    };
-
-    view().tab().on_loading_state_change = [this](bool is_loading) {
-        set_loading(is_loading);
-    };
-    view().tab().on_load_start = [this] {
-        m_window->on_tab_load_start(*this);
-    };
     set_loading(view().tab().is_loading());
-
-    view().tab().on_load_finish = [this](auto const&) {
-        m_suppress_javascript_dialogs_until_navigation = false;
-    };
-
-    view().tab().on_top_level_navigation_commit = [this] {
-        m_is_waiting_for_response = false;
-        m_suppress_javascript_dialogs_until_navigation = false;
-        m_javascript_dialogs_shown_by_document = 0;
-        m_javascript_dialogs_blocked_for_document = false;
-    };
-
-    view().tab().on_browser_history_traversal_complete = [this] {
-        m_suppress_javascript_dialogs_until_navigation = false;
-        m_javascript_dialogs_shown_by_document = 0;
-        m_javascript_dialogs_blocked_for_document = false;
-    };
-
-    view().tab().on_url_change = [this](auto const& url) {
-        m_location_edit->set_url(url);
-    };
 
     m_location_edit->on_navigation = [this](auto input, auto fallback_url, auto destination_kind) {
         location_edit_return_pressed(AK::move(input), AK::move(fallback_url), destination_kind);
@@ -369,32 +318,6 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
     QObject::connect(m_location_edit, &LocationEdit::focus_return_requested, this, [this] {
         view().setFocus();
     });
-
-    view().tab().on_title_change = [this](auto const& title) {
-        auto new_title = qstring_from_utf16_string(title);
-        if (!m_is_loading && !m_title.isEmpty() && new_title != m_title && m_window->current_tab() != this)
-            m_needs_attention = true;
-        m_title = AK::move(new_title);
-        update_tab_title();
-    };
-
-    view().tab().on_favicon_change = [this](auto const& bitmap) {
-        if (!bitmap.has_value()) {
-            m_favicon = {};
-            update_tab_icon();
-            return;
-        }
-
-        auto qimage = QImage(bitmap->scanline_u8(0), bitmap->width(), bitmap->height(), QImage::Format_ARGB32);
-        if (qimage.isNull())
-            return;
-        auto qpixmap = QPixmap::fromImage(qimage);
-        if (qpixmap.isNull())
-            return;
-
-        m_favicon = favicon_with_rounded_corners(qpixmap);
-        update_tab_icon();
-    };
 
     // A dialog from a page says which site it comes from.
     auto javascript_dialog_title = [this] {
@@ -473,20 +396,6 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
         }
     };
 
-    view().tab().on_before_browser_initiated_navigation = [this] {
-        m_suppress_javascript_dialogs_until_navigation = true;
-        m_javascript_dialog->dismiss();
-    };
-
-    view().tab().on_web_content_crashed = [this](auto) {
-        m_suppress_javascript_dialogs_until_navigation = false;
-        m_javascript_dialog->reset();
-
-        if (m_external_url_confirmation_dialog)
-            m_external_url_confirmation_dialog->close();
-        m_permission_prompts.ignore_all();
-    };
-
     view().tab().on_request_external_url_confirmation = [this](auto const& url, auto const& initiator_origin, auto const& handler, auto on_complete) {
         if (m_javascript_dialog->is_open() || m_color_picker_dialog || m_external_url_confirmation_dialog) {
             on_complete(false);
@@ -550,17 +459,6 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
 
     view().tab().on_cancel_permission_prompt = [this](WebView::PermissionPromptRequest const& request) {
         m_permission_prompts.cancel(request);
-    };
-
-    view().tab().on_tab_indicator_change = [this](WebView::TabIndicator indicator, bool visible) {
-        switch (indicator) {
-        case WebView::TabIndicator::PlayingAudio:
-            emit playing_audio_indicator_changed(tab_index());
-            break;
-        case WebView::TabIndicator::UsingLocation:
-            m_location_edit->set_location_in_use(visible);
-            break;
-        }
     };
 
     view().tab().on_request_accept_dialog = [this]() {
@@ -798,10 +696,6 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
         dialog->open();
     };
 
-    view().tab().on_find_in_page = [this](auto current_match_index, auto const& total_match_count) {
-        m_find_in_page->update_result_label(current_match_index, total_match_count);
-    };
-
     QObject::connect(focus_location_editor_action, &QAction::triggered, this, [this] { focus_location_editor(); });
 
     view().tab().on_restore_window = [this]() {
@@ -831,10 +725,147 @@ void Tab::initialize(Optional<WebView::CanonicalTraversable&> traversable)
     view().tab().on_exit_fullscreen_window = [this]() {
         m_window->fullscreen_mode().exit(FullscreenMode::ExitInitiatedBy::WebContent);
     };
+}
 
-    view().tab().on_screen_wake_lock_state_changed = [this](auto wake_lock_state) {
-        set_screen_wake_lock_state(wake_lock_state);
-    };
+void Tab::tab_did_change_content_blocking(WebView::ContentBlockingSnapshot const&)
+{
+    if (m_site_settings_popover && m_site_settings_popover->isVisible() && !m_content_blocking_update_timer->isActive())
+        m_content_blocking_update_timer->start();
+}
+
+void Tab::tab_did_update_performance_stats(WebView::TabPerformanceStats const& stats)
+{
+    m_performance_stats = stats;
+    emit performance_stats_changed();
+}
+
+void Tab::tab_was_removed_from_user_interface()
+{
+    if (m_tab_to_activate_on_close) {
+        if (auto index_to_activate = m_window->tab_index(m_tab_to_activate_on_close); index_to_activate >= 0)
+            m_window->activate_tab(index_to_activate);
+    }
+    m_window->forget_closed_tab(*this, m_window_is_closing);
+    delete this;
+}
+
+void Tab::tab_did_hover_link(URL::URL const& url)
+{
+    m_hover_text = qstring_from_ak_string(url.to_byte_string());
+    m_hover_text_is_on_right = false;
+    update_hover_label();
+}
+
+void Tab::tab_did_unhover_link()
+{
+    hide_hover_label();
+}
+
+void Tab::tab_did_change_loading_state(bool is_loading)
+{
+    set_loading(is_loading);
+}
+
+void Tab::tab_did_start_loading(URL::URL const& url)
+{
+    m_window->on_tab_load_start(*this);
+
+    // A tab opened only for a review leaves it once the user takes the tab somewhere else.
+    if (m_is_in_report_review && (m_has_loaded_report_review_page || url != URL::about_blank()))
+        leave_report_review();
+}
+
+void Tab::tab_did_finish_loading(URL::URL const&)
+{
+    m_suppress_javascript_dialogs_until_navigation = false;
+    if (m_is_in_report_review)
+        m_has_loaded_report_review_page = true;
+}
+
+void Tab::tab_did_commit_top_level_navigation()
+{
+    m_is_waiting_for_response = false;
+    m_suppress_javascript_dialogs_until_navigation = false;
+    m_javascript_dialogs_shown_by_document = 0;
+    m_javascript_dialogs_blocked_for_document = false;
+}
+
+void Tab::tab_did_complete_browser_history_traversal()
+{
+    m_suppress_javascript_dialogs_until_navigation = false;
+    m_javascript_dialogs_shown_by_document = 0;
+    m_javascript_dialogs_blocked_for_document = false;
+}
+
+void Tab::tab_did_change_url(URL::URL const& url)
+{
+    m_location_edit->set_url(url);
+}
+
+void Tab::tab_did_change_title(Utf16String const& title)
+{
+    auto new_title = qstring_from_utf16_string(title);
+    if (!m_is_loading && !m_title.isEmpty() && new_title != m_title && m_window->current_tab() != this)
+        m_needs_attention = true;
+    m_title = AK::move(new_title);
+    update_tab_title();
+}
+
+void Tab::tab_did_change_favicon(Optional<Gfx::Bitmap const&> bitmap)
+{
+    if (!bitmap.has_value()) {
+        m_favicon = {};
+        update_tab_icon();
+        return;
+    }
+
+    auto qimage = QImage(bitmap->scanline_u8(0), bitmap->width(), bitmap->height(), QImage::Format_ARGB32);
+    if (qimage.isNull())
+        return;
+    auto qpixmap = QPixmap::fromImage(qimage);
+    if (qpixmap.isNull())
+        return;
+
+    m_favicon = favicon_with_rounded_corners(qpixmap);
+    update_tab_icon();
+}
+
+void Tab::tab_will_begin_browser_initiated_navigation()
+{
+    m_suppress_javascript_dialogs_until_navigation = true;
+    m_javascript_dialog->dismiss();
+}
+
+void Tab::tab_web_content_did_crash(WebView::ViewImplementation::WebContentCrashReason)
+{
+    m_suppress_javascript_dialogs_until_navigation = false;
+    m_javascript_dialog->reset();
+
+    if (m_external_url_confirmation_dialog)
+        m_external_url_confirmation_dialog->close();
+    m_permission_prompts.ignore_all();
+}
+
+void Tab::tab_did_change_indicator(WebView::TabIndicator indicator, bool visible)
+{
+    switch (indicator) {
+    case WebView::TabIndicator::PlayingAudio:
+        emit playing_audio_indicator_changed(tab_index());
+        break;
+    case WebView::TabIndicator::UsingLocation:
+        m_location_edit->set_location_in_use(visible);
+        break;
+    }
+}
+
+void Tab::tab_did_find_in_page(size_t current_match_index, Optional<size_t> const& total_match_count)
+{
+    m_find_in_page->update_result_label(current_match_index, total_match_count);
+}
+
+void Tab::tab_did_change_screen_wake_lock_state(Web::ScreenWakeLockState wake_lock_state)
+{
+    set_screen_wake_lock_state(wake_lock_state);
 }
 
 void Tab::create_tab_context_menu()
@@ -1099,35 +1130,25 @@ QString Tab::title() const
 // loading about:blank, which is not somewhere else, but any page loaded after that is, about:blank included.
 void Tab::enter_report_review(Tab* tab_to_activate_on_close, Optional<QString> title)
 {
-    VERIFY(!m_report_review_navigation_listener.has_value());
+    VERIFY(!m_is_in_report_review);
     m_tab_to_activate_on_close = tab_to_activate_on_close;
     m_fixed_title = AK::move(title);
     update_tab_title();
 
-    WebView::ViewImplementation::NavigationListener listener;
-    listener.on_load_start = [this](URL::URL const& url) {
-        if (m_has_loaded_report_review_page || url != URL::about_blank())
-            leave_report_review();
-    };
-    listener.on_load_finish = [this](URL::URL const&) { m_has_loaded_report_review_page = true; };
-    m_report_review_navigation_listener = view().tab().add_navigation_listener(AK::move(listener));
+    m_is_in_report_review = true;
 }
 
 // A report on its way keeps being sent, as it does when the tab closes.
 void Tab::leave_report_review()
 {
-    if (!m_report_review_navigation_listener.has_value())
+    if (!m_is_in_report_review)
         return;
+    m_is_in_report_review = false;
 
     view().leave_report_review();
     m_tab_to_activate_on_close = nullptr;
     m_fixed_title.clear();
     update_tab_title();
-
-    // The view is still telling its listeners about this navigation, so the listener goes once it is done.
-    QTimer::singleShot(0, this, [this, listener = m_report_review_navigation_listener.release_value()] {
-        view().tab().remove_navigation_listener(listener);
-    });
 }
 
 void Tab::update_tab_title()

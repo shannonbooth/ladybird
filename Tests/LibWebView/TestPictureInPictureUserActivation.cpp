@@ -151,10 +151,11 @@ TEST_CASE(picture_in_picture_user_activation)
     auto view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
+    Test::TabEvents view_events { view->tab() };
+    view_events.on_load_finish = [&](auto const&) { ++loads_finished; };
 
     Utf16String last_title;
-    view->tab().on_title_change = [&](auto const& title) { last_title = title; };
+    view_events.on_title_change = [&](auto const& title) { last_title = title; };
 
     // Wait out the initial about:blank load; navigating before it completes would drop the navigation.
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 1; });

@@ -17,6 +17,7 @@
 #include <LibWebCommon/PixelUnits.h>
 #include <LibWebView/Forward.h>
 #include <LibWebView/PendingReply.h>
+#include <LibWebView/TabObserver.h>
 #include <LibWebView/ViewImplementation.h>
 #include <LibWebView/ViewSurface.h>
 
@@ -25,6 +26,7 @@ namespace WebView {
 // A window that is never shown, which shows a tab for as long as it lives.
 class WEBVIEW_API HeadlessWebView
     : public ViewSurface
+    , public TabObserver
     , public Weakable<HeadlessWebView> {
 public:
     AK_ALLOC_WITH_KMALLOC;
@@ -55,6 +57,11 @@ protected:
 
     RefPtr<DialogReply> m_pending_dialog_reply;
     Optional<Utf16String> m_pending_prompt_text;
+
+protected:
+    // ^TabObserver
+    virtual void tab_was_removed_from_user_interface() override;
+    virtual void tab_web_content_did_crash(ViewImplementation::WebContentCrashReason) override;
 
 private:
     void propagate_web_content_crash(ViewImplementation::WebContentCrashReason);

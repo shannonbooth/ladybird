@@ -94,27 +94,13 @@ public:
         m_view->installEventFilter(this);
         // The window's controls, and its page's, show on hover, which works while Ladybird is in the background too.
         m_view->set_follows_mouse_while_inactive(true);
-        m_view->tab().on_finish_handling_mouse_event = [this](Web::MouseEvent const& event, Web::EventResult result) {
-            if (event.type == Web::MouseEvent::Type::MouseDown)
-                page_did_handle_press(result);
-        };
 
         // The page lays out a new window size only once its main thread is free, so until then its last frame is
         // scaled to keep the video filling the window.
         m_view->tab().set_scales_frames_to_fit(true);
 
         m_view->tab().enable_picture_in_picture_controls();
-        m_view->tab().on_picture_in_picture_control_activated = [this, owner_view_id = owner_view.view_id()](auto control) {
-            switch (control) {
-            case Compositing::PictureInPictureControl::BackToTab:
-                go_back_to_tab(owner_view_id);
-                break;
-            case Compositing::PictureInPictureControl::Close:
-                if (on_close)
-                    on_close(VideoKeepsPlaying::No);
-                break;
-            }
-        };
+        m_owner_view_id = owner_view.view_id();
 
         auto* layout = new QVBoxLayout(this);
         layout->setContentsMargins(0, 0, 0, 0);
@@ -174,6 +160,26 @@ public:
     }
 
 private:
+    // ^WebView::TabObserver
+    virtual void tab_did_finish_handling_mouse_event(Web::MouseEvent const& event, Web::EventResult result) override
+    {
+        if (event.type == Web::MouseEvent::Type::MouseDown)
+            page_did_handle_press(result);
+    }
+
+    virtual void tab_did_activate_picture_in_picture_control(Compositing::PictureInPictureControl control) override
+    {
+        switch (control) {
+        case Compositing::PictureInPictureControl::BackToTab:
+            go_back_to_tab(m_owner_view_id);
+            break;
+        case Compositing::PictureInPictureControl::Close:
+            if (on_close)
+                on_close(VideoKeepsPlaying::No);
+            break;
+        }
+    }
+
     // A drag moves the window, unless the page claims the press that starts it, as the media controls do to scrub. Every
     // press off the window's controls reaches the page, and a drag waits until the page has handled its press rather than
     // guess while it is busy.
@@ -358,6 +364,7 @@ private:
         bool is_moving_window { false };
     };
     Optional<Press> m_press;
+    u64 m_owner_view_id { 0 };
 };
 
 NonnullOwnPtr<WebView::PictureInPictureWindow> create_picture_in_picture_window(WebView::CanonicalTraversable& traversable, WebView::ViewImplementation const& owner_view, Gfx::IntSize video_size)

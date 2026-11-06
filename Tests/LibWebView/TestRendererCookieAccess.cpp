@@ -115,7 +115,8 @@ TEST_CASE(renderer_cookie_access)
     auto expect_rejected = [&](StringView what, Function<void(WebContentClientStub&, Web::PageId)> send) {
         auto view = create_view();
         Optional<WebView::ViewImplementation::WebContentCrashReason> crash_reason;
-        view->tab().on_web_content_crashed = [&](auto reason) { crash_reason = reason; };
+        Test::TabEvents view_events { view->tab() };
+        view_events.on_web_content_crashed = [&](auto reason) { crash_reason = reason; };
 
         send(static_cast<WebContentClientStub&>(view->tab().page().client()), view->tab().page().id());
         Core::EventLoop::current().spin_until([&]() { return crash_reason.has_value(); });

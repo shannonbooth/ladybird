@@ -51,10 +51,11 @@ void give_user_attention(WebView::ViewImplementation& view, bool has_user_attent
 void start_using_gamepads(WebView::ViewImplementation& view)
 {
     bool title_changed = false;
-    view.on_title_change = [&](auto const&) { title_changed = true; };
+    Test::TabEvents view_events { view };
+    view_events.on_title_change = [&](auto const&) { title_changed = true; };
     view.run_javascript("navigator.getGamepads(); document.title = 'Using gamepads';"_string);
     Core::EventLoop::current().spin_until([&] { return title_changed; });
-    view.on_title_change = nullptr;
+    view_events.on_title_change = nullptr;
 }
 
 void press_button(WebView::WebContentClient& client, Web::Gamepad::VirtualGamepad const& gamepad)
@@ -131,9 +132,11 @@ TEST_CASE(gamepad_exposure)
 
         OwnPtr<WebView::HeadlessWebView> popup;
         bool popup_loaded = false;
+        OwnPtr<Test::TabEvents> popup_events;
         view->tab().on_new_web_view = [&](auto, auto, WebView::CanonicalTraversable& traversable) {
             popup = WebView::HeadlessWebView::create_child(*view, traversable);
-            popup->tab().on_load_finish = [&](auto const&) { popup_loaded = true; };
+            popup_events = make<Test::TabEvents>(popup->tab());
+            popup_events->on_load_finish = [&](auto const&) { popup_loaded = true; };
             return popup->tab().handle();
         };
         view->tab().run_javascript("window.open('about:blank')"_string);
@@ -159,7 +162,8 @@ TEST_CASE(gamepad_exposure)
         give_user_attention(view->tab(), true);
 
         size_t loads_finished = 0;
-        view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
+        Test::TabEvents view_events { view->tab() };
+        view_events.on_load_finish = [&](auto const&) { ++loads_finished; };
         Core::EventLoop::current().spin_until([&] { return loads_finished >= 1; });
         view->tab().load_html("<!DOCTYPE html><iframe srcdoc=\"<!DOCTYPE html>\"></iframe>"sv);
         WebView::CanonicalNavigable* iframe = nullptr;

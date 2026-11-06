@@ -38,7 +38,8 @@ public:
     {
         m_opened_tabs.append(WebView::HeadlessWebView::create(load_theme(), { 800, 600 }));
         auto& tab = m_opened_tabs.last()->tab();
-        tab.on_load_finish = [this](auto const&) { ++m_opened_tab_loads; };
+        m_opened_tab_events.append(make<Test::TabEvents>(tab));
+        m_opened_tab_events.last()->on_load_finish = [this](auto const&) { ++m_opened_tab_loads; };
         m_active_view = &tab;
         return tab;
     }
@@ -62,6 +63,7 @@ public:
 
 private:
     mutable Vector<OwnPtr<WebView::HeadlessWebView>> m_opened_tabs;
+    mutable Vector<NonnullOwnPtr<Test::TabEvents>> m_opened_tab_events;
     mutable WebView::ViewImplementation* m_active_view { nullptr };
     mutable size_t m_opened_tab_loads { 0 };
 };
@@ -80,7 +82,8 @@ TEST_CASE(view_source_of_source_page)
     auto view = WebView::HeadlessWebView::create(load_theme(), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
+    Test::TabEvents view_events { view->tab() };
+    view_events.on_load_finish = [&](auto const&) { ++loads_finished; };
     Core::EventLoop::current().spin_until([&]() { return loads_finished >= 1; });
 
     view->tab().load_html("<!DOCTYPE html><p>A page</p>"sv);

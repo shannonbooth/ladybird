@@ -82,7 +82,8 @@ NonnullOwnPtr<HeadlessWebView> HeadlessWebView::create_child(HeadlessWebView& pa
 HeadlessWebView::~HeadlessWebView() = default;
 
 HeadlessWebView::HeadlessWebView(Core::AnonymousBuffer theme, Web::DevicePixelSize viewport_size, ViewImplementation& tab)
-    : m_theme(move(theme))
+    : TabObserver(tab)
+    , m_theme(move(theme))
     , m_viewport_size(viewport_size)
 {
     tab.attach_surface(*this);
@@ -201,8 +202,25 @@ void HeadlessWebView::propagate_web_content_crash(ViewImplementation::WebContent
         return;
     }
 
-    if (is_attached() && tab().on_web_content_crashed)
-        tab().on_web_content_crashed(crash_reason);
+    if (is_attached())
+        tab().notify_observers([&](TabObserver& observer) { observer.tab_web_content_did_crash(crash_reason); });
+}
+
+// A window opened from another goes with its tab. The owner of a root window deletes it.
+void HeadlessWebView::tab_was_removed_from_user_interface()
+{
+    if (auto* root = m_parent_web_view.ptr())
+        root->m_child_web_views.remove_first_matching([this](auto const& child) { return child.ptr() == this; });
+}
+
+// A crash in a window opened from another reaches the root window too, so that tests waiting on it do not hang.
+void HeadlessWebView::tab_web_content_did_crash(ViewImplementation::WebContentCrashReason crash_reason)
+{
+    auto* root = m_parent_web_view.ptr();
+    if (!root)
+        return;
+    propagate_web_content_crash(crash_reason);
+    root->discard_child_web_view(*this);
 }
 
 HeadlessWebView& HeadlessWebView::adopt_child_web_view(NonnullOwnPtr<HeadlessWebView> web_view)
@@ -211,24 +229,7 @@ HeadlessWebView& HeadlessWebView::adopt_child_web_view(NonnullOwnPtr<HeadlessWeb
     if (m_parent_web_view)
         return m_parent_web_view->adopt_child_web_view(move(web_view));
 
-    auto* child_web_view = web_view.ptr();
-    auto weak_this = make_weak_ptr<HeadlessWebView>();
-    web_view->m_parent_web_view = weak_this;
-    auto discard_child_web_view = [weak_this, child_web_view]() {
-        if (weak_this)
-            weak_this->discard_child_web_view(*child_web_view);
-    };
-
-    // Propagate crashes from child windows to the parent, so parent tests don't hang waiting for a child that crashed.
-    web_view->tab().on_web_content_crashed = [child_web_view, discard_child_web_view](auto crash_reason) {
-        child_web_view->propagate_web_content_crash(crash_reason);
-        discard_child_web_view();
-    };
-    web_view->tab().on_close = [weak_this, child_web_view] {
-        if (weak_this)
-            weak_this->m_child_web_views.remove_first_matching([child_web_view](auto const& child) { return child.ptr() == child_web_view; });
-    };
-
+    web_view->m_parent_web_view = make_weak_ptr<HeadlessWebView>();
     m_child_web_views.append(move(web_view));
     return *m_child_web_views.last();
 }
@@ -242,9 +243,6 @@ OwnPtr<HeadlessWebView> HeadlessWebView::hand_child_web_views_to_new_root()
     auto child_web_views = move(m_child_web_views);
     auto new_root = child_web_views.take_first();
     new_root->m_parent_web_view = nullptr;
-    // Its owner tells it what to do once its own tab is gone, and it has no parent to report crashes to.
-    new_root->tab().on_close = nullptr;
-    new_root->tab().on_web_content_crashed = nullptr;
     for (auto& child_web_view : child_web_views)
         new_root->adopt_child_web_view(move(child_web_view));
     return new_root;

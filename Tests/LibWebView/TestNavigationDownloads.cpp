@@ -194,13 +194,14 @@ ByteBuffer make_body(size_t size)
 void load_page(WebView::ViewImplementation& view, URL::URL const& url)
 {
     IGNORE_USE_IN_ESCAPING_LAMBDA bool loaded = false;
-    view.on_load_finish = [&](URL::URL const&) { loaded = true; };
+    Test::TabEvents view_events { view };
+    view_events.on_load_finish = [&](URL::URL const&) { loaded = true; };
     view.load(url);
 
     auto deadline = Core::Timer::create_single_shot(AK::Duration::from_seconds(30), [] { });
     deadline->start();
     Core::EventLoop::current().spin_until([&] { return loaded || !deadline->is_active(); });
-    view.on_load_finish = nullptr;
+    view_events.on_load_finish = nullptr;
     if (!loaded) {
         warnln("FAIL: the page did not load within 30 seconds");
         VERIFY_NOT_REACHED();

@@ -73,10 +73,11 @@ void click(WebView::ViewImplementation& view, Web::DevicePixelPoint position, We
 void start_using_gamepads(WebView::ViewImplementation& view)
 {
     bool title_changed = false;
-    view.on_title_change = [&](auto const&) { title_changed = true; };
+    Test::TabEvents view_events { view };
+    view_events.on_title_change = [&](auto const&) { title_changed = true; };
     view.run_javascript("navigator.getGamepads(); document.title = 'Using gamepads';"_string);
     Core::EventLoop::current().spin_until([&] { return title_changed; });
-    view.on_title_change = nullptr;
+    view_events.on_title_change = nullptr;
 }
 
 void press_gamepad_button(WebView::WebContentClient& client, Web::Gamepad::VirtualGamepad const& gamepad)
@@ -105,7 +106,8 @@ TEST_CASE(user_activation)
     auto view = WebView::HeadlessWebView::create(move(theme), { 800, 600 });
 
     size_t loads_finished = 0;
-    view->tab().on_load_finish = [&](auto const&) { ++loads_finished; };
+    Test::TabEvents view_events { view->tab() };
+    view_events.on_load_finish = [&](auto const&) { ++loads_finished; };
 
     // NB: The UI process counts the popups it lets the page open. The view creates no window for them.
     size_t popups_opened = 0;

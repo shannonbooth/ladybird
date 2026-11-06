@@ -20,6 +20,7 @@
 #include <LibWebView/CanonicalWindow.h>
 #include <LibWebView/PermissionManager.h>
 #include <LibWebView/StorageJar.h>
+#include <LibWebView/TabObserver.h>
 #include <LibWebView/TabPerformanceMonitor.h>
 #include <LibWebView/UserAgentTopLevelTraversableSet.h>
 #include <LibWebView/ViewImplementation.h>
@@ -1197,8 +1198,7 @@ void CanonicalTraversable::run_browser_ui_traversal_at_queue_position(Function<O
         view->dump_session_history(reason);
         if (on_ready)
             on_ready();
-        if (view->on_browser_history_traversal_complete)
-            view->on_browser_history_traversal_complete();
+        view->notify_observers([&](TabObserver& observer) { observer.tab_did_complete_browser_history_traversal(); });
         promise->resolve({});
         return;
     }
@@ -1729,8 +1729,7 @@ void CanonicalTraversable::did_activate_history_entry(HistoryOperation& operatio
             //     is still visible. Only apply the destination's zoom after its document is activated.
             view.apply_zoom_for_current_host();
             view.m_external_url_request_policy.clear_page_request_allowance();
-            if (view.on_top_level_navigation_commit)
-                view.on_top_level_navigation_commit();
+            view.notify_observers([&](TabObserver& observer) { observer.tab_did_commit_top_level_navigation(); });
         }
     }
 }
