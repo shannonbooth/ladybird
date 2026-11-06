@@ -163,7 +163,7 @@ struct SitePermissionRow {
     bool requested_by_page { false };
 };
 
-class WEBVIEW_API ViewImplementation
+class WEBVIEW_API ViewImplementation final
     : public SettingsObserver
     , public BookmarkStoreObserver
     , public Weakable<ViewImplementation> {
@@ -175,12 +175,10 @@ class WEBVIEW_API ViewImplementation
 public:
     AK_ALLOC_WITH_KMALLOC;
 
-    explicit ViewImplementation(IsPrivate = IsPrivate::No);
-    virtual ~ViewImplementation();
+    ViewImplementation(Badge<CanonicalTraversable>, CanonicalTraversable&);
+    virtual ~ViewImplementation() override;
 
-    // Opens a new tab whose traversable is created with this view, and owns it.
-    static ViewImplementation& open_tab(NonnullOwnPtr<ViewImplementation>, Web::HTML::VisibilityState);
-    void did_create_traversable(Badge<CanonicalTraversable>, CanonicalTraversable&);
+    static ViewImplementation& open_tab(IsPrivate, Web::HTML::VisibilityState);
     // Call after the frontend has installed its callbacks.
     void activate();
     // Closes the tab without asking its pages. The traversable destroys this view with it.
@@ -201,8 +199,8 @@ public:
     static void for_each_view(Function<IterationDecision(ViewImplementation&)>);
     static Optional<ViewImplementation&> find_view_by_id(u64);
 
-    IsPrivate is_private() const { return m_is_private; }
-    BrowsingSession& session() const { return *m_session; }
+    IsPrivate is_private() const;
+    BrowsingSession& session() const;
 
     // Asks the user, unless an identical prompt is already up, in which case its answer goes to every request for it.
     void request_permission_prompt(PermissionPromptRequest, PermissionPromptCallback);
@@ -250,8 +248,7 @@ public:
     // tab rather than a tab or window of its own.
     Optional<TabId> owner_tab_id() const;
 
-    CanonicalTraversable& traversable() const;
-    bool has_traversable() const { return m_top_level_traversable != nullptr; }
+    CanonicalTraversable& traversable() const { return m_traversable; }
     // A page that comes to host any navigable of the tab gets the tab's settings: the spoofed User-Agent and
     // navigator compatibility mode, the preferred languages and color scheme, the window geometry, and the rest of
     // what the UI decides for the tab. A page that displays the tab gets its viewport and focus on top of that.
@@ -302,7 +299,7 @@ public:
     void reload(BypassCache = BypassCache::No);
     void reload_for_webdriver_bidi(BypassCache, Utf16String navigation_id);
     void stop_loading();
-    bool is_loading() const { return has_traversable() && traversable().presentation().is_loading(); }
+    bool is_loading() const { return traversable().presentation().is_loading(); }
 
     bool crash_overlay_active() const { return m_crash_state.has_value(); }
     String crash_overlay_failed_url() const;
@@ -722,9 +719,9 @@ public:
     WebContentPage& page() const;
 
     // The surface attached to the view answers these.
-    virtual Web::DevicePixelSize viewport_size() const;
-    virtual Gfx::IntPoint to_content_position(Gfx::IntPoint widget_position) const;
-    virtual Gfx::IntPoint to_widget_position(Gfx::IntPoint content_position) const;
+    Web::DevicePixelSize viewport_size() const;
+    Gfx::IntPoint to_content_position(Gfx::IntPoint widget_position) const;
+    Gfx::IntPoint to_widget_position(Gfx::IntPoint content_position) const;
 
     // Requests that coordinate tab state before reaching the frontend.
     void request_permission_prompt(PermissionPromptRequest, NonnullRefPtr<PermissionPromptReply>);
@@ -743,28 +740,27 @@ public:
     void insert_clipboard_item(Web::Clipboard::SystemClipboardItem);
 
     virtual void geolocation_settings_changed() override;
-    void set_owner_view(ViewImplementation const&);
     void handle_resize();
     NonnullRefPtr<Core::Promise<Empty>> reset_state_for_testing();
 
-protected:
-    virtual void show_context_menu(Menu&, Gfx::IntPoint widget_position);
+private:
+    void show_context_menu(Menu&, Gfx::IntPoint widget_position);
 
     void will_apply_history_traversal_step(Web::HTML::CrossProcessId operation_id);
     void did_apply_top_level_history_traversal_step(Web::HTML::CrossProcessId operation_id);
     void did_finish_history_traversal(Web::HTML::CrossProcessId operation_id);
     void did_commit_history_step();
 
-    virtual void did_accept_presented_backing_store(i32, Gfx::IntRect);
+    void did_accept_presented_backing_store(i32, Gfx::IntRect);
     // Lets the Compositor paint into a backing store again. A view whose frames something else still reads may wait
     // for that to finish first.
-    virtual void release_backing_store(i32 bitmap_id);
+    void release_backing_store(i32 bitmap_id);
     static Gfx::IntRect rect_fitting_frame(Gfx::IntSize frame_size, Gfx::IntSize target_size);
 
     static constexpr auto ZOOM_STEP = 0.1;
 
-    virtual Core::AnonymousBuffer system_theme();
-    virtual Optional<ScreenRects> screen_rects() const;
+    Core::AnonymousBuffer system_theme();
+    Optional<ScreenRects> screen_rects() const;
     void update_compositor_display_metadata(WebContentPage&);
 
     void detach_surface(ViewSurface&);
@@ -801,7 +797,7 @@ protected:
     void dump_session_history(StringView reason, SessionHistoryDumpMode = SessionHistoryDumpMode::IfDebuggingEnabled) const;
     void recover_current_session_history_entry_with_history_operation();
     void reconstruct_current_session_history_entry_with_history_operation(StringView reason);
-    virtual void update_zoom();
+    void update_zoom();
 
     ViewImplementation* create_view_for_new_tab_or_window(IsPrivate);
     void apply_zoom_for_current_host();
@@ -911,9 +907,6 @@ protected:
     // Set once an assistive technology asked for the page tree; every display page the view shows from then on gets
     // asked for its tree too.
     bool m_accessibility_tree_requested { false };
-
-    IsPrivate m_is_private { IsPrivate::No };
-    NonnullRefPtr<BrowsingSession> m_session;
 
     // A load the browser's UI started, whose URL the address bar shows while it is the ongoing navigation.
     struct BrowserUILoad {
@@ -1118,7 +1111,7 @@ protected:
 
     Web::HTML::MuteState m_mute_state { Web::HTML::MuteState::Unmuted };
 
-    CanonicalTraversable* m_top_level_traversable { nullptr };
+    CanonicalTraversable& m_traversable;
     ViewSurface* m_surface { nullptr };
     bool m_activated { false };
     bool m_browsing_context_closed { false };
@@ -1217,7 +1210,6 @@ protected:
     // FIXME: Reconcile this ID with `page_id`. The latter is only unique per WebContent connection, whereas the view ID
     //        is required to be globally unique for Firefox DevTools.
     u64 m_view_id { 0 };
-    Optional<TabId> m_pending_owner_tab_id;
 
     HashMap<u64, NavigationListener> m_navigation_listeners;
     u64 m_next_navigation_listener_id { 1 };

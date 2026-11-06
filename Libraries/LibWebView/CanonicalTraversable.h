@@ -58,8 +58,6 @@ class WEBVIEW_API CanonicalTraversable final : public CanonicalNavigable {
     friend class ApplyHistoryStep;
 
 public:
-    CanonicalTraversable(Web::HTML::CrossProcessId id, NonnullRefPtr<CanonicalSessionHistoryEntry> initial_history_entry, NonnullRefPtr<BrowsingSession>, NonnullOwnPtr<ViewImplementation>);
-    // A model test may make a traversable without a tab. The user agent always creates one with its view.
     CanonicalTraversable(Web::HTML::CrossProcessId id, NonnullRefPtr<CanonicalSessionHistoryEntry> initial_history_entry, NonnullRefPtr<BrowsingSession>);
     virtual ~CanonicalTraversable() override;
 
@@ -140,11 +138,10 @@ public:
     TabId tab_id() const { return m_tab_id; }
     Optional<TabId> owner_tab_id() const { return m_owner_tab_id; }
     TabId performance_owner() const { return m_owner_tab_id.value_or(m_tab_id); }
-    void set_owner_tab_id(Badge<ViewImplementation>, Optional<TabId> owner) { m_owner_tab_id = owner; }
+    void set_owner_tab_id(TabId owner) { m_owner_tab_id = owner; }
     String const& handle() const { return m_window_handle; }
 
-    // The traversable owns the view of its tab, created with it, which lives as long as it does.
-    ViewImplementation& view() const;
+    ViewImplementation& view() const { return *m_view; }
     RefPtr<WebContentPage> display_page() const;
     ErrorOr<NonnullRefPtr<WebContentPage>> obtain_page_to_host_traversable(RefPtr<WebContentClient> host);
     void set_page_standing_in_for_lost_document(Badge<ViewImplementation>, NonnullRefPtr<WebContentPage>);
@@ -193,7 +190,7 @@ public:
 
     void reload(BypassCache, Optional<Utf16String> navigation_id = {});
     void stop_loading();
-    static CanonicalTraversable& create_a_new_top_level_traversable(NonnullRefPtr<BrowsingSession>, Web::HTML::CrossProcessId id, Optional<CanonicalNavigable&> opener, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::CrossProcessId document_id, NonnullOwnPtr<ViewImplementation>);
+    static CanonicalTraversable& create_a_new_top_level_traversable(NonnullRefPtr<BrowsingSession>, Web::HTML::CrossProcessId id, Optional<CanonicalNavigable&> opener, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::CrossProcessId document_id);
     static bool is_origin_held_by_a_document(URL::Origin const&);
     static CanonicalTraversable* traversable_containing(Web::HTML::CrossProcessId navigable_id);
     static CanonicalNavigable* navigable_with_active_browsing_context(CanonicalBrowsingContext const&);

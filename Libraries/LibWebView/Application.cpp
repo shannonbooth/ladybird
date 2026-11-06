@@ -1616,9 +1616,8 @@ void Application::crash_compositor_process()
     m_compositor_client->async_crash();
 }
 
-ErrorOr<NonnullRefPtr<WebContentPage>> Application::open_page_for_new_tab(NonnullOwnPtr<ViewImplementation> view)
+ErrorOr<NonnullRefPtr<WebContentPage>> Application::open_page_for_new_tab(IsPrivate is_private)
 {
-    auto is_private = view->is_private();
     RefPtr<WebContentClient> web_content_client;
     if (is_private == IsPrivate::Yes) {
         web_content_client = TRY(create_web_content_client(IsPrivate::Yes, allocate_page_id()));
@@ -1629,7 +1628,7 @@ ErrorOr<NonnullRefPtr<WebContentPage>> Application::open_page_for_new_tab(Nonnul
         launch_spare_web_content_process();
         web_content_client = TRY(create_web_content_client(IsPrivate::No, allocate_page_id()));
     }
-    return web_content_client->open_initial_page_for_new_top_level_traversable(move(view));
+    return web_content_client->open_initial_page_for_new_top_level_traversable();
 }
 
 ErrorOr<Application::ChildFrameWebContentProcess> Application::launch_child_frame_web_content_process(IsPrivate is_private, Vector<Web::HTML::RemoteNavigableDescriptor> remote_navigables, Web::HTML::CrossProcessId root_navigable_id, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::VisibilityState system_visibility_state)
@@ -1717,7 +1716,7 @@ static void notify_devtools_of_storage_change(StorageJar& jar, StorageChange con
     }
 
     ViewImplementation::for_each_view([&](ViewImplementation& view) {
-        bool owns_jar = view.session().storage_jar.ptr() == &jar || (view.has_traversable() && &view.traversable().session_storage() == &jar);
+        bool owns_jar = view.session().storage_jar.ptr() == &jar || &view.traversable().session_storage() == &jar;
         if (!owns_jar)
             return IterationDecision::Continue;
         auto host = DevTools::storage_host_for_url(view.url());
@@ -3651,14 +3650,11 @@ void Application::inspect_storage(DevTools::TabDescription const& description, W
 // The jar a tab's storage of this kind lives in: session storage belongs to the tab's traversable, local storage to
 // its browsing session. Every DevTools edit goes through the jar, like every other write, so the pages mirroring the
 // bottle hear of it the same way.
-static ErrorOr<StorageJar*> storage_jar_for_devtools(ViewImplementation& view, Web::StorageAPI::StorageEndpointType storage_endpoint)
+static StorageJar& storage_jar_for_devtools(ViewImplementation& view, Web::StorageAPI::StorageEndpointType storage_endpoint)
 {
-    if (storage_endpoint == Web::StorageAPI::StorageEndpointType::SessionStorage) {
-        if (!view.has_traversable())
-            return Error::from_string_literal("Unable to locate session storage");
-        return &view.traversable().session_storage();
-    }
-    return view.session().storage_jar.ptr();
+    if (storage_endpoint == Web::StorageAPI::StorageEndpointType::SessionStorage)
+        return view.traversable().session_storage();
+    return *view.session().storage_jar;
 }
 
 // The bottle the pages of a DevTools storage host keep their storage in: the host names an origin, and the key is
@@ -3677,9 +3673,9 @@ ErrorOr<Optional<String>> Application::set_storage_item(DevTools::TabDescription
     if (!view.has_value())
         return Error::from_string_literal("Unable to locate tab");
 
-    auto* storage_jar = TRY(storage_jar_for_devtools(*view, storage_endpoint));
+    auto& storage_jar = storage_jar_for_devtools(*view, storage_endpoint);
     auto storage_key = TRY(storage_key_for_devtools_host(host));
-    return TRY(storage_set_result_to_error_or_old_value(storage_jar->set_item(storage_endpoint, storage_key, Utf16String::from_utf8(key), Utf16String::from_utf8(value))));
+    return TRY(storage_set_result_to_error_or_old_value(storage_jar.set_item(storage_endpoint, storage_key, Utf16String::from_utf8(key), Utf16String::from_utf8(value))));
 }
 
 ErrorOr<Optional<String>> Application::remove_storage_item(DevTools::TabDescription const& description, Web::StorageAPI::StorageEndpointType storage_endpoint, String const& host, String const& key) const
@@ -3688,14 +3684,14 @@ ErrorOr<Optional<String>> Application::remove_storage_item(DevTools::TabDescript
     if (!view.has_value())
         return Error::from_string_literal("Unable to locate tab");
 
-    auto* storage_jar = TRY(storage_jar_for_devtools(*view, storage_endpoint));
+    auto& storage_jar = storage_jar_for_devtools(*view, storage_endpoint);
     auto storage_key = TRY(storage_key_for_devtools_host(host));
     auto key_utf16 = Utf16String::from_utf8(key);
-    auto old_value = storage_jar->get_item(storage_endpoint, storage_key, key_utf16);
+    auto old_value = storage_jar.get_item(storage_endpoint, storage_key, key_utf16);
     if (!old_value.has_value())
         return Optional<String> {};
 
-    storage_jar->remove_item(storage_endpoint, storage_key, key_utf16);
+    storage_jar.remove_item(storage_endpoint, storage_key, key_utf16);
     return old_value->to_utf8();
 }
 
@@ -3705,9 +3701,9 @@ ErrorOr<void> Application::clear_storage(DevTools::TabDescription const& descrip
     if (!view.has_value())
         return Error::from_string_literal("Unable to locate tab");
 
-    auto* storage_jar = TRY(storage_jar_for_devtools(*view, storage_endpoint));
+    auto& storage_jar = storage_jar_for_devtools(*view, storage_endpoint);
     auto storage_key = TRY(storage_key_for_devtools_host(host));
-    storage_jar->clear_storage_key(storage_endpoint, storage_key);
+    storage_jar.clear_storage_key(storage_endpoint, storage_key);
     return {};
 }
 

@@ -21,8 +21,7 @@
 
 static WebView::CanonicalTraversable& create_traversable(WebView::IsPrivate is_private, u64 id)
 {
-    auto view = make<WebView::ViewImplementation>(is_private);
-    return WebView::CanonicalTraversable::create_a_new_top_level_traversable(WebView::Application::session_for_new_view(is_private), { 100, id }, {}, Web::HTML::create_initial_session_history_entry_descriptor({ 101, id }, {}, {}), { 102, id }, move(view));
+    return WebView::CanonicalTraversable::create_a_new_top_level_traversable(WebView::Application::session_for_new_view(is_private), { 100, id }, {}, Web::HTML::create_initial_session_history_entry_descriptor({ 101, id }, {}, {}), { 102, id });
 }
 
 TEST_CASE(unattached_traversable_is_owned_and_found_by_the_user_agent)

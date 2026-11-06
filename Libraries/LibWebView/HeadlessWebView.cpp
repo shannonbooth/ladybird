@@ -53,7 +53,6 @@ NonnullOwnPtr<PictureInPictureWindow> HeadlessWebView::create_picture_in_picture
     auto size = PictureInPictureWindow::initial_size(video_size, screen_rect.size().to_type<int>());
     auto theme = owner.surface() ? owner.surface()->system_theme() : Core::AnonymousBuffer {};
     auto& tab = traversable.view();
-    tab.set_owner_view(owner);
     traversable.set_system_visibility_state(Web::HTML::VisibilityState::Visible);
     auto web_view = adopt_own(*new HeadlessWebView(move(theme), size.to_type<Web::DevicePixels>(), tab));
     tab.activate();
@@ -62,7 +61,7 @@ NonnullOwnPtr<PictureInPictureWindow> HeadlessWebView::create_picture_in_picture
 
 ViewImplementation& HeadlessWebView::open_tab(IsPrivate is_private)
 {
-    return ViewImplementation::open_tab(make<ViewImplementation>(is_private), Web::HTML::VisibilityState::Visible);
+    return ViewImplementation::open_tab(is_private, Web::HTML::VisibilityState::Visible);
 }
 
 NonnullOwnPtr<HeadlessWebView> HeadlessWebView::create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size, IsPrivate is_private)

@@ -221,7 +221,7 @@ String WebDriverBiDi::navigable_id(CanonicalNavigable const& navigable)
 
 static bool is_top_level_traversable_of_a_window(ViewImplementation const& view)
 {
-    return !view.owner_tab_id().has_value() && view.has_traversable() && !view.handle().is_empty();
+    return !view.owner_tab_id().has_value() && !view.handle().is_empty();
 }
 
 static Vector<CanonicalTraversable&> all_top_level_traversables()

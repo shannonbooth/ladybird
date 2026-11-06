@@ -30,13 +30,6 @@ namespace WebView {
 
 static u64 s_next_tab_id = 1;
 
-CanonicalTraversable::CanonicalTraversable(Web::HTML::CrossProcessId id, NonnullRefPtr<CanonicalSessionHistoryEntry> initial_history_entry, NonnullRefPtr<BrowsingSession> session, NonnullOwnPtr<ViewImplementation> view)
-    : CanonicalTraversable(id, move(initial_history_entry), move(session))
-{
-    m_view = move(view);
-    m_view->did_create_traversable({}, *this);
-}
-
 CanonicalTraversable::CanonicalTraversable(Web::HTML::CrossProcessId id, NonnullRefPtr<CanonicalSessionHistoryEntry> initial_history_entry, NonnullRefPtr<BrowsingSession> session)
     : CanonicalNavigable(id)
     , m_session(move(session))
@@ -47,6 +40,7 @@ CanonicalTraversable::CanonicalTraversable(Web::HTML::CrossProcessId id, Nonnull
     , m_session_storage(StorageJar::create())
     , m_document_cookie_version_buffer(Core::create_shared_version_buffer())
 {
+    m_view = adopt_own(*new ViewImplementation({}, *this));
 }
 
 ErrorOr<Core::SharedVersionIndex> CanonicalTraversable::ensure_document_cookie_version_index(String const& domain)
@@ -456,12 +450,6 @@ void CanonicalTraversable::release_page_if_unused(NonnullRefPtr<WebContentPage> 
     did_lose_page(page, WebContentProcessLost::No);
 }
 
-ViewImplementation& CanonicalTraversable::view() const
-{
-    VERIFY(m_view);
-    return *m_view;
-}
-
 RefPtr<WebContentPage> CanonicalTraversable::display_page() const
 {
     // The tab is displayed by the page hosting the traversable's document, or by the page standing in for the document
@@ -797,7 +785,7 @@ bool CanonicalTraversable::is_origin_held_by_a_document(URL::Origin const& origi
 }
 
 // https://html.spec.whatwg.org/multipage/document-sequences.html#creating-a-new-top-level-traversable
-CanonicalTraversable& CanonicalTraversable::create_a_new_top_level_traversable(NonnullRefPtr<BrowsingSession> session, Web::HTML::CrossProcessId id, Optional<CanonicalNavigable&> opener, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::CrossProcessId document_id, NonnullOwnPtr<ViewImplementation> view)
+CanonicalTraversable& CanonicalTraversable::create_a_new_top_level_traversable(NonnullRefPtr<BrowsingSession> session, Web::HTML::CrossProcessId id, Optional<CanonicalNavigable&> opener, Web::HTML::SessionHistoryEntryDescriptor initial_history_entry, Web::HTML::CrossProcessId document_id)
 {
     // 1. Let document be null.
     RefPtr<CanonicalDocument> document;
@@ -826,7 +814,7 @@ CanonicalTraversable& CanonicalTraversable::create_a_new_top_level_traversable(N
     // 5. Let traversable be a new traversable navigable.
     // NB: Its session history entries start out as steps 7-9 leave them.
     history_entry->step = 0;
-    auto traversable = make<CanonicalTraversable>(id, history_entry, move(session), move(view));
+    auto traversable = make<CanonicalTraversable>(id, history_entry, move(session));
 
     // 6. Initialize the navigable traversable given documentState.
     traversable->set_current_session_history_entry(history_entry);
@@ -865,8 +853,6 @@ CanonicalTraversable& CanonicalTraversable::create_a_new_top_level_traversable(N
 // https://html.spec.whatwg.org/multipage/document-sequences.html#destroy-a-top-level-traversable
 void CanonicalTraversable::destroy()
 {
-    if (m_view)
-        m_view->did_destroy_traversable({});
     // 5. Remove traversable from the user agent's top-level traversable set.
     // NB: The process hosting the traversable's document runs the other steps.
     UserAgentTopLevelTraversableSet::the().remove({}, *this);
@@ -1089,11 +1075,9 @@ struct HistoryOperation {
 
 CanonicalTraversable::~CanonicalTraversable()
 {
-    if (m_view)
-        m_view->did_destroy_traversable({});
+    m_view->did_destroy_traversable({});
     TabPerformanceMonitor::forget_tab(tab_id());
-    if (session().permission_manager)
-        session().permission_manager->remove_tab(tab_id());
+    session().permission_manager->remove_tab(tab_id());
 
     // https://html.spec.whatwg.org/multipage/document-sequences.html#discard-a-browsing-context
     // The closed tab's browsing context is discarded, and removed from its group. It lives on as the opener browsing

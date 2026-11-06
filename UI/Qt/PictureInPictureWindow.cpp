@@ -82,7 +82,6 @@ public:
             .is_private = owner_view.is_private(),
             .maximum_frames_per_second = m_screen_observer->refresh_rate(),
             .display_id = m_screen_observer->display_id(),
-            .owner_view = &owner_view,
         };
         m_view = new WebContentView(this, traversable, view_initial_state);
         m_screen_observer->on_device_pixel_ratio_change = [this] {

@@ -701,7 +701,7 @@ CanonicalNavigable::ChosenTopLevelTraversable CanonicalNavigable::choose_a_new_t
     //     sends, as the UI process does not hold it.
     auto opener = no_opener ? Optional<CanonicalNavigable&> {} : current_navigable;
     auto initial_history_entry = Web::HTML::create_initial_session_history_entry_descriptor(Application::the().allocate_ui_process_cross_process_id(), opener.has_value() ? move(current_document_base_url) : Optional<URL::URL> {}, move(target_name));
-    auto& chosen = CanonicalTraversable::create_a_new_top_level_traversable(current_page.client().session(), id, opener, move(initial_history_entry), document_id, make<ViewImplementation>(current_page.view().is_private()));
+    auto& chosen = CanonicalTraversable::create_a_new_top_level_traversable(current_page.client().session(), id, opener, move(initial_history_entry), document_id);
 
     //    2. If sandboxingFlagSet's sandboxed navigation browsing context flag is set, then set chosen's active browsing
     //       context's one permitted sandboxed navigator to currentNavigable's active browsing context.

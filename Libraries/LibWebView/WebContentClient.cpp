@@ -252,13 +252,13 @@ void WebContentClient::remember_compositor_context(Web::CompositorContextId cont
     m_compositor_contexts.set(context_id, page_id);
 }
 
-WebContentPage& WebContentClient::open_initial_page_for_new_top_level_traversable(NonnullOwnPtr<ViewImplementation> view)
+WebContentPage& WebContentClient::open_initial_page_for_new_top_level_traversable()
 {
     auto initial_page_id = m_unassigned_initial_page_id.release_value();
 
     // A tab's first process creates its traversable, in the page that displays the tab.
     VERIFY(m_initial_top_level_history_entry.has_value());
-    auto& traversable = CanonicalTraversable::create_a_new_top_level_traversable(session(), m_root_navigable_id, {}, m_initial_top_level_history_entry.release_value(), m_initial_top_level_document_id, move(view));
+    auto& traversable = CanonicalTraversable::create_a_new_top_level_traversable(session(), m_root_navigable_id, {}, m_initial_top_level_history_entry.release_value(), m_initial_top_level_document_id);
     auto& page = open_page_for_new_top_level_traversable(initial_page_id, traversable);
     page.async_set_browsing_context_group(traversable.active_browsing_context().group()->id());
     return page;
@@ -599,9 +599,6 @@ void WebContentClient::did_save_crash_report(ByteString const& report_name)
 void WebContentClient::cancel_navigation_transactions()
 {
     ViewImplementation::for_each_view([this](ViewImplementation& view) {
-        // NB: A helper spawn can deliver an older child's exit before a new view has its traversable.
-        if (!view.has_traversable())
-            return IterationDecision::Continue;
         view.traversable().for_each_in_inclusive_subtree([this](CanonicalNavigable& navigable) {
             navigable.cancel_navigation_for_client(*this);
             return IterationDecision::Continue;
@@ -830,8 +827,6 @@ Messages::WebContentClient::DidLoseRequestServerConnectionResponse WebContentCli
     bool navigation_authorized = false;
     if (top_level_site.has_value() && !m_request_server_site_bindings.client_id_for(top_level_site).has_value()) {
         ViewImplementation::for_each_view([&](ViewImplementation& view) {
-            if (!view.has_traversable())
-                return IterationDecision::Continue;
             auto& traversable = view.traversable();
             auto navigation = traversable.uncommitted_navigation();
             if (navigation && navigation->state.has<CanonicalNavigation::CreatingNavigationParams>()

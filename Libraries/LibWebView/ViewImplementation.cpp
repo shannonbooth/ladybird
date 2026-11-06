@@ -86,9 +86,8 @@ Optional<ViewImplementation&> ViewImplementation::find_view_by_id(u64 id)
     return {};
 }
 
-ViewImplementation::ViewImplementation(IsPrivate is_private)
-    : m_is_private(is_private)
-    , m_session(Application::session_for_new_view(is_private))
+ViewImplementation::ViewImplementation(Badge<CanonicalTraversable>, CanonicalTraversable& traversable)
+    : m_traversable(traversable)
     , m_view_id(s_view_count++)
 {
     initialize_context_menus();
@@ -110,9 +109,8 @@ ViewImplementation::ViewImplementation(IsPrivate is_private)
 
 void ViewImplementation::destroy_tab()
 {
-    VERIFY(m_top_level_traversable);
     // NB: This destroys the view.
-    m_top_level_traversable->destroy();
+    m_traversable.destroy();
 }
 
 void ViewImplementation::did_destroy_traversable(Badge<CanonicalTraversable>)
@@ -123,9 +121,9 @@ void ViewImplementation::did_destroy_traversable(Badge<CanonicalTraversable>)
     if (m_surface)
         detach_surface(*m_surface);
     bool was_active = m_activated;
-    m_top_level_traversable->presentation().on_change = nullptr;
-    m_top_level_traversable->on_session_history_changed = nullptr;
-    m_top_level_traversable->for_each_hosting_page([](WebContentPage& page) {
+    m_traversable.presentation().on_change = nullptr;
+    m_traversable.on_session_history_changed = nullptr;
+    m_traversable.for_each_hosting_page([](WebContentPage& page) {
         page.cancel_replies_from_ui();
     });
 
@@ -148,8 +146,7 @@ void ViewImplementation::did_destroy_traversable(Badge<CanonicalTraversable>)
     on_tab_indicator_change = nullptr;
     // Stop routing to this view before destroying its traversable and revoking its one-time permissions.
     all_views().remove(m_view_id);
-    if (m_top_level_traversable)
-        m_top_level_traversable->clear_ongoing_navigation();
+    m_traversable.clear_ongoing_navigation();
     cancel_all_native_geolocation_requests();
 
     if (was_active && !handle().is_empty() && !owner_tab_id().has_value())
@@ -163,12 +160,10 @@ void ViewImplementation::did_destroy_traversable(Badge<CanonicalTraversable>)
             webdriver_bidi->top_level_traversable_did_close(handle());
     }
 
-    if (m_top_level_traversable) {
-        m_top_level_traversable->discard_pending_host();
-        m_top_level_traversable->discard_representing_pages();
-        if (auto page = m_top_level_traversable->display_page(); page && page->is_open())
-            page->client().close_page_of_closed_tab(page->id());
-    }
+    m_traversable.discard_pending_host();
+    m_traversable.discard_representing_pages();
+    if (auto page = m_traversable.display_page(); page && page->is_open())
+        page->client().close_page_of_closed_tab(page->id());
 
     // A headless parent can own and destroy its child view without the child receiving a browsing-context-close
     // notification. Do not strand a WebDriver command which raced with that teardown.
@@ -181,7 +176,7 @@ void ViewImplementation::did_destroy_traversable(Badge<CanonicalTraversable>)
 ViewImplementation::~ViewImplementation()
 {
     // The traversable destroys its view, after telling it so.
-    VERIFY(m_shutdown_started || !m_top_level_traversable);
+    VERIFY(m_shutdown_started);
 }
 
 void ViewImplementation::release_surface(ViewSurface& surface)
@@ -383,43 +378,30 @@ pid_t ViewImplementation::web_content_pid() const
 
 Vector<HistoryEntry> ViewImplementation::recent_history_entries(size_t limit) const
 {
-    return m_session->history_store->list_entries({}, 0, limit);
+    return session().history_store->list_entries({}, 0, limit);
+}
+
+IsPrivate ViewImplementation::is_private() const
+{
+    return session().is_private();
+}
+
+BrowsingSession& ViewImplementation::session() const
+{
+    return m_traversable.session();
 }
 
 Optional<TabId> ViewImplementation::owner_tab_id() const
 {
-    if (m_top_level_traversable)
-        return m_top_level_traversable->owner_tab_id();
-    return m_pending_owner_tab_id;
-}
-
-void ViewImplementation::set_owner_view(ViewImplementation const& owner)
-{
-    m_pending_owner_tab_id = owner.traversable().tab_id();
-    if (m_top_level_traversable)
-        m_top_level_traversable->set_owner_tab_id({}, m_pending_owner_tab_id);
+    return m_traversable.owner_tab_id();
 }
 
 String const& ViewImplementation::handle() const
 {
     static NeverDestroyed<String> empty_handle;
-    if (!m_top_level_traversable || m_webdriver_window_closed)
+    if (m_webdriver_window_closed)
         return *empty_handle;
-    return m_top_level_traversable->handle();
-}
-
-CanonicalTraversable& ViewImplementation::traversable() const
-{
-    VERIFY(m_top_level_traversable);
-    return *m_top_level_traversable;
-}
-
-void ViewImplementation::did_create_traversable(Badge<CanonicalTraversable>, CanonicalTraversable& traversable)
-{
-    VERIFY(!m_top_level_traversable);
-    VERIFY(&session() == &traversable.session());
-    m_top_level_traversable = &traversable;
-    traversable.set_owner_tab_id({}, m_pending_owner_tab_id);
+    return m_traversable.handle();
 }
 
 WebContentPage& ViewImplementation::page() const
@@ -431,9 +413,7 @@ WebContentPage& ViewImplementation::page() const
 
 URL::URL ViewImplementation::url() const
 {
-    if (!m_top_level_traversable)
-        return URL::about_blank();
-    return m_top_level_traversable->active_document_url();
+    return m_traversable.active_document_url();
 }
 
 void ViewImplementation::did_update_url()
@@ -570,9 +550,9 @@ void ViewImplementation::release_held_permission_prompt_if_ready_for_testing()
 
 Optional<URL::URL const&> ViewImplementation::browser_ui_load_url() const
 {
-    if (!m_browser_ui_load.has_value() || !m_top_level_traversable)
+    if (!m_browser_ui_load.has_value())
         return {};
-    auto ongoing_navigation_id = m_top_level_traversable->ongoing_navigation_id();
+    auto ongoing_navigation_id = m_traversable.ongoing_navigation_id();
     if (!ongoing_navigation_id.has_value() || *ongoing_navigation_id != m_browser_ui_load->navigation_id)
         return {};
     return m_browser_ui_load->url;
@@ -603,15 +583,13 @@ void ViewImplementation::update_displayed_url()
         if (auto position = raw_fragment->find(":~:"sv); position.has_value())
             displayed_url_without_fragment_directive.set_fragment(raw_fragment->substring_view(0, *position));
     }
-    auto text_fragment_indication_is_visible = m_top_level_traversable && traversable().presentation().text_fragment_indication_is_visible();
+    auto text_fragment_indication_is_visible = traversable().presentation().text_fragment_indication_is_visible();
     if (!text_fragment_indication_is_visible)
         displayed_url = displayed_url_without_fragment_directive;
 
-    if (m_top_level_traversable) {
-        auto const& current_entry = traversable().session_history().current_entry();
-        if (current_entry.url == displayed_url_without_fragment_directive)
-            displayed_url = display_url_for_session_history_entry(current_entry.descriptor(), text_fragment_indication_is_visible);
-    }
+    auto const& current_entry = traversable().session_history().current_entry();
+    if (current_entry.url == displayed_url_without_fragment_directive)
+        displayed_url = display_url_for_session_history_entry(current_entry.descriptor(), text_fragment_indication_is_visible);
 
     if (m_displayed_url == displayed_url)
         return;
@@ -622,14 +600,12 @@ void ViewImplementation::update_displayed_url()
 
 Utf16String const& ViewImplementation::title() const
 {
-    static NeverDestroyed<Utf16String> empty;
-    return has_traversable() ? traversable().presentation().title() : *empty;
+    return traversable().presentation().title();
 }
 
 Optional<String> const& ViewImplementation::favicon_hash() const
 {
-    static NeverDestroyed<Optional<String>> empty;
-    return has_traversable() ? traversable().presentation().favicon_hash() : *empty;
+    return traversable().presentation().favicon_hash();
 }
 
 void ViewImplementation::set_title(Utf16String title)
@@ -711,18 +687,14 @@ void ViewImplementation::set_system_visibility_state(Web::HTML::VisibilityState 
 // Report the traversable's site and visibility using its persistent tab identity.
 void ViewImplementation::report_permission_presence()
 {
-    if (!m_top_level_traversable)
-        return;
     auto visible = traversable().system_visibility_state() == Web::HTML::VisibilityState::Visible;
     session().permission_manager->set_tab_presence(traversable().tab_id(), permission_origin(), visible);
 }
 
 URL::Origin ViewImplementation::permission_origin() const
 {
-    if (m_top_level_traversable) {
-        if (auto origin = traversable().active_document().top_level_origin(); origin.has_value())
-            return origin.release_value();
-    }
+    if (auto origin = traversable().active_document().top_level_origin(); origin.has_value())
+        return origin.release_value();
     return url().origin();
 }
 
@@ -1051,7 +1023,7 @@ Vector<ViewImplementation::SessionHistoryTraversalMenuItem> ViewImplementation::
     auto append_item = [&](size_t target_step_index) {
         auto target_step = used_steps[target_step_index];
         auto const& target_entry = *session_history.top_level_entry_for_step(target_step);
-        auto history_entry = m_session->history_store->entry_for_url(target_entry.url);
+        auto history_entry = session().history_store->entry_for_url(target_entry.url);
         auto url = target_entry.url.serialize();
         auto title = history_entry.has_value() && history_entry->title.has_value() && !history_entry->title->is_empty()
             ? move(*history_entry->title)
@@ -1082,7 +1054,7 @@ void ViewImplementation::zoom_in()
     m_zoom_level = round_to<int>((m_zoom_level + ZOOM_STEP) * 100) / 100.0;
     update_zoom();
 
-    if (m_is_private == IsPrivate::No)
+    if (is_private() == IsPrivate::No)
         Application::settings().set_zoom_for_host(current_host_for_settings(), m_zoom_level);
 }
 
@@ -1093,7 +1065,7 @@ void ViewImplementation::zoom_out()
     m_zoom_level = round_to<int>((m_zoom_level - ZOOM_STEP) * 100) / 100.0;
     update_zoom();
 
-    if (m_is_private == IsPrivate::No)
+    if (is_private() == IsPrivate::No)
         Application::settings().set_zoom_for_host(current_host_for_settings(), m_zoom_level);
 }
 
@@ -1162,7 +1134,7 @@ void ViewImplementation::reset_zoom()
     update_zoom();
     page().async_reset_zoom();
 
-    if (m_is_private == IsPrivate::No)
+    if (is_private() == IsPrivate::No)
         Application::settings().set_zoom_for_host(current_host_for_settings(), m_zoom_level);
 }
 
@@ -3211,16 +3183,15 @@ void ViewImplementation::handle_resize()
     }
 }
 
-ViewImplementation& ViewImplementation::open_tab(NonnullOwnPtr<ViewImplementation> view, Web::HTML::VisibilityState system_visibility_state)
+ViewImplementation& ViewImplementation::open_tab(IsPrivate is_private, Web::HTML::VisibilityState system_visibility_state)
 {
-    auto& view_ref = *view;
     // FIXME: Fail to open the tab, rather than crashing the whole application if this fails.
-    auto page = MUST(Application::the().open_page_for_new_tab(move(view)));
-    page->traversable().set_system_visibility_state(system_visibility_state);
+    auto page = MUST(Application::the().open_page_for_new_tab(is_private));
+    auto& traversable = page->traversable();
+    traversable.set_system_visibility_state(system_visibility_state);
     // The launched process's initial page, or the page the opener's process opened for the tab, displays it.
-    VERIFY(view_ref.page().is_open());
-    VERIFY(view_ref.page().client().is_private() == view_ref.m_is_private);
-    return view_ref;
+    VERIFY(traversable.view().page().is_open());
+    return traversable.view();
 }
 
 void ViewImplementation::activate()
@@ -4227,7 +4198,7 @@ bool ViewImplementation::register_session_store_tab_for_testing()
     if (m_session_tab_id.has_value())
         return true;
 
-    auto tab_id = m_session->session_store->tab_opened({ .window_id = {}, .initial_url = url(), .insertion_index = {}, .is_active = SessionStore::IsActive::No });
+    auto tab_id = session().session_store->tab_opened({ .window_id = {}, .initial_url = url(), .insertion_index = {}, .is_active = SessionStore::IsActive::No });
     if (tab_id.is_error())
         return false;
     set_session_tab_id(tab_id.value());
@@ -4255,7 +4226,7 @@ String ViewImplementation::session_store_tab_state_for_testing() const
     if (!m_session_tab_id.has_value())
         return serialized.serialized();
 
-    auto cached_state = m_session->session_store->cached_tab_state_for_testing(*m_session_tab_id);
+    auto cached_state = session().session_store->cached_tab_state_for_testing(*m_session_tab_id);
     if (!cached_state.has_value())
         return serialized.serialized();
 
@@ -4281,7 +4252,7 @@ void ViewImplementation::notify_session_history_changed()
         .history = session_history_snapshot(),
         .url = move(url),
     };
-    m_session->session_store->update_tab_state(move(update));
+    session().session_store->update_tab_state(move(update));
 }
 
 NonnullRefPtr<Core::Promise<Empty>> ViewImplementation::reset_state_for_testing()
@@ -4537,7 +4508,7 @@ bool ViewImplementation::force_dark_enabled() const
 
 bool ViewImplementation::can_set_force_dark() const
 {
-    return m_is_private == IsPrivate::No && !force_dark_host().is_empty();
+    return is_private() == IsPrivate::No && !force_dark_host().is_empty();
 }
 
 void ViewImplementation::set_force_dark_enabled(bool enabled)
@@ -5000,7 +4971,7 @@ void ViewImplementation::initialize_context_menus()
     m_toggle_bookmark_action = Action::create("Toggle Bookmark"sv, ActionID::ToggleBookmarkViaToolbar, [this]() {
         Application::the().toggle_bookmark_for_view(*this);
     });
-    update_bookmark_action();
+    m_toggle_bookmark_action->set_tooltip("Bookmark this page"sv);
 
     m_reset_zoom_action = Action::create("100%"sv, ActionID::ResetZoomViaToolbar, [this]() {
         reset_zoom();
@@ -5066,7 +5037,7 @@ void ViewImplementation::initialize_context_menus()
         if (auto bookmark_id = application.bookmark_item_id_for_context_menu(); bookmark_id.has_value())
             application.open_bookmark_in_new_tab(bookmark_id->id, Web::HTML::ActivateTab::Yes);
     }));
-    if (m_is_private == IsPrivate::No) {
+    if (is_private() == IsPrivate::No) {
         m_bookmark_context_menu->add_action(Action::create("Open in New Window"sv, ActionID::OpenInNewWindow, []() {
             auto& application = Application::the();
 
@@ -5258,7 +5229,7 @@ void ViewImplementation::add_open_in_new_tab_action(Menu& menu, StringView text,
 void ViewImplementation::add_open_url_actions(Menu& menu, URL::URL const& url, Optional<Web::HTML::PreparedNavigationDescriptor> const& navigation)
 {
     add_open_in_new_tab_action(menu, "Open Link in New Tab"sv, url, navigation);
-    if (m_is_private == IsPrivate::No) {
+    if (is_private() == IsPrivate::No) {
         menu.add_action(Action::create("Open Link in New Window"sv, ActionID::OpenInNewWindow, [this, url, navigation]() {
             if (navigation.has_value())
                 open_navigation_in_new_window(*navigation, IsPrivate::No);
@@ -5379,12 +5350,10 @@ void ViewImplementation::reset_spell_checking()
     if (auto* spell_checker = Application::the().spell_checker(); spell_checker && m_spell_document_tag.has_value())
         spell_checker->close_document_tag(*m_spell_document_tag);
     m_spell_document_tag.clear();
-    if (m_top_level_traversable) {
-        traversable().for_each_hosting_page([](WebContentPage& page) {
-            if (page.is_open())
-                page.async_forget_accepted_spelling_words();
-        });
-    }
+    traversable().for_each_hosting_page([](WebContentPage& page) {
+        if (page.is_open())
+            page.async_forget_accepted_spelling_words();
+    });
 }
 
 void ViewImplementation::update_context_menu_misspelling(Optional<Utf16String> misspelled_word)
@@ -5446,11 +5415,9 @@ void ViewImplementation::learn_misspelling(Utf16String const& word)
         return;
     }
     for_each_view([&](ViewImplementation& view) {
-        if (view.m_top_level_traversable) {
-            view.traversable().for_each_hosting_page([&](WebContentPage& page) {
-                page.async_accept_spelling_word(word);
-            });
-        }
+        view.traversable().for_each_hosting_page([&](WebContentPage& page) {
+            page.async_accept_spelling_word(word);
+        });
         return IterationDecision::Continue;
     });
 }

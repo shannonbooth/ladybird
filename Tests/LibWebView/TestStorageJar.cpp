@@ -4,13 +4,21 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+#include "HeadlessTest.h"
 #include <AK/NonnullOwnPtr.h>
 #include <AK/Vector.h>
 #include <LibCore/System.h>
 #include <LibDatabase/Database.h>
 #include <LibTest/TestCase.h>
+#include <LibWebView/Application.h>
+#include <LibWebView/CanonicalBrowsingContext.h>
 #include <LibWebView/CanonicalTraversable.h>
 #include <LibWebView/StorageJar.h>
+
+// Every traversable has its tab's view, which needs an application.
+#define CREATE_APPLICATION()                                          \
+    Test::HeadlessTestEnvironment environment { "TestStorageJar"sv }; \
+    auto app = TRY_OR_FAIL(environment.create_application())
 
 static NonnullRefPtr<WebView::CanonicalSessionHistoryEntry> initial_history_entry()
 {
@@ -94,8 +102,11 @@ TEST_CASE(storage_usage_counts_utf8_bytes_not_code_units)
 
 TEST_CASE(legacy_cloning_a_canonical_traversable_creates_an_independent_copy)
 {
-    WebView::CanonicalTraversable source { {}, initial_history_entry(), WebView::BrowsingSession::create(WebView::IsPrivate::No) };
-    WebView::CanonicalTraversable clone { {}, initial_history_entry(), WebView::BrowsingSession::create(WebView::IsPrivate::No) };
+    CREATE_APPLICATION();
+    WebView::CanonicalTraversable source { {}, initial_history_entry(), WebView::Application::session_for_new_view(WebView::IsPrivate::No) };
+    WebView::CanonicalTraversable clone { {}, initial_history_entry(), WebView::Application::session_for_new_view(WebView::IsPrivate::No) };
+    for (auto* traversable : { &source, &clone })
+        traversable->set_active_session_history_entry(WebView::CanonicalSessionHistoryEntry::create(WebView::CanonicalDocumentState::create({}, WebView::CanonicalBrowsingContext::create_a_new_top_level_browsing_context_and_document({}).document)));
 
     source.session_storage().set_item(WebView::StorageEndpointType::SessionStorage, "https://a.example"_string, "key"_utf16, "source"_utf16);
     source.session_storage().set_item(WebView::StorageEndpointType::SessionStorage, "https://b.example"_string, "other"_utf16, "preserved"_utf16);
