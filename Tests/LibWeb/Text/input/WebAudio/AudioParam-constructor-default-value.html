@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const context = new OfflineAudioContext(1, 128, 48000);
+        const gain = new GainNode(context, { gain: 0.25 });
+        println(`Initial gain: ${gain.gain.value}; default gain: ${gain.gain.defaultValue}`);
+
+        const source = new ConstantSourceNode(context);
+        source.connect(gain).connect(context.destination);
+        source.start();
+
+        const buffer = context.createBuffer(1, 128, context.sampleRate);
+        buffer.getChannelData(0).fill(NaN, 64);
+        const modulation = new AudioBufferSourceNode(context, { buffer });
+        modulation.connect(gain.gain);
+        modulation.start();
+
+        const samples = (await context.startRendering()).getChannelData(0);
+        println(`Gain with zero modulation: ${samples[0]}`);
+        println(`Gain with NaN modulation: ${samples[64]}`);
+    });
+</script>

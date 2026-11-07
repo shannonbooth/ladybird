@@ -285,6 +285,7 @@ impl AudioWorkletNode {
                 context,
                 Some(AnyAudioNode::AudioWorkletNode(node)),
                 descriptor.default_value,
+                None,
                 descriptor.min_value,
                 descriptor.max_value,
                 descriptor.automation_rate,

@@ -1,0 +1,3 @@
+Initial gain: 0.25; default gain: 1
+Gain with zero modulation: 0.25
+Gain with NaN modulation: 1

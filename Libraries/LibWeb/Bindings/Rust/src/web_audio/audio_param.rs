@@ -63,6 +63,7 @@ impl AudioParam {
         context: AnyBaseAudioContext,
         owner: Option<AnyAudioNode>,
         default_value: f32,
+        initial_value: Option<f32>,
         min_value: f32,
         max_value: f32,
         automation_rate: AutomationRate,
@@ -71,6 +72,16 @@ impl AudioParam {
     ) -> Ref<Self> {
         allocate(vm, |_| {
             let timeline = Arc::new(AudioParamTimeline::new(default_value));
+            // AD-HOC: The spec also sets value when the option is the default, which adds a setValueAtTime event.
+            if let Some(initial_value) = initial_value
+                && initial_value.to_bits() != default_value.to_bits()
+            {
+                timeline.set_current_value(initial_value);
+                assert_eq!(
+                    timeline.set_value_at_time(initial_value, context.current_time_value()),
+                    InsertResult::Success
+                );
+            }
             let render_param = Arc::new(RenderAudioParam::new(
                 Arc::clone(&timeline),
                 min_value,
