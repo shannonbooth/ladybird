@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 use ak::Utf16String;
 use libjs_rust::api::{
-    Array, EmbedderCell, EmbedderClass, EmbedderValue, ErrorKind, FunctionObject, GcWeak, MarkedVec, Object,
-    PropertyKey, RawNativeFunctionResult, TypedArrayBase, TypedArrayKind, Value, Vm, call, construct,
+    Array, EmbedderCell, EmbedderClass, EmbedderValue, ErrorKind, FunctionObject, GcWeak, IntegrityLevel, MarkedVec,
+    Must, Object, PropertyKey, RawNativeFunctionResult, TypedArrayBase, TypedArrayKind, Value, Vm, call, construct,
     create_typed_array,
 };
 use libjs_rust::api::{Gc, Realm, Trace};
@@ -633,6 +633,7 @@ impl AudioWorkletNode {
                                         )
                                         .expect("a new array accepts a property");
                                 }
+                                channels.set_integrity_level(vm, IntegrityLevel::Frozen).must();
                                 channels
                             };
 
@@ -655,6 +656,8 @@ impl AudioWorkletNode {
                                 )
                                 .expect("a new array accepts a property");
                         }
+
+                        inputs.set_integrity_level(vm, IntegrityLevel::Frozen).must();
 
                         let output_channel_count = |output: usize| -> usize {
                             if config.output_channel_count_matches_input {
@@ -679,6 +682,10 @@ impl AudioWorkletNode {
                                 .expect("a new array accepts a property");
                         }
 
+                        outputs.set_integrity_level(vm, IntegrityLevel::Frozen).must();
+
+                        // https://webaudio.github.io/web-audio-api/#audioworkletprocess-callback-parameters
+                        // 1. Let parameter be the ordered map of the name and parameter values.
                         let parameters = Object::create(vm, realm, Some(realm.intrinsics().object_prototype(vm)));
                         for param_index in 0..config.param_count {
                             let block = input_slot.param_block(param_index);
@@ -696,6 +703,9 @@ impl AudioWorkletNode {
                                 )
                                 .expect("a new parameters object accepts a property");
                         }
+
+                        // 2. SetIntegrityLevel(parameter, frozen)
+                        parameters.set_integrity_level(vm, IntegrityLevel::Frozen).must();
 
                         // 4.4.4.7. Let getResult be Get(O, "process").
                         let process_value = match processor_object.get(vm, &PropertyKey::from_utf8("process")) {

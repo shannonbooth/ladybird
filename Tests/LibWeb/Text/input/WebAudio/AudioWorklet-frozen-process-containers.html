@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const context = new AudioContext();
+        const url = URL.createObjectURL(new Blob([`
+            class FrozenContainers extends AudioWorkletProcessor {
+                static get parameterDescriptors() { return [{ name: "level", defaultValue: 0.25 }]; }
+                process(inputs, outputs, parameters) {
+                    if (!this.reported && inputs[0].length) {
+                        const output = outputs[0][0];
+                        output[0] = parameters.level[0];
+                        this.port.postMessage([
+                            Object.isFrozen(inputs), Object.isFrozen(inputs[0]),
+                            Object.isFrozen(outputs), Object.isFrozen(outputs[0]),
+                            Object.isFrozen(parameters), output[0]
+                        ]);
+                        this.reported = true;
+                    }
+                    return true;
+                }
+            }
+            registerProcessor("frozen-containers", FrozenContainers);
+        `], { type: "text/javascript" }));
+        try {
+            await context.audioWorklet.addModule(url);
+            const node = new AudioWorkletNode(context, "frozen-containers");
+            const report = new Promise(resolve => node.port.onmessage = event => resolve(event.data));
+            const input = new ConstantSourceNode(context);
+            input.connect(node).connect(context.destination);
+            input.start();
+            println((await report).join(", "));
+        } finally {
+            URL.revokeObjectURL(url);
+            await context.close();
+        }
+    });
+</script>
