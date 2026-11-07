@@ -117,7 +117,12 @@ impl RenderAudioParam {
     }
 
     // https://webaudio.github.io/web-audio-api/#computation-of-value
-    pub(crate) unsafe fn compute(&self, graph: &dyn OutputGraph, context: &RenderContext, output: &mut [f32]) {
+    pub(crate) unsafe fn compute(
+        &self,
+        graph: &dyn OutputGraph,
+        context: &RenderContext,
+        output: &mut [f32],
+    ) -> AutomationRate {
         let state = self.state.get();
 
         // 1. paramIntrinsicValue will be calculated at each time, which is either the value set directly to the value
@@ -182,6 +187,7 @@ impl RenderAudioParam {
                 *value = value.clamp(self.min_value, self.max_value);
             }
         }
+        rate
     }
 }
 

@@ -1,0 +1,2 @@
+a-rate: 128 values, varies: true
+k-rate: 1 values, varies: false

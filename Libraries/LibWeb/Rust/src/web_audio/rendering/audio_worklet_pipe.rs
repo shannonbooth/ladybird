@@ -29,9 +29,6 @@ pub struct Config {
     pub output_channel_count_matches_input: bool,
     pub param_count: usize,
 
-    // Per parameter: a-rate blocks carry quantum_size samples, k-rate blocks one.
-    pub param_is_a_rate: Vec<bool>,
-
     // Slots per ring; must be a power of two.
     pub ring_capacity: usize,
 
@@ -72,8 +69,8 @@ struct Ring {
 //     u32 actual_channel_count[input_count]                     for a per-quantum processing-error signal)
 //     f32 samples[input_channel_capacity[0]][quantum_size]  u32 actual_channel_count[output_count]
 //       ... one sample block per input ...                  f32 samples[output_channel_capacity[0]][quantum_size]
-//     f32 param_block[param_count]: quantum_size samples      ... one sample block per output ...
-//         each for a-rate parameters, 1 for k-rate
+//     f32 param_block[param_count][quantum_size]               ... one sample block per output ...
+//     u32 param_block_length[param_count]
 //
 // Slots are accessed in place through the writer/reader views below, which are only valid inside the callback they
 // are passed to. A slot's unwritten regions keep stale data from the previous trip around the ring, so a writer
@@ -87,7 +84,7 @@ pub struct AudioWorkletPipe {
     input_samples_offset: Vec<usize>,
     output_samples_offset: Vec<usize>,
     param_block_offset: Vec<usize>,
-    param_block_length: Vec<usize>,
+    param_block_lengths_offset: usize,
     arena: Box<[UnsafeCell<u64>]>,
     input_ring: Ring,
     output_ring: Ring,
@@ -111,7 +108,6 @@ impl AudioWorkletPipe {
         assert!(config.quantum_size > 0);
         assert_eq!(config.input_channel_capacity.len(), config.input_count);
         assert_eq!(config.output_channel_capacity.len(), config.output_count);
-        assert_eq!(config.param_is_a_rate.len(), config.param_count);
         assert!(config.ring_capacity.is_power_of_two());
         assert!(config.prime_level <= config.ring_capacity);
         let channel_bytes = config.quantum_size * size_of::<f32>();
@@ -122,17 +118,12 @@ impl AudioWorkletPipe {
             offset += config.input_channel_capacity[input] as usize * channel_bytes;
         }
         let mut param_block_offset = Vec::with_capacity(config.param_count);
-        let mut param_block_length = Vec::with_capacity(config.param_count);
-        for param in 0..config.param_count {
+        for _ in 0..config.param_count {
             param_block_offset.push(offset);
-            let block_length = if config.param_is_a_rate[param] {
-                config.quantum_size
-            } else {
-                1
-            };
-            param_block_length.push(block_length);
-            offset += block_length * size_of::<f32>();
+            offset += channel_bytes;
         }
+        let param_block_lengths_offset = offset;
+        offset += config.param_count * size_of::<u32>();
         let input_slot_stride = (offset + SLOT_ALIGNMENT - 1) & !(SLOT_ALIGNMENT - 1);
         offset = SLOT_CHANNEL_COUNTS_OFFSET + config.output_count * size_of::<u32>();
         let mut output_samples_offset = Vec::with_capacity(config.output_count);
@@ -152,7 +143,7 @@ impl AudioWorkletPipe {
             input_samples_offset,
             output_samples_offset,
             param_block_offset,
-            param_block_length,
+            param_block_lengths_offset,
             arena: (0..arena_size / size_of::<u64>()).map(|_| UnsafeCell::new(0)).collect(),
             input_ring: Ring::default(),
             output_ring: Ring::default(),
@@ -418,12 +409,13 @@ impl AudioWorkletPipe {
         )
     }
 
-    pub(crate) unsafe fn param_block(&self, slot: *mut u8, param: usize) -> (*mut f32, usize) {
+    pub(crate) unsafe fn param_block(&self, slot: *mut u8, param: usize) -> *mut f32 {
+        unsafe { slot.add(self.param_block_offset[param]).cast() }
+    }
+
+    pub(crate) unsafe fn param_block_length(&self, slot: *mut u8, param: usize) -> *mut u32 {
         assert!(param < self.config.param_count);
-        (
-            unsafe { slot.add(self.param_block_offset[param]).cast() },
-            self.param_block_length[param],
-        )
+        unsafe { slot.add(self.param_block_lengths_offset).cast::<u32>().add(param) }
     }
 }
 
@@ -474,7 +466,9 @@ impl InputSlotReader<'_> {
     }
 
     pub fn param_block(&self, param: usize) -> &[f32] {
-        let (samples, length) = unsafe { self.pipe.param_block(self.slot, param) };
+        let samples = unsafe { self.pipe.param_block(self.slot, param) };
+        let length = unsafe { *self.pipe.param_block_length(self.slot, param) } as usize;
+        assert!(length <= self.pipe.config.quantum_size);
         unsafe { ak::slice_from_raw_parts(samples, length) }
     }
 }

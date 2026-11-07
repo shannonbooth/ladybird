@@ -17,7 +17,6 @@ use super::render_nodes::{BusRef, NodeProcessor, node_handle};
 struct AudioWorkletRenderNode {
     pipe: Arc<AudioWorkletPipe>,
     params: Vec<Arc<RenderAudioParam>>,
-    param_scratch: Vec<f32>,
     output_channel_capacities: Vec<u32>,
 }
 
@@ -60,14 +59,11 @@ impl NodeProcessor for AudioWorkletRenderNode {
                     }
                 }
                 for param_index in 0..self.params.len() {
-                    let (pointer, length) = self.pipe.param_block(slot, param_index);
-                    let block = ak::slice_from_raw_parts_mut(pointer, length);
-
-                    // a-rate params fill the whole block; k-rate blocks are a single value. compute() handles
-                    // both through the shared timeline + any audio-rate param connections.
-                    self.param_scratch.resize(block.len(), 0.);
-                    self.params[param_index].compute(graph, context, &mut self.param_scratch[..block.len()]);
-                    block.copy_from_slice(&self.param_scratch[..block.len()]);
+                    let pointer = self.pipe.param_block(slot, param_index);
+                    let block = ak::slice_from_raw_parts_mut(pointer, context.quantum_size);
+                    let rate = self.params[param_index].compute(graph, context, block);
+                    let length = if rate == AutomationRate::ARate { block.len() } else { 1 };
+                    *self.pipe.param_block_length(slot, param_index) = length as u32;
                 }
             });
             self.pipe.request_wakeup();
@@ -132,7 +128,6 @@ pub fn create_audio_worklet_render_node(
         AudioWorkletRenderNode {
             pipe,
             params,
-            param_scratch: vec![0.; quantum_size],
             output_channel_capacities: output_channel_capacities.to_vec(),
         },
     )

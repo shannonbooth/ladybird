@@ -421,10 +421,6 @@ impl AudioWorkletNode {
                 });
             }
         }
-        let mut param_is_a_rate = Vec::new();
-        for descriptor in &descriptors {
-            param_is_a_rate.push(descriptor.automation_rate == AutomationRate::ARate);
-        }
         let sizing = ring_sizing_for_device_latency(
             100,
             context.sample_rate_value(),
@@ -438,7 +434,6 @@ impl AudioWorkletNode {
             output_channel_capacity: output_channel_capacity.clone(),
             output_channel_count_matches_input,
             param_count: descriptors.len(),
-            param_is_a_rate,
             ring_capacity: sizing.ring_capacity,
             prime_level: sizing.prime_level,
         });

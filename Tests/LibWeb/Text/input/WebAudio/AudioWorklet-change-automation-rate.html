@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const context = new AudioContext();
+        const url = URL.createObjectURL(new Blob([`
+            class TestRate extends AudioWorkletProcessor {
+                static get parameterDescriptors() { return [{ name: "level", automationRate: "k-rate" }]; }
+                process(inputs, outputs, parameters) {
+                    const block = parameters.level;
+                    if (block.length !== this.previousLength && block.some(value => value !== 0)) {
+                        this.previousLength = block.length;
+                        this.port.postMessage([block.length, block.some(value => value !== block[0])]);
+                    }
+                    return true;
+                }
+            }
+            registerProcessor("test-rate", TestRate);
+        `], { type: "text/javascript" }));
+        try {
+            await context.suspend();
+            await context.audioWorklet.addModule(url);
+            const node = new AudioWorkletNode(context, "test-rate", { numberOfInputs: 0 });
+            const level = node.parameters.get("level");
+            const oscillator = new OscillatorNode(context, { frequency: 500 });
+            oscillator.connect(level);
+            oscillator.start();
+            node.connect(context.destination);
+
+            for (const rate of ["a-rate", "k-rate"]) {
+                const report = new Promise(resolve => node.port.onmessage = event => resolve(event.data));
+                level.automationRate = rate;
+                await context.resume();
+                const [length, varies] = await report;
+                println(`${rate}: ${length} values, varies: ${varies}`);
+            }
+        } finally {
+            URL.revokeObjectURL(url);
+            await context.close();
+        }
+    });
+</script>

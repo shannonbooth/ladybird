@@ -71,7 +71,6 @@ fn test_pipe() -> Arc<AudioWorkletPipe> {
         output_channel_capacity: vec![2],
         output_channel_count_matches_input: false,
         param_count: 2,
-        param_is_a_rate: vec![true, false],
         ring_capacity: RING_CAPACITY,
         prime_level: PRIME_LEVEL,
     })
@@ -101,8 +100,11 @@ impl InputSlotWriter<'_> {
     }
 
     fn param_block(&mut self, param: usize) -> &mut [f32] {
-        let (samples, length) = unsafe { self.pipe.param_block(self.slot, param) };
-        unsafe { ak::slice_from_raw_parts_mut(samples, length) }
+        let length = if param == 0 { QUANTUM_SIZE } else { 1 };
+        unsafe {
+            *self.pipe.param_block_length(self.slot, param) = length as u32;
+            ak::slice_from_raw_parts_mut(self.pipe.param_block(self.slot, param), length)
+        }
     }
 }
 
