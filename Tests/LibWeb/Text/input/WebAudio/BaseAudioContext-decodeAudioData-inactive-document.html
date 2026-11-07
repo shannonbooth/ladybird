@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const frame = document.createElement("iframe");
+        frame.srcdoc = "<!DOCTYPE html>";
+        const loaded = new Promise(resolve => frame.onload = resolve);
+        document.body.append(frame);
+        await loaded;
+        const context = new frame.contentWindow.OfflineAudioContext(1, 128, 48000);
+        const navigated = new Promise(resolve => frame.onload = resolve);
+        frame.srcdoc = "<!DOCTYPE html><title>New document</title>";
+        await navigated;
+
+        const intact = new ArrayBuffer(8);
+        const detached = intact.slice();
+        structuredClone(detached, { transfer: [detached] });
+        for (const buffer of [intact, detached]) {
+            try {
+                await context.decodeAudioData(buffer);
+            } catch (error) {
+                println(`${error.name}, byteLength: ${buffer.byteLength}`);
+            }
+        }
+
+        const active = new OfflineAudioContext(1, 128, 48000);
+        const memory = new WebAssembly.Memory({ initial: 1 });
+        const callback = new Promise(resolve => {
+            active.decodeAudioData(memory.buffer, null, error => resolve(error.name)).catch(error => {
+                println(`Non-detachable input: ${error.name}`);
+            });
+        });
+        println(`Error callback: ${await callback}`);
+    });
+</script>

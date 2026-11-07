@@ -1,0 +1,4 @@
+InvalidStateError, byteLength: 8
+InvalidStateError, byteLength: 0
+Non-detachable input: DataCloneError
+Error callback: DataCloneError

@@ -835,45 +835,7 @@ impl BaseAudioContext {
         success_callback: Option<Option<CallbackFunction>>,
         error_callback: Option<Option<CallbackFunction>>,
     ) -> WebIdlResult<WebIdlPromise> {
-        let vm = cx.vm();
-        let promise = create_promise(vm, self.realm());
-        if audio_data.is_detached() {
-            let error = exception_value(
-                vm,
-                promise_realm(promise),
-                Exception::Dom("DataCloneError", Utf16String::from_ascii(b"Audio data is detached.")),
-            );
-            reject_promise(vm, promise, error);
-            if let Some(callback) = error_callback.flatten() {
-                let state = DETACHED_AUDIO_DATA_ERROR_CLASS.allocate(vm, |_| DetachedAudioDataError {
-                    realm: cx.realm(),
-                    callback,
-                    error,
-                });
-                self.queue_a_media_element_task(vm, state, |_, state| {
-                    if let Err(error) = state.callback.invoke(None, &[state.error]) {
-                        unsafe {
-                            web_audio_context_report_exception(state.realm.as_ptr().cast(), error.value().to_raw());
-                        };
-                    }
-                });
-            }
-            return Ok(promise);
-        }
-        let mut bytes = Vec::new();
-        bytes.try_reserve_exact(audio_data.byte_length()).map_err(|_| {
-            Exception::from(
-                vm.throw_completion::<()>(ErrorKind::InternalError, ErrorType::OutOfMemory, &[])
-                    .unwrap_err(),
-            )
-        })?;
-        bytes.resize(audio_data.byte_length(), 0);
-        audio_data.copy_to(0, &mut bytes);
-        detach_array_buffer(vm, audio_data, None)?;
-
-        // FIXME: When decodeAudioData is called, the following steps MUST be performed on the control thread:
-        // 1. If this's relevant global object's associated Document is not fully active then return a
-        //    promise rejected with "InvalidStateError" DOMException.
+        // 1. If this’s relevant global object’s associated Document is not fully active then return a promise rejected with "InvalidStateError" DOMException.
         if !self.document_is_fully_active() {
             return Err(Exception::Dom(
                 "InvalidStateError",
@@ -881,16 +843,76 @@ impl BaseAudioContext {
             ));
         }
 
-        // 3. Append promise to [[pending promises]] and queue a decoding operation.
-        self.pending_promises.borrow_mut(vm).push(promise);
-        let operation = DECODING_OPERATION_CLASS.allocate(vm, |_| DecodingOperation {
-            context: self.this(),
-            promise,
-            success_callback: success_callback.flatten(),
-            error_callback: error_callback.flatten(),
-            decoded: RefCell::new(None),
-        });
-        self.queue_a_decoding_operation(vm, operation, &bytes);
+        // 2. Let promise be a new Promise.
+        let vm = cx.vm();
+        let promise = create_promise(vm, self.realm());
+
+        // 3. If audioData is not detached, execute the following steps:
+        if !audio_data.is_detached() {
+            let mut bytes = Vec::new();
+            bytes.try_reserve_exact(audio_data.byte_length()).map_err(|_| {
+                Exception::from(
+                    vm.throw_completion::<()>(ErrorKind::InternalError, ErrorType::OutOfMemory, &[])
+                        .unwrap_err(),
+                )
+            })?;
+            bytes.resize(audio_data.byte_length(), 0);
+            audio_data.copy_to(0, &mut bytes);
+
+            // 3.1. Append promise to [[pending promises]].
+            self.pending_promises.borrow_mut(vm).push(promise);
+
+            // 3.2. Detach the audioData ArrayBuffer. If this operation throws, jump to step 4.1.
+            if detach_array_buffer(vm, audio_data, None).is_ok() {
+                // 3.3. Queue a decoding operation to be performed on another thread.
+                let operation = DECODING_OPERATION_CLASS.allocate(vm, |_| DecodingOperation {
+                    context: self.this(),
+                    promise,
+                    success_callback: success_callback.flatten(),
+                    error_callback: error_callback.flatten(),
+                    decoded: RefCell::new(None),
+                });
+                self.queue_a_decoding_operation(vm, operation, &bytes);
+
+                // 5. Return promise.
+                return Ok(promise);
+            }
+        }
+
+        // 4. Else, execute the following error steps:
+        // 4.1. Let error be a DataCloneError.
+        let error = exception_value(
+            vm,
+            promise_realm(promise),
+            Exception::Dom(
+                "DataCloneError",
+                Utf16String::from_ascii(b"Audio data cannot be detached."),
+            ),
+        );
+
+        // 4.2. Reject promise with error, and remove it from [[pending promises]].
+        reject_promise(vm, promise, error);
+        self.pending_promises
+            .borrow_mut(vm)
+            .retain(|pending| *pending != promise);
+
+        // 4.3. Queue a media element task to invoke errorCallback with error.
+        if let Some(callback) = error_callback.flatten() {
+            let state = DETACHED_AUDIO_DATA_ERROR_CLASS.allocate(vm, |_| DetachedAudioDataError {
+                realm: cx.realm(),
+                callback,
+                error,
+            });
+            self.queue_a_media_element_task(vm, state, |_, state| {
+                if let Err(error) = state.callback.invoke(None, &[state.error]) {
+                    unsafe {
+                        web_audio_context_report_exception(state.realm.as_ptr().cast(), error.value().to_raw());
+                    };
+                }
+            });
+        }
+
+        // 5. Return promise.
         Ok(promise)
     }
 
