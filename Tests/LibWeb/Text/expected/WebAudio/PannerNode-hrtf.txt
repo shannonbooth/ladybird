@@ -1,0 +1,6 @@
+Ears receive different responses: true
+Position is sampled at the quantum start: true
+22050 Hz: a source on the left is louder in the left ear: true
+48000 Hz: a source on the left is louder in the left ear: true
+96000 Hz: a source on the left is louder in the left ear: true
+Impulse response continues after the source ends: true

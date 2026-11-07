@@ -125,6 +125,7 @@ impl RenderAudioParam {
         &self,
         graph: &dyn OutputGraph,
         context: &RenderContext,
+        effective_automation_rate: Option<AutomationRate>,
         output: &mut [f32],
     ) -> AutomationRate {
         let state = self.state.get();
@@ -135,7 +136,7 @@ impl RenderAudioParam {
         //    value will remain unchanged and stay at its previous value until either the value attribute is directly
         //    set, or automation events are added for the time range.
         // NB: A k-rate parameter uses the first sample frame for the entire quantum.
-        let rate = self.automation_rate();
+        let rate = effective_automation_rate.unwrap_or_else(|| self.automation_rate());
         if rate == AutomationRate::KRate {
             self.timeline.sample(context.quantum_start_time(), 0., &mut output[..1]);
             let value = output[0];

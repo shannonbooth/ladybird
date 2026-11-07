@@ -62,7 +62,7 @@ impl NodeProcessor for AudioWorkletRenderNode {
                 for param_index in 0..self.params.len() {
                     let pointer = self.pipe.param_block(slot, param_index);
                     let block = ak::slice_from_raw_parts_mut(pointer, context.quantum_size);
-                    let rate = self.params[param_index].compute(graph, context, block);
+                    let rate = self.params[param_index].compute(graph, context, None, block);
                     let length = if rate == AutomationRate::ARate { block.len() } else { 1 };
                     *self.pipe.param_block_length(slot, param_index) = length as u32;
                 }

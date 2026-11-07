@@ -129,7 +129,7 @@ impl EnvelopeFollower {
     ) {
         let mut value = [0.];
         let mut compute = |param: &RenderAudioParam| {
-            unsafe { param.compute(graph, context, &mut value) };
+            unsafe { param.compute(graph, context, None, &mut value) };
             f64::from(value[0])
         };
 

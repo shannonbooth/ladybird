@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    async function renderImpulse(frame, moving = false, sampleRate = 48000) {
+        const context = new OfflineAudioContext(2, 384, sampleRate);
+        const buffer = new AudioBuffer({ length: frame + 1, sampleRate: context.sampleRate });
+        buffer.getChannelData(0)[frame] = 1;
+        const source = new AudioBufferSourceNode(context, { buffer });
+        const panner = new PannerNode(context, { panningModel: "HRTF", positionX: -1, positionZ: -1, rolloffFactor: 0 });
+        if (moving) {
+            panner.positionX.setValueAtTime(-1, 0);
+            panner.positionX.linearRampToValueAtTime(1, 128 / context.sampleRate);
+        }
+        source.connect(panner).connect(context.destination);
+        source.start();
+        return context.startRendering();
+    }
+
+    promiseTest(async () => {
+        const stationary = await renderImpulse(64);
+        const moving = await renderImpulse(64, true);
+        const left = stationary.getChannelData(0);
+        const right = stationary.getChannelData(1);
+        println(`Ears receive different responses: ${left.some((value, frame) => Math.abs(value - right[frame]) > 1e-5)}`);
+        println(`Position is sampled at the quantum start: ${left.slice(0, 128).every((value, frame) => value === moving.getChannelData(0)[frame])}`);
+
+        const energy = samples => samples.reduce((sum, value) => sum + value * value, 0);
+        for (const sampleRate of [22050, 48000, 96000]) {
+            const rendered = await renderImpulse(64, false, sampleRate);
+            const left = energy(rendered.getChannelData(0));
+            const right = energy(rendered.getChannelData(1));
+            println(`${sampleRate} Hz: a source on the left is louder in the left ear: ${Number.isFinite(left) && left > right}`);
+        }
+
+        const late = await renderImpulse(127);
+        println(`Impulse response continues after the source ends: ${late.getChannelData(0).slice(128).some(value => Math.abs(value) > 1e-5)}`);
+    });
+</script>

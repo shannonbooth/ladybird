@@ -258,6 +258,7 @@ impl PannerNode {
         node.node.queue_render_node_creation(create_panner_render_node(
             node.node.node_id(),
             context.render_quantum_size_value() as usize,
+            context.sample_rate_value(),
             &params,
         ));
         node.queue_panner_parameters_update();

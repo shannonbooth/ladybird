@@ -22,6 +22,7 @@ use super::audio_bus::AudioBus;
 use super::biquad_coefficients::{BiquadFilterType, compute_biquad_coefficients};
 use super::convolver_kernel::ConvolverKernel;
 use super::fft::{FFT, FFTDirection};
+use super::hrtf_panner::HrtfPanner;
 use super::node_message::*;
 use super::render_graph::RenderGraph;
 use super::render_node::*;
@@ -193,7 +194,7 @@ impl NodeProcessor for GainRenderNode {
                 gain_output.zero();
                 return;
             }
-            self.gain.compute(graph, context, &mut self.gain_values);
+            self.gain.compute(graph, context, None, &mut self.gain_values);
             for channel_index in 0..input.channel_count() {
                 let input_samples = input.channel(channel_index);
                 let output_samples = gain_output.channel_mut(channel_index);
@@ -296,7 +297,7 @@ struct ConstantSourceRenderNode {
 impl ConstantSourceRenderNode {
     unsafe fn process_source(&mut self, data: &RenderNodeData, graph: &RenderGraph, context: &RenderContext) {
         unsafe {
-            self.offset.compute(graph, context, &mut self.offset_values);
+            self.offset.compute(graph, context, None, &mut self.offset_values);
             let output = BusRef(data.output(0));
             let output_samples = output.channel_mut(0);
             for frame in 0..context.quantum_size {
@@ -420,8 +421,8 @@ impl OscillatorRenderNode {
 
     unsafe fn process_source(&mut self, data: &RenderNodeData, graph: &RenderGraph, context: &RenderContext) {
         unsafe {
-            self.frequency.compute(graph, context, &mut self.frequency_values);
-            self.detune.compute(graph, context, &mut self.detune_values);
+            self.frequency.compute(graph, context, None, &mut self.frequency_values);
+            self.detune.compute(graph, context, None, &mut self.detune_values);
             let nyquist_frequency = context.sample_rate / 2.;
             let output = BusRef(data.output(0));
             let output_samples = output.channel_mut(0);
@@ -558,8 +559,8 @@ impl AudioBufferSourceRenderNode {
     unsafe fn process_source(&mut self, data: &RenderNodeData, graph: &RenderGraph, context: &RenderContext) {
         unsafe {
             self.playback_rate
-                .compute(graph, context, &mut self.playback_rate_values);
-            self.detune.compute(graph, context, &mut self.detune_values);
+                .compute(graph, context, None, &mut self.playback_rate_values);
+            self.detune.compute(graph, context, None, &mut self.detune_values);
             let source_output = BusRef(data.output(0));
             source_output.set_channel_count(self.buffer.as_ref().map_or(1, |buffer| buffer.channels.len()));
             source_output.zero();
@@ -758,7 +759,7 @@ impl DelayReader {
         graph: &RenderGraph,
         context: &RenderContext,
     ) {
-        unsafe { self.delay_time.compute(graph, context, &mut self.delay_values) };
+        unsafe { self.delay_time.compute(graph, context, None, &mut self.delay_values) };
         let history_length = delay_line.channel_counts.len();
         unsafe {
             delay_output.set_channel_count(delay_line.history.len().max(1));
@@ -867,7 +868,7 @@ impl NodeProcessor for StereoPannerRenderNode {
     unsafe fn process(&mut self, data: &RenderNodeData, graph: &RenderGraph, context: &RenderContext) {
         unsafe {
             let input = BusRef(data.pull_input(graph, context, 0).cast_mut());
-            self.pan.compute(graph, context, &mut self.pan_values);
+            self.pan.compute(graph, context, None, &mut self.pan_values);
             let panner_output = BusRef(data.output(0));
             panner_output.set_channel_count(2);
             let output_left = panner_output.channel_mut(0);
@@ -1000,10 +1001,10 @@ impl NodeProcessor for BiquadFilterRenderNode {
     unsafe fn process(&mut self, data: &RenderNodeData, graph: &RenderGraph, context: &RenderContext) {
         unsafe {
             let input = BusRef(data.pull_input(graph, context, 0).cast_mut());
-            self.frequency.compute(graph, context, &mut self.frequency_values);
-            self.detune.compute(graph, context, &mut self.detune_values);
-            self.q.compute(graph, context, &mut self.q_values);
-            self.gain.compute(graph, context, &mut self.gain_values);
+            self.frequency.compute(graph, context, None, &mut self.frequency_values);
+            self.detune.compute(graph, context, None, &mut self.detune_values);
+            self.q.compute(graph, context, None, &mut self.q_values);
+            self.gain.compute(graph, context, None, &mut self.gain_values);
             if self.filter_states.len() != input.channel_count() {
                 self.filter_states
                     .resize_with(input.channel_count(), BiquadFilterState::default);
@@ -1396,18 +1397,18 @@ fn safe_normalized(vector: DoubleVector3) -> DoubleVector3 {
 }
 
 // https://webaudio.github.io/web-audio-api/#azimuth-elevation
-fn compute_azimuth(
+fn compute_azimuth_and_elevation(
     source_position: DoubleVector3,
     listener_position: DoubleVector3,
     listener_forward: DoubleVector3,
     listener_up: DoubleVector3,
-) -> f64 {
+) -> (f64, f64) {
     // Calculate the source-listener vector.
     let mut source_listener = source_position - listener_position;
 
     // Handle degenerate case if source and listener are at the same point.
     if source_listener.length() == 0. {
-        return 0.;
+        return (0., 0.);
     }
     source_listener = source_listener.normalized();
 
@@ -1417,7 +1418,7 @@ fn compute_azimuth(
     // Handle the case where listener's 'up' and 'forward' vectors are linearly dependent, in which case 'right'
     // cannot be determined.
     if listener_right.length() == 0. {
-        return 0.;
+        return (0., 0.);
     }
 
     // Determine a unit vector orthogonal to listener's right, forward.
@@ -1436,16 +1437,18 @@ fn compute_azimuth(
     }
 
     // Make azimuth relative to "forward" and not "right" listener vector.
-    // AD-HOC: This is equivalent to the spec's mapping, but lands directly in the range [-180, 180].
-    if azimuth <= 90. {
+    if (0. ..=270.).contains(&azimuth) {
         azimuth = 90. - azimuth;
     } else {
         azimuth = 450. - azimuth;
     }
-    if azimuth > 180. {
-        azimuth -= 360.;
+    let mut elevation = 90. - 180. * math::acos(up_projection.clamp(-1., 1.)) / PI;
+    if elevation > 90. {
+        elevation = 180. - elevation;
+    } else if elevation < -90. {
+        elevation = -180. - elevation;
     }
-    azimuth
+    (azimuth, elevation)
 }
 
 // https://webaudio.github.io/web-audio-api/#enumdef-distancemodeltype
@@ -1802,6 +1805,7 @@ struct PannerParams {
 struct PannerRenderNode {
     params: PannerParams,
     config: SetPannerParameters,
+    hrtf_panner: HrtfPanner,
 
     param_values: [Vec<f32>; 6],
 }
@@ -1809,6 +1813,10 @@ struct PannerRenderNode {
 impl NodeProcessor for PannerRenderNode {
     fn handle_message(&mut self, message: &NodeMessage) {
         if let NodeMessage::SetPannerParameters(parameters) = message {
+            if self.config.panning_model == PanningModelType::HRTF && parameters.panning_model != PanningModelType::HRTF
+            {
+                self.hrtf_panner.reset();
+            }
             self.config = *parameters;
         }
     }
@@ -1827,11 +1835,17 @@ impl NodeProcessor for PannerRenderNode {
         unsafe {
             let input = BusRef(data.pull_input(graph, context, 0).cast_mut());
             let panner_output = BusRef(data.output(0));
-            panner_output.set_channel_count(2);
-            if input.is_silent() {
+            let hrtf = self.config.panning_model == PanningModelType::HRTF;
+            let actively_processing = data.input_is_actively_processing(graph, context, 0)
+                || !input.is_silent()
+                || (hrtf && self.hrtf_panner.has_tail());
+            data.actively_processing.set(Some(actively_processing));
+            if !actively_processing {
+                panner_output.set_channel_count(1);
                 panner_output.zero();
                 return;
             }
+            panner_output.set_channel_count(2);
             let params = [
                 &self.params.position_x,
                 &self.params.position_y,
@@ -1840,12 +1854,21 @@ impl NodeProcessor for PannerRenderNode {
                 &self.params.orientation_y,
                 &self.params.orientation_z,
             ];
+            let effective_automation_rate = hrtf.then_some(AutomationRate::KRate);
             for param_index in 0..params.len() {
-                params[param_index].compute(graph, context, &mut self.param_values[param_index]);
+                params[param_index].compute(
+                    graph,
+                    context,
+                    effective_automation_rate,
+                    &mut self.param_values[param_index],
+                );
             }
             let listener_values = graph.listener().expect("a panner has a listener").values();
-            let output_left = panner_output.channel_mut(0);
-            let output_right = panner_output.channel_mut(1);
+            let mut equalpower_output = if hrtf {
+                None
+            } else {
+                Some((panner_output.channel_mut(0), panner_output.channel_mut(1)))
+            };
             let input_left = input.channel(0);
             let input_right = if input.channel_count() > 1 {
                 input.channel(1)
@@ -1878,15 +1901,22 @@ impl NodeProcessor for PannerRenderNode {
                     f64::from(listener_values[7][frame]),
                     f64::from(listener_values[8][frame]),
                 ]);
-                let mut azimuth = compute_azimuth(source_position, listener_position, listener_forward, listener_up);
+                let (mut azimuth, elevation) =
+                    compute_azimuth_and_elevation(source_position, listener_position, listener_forward, listener_up);
                 let distance = (source_position - listener_position).length();
                 let gain = (compute_distance_gain(distance, &self.config)
                     * compute_cone_gain(source_position, source_orientation, listener_position, &self.config))
                     as f32;
 
+                if hrtf {
+                    self.hrtf_panner.pan(&input, &panner_output, azimuth, elevation, gain);
+                    return;
+                }
+
+                let (output_left, output_right) = equalpower_output.as_mut().unwrap();
                 // https://webaudio.github.io/web-audio-api/#Spatialization-panning-algorithm
                 // The azimuth value is first contained to be within the range [-90, 90].
-                // NB: compute_azimuth() already produces a value in [-180, 180], so only the wrapping step remains.
+                // NB: compute_azimuth_and_elevation() already produces a value in [-180, 180], so only the wrapping step remains.
                 if azimuth < -90. {
                     azimuth = -180. - azimuth;
                 } else if azimuth > 90. {
@@ -2165,6 +2195,7 @@ pub fn create_convolver_render_node(node_id: u64, quantum_size: usize) -> Box<No
 pub fn create_panner_render_node(
     node_id: u64,
     quantum_size: usize,
+    sample_rate: f32,
     params: &[&Arc<RenderAudioParam>; 6],
 ) -> Box<NodeHandle> {
     let data = RenderNodeData::new(node_id, 1, 1, quantum_size, 2);
@@ -2181,6 +2212,7 @@ pub fn create_panner_render_node(
                 orientation_z: Arc::clone(params[5]),
             },
             config: SetPannerParameters::default(),
+            hrtf_panner: HrtfPanner::new(sample_rate),
             param_values: std::array::from_fn(|_| vec![0.; quantum_size]),
         },
     )
