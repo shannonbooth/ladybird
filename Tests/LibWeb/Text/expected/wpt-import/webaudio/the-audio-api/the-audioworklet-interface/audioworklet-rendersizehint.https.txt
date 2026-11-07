@@ -1,0 +1,7 @@
+Harness status: OK
+
+Found 2 tests
+
+2 Fail
+Fail	Worklet inherits context render quantum size
+Fail	Worklet process block size matches hint

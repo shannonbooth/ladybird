@@ -1,0 +1,10 @@
+Harness status: OK
+
+Found 5 tests
+
+5 Pass
+Pass	BiquadFilter robustness at 3000Hz & hint 1
+Pass	BiquadFilter robustness at 48000Hz & hint 256
+Pass	BiquadFilter robustness at 48000Hz & hint 100
+Pass	BiquadFilter robustness at 192000Hz & hint 4096
+Pass	BiquadFilter robustness at 11000Hz & hint 66000

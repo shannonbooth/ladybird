@@ -1,0 +1,23 @@
+Harness status: OK
+
+Found 17 tests
+
+3 Pass
+14 Fail
+Pass	OfflineAudioContext with no hint hint
+Pass	OfflineAudioContext with "default" hint
+Pass	OfflineAudioContext with "hardware" hint
+Fail	OfflineAudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 1
+Fail	OfflineAudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 13
+Fail	OfflineAudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 127
+Fail	OfflineAudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 129
+Fail	OfflineAudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 256
+Fail	OfflineAudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 500
+Fail	OfflineAudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 16383
+Fail	OfflineAudioContext [Honored Exactly]: sampleRate 3000, renderSizeHint 18000
+Fail	OfflineAudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 288000
+Fail	OfflineAudioContext [Honored Exactly]: sampleRate 44100.1, renderSizeHint 264600
+Fail	OfflineAudioContext [Throws Exception]: sampleRate 48000, renderSizeHint 0
+Fail	OfflineAudioContext [Throws Exception]: sampleRate 3000, renderSizeHint 18001
+Fail	OfflineAudioContext [Throws Exception]: sampleRate 48000, renderSizeHint 288001
+Fail	OfflineAudioContext [Throws Exception]: sampleRate 48000, renderSizeHint -1

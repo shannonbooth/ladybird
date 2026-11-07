@@ -1,0 +1,14 @@
+Harness status: OK
+
+Found 8 tests
+
+5 Pass
+3 Fail
+Pass	# AUDIT TASK RUNNER STARTED.
+Pass	Executing "negative-elevation"
+Pass	Audit report
+Pass	> [negative-elevation] A below-horizon source must not collapse onto the overhead response
+Pass	  Peak of the overhead (+90) response is greater than 0.
+Fail	X Relative max difference between +90 and -45 responses is not greater than or equal to 0.01. Got 0.
+Fail	< [negative-elevation] 1 out of 2 assertions were failed.
+Fail	# AUDIT TASK RUNNER FINISHED: 1 out of 1 tasks were failed.

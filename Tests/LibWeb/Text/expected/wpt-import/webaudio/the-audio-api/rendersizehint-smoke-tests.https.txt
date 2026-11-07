@@ -1,0 +1,65 @@
+Harness status: OK
+
+Found 60 tests
+
+60 Pass
+Pass	OscillatorNode smoke test at 48000Hz & hint 128
+Pass	OscillatorNode smoke test at 3000Hz & hint 1
+Pass	OscillatorNode smoke test at 768000Hz & hint 256
+Pass	OscillatorNode smoke test at 48000Hz & hint 100
+Pass	AudioBufferSourceNode smoke test at 48000Hz & hint 128
+Pass	AudioBufferSourceNode smoke test at 3000Hz & hint 1
+Pass	AudioBufferSourceNode smoke test at 768000Hz & hint 256
+Pass	AudioBufferSourceNode smoke test at 48000Hz & hint 100
+Pass	ConstantSourceNode smoke test at 48000Hz & hint 128
+Pass	ConstantSourceNode smoke test at 3000Hz & hint 1
+Pass	ConstantSourceNode smoke test at 768000Hz & hint 256
+Pass	ConstantSourceNode smoke test at 48000Hz & hint 100
+Pass	GainNode smoke test at 48000Hz & hint 128
+Pass	GainNode smoke test at 3000Hz & hint 1
+Pass	GainNode smoke test at 768000Hz & hint 256
+Pass	GainNode smoke test at 48000Hz & hint 100
+Pass	BiquadFilterNode smoke test at 48000Hz & hint 128
+Pass	BiquadFilterNode smoke test at 3000Hz & hint 1
+Pass	BiquadFilterNode smoke test at 768000Hz & hint 256
+Pass	BiquadFilterNode smoke test at 48000Hz & hint 100
+Pass	DelayNode smoke test at 48000Hz & hint 128
+Pass	DelayNode smoke test at 3000Hz & hint 1
+Pass	DelayNode smoke test at 768000Hz & hint 256
+Pass	DelayNode smoke test at 48000Hz & hint 100
+Pass	DynamicsCompressorNode smoke test at 48000Hz & hint 128
+Pass	DynamicsCompressorNode smoke test at 3000Hz & hint 1
+Pass	DynamicsCompressorNode smoke test at 768000Hz & hint 256
+Pass	DynamicsCompressorNode smoke test at 48000Hz & hint 100
+Pass	WaveShaperNode smoke test at 48000Hz & hint 128
+Pass	WaveShaperNode smoke test at 3000Hz & hint 1
+Pass	WaveShaperNode smoke test at 768000Hz & hint 256
+Pass	WaveShaperNode smoke test at 48000Hz & hint 100
+Pass	PannerNode smoke test at 48000Hz & hint 128
+Pass	PannerNode smoke test at 3000Hz & hint 1
+Pass	PannerNode smoke test at 768000Hz & hint 256
+Pass	PannerNode smoke test at 48000Hz & hint 100
+Pass	StereoPannerNode smoke test at 48000Hz & hint 128
+Pass	StereoPannerNode smoke test at 3000Hz & hint 1
+Pass	StereoPannerNode smoke test at 768000Hz & hint 256
+Pass	StereoPannerNode smoke test at 48000Hz & hint 100
+Pass	AnalyserNode smoke test at 48000Hz & hint 128
+Pass	AnalyserNode smoke test at 3000Hz & hint 1
+Pass	AnalyserNode smoke test at 768000Hz & hint 256
+Pass	AnalyserNode smoke test at 48000Hz & hint 100
+Pass	IIRFilterNode smoke test at 48000Hz & hint 128
+Pass	IIRFilterNode smoke test at 3000Hz & hint 1
+Pass	IIRFilterNode smoke test at 768000Hz & hint 256
+Pass	IIRFilterNode smoke test at 48000Hz & hint 100
+Pass	ConvolverNode smoke test at 48000Hz & hint 128
+Pass	ConvolverNode smoke test at 3000Hz & hint 1
+Pass	ConvolverNode smoke test at 768000Hz & hint 256
+Pass	ConvolverNode smoke test at 48000Hz & hint 100
+Pass	ChannelMergerNode smoke test at 48000Hz & hint 128
+Pass	ChannelMergerNode smoke test at 3000Hz & hint 1
+Pass	ChannelMergerNode smoke test at 768000Hz & hint 256
+Pass	ChannelMergerNode smoke test at 48000Hz & hint 100
+Pass	ChannelSplitterNode smoke test at 48000Hz & hint 128
+Pass	ChannelSplitterNode smoke test at 3000Hz & hint 1
+Pass	ChannelSplitterNode smoke test at 768000Hz & hint 256
+Pass	ChannelSplitterNode smoke test at 48000Hz & hint 100

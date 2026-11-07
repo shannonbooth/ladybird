@@ -1,0 +1,9 @@
+Harness status: OK
+
+Found 4 tests
+
+4 Pass
+Pass	DynamicsCompressorNode: invalid arguments throw TypeError
+Pass	DynamicsCompressorNode: default constructor and attributes
+Pass	DynamicsCompressorNode: constructor with various AudioNodeOptions
+Pass	DynamicsCompressorNode: constructor with parameter options

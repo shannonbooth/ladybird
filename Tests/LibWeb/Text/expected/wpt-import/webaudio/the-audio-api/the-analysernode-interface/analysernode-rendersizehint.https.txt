@@ -1,0 +1,15 @@
+Harness status: OK
+
+Found 10 tests
+
+10 Pass
+Pass	Stability with large fftSize 4096 at 3000Hz & hint 1
+Pass	Default fftSize processing at 3000Hz & hint 1
+Pass	Stability with large fftSize 4096 at 48000Hz & hint 256
+Pass	Default fftSize processing at 48000Hz & hint 256
+Pass	Stability with large fftSize 4096 at 48000Hz & hint 100
+Pass	Default fftSize processing at 48000Hz & hint 100
+Pass	Stability with large fftSize 4096 at 192000Hz & hint 4096
+Pass	Default fftSize processing at 192000Hz & hint 4096
+Pass	Stability with large fftSize 4096 at 11000Hz & hint 66000
+Pass	Default fftSize processing at 11000Hz & hint 66000
