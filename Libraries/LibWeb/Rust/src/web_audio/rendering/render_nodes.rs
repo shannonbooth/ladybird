@@ -608,21 +608,24 @@ impl AudioBufferSourceRenderNode {
                 }
                 if self.r#loop {
                     let loop_duration = actual_loop_end - actual_loop_start;
-                    if loop_duration > 0. {
-                        while self.playhead >= actual_loop_end {
-                            self.playhead -= loop_duration;
-                        }
-                        while self.playhead < actual_loop_start && playhead_increment < 0. {
-                            self.playhead += loop_duration;
-                        }
+                    if self.playhead.is_finite()
+                        && loop_duration > 0.
+                        && (self.playhead >= actual_loop_end
+                            || (self.playhead < actual_loop_start && playhead_increment < 0.))
+                    {
+                        // NB: Reduce both positions before subtracting so a large playhead retains the loop offset.
+                        let position = self.playhead % loop_duration - actual_loop_start % loop_duration;
+                        self.playhead = actual_loop_start + position.rem_euclid(loop_duration);
                     }
                 } else if self.playhead >= buffer_length || (playhead_increment < 0. && self.playhead < 0.) {
                     self.source.content_ended = true;
                     continue;
                 }
-                for channel_index in 0..buffer.channels.len() {
-                    source_output.channel_mut(channel_index)[frame] =
-                        self.sample_buffer(channel_index, self.playhead, actual_loop_start, actual_loop_end);
+                if self.playhead.is_finite() {
+                    for channel_index in 0..buffer.channels.len() {
+                        source_output.channel_mut(channel_index)[frame] =
+                            self.sample_buffer(channel_index, self.playhead, actual_loop_start, actual_loop_end);
+                    }
                 }
                 self.playhead += playhead_increment;
                 self.played_time += computed_playback_rate.abs() / context.sample_rate;

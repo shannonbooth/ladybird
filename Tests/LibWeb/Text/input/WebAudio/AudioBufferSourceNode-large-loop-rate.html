@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const sampleRate = 32768;
+        for (const playbackRate of [2 ** 60, -(2 ** 60)]) {
+            const context = new OfflineAudioContext(1, 128, sampleRate);
+            const buffer = context.createBuffer(1, 2, sampleRate);
+            buffer.getChannelData(0).set([0.25, 0.5]);
+            const source = new AudioBufferSourceNode(context, { buffer, loop: true, playbackRate });
+            source.connect(context.destination);
+            source.start();
+            const samples = (await context.startRendering()).getChannelData(0);
+            println(`${Math.sign(playbackRate)}: ${samples.every(sample => sample === 0.25)}`);
+        }
+
+        // Each frame advances 2 ** 60 frames, which lands on frame 2 of a loop over frames 1 to 3.
+        const context = new OfflineAudioContext(1, 128, sampleRate);
+        const buffer = context.createBuffer(1, 4, sampleRate);
+        buffer.getChannelData(0).set([0.25, 0.5, 0.75, 1]);
+        const source = new AudioBufferSourceNode(context, {
+            buffer, loop: true, loopStart: 1 / sampleRate, loopEnd: 3 / sampleRate, playbackRate: 2 ** 60
+        });
+        source.connect(context.destination);
+        source.start();
+        const samples = (await context.startRendering()).getChannelData(0);
+        println(`Non-zero loopStart: ${samples[0] === 0.25 && samples.slice(1).every(sample => sample === 0.75)}`);
+    });
+</script>
