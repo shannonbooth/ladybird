@@ -515,6 +515,7 @@ struct AudioBufferSourceRenderNode {
     // Playback position within the buffer contents, in buffer sample frames.
     playhead: f64,
     playhead_valid: bool,
+    entered_loop: bool,
     played_time: f64,
 }
 
@@ -525,7 +526,7 @@ impl AudioBufferSourceRenderNode {
         let fraction = (playhead_frames - index as f64) as f32;
         let sample_at = |mut sample_index: i64| -> f32 {
             // When looping, interpolation across the loop end wraps around to the loop start.
-            if self.r#loop && sample_index >= loop_end_frame as i64 && loop_end_frame > loop_start_frame {
+            if self.entered_loop && sample_index >= loop_end_frame as i64 && loop_end_frame > loop_start_frame {
                 sample_index -= (loop_end_frame - loop_start_frame) as i64;
             }
             if sample_index < 0 || sample_index >= samples.len() as i64 {
@@ -579,6 +580,10 @@ impl AudioBufferSourceRenderNode {
                 actual_loop_start = cpp_min(self.loop_start * buffer_sample_rate, buffer_length);
                 actual_loop_end = cpp_min(self.loop_end * buffer_sample_rate, buffer_length);
             }
+            if !self.r#loop {
+                self.entered_loop = false;
+            }
+            let offset = cpp_min(self.offset * buffer_sample_rate, buffer_length);
             for frame in 0..context.quantum_size {
                 let frame_time = context.frame_time(frame);
                 if !self.source.is_active_at(frame_time) {
@@ -586,11 +591,18 @@ impl AudioBufferSourceRenderNode {
                 }
                 if !self.playhead_valid {
                     // NB: Playback begins at the given offset, corrected for the source starting between two sample frames.
-                    self.playhead = self.offset * buffer_sample_rate;
-                    if self.r#loop {
-                        self.playhead = cpp_min(self.playhead, actual_loop_end);
-                    } else {
-                        self.playhead = cpp_min(self.playhead, buffer_length);
+                    self.playhead = offset;
+                    if self.r#loop && computed_playback_rate >= 0. && offset >= actual_loop_end {
+                        self.playhead = actual_loop_end;
+                        // AD-HOC: Enter a forward loop at loopEnd so the clamped offset wraps to loopStart.
+                        self.entered_loop = true;
+                    }
+                    if self.r#loop && computed_playback_rate < 0. && offset < actual_loop_start {
+                        self.playhead = actual_loop_start;
+                    }
+                    if self.r#loop && self.playhead >= actual_loop_start && self.playhead < actual_loop_end {
+                        // NB: A fractional start can advance the playhead past a loop boundary before the first sample.
+                        self.entered_loop = true;
                     }
                     self.playhead +=
                         (frame_time - self.source.start_time.unwrap()) * computed_playback_rate * buffer_sample_rate;
@@ -607,11 +619,19 @@ impl AudioBufferSourceRenderNode {
                     continue;
                 }
                 if self.r#loop {
+                    if !self.entered_loop {
+                        if offset < actual_loop_end && self.playhead >= actual_loop_start {
+                            self.entered_loop = true;
+                        }
+                        if offset >= actual_loop_end && self.playhead < actual_loop_end {
+                            self.entered_loop = true;
+                        }
+                    }
                     let loop_duration = actual_loop_end - actual_loop_start;
-                    if self.playhead.is_finite()
+                    if self.entered_loop
+                        && self.playhead.is_finite()
                         && loop_duration > 0.
-                        && (self.playhead >= actual_loop_end
-                            || (self.playhead < actual_loop_start && playhead_increment < 0.))
+                        && (self.playhead >= actual_loop_end || self.playhead < actual_loop_start)
                     {
                         // NB: Reduce both positions before subtracting so a large playhead retains the loop offset.
                         let position = self.playhead % loop_duration - actual_loop_start % loop_duration;
@@ -621,7 +641,7 @@ impl AudioBufferSourceRenderNode {
                     self.source.content_ended = true;
                     continue;
                 }
-                if self.playhead.is_finite() {
+                if self.playhead >= 0. && self.playhead < buffer_length {
                     for channel_index in 0..buffer.channels.len() {
                         source_output.channel_mut(channel_index)[frame] =
                             self.sample_buffer(channel_index, self.playhead, actual_loop_start, actual_loop_end);
@@ -1913,6 +1933,7 @@ pub fn create_audio_buffer_source_render_node(
             duration: None,
             playhead: 0.,
             playhead_valid: false,
+            entered_loop: false,
             played_time: 0.,
         },
     )

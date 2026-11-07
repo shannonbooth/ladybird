@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const sampleRate = 32768;
+        for (const offset of [2, 4, 4.25]) {
+            const context = new OfflineAudioContext(1, 128, sampleRate);
+            const buffer = context.createBuffer(1, 16, sampleRate);
+            buffer.getChannelData(0).fill(1);
+            const source = new AudioBufferSourceNode(context, {
+                buffer, playbackRate: -1, loop: true, loopStart: 4 / sampleRate, loopEnd: 8 / sampleRate
+            });
+            source.connect(context.destination);
+            source.start(0.5 / sampleRate, offset / sampleRate);
+            const samples = (await context.startRendering()).getChannelData(0);
+            println(`Offset ${offset}: ${samples[0] === 0 && samples.slice(1).every(sample => sample === 1)}`);
+        }
+    });
+</script>
