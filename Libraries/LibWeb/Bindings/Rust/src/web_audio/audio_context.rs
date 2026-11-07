@@ -146,8 +146,8 @@ impl AudioContext {
             ));
         }
 
-        // AD-HOC: The spec doesn't currently require the sample rate to be validated here,
-        //         but other browsers do perform a check and there is a WPT test that expects this.
+        // https://webaudio.github.io/web-audio-api/#sample-rates
+        // A NotSupportedError MUST be thrown if a sample rate outside this range is specified.
         if let Some(sample_rate) = context_options.sample_rate {
             BaseAudioContext::verify_sample_rate(sample_rate)?;
         }
