@@ -131,7 +131,7 @@ impl OfflineAudioRenderer {
     /// looked for suspensions at that boundary.
     pub fn request_suspend(&self, frame: u64) -> bool {
         let mut state = self.suspend_mutex.lock().unwrap();
-        if frame < state.next_suspend_check_frame {
+        if frame <= self.frames_rendered() || frame < state.next_suspend_check_frame {
             return false;
         }
         state.suspend_frames.insert(frame);

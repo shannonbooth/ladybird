@@ -369,12 +369,6 @@ impl OfflineAudioContext {
         self.context.set_rendering_state(AudioContextState::Suspended);
         let frame = (suspend_time * f64::from(self.context.sample_rate_value())).round() as u64;
 
-        // Suspensions take effect at the beginning of the first render quantum at
-        // or after the requested time. Keep the promise keyed by that same frame
-        // so the rendering-thread callback can resolve it when it reaches the
-        // boundary.
-        let quantum_size = u64::from(BaseAudioContext::RENDER_QUANTUM_SIZE);
-        let frame = (frame.wrapping_add(quantum_size - 1) / quantum_size) * quantum_size;
         let suspend_promise = {
             let mut promises = self.suspend_promises.borrow_mut(vm);
             promises
@@ -436,19 +430,26 @@ impl OfflineAudioContext {
 
     // https://webaudio.github.io/web-audio-api/#dom-offlineaudiocontext-suspend
     pub(crate) fn suspend(&self, cx: &mut CallContext, promise: WebIdlPromise, suspend_time: f64) -> WebIdlResult<()> {
-        if !suspend_time.is_finite() || suspend_time < 0. {
-            return Err(Exception::range_error(
-                "Suspend time must be a finite, non-negative number",
+        // Note that the maximum precision of suspension is the size of the render quantum and the specified suspension time will be rounded up to the nearest render quantum boundary.
+        let quantum_size = f64::from(BaseAudioContext::RENDER_QUANTUM_SIZE);
+        let mut frame = suspend_time * f64::from(self.context.sample_rate_value());
+        // NB: Snap to the nearest frame first, so that frame / sampleRate is not rounded up into the next quantum.
+        if (frame - frame.round()).abs() < 1. / 2048. {
+            frame = frame.round();
+        }
+        let frame = (frame / quantum_size).ceil() * quantum_size;
+        let current_frame = self
+            .renderer
+            .borrow()
+            .as_ref()
+            .map_or(0, |renderer| renderer.frames_rendered());
+        if frame <= current_frame as f64 || frame >= f64::from(self.length) {
+            return Err(Exception::Dom(
+                "InvalidStateError",
+                Utf16String::from_ascii(b"The quantized suspend time is outside the remaining rendering interval"),
             ));
         }
-        let frame = (suspend_time * f64::from(self.context.sample_rate_value())).round() as u64;
-        let quantum_size = u64::from(BaseAudioContext::RENDER_QUANTUM_SIZE);
-        let frame = (frame.wrapping_add(quantum_size - 1) / quantum_size) * quantum_size;
-        if frame >= u64::from(self.length) {
-            return Err(Exception::range_error(
-                "Suspend time must be less than the duration of the context",
-            ));
-        }
+        let frame = frame as u64;
         if self.suspend_promises.borrow().iter().any(|entry| entry.0 == frame) {
             return Err(Exception::Dom(
                 "InvalidStateError",
