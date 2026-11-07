@@ -1,0 +1,5 @@
+128 frames match: true
+513 frames match: true
+Input matches its frame: true
+test-constructor-error renders silence: true
+test-process-error renders silence: true

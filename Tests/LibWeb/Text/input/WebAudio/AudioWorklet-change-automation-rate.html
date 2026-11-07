@@ -16,6 +16,15 @@
                 }
             }
             registerProcessor("test-rate", TestRate);
+            class TestFirstFrame extends AudioWorkletProcessor {
+                static get parameterDescriptors() { return [{ name: "level", automationRate: "a-rate" }]; }
+                process(inputs, outputs, parameters) {
+                    outputs[0][0].fill(parameters.level[0]);
+                    outputs[0][1].fill(parameters.level.length);
+                    return true;
+                }
+            }
+            registerProcessor("test-first-frame", TestFirstFrame);
         `], { type: "text/javascript" }));
         try {
             await context.suspend();
@@ -34,6 +43,20 @@
                 const [length, varies] = await report;
                 println(`${rate}: ${length} values, varies: ${varies}`);
             }
+
+            // The level ramps by one per frame, so a k-rate block holds the value at the first frame of its quantum.
+            const offline = new OfflineAudioContext(2, 384, 32768);
+            await offline.audioWorklet.addModule(url);
+            const firstFrame = new AudioWorkletNode(offline, "test-first-frame", { numberOfInputs: 0, outputChannelCount: [2] });
+            const offlineLevel = firstFrame.parameters.get("level");
+            offlineLevel.automationRate = "k-rate";
+            offlineLevel.setValueAtTime(0, 0);
+            offlineLevel.linearRampToValueAtTime(384, 384 / offline.sampleRate);
+            firstFrame.connect(offline.destination);
+            const rendered = await offline.startRendering();
+            const blocks = [0, 128, 256];
+            println(`k-rate values by block: ${blocks.map(frame => rendered.getChannelData(0)[frame])}`);
+            println(`k-rate lengths by block: ${blocks.map(frame => rendered.getChannelData(1)[frame])}`);
         } finally {
             URL.revokeObjectURL(url);
             await context.close();

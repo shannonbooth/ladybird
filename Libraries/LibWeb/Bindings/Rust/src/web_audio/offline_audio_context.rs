@@ -314,6 +314,8 @@ impl OfflineAudioContext {
         self.context.set_rendering_state(AudioContextState::Closed);
         self.queue_a_statechange_event(vm);
 
+        self.context.shutdown_audio_worklet();
+
         // NB: Break the reference cycle between the renderer's callbacks and this context.
         self.renderer.borrow().as_ref().unwrap().set_client(None);
 
@@ -532,6 +534,7 @@ impl OfflineAudioContext {
     }
 
     pub(crate) fn document_became_inactive(&self) {
+        self.context.shutdown_audio_worklet();
         if let Some(renderer) = &*self.renderer.borrow() {
             renderer.stop();
             renderer.set_client(None);

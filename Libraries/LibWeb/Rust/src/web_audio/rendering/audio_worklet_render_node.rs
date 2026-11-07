@@ -12,8 +12,7 @@ use super::render_graph::RenderGraph;
 use super::render_node::*;
 use super::render_nodes::{BusRef, NodeProcessor, node_handle};
 
-// Script runs on the main-thread pump, `prime_level` quanta behind this render node; this side
-// only exchanges preallocated pipe slots and renders silence on underrun.
+// Script runs on the main-thread pump. Realtime rendering emits silence on underrun.
 struct AudioWorkletRenderNode {
     pipe: Arc<AudioWorkletPipe>,
     params: Vec<Arc<RenderAudioParam>>,
@@ -67,6 +66,9 @@ impl NodeProcessor for AudioWorkletRenderNode {
                 }
             });
             self.pipe.request_wakeup();
+            if self.pipe.config.offline {
+                self.pipe.wait_for_offline_output();
+            }
             let popped = self.pipe.try_pop_output(|slot| {
                 for output in 0..data.output_count() {
                     let output_bus = BusRef(data.output(output));

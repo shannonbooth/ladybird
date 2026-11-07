@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const url = URL.createObjectURL(new Blob([`
+            class TestOffline extends AudioWorkletProcessor {
+                process(inputs, outputs) {
+                    outputs[0][0].fill(currentFrame / 128 + 1);
+                    return true;
+                }
+            }
+            registerProcessor("test-offline", TestOffline);
+            class TestOfflineInput extends AudioWorkletProcessor {
+                process(inputs, outputs) {
+                    const input = inputs[0][0];
+                    outputs[0][0].forEach((_, index, output) => output[index] = (input?.[index] ?? 0) + currentFrame + index);
+                    return true;
+                }
+            }
+            registerProcessor("test-offline-input", TestOfflineInput);
+            class TestConstructorError extends AudioWorkletProcessor {
+                constructor() {
+                    super();
+                    throw new Error("constructor");
+                }
+                process() { return true; }
+            }
+            registerProcessor("test-constructor-error", TestConstructorError);
+            class TestProcessError extends AudioWorkletProcessor {
+                process() { throw new Error("process"); }
+            }
+            registerProcessor("test-process-error", TestProcessError);
+        `], { type: "text/javascript" }));
+        try {
+            for (const length of [128, 513]) {
+                const context = new OfflineAudioContext(1, length, 48000);
+                await context.audioWorklet.addModule(url);
+                new AudioWorkletNode(context, "test-offline", { numberOfInputs: 0 }).connect(context.destination);
+                const buffer = await context.startRendering();
+                const samples = buffer.getChannelData(0);
+                println(`${length} frames match: ${samples.every((sample, index) => sample === Math.floor(index / 128) + 1)}`);
+            }
+
+            const inputContext = new OfflineAudioContext(1, 513, 48000);
+            await inputContext.audioWorklet.addModule(url);
+            const ones = new ConstantSourceNode(inputContext);
+            ones.connect(new AudioWorkletNode(inputContext, "test-offline-input")).connect(inputContext.destination);
+            ones.start();
+            const inputSamples = (await inputContext.startRendering()).getChannelData(0);
+            println(`Input matches its frame: ${inputSamples.every((sample, index) => sample === index + 1)}`);
+
+            for (const name of ["test-constructor-error", "test-process-error"]) {
+                const context = new OfflineAudioContext(1, 513, 48000);
+                await context.audioWorklet.addModule(url);
+                const node = new AudioWorkletNode(context, name);
+                const error = new Promise(resolve => node.onprocessorerror = resolve);
+                new ConstantSourceNode(context).connect(node).connect(context.destination);
+                const samples = (await context.startRendering()).getChannelData(0);
+                await error;
+                println(`${name} renders silence: ${samples.every(sample => sample === 0)}`);
+            }
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    });
+</script>

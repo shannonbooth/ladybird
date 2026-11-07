@@ -21,7 +21,7 @@ use libjs_rust::api::{
 };
 use libjs_rust::api::{Gc, Realm, Trace};
 use libweb_rust::web_audio::rendering::audio_worklet_pipe::{
-    AudioWorkletPipe, AudioWorkletPipeClient, Config, WorkletPipeState, ring_sizing_for_device_latency,
+    AudioWorkletPipe, AudioWorkletPipeClient, Config, RingSizing, WorkletPipeState, ring_sizing_for_device_latency,
 };
 use libweb_rust::web_audio::rendering::audio_worklet_render_node::create_audio_worklet_render_node;
 use libweb_rust::web_audio::rendering::render_node::RenderAudioParam;
@@ -421,11 +421,20 @@ impl AudioWorkletNode {
                 });
             }
         }
-        let sizing = ring_sizing_for_device_latency(
-            100,
-            context.sample_rate_value(),
-            BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
-        );
+        let offline = matches!(context, AnyBaseAudioContext::OfflineAudioContext(_));
+        let sizing = if offline {
+            // NB: The next input may arrive before the pump releases the previous slot.
+            RingSizing {
+                ring_capacity: 2,
+                prime_level: 0,
+            }
+        } else {
+            ring_sizing_for_device_latency(
+                100,
+                context.sample_rate_value(),
+                BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+            )
+        };
         let pipe = AudioWorkletPipe::new(Config {
             quantum_size: BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
             input_count: options.number_of_inputs as usize,
@@ -434,6 +443,7 @@ impl AudioWorkletNode {
             output_channel_capacity: output_channel_capacity.clone(),
             output_channel_count_matches_input,
             param_count: descriptors.len(),
+            offline,
             ring_capacity: sizing.ring_capacity,
             prime_level: sizing.prime_level,
         });
@@ -464,6 +474,7 @@ impl AudioWorkletNode {
             Arc::clone(&pipe),
             render_params,
         ));
+        context.add_audio_worklet_pipe(Arc::clone(&pipe));
 
         // FIXME: Implement the spec's actively-processing keep-alive (drop this when the processor's
         //        process() return value has been false and inputs are silent). For now a live worklet
@@ -500,6 +511,11 @@ impl AudioWorkletNode {
         processor_port: Ref<MessagePort>,
         options_object: Gc<Object>,
     ) {
+        let pipe = Arc::clone(self.pipe.borrow().as_ref().unwrap());
+        if pipe.state() == WorkletPipeState::ShutDown {
+            return;
+        }
+
         // 1. Let constructionData be the processor construction data transferred from the control thread.
         // 2. Let processorName, nodeReference and serializedPort be constructionData’s name, node, and port respectively.
         // 3. Let serializedOptions be constructionData’s options.
@@ -543,7 +559,9 @@ impl AudioWorkletNode {
             let processor = match constructed {
                 Ok(processor) => Some(processor),
                 Err(error) => {
-                    self.pipe.borrow().as_ref().unwrap().set_state(WorkletPipeState::Failed);
+                    if pipe.state() != WorkletPipeState::ShutDown {
+                        pipe.set_state(WorkletPipeState::Failed);
+                    }
                     self.fire_processor_error(error.value());
                     None
                 }
@@ -555,9 +573,9 @@ impl AudioWorkletNode {
                 return;
             };
             self.processor.set(Some(processor));
-            self.node
-                .context_value()
-                .add_audio_worklet_pipe(Arc::clone(self.pipe.borrow().as_ref().unwrap()));
+            if pipe.config.offline {
+                pipe.request_wakeup();
+            }
 
             // NB: Defer incoming messages until the constructor can register listeners.
             MessagePort::enable(processor_port, vm);
@@ -809,7 +827,7 @@ impl AudioWorkletNode {
                 if output_full {
                     break;
                 }
-                if !processed_one {
+                if config.offline || !processed_one {
                     break;
                 }
             }

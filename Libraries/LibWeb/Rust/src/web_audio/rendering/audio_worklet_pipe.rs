@@ -7,8 +7,8 @@
 
 use std::cell::UnsafeCell;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 
 use crate::web_audio::control_thread::{ControlThread, ControlThreadCell};
 
@@ -28,6 +28,7 @@ pub struct Config {
     pub output_channel_capacity: Vec<u32>,
     pub output_channel_count_matches_input: bool,
     pub param_count: usize,
+    pub offline: bool,
 
     // Slots per ring; must be a power of two.
     pub ring_capacity: usize,
@@ -88,6 +89,8 @@ pub struct AudioWorkletPipe {
     arena: Box<[UnsafeCell<u64>]>,
     input_ring: Ring,
     output_ring: Ring,
+    offline_output_lock: Mutex<()>,
+    offline_output_ready: Condvar,
     control_thread: ControlThread,
     client: ControlThreadCell<Option<Rc<dyn AudioWorkletPipeClient>>>,
     pump_scheduled: AtomicBool,
@@ -147,6 +150,8 @@ impl AudioWorkletPipe {
             arena: (0..arena_size / size_of::<u64>()).map(|_| UnsafeCell::new(0)).collect(),
             input_ring: Ring::default(),
             output_ring: Ring::default(),
+            offline_output_lock: Mutex::new(()),
+            offline_output_ready: Condvar::new(),
             control_thread: ControlThread::current(),
             client: ControlThreadCell::new(None),
             pump_scheduled: AtomicBool::new(false),
@@ -220,6 +225,10 @@ impl AudioWorkletPipe {
         }
         fill(slot);
         self.output_ring.tail.0.store(tail.wrapping_add(1), Ordering::Release);
+        if self.config.offline {
+            let _lock = self.offline_output_lock.lock().unwrap();
+            self.offline_output_ready.notify_one();
+        }
         true
     }
 
@@ -328,6 +337,21 @@ impl AudioWorkletPipe {
 
     pub fn set_state(&self, state: WorkletPipeState) {
         self.state.store(state as u8, Ordering::Release);
+        if self.config.offline {
+            let _lock = self.offline_output_lock.lock().unwrap();
+            self.offline_output_ready.notify_one();
+        }
+    }
+
+    pub(crate) fn wait_for_offline_output(&self) {
+        let lock = self.offline_output_lock.lock().unwrap();
+        drop(
+            self.offline_output_ready
+                .wait_while(lock, |()| {
+                    self.state() == WorkletPipeState::Running && self.output_occupancy() == 0
+                })
+                .unwrap(),
+        );
     }
 
     pub fn underrun_count(&self) -> u64 {

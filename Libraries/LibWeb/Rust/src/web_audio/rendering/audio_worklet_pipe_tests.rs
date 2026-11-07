@@ -71,6 +71,7 @@ fn test_pipe() -> Arc<AudioWorkletPipe> {
         output_channel_capacity: vec![2],
         output_channel_count_matches_input: false,
         param_count: 2,
+        offline: false,
         ring_capacity: RING_CAPACITY,
         prime_level: PRIME_LEVEL,
     })
