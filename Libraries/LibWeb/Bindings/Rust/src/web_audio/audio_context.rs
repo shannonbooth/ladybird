@@ -127,6 +127,19 @@ impl RealtimeAudioRendererClient for RendererClient {
         let vm = unsafe { self.vm.as_ref() };
         self.context.cell().context.handle_ended_sources(vm, nodes);
     }
+
+    fn output_interrupted(&self) {
+        let vm = unsafe { self.vm.as_ref() };
+        self.context.cell().interrupt(vm);
+    }
+
+    fn output_recovered(&self) {
+        let vm = unsafe { self.vm.as_ref() };
+        let context = self.context.cell();
+        context.context.queue_a_media_element_task(vm, context, |vm, context| {
+            with_temporary_execution_context_and_callbacks(context.context.realm(), || context.end_interruption(vm));
+        });
+    }
 }
 
 impl AudioContext {
@@ -180,24 +193,30 @@ impl AudioContext {
         // 3. Set a [[rendering thread state]] to suspended on context.
         context.context.set_rendering_state(AudioContextState::Suspended);
 
-        // FIXME: 4. Let messageChannel be a new MessageChannel.
-        // FIXME: 5. Let controlSidePort be the value of messageChannel’s port1 attribute.
-        // FIXME: 6. Let renderingSidePort be the value of messageChannel’s port2 attribute.
-        // FIXME: 7. Let serializedRenderingSidePort be the result of StructuredSerializeWithTransfer(renderingSidePort, « renderingSidePort »).
-        // FIXME: 8. Set this audioWorklet's port to controlSidePort.
-        // FIXME: 9. Queue a control message to set the MessagePort on the AudioContextGlobalScope, with serializedRenderingSidePort.
-        // 10. If contextOptions is given, apply the options:
-        // 1. If sinkId is specified, let sinkId be the value of contextOptions.sinkId and run the following substeps:
-        // 2. Set the internal latency of context according to contextOptions.latencyHint, as described in latencyHint.
-        // FIXME: Determine optimal settings for contextOptions.latencyHint.
-        // 3: If contextOptions.sampleRate is specified, set the sampleRate of context to this value.
+        // 4. Set [[state before interruption]] to null on context.
+        // NB: BaseAudioContext initializes this slot.
+
+        // FIXME: 5. Let messageChannel be a new MessageChannel.
+        // FIXME: 6. Let controlSidePort be the value of messageChannel’s port1 attribute.
+        // FIXME: 7. Let renderingSidePort be the value of messageChannel’s port2 attribute.
+        // FIXME: 8. Let serializedRenderingSidePort be the result of StructuredSerializeWithTransfer(renderingSidePort, « renderingSidePort »).
+        // FIXME: 9. Set this audioWorklet’s port to controlSidePort.
+        // FIXME: 10. Queue a control message to set the MessagePort on the AudioContextGlobalScope, with serializedRenderingSidePort.
+        // 11. If contextOptions is given, perform the following substeps:
+        // FIXME: 11.1. If sinkId is specified, let sinkId be the value of contextOptions.sinkId and run the following substeps:
+        // FIXME: 11.1.1. If both sinkId and [[sink ID]] are a type of DOMString, and they are equal to each other, abort these substeps.
+        // FIXME: 11.1.2. If sinkId is a type of AudioSinkOptions and [[sink ID]] is a type of AudioSinkInfo, and type in sinkId and type in [[sink ID]] are equal, abort these substeps.
+        // FIXME: 11.1.3. If sinkId is a type of DOMString, set [[sink ID at construction]] to sinkId and abort these substeps.
+        // FIXME: 11.1.4. If sinkId is a type of AudioSinkOptions, set [[sink ID at construction]] to a new instance of AudioSinkInfo created with the value of type of sinkId.
+        // FIXME: 11.2. Set the internal latency of context according to contextOptions.latencyHint, as described in latencyHint.
+        // 11.3. If contextOptions.sampleRate is specified, set the sampleRate of context to this value. Otherwise, follow these substeps:
+        // If contextOptions.sampleRate differs from the sample rate of the output device, the user agent MUST resample the audio output to match the sample rate of the output device.
+        // Note: If resampling is required, the latency of context may be affected, possibly by a large amount.
         if let Some(sample_rate) = context_options.sample_rate {
             context.context.set_sample_rate(sample_rate);
         } else {
-            // Otherwise, follow these substeps:
-            // FIXME: 1. If sinkId is the empty string or a type of AudioSinkOptions, use the sample rate of the default output device. Abort these substeps.
-            // FIXME: 2. If sinkId is a DOMString, use the sample rate of the output device identified by sinkId. Abort these substeps.
-            // If contextOptions.sampleRate differs from the sample rate of the output device, the user agent MUST resample the audio output to match the sample rate of the output device.
+            // FIXME: 11.3.1. If sinkId is the empty string or a type of AudioSinkOptions, use the sample rate of the default output device. Abort these substeps.
+            // FIXME: 11.3.2. If sinkId is a DOMString, use the sample rate of the output device identified by sinkId. Abort these substeps.
             context.context.set_sample_rate(44100.);
         }
 
@@ -244,9 +263,15 @@ impl AudioContext {
         // 12. If context is allowed to start, send a control message to start processing.
         // FIXME: The context is currently always allowed to start; this should be gated on sticky activation.
         if context.allowed_to_start {
-            // FIXME: 1. Let document be the current settings object's relevant global object's associated Document.
-            // 2. Attempt to acquire system resources to use a following audio output device based on [[sink ID]] for
-            //    rendering.
+            // FIXME: 1. Let validationResult be the return value of sink identifier validation of [[sink ID at construction]].
+            // FIXME: 2. If validationResult is false, execute the following steps:
+            // FIXME: 2.1. Set [[sink ID]] to the empty string.
+            // FIXME: 2.2. Queue a media element task to fire an event named error at the AudioContext, and abort the following steps.
+            // 3. Attempt to acquire system resources to use a following audio output device based on [[sink ID at construction]] for rendering:
+            // 4. The default audio output device for the empty string.
+            // FIXME: 5. An audio output device identified by [[sink ID at construction]].
+            // FIXME: 5.1. If resource acquisition fails, queue a media element task to fire an event named error at the AudioContext, and abort the following steps.
+            // FIXME: 6. Set [[sink ID]] to the value of [[sink ID at construction]].
             let factory = unsafe { web_audio_output_factory_create(context.context.global_event_target().as_ptr()) };
             let renderer = RealtimeAudioRenderer::new(
                 Arc::clone(context.context.control_message_queue()),
@@ -263,10 +288,10 @@ impl AudioContext {
             context.set_renderer_client(cx.vm());
             renderer.start_rendering();
 
-            // 2. Set this [[rendering thread state]] to running on the AudioContext.
+            // 7. Set this [[rendering thread state]] to running on the AudioContext.
             context.context.set_rendering_state(AudioContextState::Running);
 
-            // 3. Queue a media element task to execute the following steps:
+            // 8. Queue a media element task to execute the following steps:
             context
                 .context
                 .queue_a_media_element_task(cx.vm(), context, |_, context| {
@@ -348,6 +373,128 @@ impl AudioContext {
         })
     }
 
+    // https://webaudio.github.io/web-audio-api/#dom-audiocontext-interruption-start
+    fn interrupt(&self, vm: &Vm) {
+        // 1. If the context’s [[rendering thread state]] is closed or interrupted, abort these steps.
+        let rendering_thread_state = self.context.rendering_state();
+        if self.context.control_state() == AudioContextState::Closed
+            || matches!(
+                rendering_thread_state,
+                AudioContextState::Closed | AudioContextState::Interrupted
+            )
+        {
+            return;
+        }
+
+        // 2. If the context’s [[rendering thread state]] is running:
+        if rendering_thread_state == AudioContextState::Running {
+            // 2.1. Attempt to release system resources.
+            // NB: The renderer delivers this notification after losing its stream.
+
+            // 2.2. Queue a media element task to execute the following steps:
+            self.context.queue_a_media_element_task(vm, self.this(), |_, context| {
+                if context.context.control_state() == AudioContextState::Closed {
+                    return;
+                }
+
+                // 2.2.1. Set the context’s [[control thread state]] to interrupted.
+                context.context.set_control_state(AudioContextState::Interrupted);
+                context.context.set_state(AudioContextState::Interrupted);
+
+                // 2.2.2. Set the context’s [[state before interruption]] slot to "running".
+                context
+                    .context
+                    .state_before_interruption
+                    .set(Some(AudioContextState::Running));
+
+                // 2.2.3. Fire an event named statechange at the context.
+                context.context.dispatch_statechange();
+            });
+        }
+
+        // 3. If the context’s [[rendering thread state]] is suspended:
+        if rendering_thread_state == AudioContextState::Suspended {
+            // 3.1. Queue a media element task to execute the following steps:
+            self.context.queue_a_media_element_task(vm, self.this(), |_, context| {
+                if context.context.control_state() == AudioContextState::Closed {
+                    return;
+                }
+                // 3.1.1. Set the context’s [[control thread state]] to interrupted.
+                context.context.set_control_state(AudioContextState::Interrupted);
+
+                // 3.1.2. Set the context’s [[state before interruption]] slot to "suspended".
+                context
+                    .context
+                    .state_before_interruption
+                    .set(Some(AudioContextState::Suspended));
+            });
+        }
+
+        // 4. Set the context’s [[rendering thread state]] to interrupted.
+        self.context.set_rendering_state(AudioContextState::Interrupted);
+    }
+
+    // https://webaudio.github.io/web-audio-api/#dom-audiocontext-interruption-end
+    fn end_interruption(&self, vm: &Vm) {
+        // 1. If the context’s [[rendering thread state]] is not interrupted, abort these steps.
+        if self.context.rendering_state() != AudioContextState::Interrupted
+            || self.context.control_state() == AudioContextState::Closed
+        {
+            return;
+        }
+
+        // NB: Another stream loss can arrive before this recovery task runs.
+        if self
+            .renderer
+            .borrow()
+            .as_ref()
+            .is_some_and(|renderer| renderer.output_is_interrupted())
+        {
+            return;
+        }
+
+        let state_before_interruption = self.context.state_before_interruption.get();
+        // 2. If the context’s [[state before interruption]] is "running":
+        if state_before_interruption == Some(AudioContextState::Running) {
+            // 2.1. Attempt to acquire system resources.
+            // NB: The renderer delivers this notification once the replacement stream has opened.
+
+            // 2.2. Set the [[rendering thread state]] on the AudioContext to "running".
+            self.context.set_rendering_state(AudioContextState::Running);
+
+            // 2.3. Start rendering the audio graph.
+            // NB: Installing the replacement stream restarts rendering.
+
+            // 2.4. Queue a media element task to execute the following steps:
+            // NB: The callback already runs in a media element task.
+            self.resolve_pending_resume_promises(vm);
+
+            // 2.4.1. If the state attribute of the AudioContext is not already "running":
+            if self.context.state_value() != AudioContextState::Running {
+                // 2.4.1.1. Set the context’s [[control thread state]] to "running".
+                self.context.set_control_state(AudioContextState::Running);
+                self.context.set_state(AudioContextState::Running);
+
+                // 2.4.1.2. Fire an event named statechange at the context.
+                self.context.dispatch_statechange();
+            }
+        }
+
+        // 3. If the context’s [[state before interruption]] is "suspended"
+        if state_before_interruption == Some(AudioContextState::Suspended) {
+            // 3.1. Set the [[rendering thread state]] on the AudioContext to suspended.
+            self.context.set_rendering_state(AudioContextState::Suspended);
+
+            // 3.2. Queue a media element task to execute the following steps:
+            // NB: The callback already runs in a media element task.
+            // 3.2.1. Set the context’s [[control thread state]] to suspended.
+            self.context.set_control_state(AudioContextState::Suspended);
+        }
+
+        // 4. Set the context’s [[state before interruption]] to null.
+        self.context.state_before_interruption.set(None);
+    }
+
     // https://webaudio.github.io/web-audio-api/#dom-audiocontext-resume
     pub(crate) fn resume(&self, cx: &mut CallContext, promise: WebIdlPromise) -> WebIdlResult<()> {
         // 1. If this’s relevant global object’s associated Document is not fully active then return a promise rejected with "InvalidStateError" DOMException.
@@ -377,12 +524,56 @@ impl AudioContext {
         // 4. Set [[suspended by user]] to false.
         self.suspended_by_user.set(false);
 
-        // FIXME: 5. If the context’s state attribute is "suspended" and the context’s [[control thread state]] is "interrupted", then:
-        // FIXME: 5.1. Queue a media element task to execute the following steps:
-        // FIXME: 5.1.1. Set the state attribute of the AudioContext to "interrupted".
-        // FIXME: 5.1.2. Set the [[state before interruption]] slot to "running".
-        // FIXME: 5.1.3. Queue a media element task to fire an event named statechange at the AudioContext.
-        // FIXME: 5.2. Reject the promise with InvalidStateError, abort these steps, returning promise.
+        // NB: While the context is suspended the renderer can lose its device without a client.
+        let output_is_interrupted = self
+            .renderer
+            .borrow()
+            .as_ref()
+            .is_some_and(|renderer| renderer.output_is_interrupted());
+        if self.context.state_value() == AudioContextState::Suspended {
+            if output_is_interrupted {
+                self.context.set_control_state(AudioContextState::Interrupted);
+                self.context.set_rendering_state(AudioContextState::Interrupted);
+            } else if self.context.control_state() == AudioContextState::Interrupted {
+                self.context.set_control_state(AudioContextState::Suspended);
+            }
+        }
+
+        // 5. If the context’s state attribute is "suspended" and the context’s [[control thread state]] is "interrupted", then:
+        if self.context.state_value() == AudioContextState::Suspended
+            && self.context.control_state() == AudioContextState::Interrupted
+        {
+            self.set_renderer_client(cx.vm());
+            self.start_rendering_audio_graph();
+
+            // 5.1. Queue a media element task to execute the following steps:
+            self.context
+                .queue_a_media_element_task(cx.vm(), self.this(), |vm, context| {
+                    if context.context.control_state() == AudioContextState::Closed {
+                        return;
+                    }
+
+                    // 5.1.1. Set the state attribute of the AudioContext to "interrupted".
+                    context.context.set_state(AudioContextState::Interrupted);
+
+                    // 5.1.2. Set the [[state before interruption]] slot to "running".
+                    context
+                        .context
+                        .state_before_interruption
+                        .set(Some(AudioContextState::Running));
+
+                    // 5.1.3. Queue a media element task to fire an event named statechange at the AudioContext.
+                    context
+                        .context
+                        .queue_a_media_element_task(vm, context, |_, context| context.context.dispatch_statechange());
+                });
+
+            // 5.2. Reject the promise with InvalidStateError, abort these steps, returning promise.
+            return Err(Exception::Dom(
+                "InvalidStateError",
+                Utf16String::from_ascii(b"The audio output is interrupted"),
+            ));
+        }
 
         // 6. If the context is not allowed to start, append promise to [[pending promises]] and [[pending resume promises]] and abort these steps, returning promise.
         if !self.allowed_to_start {
@@ -408,6 +599,27 @@ impl AudioContext {
         // NB: The renderer acquires resources when starting the graph in step 4.
         if self.renderer.borrow().is_some() {
             self.set_renderer_client(vm);
+        }
+
+        // NB: A replacement stream is still acquiring resources.
+        if self
+            .renderer
+            .borrow()
+            .as_ref()
+            .is_some_and(|renderer| renderer.output_is_interrupted())
+        {
+            self.context.pending_promises.borrow_mut(vm).push(promise);
+            self.pending_resume_promises.borrow_mut(vm).push(promise);
+            // AD-HOC: Resume once the interruption ends, even if a suspend has already left it.
+            self.context.set_rendering_state(AudioContextState::Interrupted);
+            self.context.queue_a_media_element_task(vm, self.this(), |_, context| {
+                context
+                    .context
+                    .state_before_interruption
+                    .set(Some(AudioContextState::Running));
+            });
+            self.start_rendering_audio_graph();
+            return;
         }
 
         // 3. Set the [[rendering thread state]] on the AudioContext to running.
@@ -447,17 +659,8 @@ impl AudioContext {
 
                 // 6.2. Resolve all promises from [[pending resume promises]] in order.
                 // 6.3. Clear [[pending resume promises]]. Additionally, remove those promises from [[pending promises]].
-                for pending_resume_promise in &*context.pending_resume_promises.borrow() {
-                    with_temporary_execution_context_and_callbacks(promise_realm(*pending_resume_promise), || {
-                        resolve_promise(vm, *pending_resume_promise, Value::UNDEFINED);
-                    });
-                    let mut pending = context.context.pending_promises.borrow_mut(vm);
-                    if let Some(index) = pending.iter().position(|promise| promise == pending_resume_promise) {
-                        pending.remove(index);
-                    }
-                }
-                context.pending_resume_promises.borrow_mut(vm).clear();
                 with_temporary_execution_context_and_callbacks(promise_realm(promise), || {
+                    context.resolve_pending_resume_promises(vm);
                     // 6.4. Resolve promise.
                     resolve_promise(vm, promise, Value::UNDEFINED);
 
@@ -473,6 +676,41 @@ impl AudioContext {
                     }
                 });
             });
+    }
+
+    fn resolve_pending_resume_promises(&self, vm: &Vm) {
+        for promise in &*self.pending_resume_promises.borrow() {
+            with_temporary_execution_context_and_callbacks(promise_realm(*promise), || {
+                resolve_promise(vm, *promise, Value::UNDEFINED);
+            });
+            self.context
+                .pending_promises
+                .borrow_mut(vm)
+                .retain(|pending| pending != promise);
+        }
+        self.pending_resume_promises.borrow_mut(vm).clear();
+    }
+
+    fn reject_pending_resume_promises(&self, vm: &Vm) {
+        with_temporary_execution_context_and_callbacks(self.context.realm(), || {
+            for pending in &*self.pending_resume_promises.borrow() {
+                with_temporary_execution_context_and_callbacks(promise_realm(*pending), || {
+                    reject_promise_with_exception(
+                        vm,
+                        *pending,
+                        Exception::Dom(
+                            "InvalidStateError",
+                            Utf16String::from_ascii(b"Audio output could not be resumed"),
+                        ),
+                    );
+                });
+                self.context
+                    .pending_promises
+                    .borrow_mut(vm)
+                    .retain(|promise| promise != pending);
+            }
+            self.pending_resume_promises.borrow_mut(vm).clear();
+        });
     }
 
     // https://webaudio.github.io/web-audio-api/#dom-audiocontext-suspend
@@ -526,7 +764,18 @@ impl AudioContext {
             renderer.set_client(None);
         }
 
-        // FIXME: 3. If the [[rendering thread state]] on the AudioContext is "interrupted", queue a media element task to set the [[state before interruption]] slot to "suspended".
+        // 3. If the [[rendering thread state]] on the AudioContext is "interrupted", queue a media element task to set the [[state before interruption]] slot to "suspended".
+        if self.context.rendering_state() == AudioContextState::Interrupted {
+            // AD-HOC: Resume promises that were waiting for the interruption to end can no longer be resolved. Reject
+            //         them now so that a later resume() keeps its promise.
+            self.reject_pending_resume_promises(vm);
+            self.context.queue_a_media_element_task(vm, self.this(), |_, context| {
+                context
+                    .context
+                    .state_before_interruption
+                    .set(Some(AudioContextState::Suspended));
+            });
+        }
 
         // 4. Set the [[rendering thread state]] on the AudioContext to "suspended".
         self.context.set_rendering_state(AudioContextState::Suspended);
@@ -614,6 +863,9 @@ impl AudioContext {
         self.context
             .queue_a_media_element_task(vm, (self.this(), promise), |vm, (context, promise)| {
                 with_temporary_execution_context_and_callbacks(promise_realm(promise), || {
+                    // NB: Resource acquisition cannot complete after close.
+                    context.reject_pending_resume_promises(vm);
+
                     // 4.1. Resolve promise.
                     resolve_promise(vm, promise, Value::UNDEFINED);
 

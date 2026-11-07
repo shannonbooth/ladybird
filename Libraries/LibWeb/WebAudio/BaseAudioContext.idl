@@ -1,5 +1,5 @@
 // https://webaudio.github.io/web-audio-api/#enumdef-audiocontextstate
-enum AudioContextState { "suspended", "running", "closed" };
+enum AudioContextState { "suspended", "running", "interrupted", "closed" };
 
 callback DecodeErrorCallback = undefined (DOMException error);
 

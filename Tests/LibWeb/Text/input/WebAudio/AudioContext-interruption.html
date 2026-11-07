@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        internals.setTestTimeout(20_000);
+        const context = new AudioContext();
+        const oscillator = new OscillatorNode(context);
+        oscillator.connect(context.destination);
+        oscillator.start();
+        println(`running: ${await waitForCondition(() => context.state === "running")}`);
+
+        // Losing the AudioServer connection loses the output device.
+        let resumed;
+        context.onstatechange = () => {
+            if (context.state === "interrupted" && !resumed) {
+                context.suspend();
+                resumed = context.resume().then(() => "fulfilled", error => error.name);
+            }
+        };
+        internals.disconnectAudioServer();
+        println(`interrupted: ${await waitForCondition(() => resumed !== undefined)}`);
+        println(`resume() after suspend() during the interruption: ${await resumed}`);
+        println(`running after the output recovers: ${await waitForCondition(() => context.state === "running")}`);
+        await context.close();
+    });
+</script>

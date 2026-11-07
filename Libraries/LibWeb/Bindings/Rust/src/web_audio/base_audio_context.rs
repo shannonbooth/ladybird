@@ -80,6 +80,7 @@ use crate::bindings::{CallContext, Exception, WebIdlResult};
 pub(crate) enum AudioContextState {
     Suspended,
     Running,
+    Interrupted,
     Closed,
 }
 
@@ -104,6 +105,7 @@ pub(crate) struct BaseAudioContext {
     state: Cell<AudioContextState>,
     control_thread_state: Cell<AudioContextState>,
     rendering_thread_state: Cell<AudioContextState>,
+    pub(crate) state_before_interruption: Cell<Option<AudioContextState>>,
     media_element_event_task_source: MediaElementTaskSource,
     document_observer: GcRefCell<Option<CppCell>>,
     audio_worklet: GcRefCell<Option<CppCell>>,
@@ -215,6 +217,7 @@ impl BaseAudioContext {
             state: Cell::new(AudioContextState::Suspended),
             control_thread_state: Cell::new(AudioContextState::Suspended),
             rendering_thread_state: Cell::new(AudioContextState::Suspended),
+            state_before_interruption: Cell::new(None),
             media_element_event_task_source: MediaElementTaskSource(
                 NonNull::new(unsafe { web_audio_context_create_task_source() }).unwrap(),
             ),
@@ -298,6 +301,10 @@ impl BaseAudioContext {
 
     pub(crate) fn set_control_state(&self, state: AudioContextState) {
         self.control_thread_state.set(state);
+    }
+
+    pub(crate) fn rendering_state(&self) -> AudioContextState {
+        self.rendering_thread_state.get()
     }
 
     pub(crate) fn set_rendering_state(&self, state: AudioContextState) {

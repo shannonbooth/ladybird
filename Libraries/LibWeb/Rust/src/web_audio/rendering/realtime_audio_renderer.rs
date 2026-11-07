@@ -30,6 +30,8 @@ unsafe extern "C" {
 
 pub trait RealtimeAudioRendererClient {
     fn sources_ended(&self, nodes: &[u64]);
+    fn output_interrupted(&self);
+    fn output_recovered(&self);
 }
 
 struct OutputTiming {
@@ -116,6 +118,7 @@ pub struct RealtimeAudioRenderer {
     client: ControlThreadCell<Option<Rc<dyn RealtimeAudioRendererClient>>>,
     frames_rendered: AtomicU64,
     suspended: AtomicBool,
+    output_interrupted: AtomicBool,
     shutting_down: AtomicBool,
     output_anchor: OutputAnchor,
     state: UnsafeCell<RenderState>,
@@ -143,6 +146,7 @@ impl RealtimeAudioRenderer {
             client: ControlThreadCell::new(None),
             frames_rendered: AtomicU64::new(0),
             suspended: AtomicBool::new(false),
+            output_interrupted: AtomicBool::new(false),
             shutting_down: AtomicBool::new(false),
             output_anchor: OutputAnchor::default(),
             state: UnsafeCell::new(RenderState {
@@ -197,6 +201,15 @@ impl RealtimeAudioRenderer {
         if !self.suspended.load(Ordering::SeqCst) {
             unsafe { web_audio_output_resume(stream.pointer) };
         }
+        if self.output_interrupted.swap(false, Ordering::AcqRel)
+            && let Some(client) = self.client.get()
+        {
+            client.output_recovered();
+        }
+    }
+
+    pub fn output_is_interrupted(&self) -> bool {
+        self.output_interrupted.load(Ordering::Acquire)
     }
 
     fn playback_stream(&self) -> Option<SharedCppObject> {
@@ -209,6 +222,12 @@ impl RealtimeAudioRenderer {
             return;
         }
         *self.playback_stream.lock().unwrap() = None;
+        if self.output_interrupted.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        if let Some(client) = self.client.get() {
+            client.output_interrupted();
+        }
         self.start_rendering();
     }
 
@@ -390,6 +409,56 @@ mod tests {
     #[unsafe(no_mangle)]
     extern "C" fn web_audio_monotonic_now_nanoseconds() -> i64 {
         0
+    }
+
+    #[unsafe(no_mangle)]
+    extern "C" fn web_audio_output_open(_: *mut c_void, _: *const c_void) {}
+
+    #[unsafe(no_mangle)]
+    extern "C" fn web_audio_output_resume(_: *mut c_void) {}
+
+    #[unsafe(no_mangle)]
+    extern "C" fn web_audio_output_discard_and_suspend(_: *mut c_void) {}
+
+    #[test]
+    fn replacing_an_output_stream_reports_interruption_and_resets_channel_alignment() {
+        struct Client(std::cell::RefCell<Vec<&'static str>>);
+        impl RealtimeAudioRendererClient for Client {
+            fn sources_ended(&self, _: &[u64]) {}
+            fn output_interrupted(&self) {
+                self.0.borrow_mut().push("interrupted");
+            }
+            fn output_recovered(&self) {
+                self.0.borrow_mut().push("recovered");
+            }
+        }
+
+        unsafe extern "C" fn no_op(_: *mut c_void) {}
+        let handle = SharedCppObject {
+            pointer: std::ptr::null_mut(),
+            retain: no_op,
+            release: no_op,
+        };
+        let renderer =
+            RealtimeAudioRenderer::new(Arc::new(ControlMessageQueue::default()), 0, 48000., 4, handle.clone());
+        let client = Rc::new(Client(std::cell::RefCell::new(Vec::new())));
+        renderer.set_client(Some(client.clone()));
+        renderer.set_playback_stream(handle.clone(), 2, 48000);
+
+        let state = unsafe { &mut *renderer.state.get() };
+        state.pending_samples.extend([1., -1., 2., -2.]);
+        state.playhead = 1.5;
+
+        renderer.output_lost();
+        assert!(renderer.output_is_interrupted());
+        renderer.set_playback_stream(handle, 1, 44100);
+        assert!(!renderer.output_is_interrupted());
+
+        let state = unsafe { &*renderer.state.get() };
+        assert_eq!(state.device_channel_count, 1);
+        assert!(state.pending_samples.is_empty());
+        assert_eq!(state.playhead, 0.);
+        assert_eq!(&*client.0.borrow(), &["interrupted", "recovered"]);
     }
 
     #[test]

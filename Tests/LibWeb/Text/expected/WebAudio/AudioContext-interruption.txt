@@ -1,0 +1,4 @@
+running: true
+interrupted: true
+resume() after suspend() during the interruption: fulfilled
+running after the output recovers: true
