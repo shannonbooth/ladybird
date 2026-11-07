@@ -171,6 +171,10 @@ impl RealtimeAudioRenderer {
             state.playhead = 0.;
         }
         state.device_channel_count = channel_count;
+        let pending_capacity = (self.quantum_size + 1) * channel_count;
+        state
+            .pending_samples
+            .reserve_exact(pending_capacity.saturating_sub(state.pending_samples.len()));
         self.device_sample_rate.store(sample_rate, Ordering::Relaxed);
         state.device_bus = Some(Box::new(AudioBus::new(channel_count, self.quantum_size)));
 
@@ -255,11 +259,15 @@ impl RealtimeAudioRenderer {
         );
         state.frames_output += frames_requested as u64;
         for frame in 0..frames_requested {
-            let first_frame = state.playhead as usize;
+            let mut first_frame = state.playhead as usize;
             let fraction = (state.playhead - first_frame as f64) as f32;
 
-            // Interpolation between adjacent rendered frames requires one frame of lookahead.
+            // Keep at most one sample frame from the previous quantum for interpolation.
             while state.pending_samples.len() / channel_count < first_frame + 2 {
+                let consumed_frames = first_frame.min(state.pending_samples.len() / channel_count);
+                state.pending_samples.drain(..consumed_frames * channel_count);
+                state.playhead -= consumed_frames as f64;
+                first_frame -= consumed_frames;
                 self.render_quantum_into_pending_samples(state);
             }
             for channel in 0..channel_count {
@@ -273,14 +281,6 @@ impl RealtimeAudioRenderer {
             state.playhead += state.playhead_step;
         }
 
-        // Trim rendered frames preceding the playhead. If resampling advances the playhead beyond the rendered frames,
-        // carry the remaining offset into the next callback.
-        let rendered_frames = state.pending_samples.len() / channel_count;
-        let consumed_frames = (state.playhead as usize).min(rendered_frames);
-        if consumed_frames > 0 {
-            state.pending_samples.drain(..consumed_frames * channel_count);
-            state.playhead -= consumed_frames as f64;
-        }
         buffer.len()
     }
 
@@ -300,6 +300,9 @@ impl RealtimeAudioRenderer {
                 device_bus.sum_from(unsafe { &*destination_node.data().output(0) }, true);
             }
             let sample_offset = state.pending_samples.len();
+            debug_assert!(
+                sample_offset + self.quantum_size * state.device_channel_count <= state.pending_samples.capacity()
+            );
             state
                 .pending_samples
                 .resize(sample_offset + self.quantum_size * state.device_channel_count, 0.);
@@ -359,4 +362,40 @@ pub(crate) unsafe extern "C" fn web_audio_realtime_renderer_output_opened(
 #[unsafe(no_mangle)]
 pub(crate) unsafe extern "C" fn web_audio_realtime_renderer_output_lost(renderer: *const RealtimeAudioRenderer) {
     unsafe { clone_arc(renderer) }.output_lost();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::css::style::pipeline::allocation_count::count_allocations;
+
+    #[test]
+    fn resamples_a_device_buffer_without_allocating() {
+        unsafe extern "C" fn no_op(_: *mut c_void) {}
+
+        let renderer = RealtimeAudioRenderer::new(
+            Arc::new(ControlMessageQueue::default()),
+            0,
+            48000.,
+            8,
+            SharedCppObject {
+                pointer: std::ptr::null_mut(),
+                retain: no_op,
+                release: no_op,
+            },
+        );
+        let state = unsafe { &mut *renderer.state.get() };
+        state.device_channel_count = 2;
+        state.device_bus = Some(Box::new(AudioBus::new(2, renderer.quantum_size)));
+        state.pending_samples.reserve_exact((renderer.quantum_size + 1) * 2);
+        let mut buffer = [f32::NAN; 256];
+        for playhead_step in [0.375, 27.5] {
+            unsafe { &mut *renderer.state.get() }.playhead_step = playhead_step;
+            let (samples_written, allocations) =
+                count_allocations(|| unsafe { renderer.fill_output_buffer(&mut buffer, 0) });
+            assert_eq!(samples_written, buffer.len());
+            assert_eq!(allocations.everywhere, 0);
+            assert!(buffer.iter().all(|&sample| sample == 0.));
+        }
+    }
 }
