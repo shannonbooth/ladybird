@@ -9,6 +9,7 @@
 #include <AK/AtomicRefCounted.h>
 #include <AK/Time.h>
 #include <LibAudio/PlaybackStream.h>
+#include <LibAudio/SharedAudioFrameRing.h>
 #include <LibMedia/Sinks/AudioOutputFactory.h>
 #include <LibWeb/HTML/Scripting/Environments.h>
 #include <LibWeb/HTML/Window.h>
@@ -72,6 +73,14 @@ void RustFFI::web_audio_output_discard_and_suspend(void* stream)
 {
     static_cast<Audio::PlaybackStream*>(stream)->discard_buffer_and_suspend()->when_rejected([](auto&&) { });
 }
+void RustFFI::web_audio_output_playback_underruns(void* stream, double* duration, u64* events)
+{
+    auto& playback_stream = *static_cast<Audio::PlaybackStream*>(stream);
+    auto underruns = playback_stream.playback_underruns();
+    *duration = static_cast<double>(underruns.frames) / playback_stream.sample_specification().sample_rate();
+    *events = underruns.events;
+}
+
 i64 RustFFI::web_audio_monotonic_now_nanoseconds() { return MonotonicTime::now().nanoseconds(); }
 double web_audio_realtime_context_performance_time(DOM::EventTarget* global, i64 monotonic_nanoseconds)
 {

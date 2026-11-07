@@ -14,6 +14,7 @@ pub(crate) mod audio_listener;
 pub(crate) mod audio_node;
 pub(crate) mod audio_param;
 pub(crate) mod audio_param_map;
+pub(crate) mod audio_playback_stats;
 pub(crate) mod audio_processing_event;
 pub(crate) mod audio_scheduled_source_node;
 pub(crate) mod audio_worklet_node;

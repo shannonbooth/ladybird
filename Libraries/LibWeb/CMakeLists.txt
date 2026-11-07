@@ -930,6 +930,7 @@ set(SOURCES
     WebAudio/AudioWorkletNode.cpp
     WebAudio/AudioWorkletProcessor.cpp
     WebAudio/AudioContext.cpp
+    WebAudio/AudioPlaybackStats.cpp
     WebAudio/BaseAudioContext.cpp
     WebAudio/MediaElementAudioSourceNode.cpp
     WebAudio/MediaStreamAudioDestinationNode.cpp

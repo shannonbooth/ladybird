@@ -20,6 +20,7 @@ use libweb_rust::web_audio::rendering::realtime_audio_renderer::{RealtimeAudioRe
 use super::audio_destination_node::AudioDestinationNode;
 use super::audio_listener::AudioListener;
 use super::audio_node::AudioNodeOptions;
+use super::audio_playback_stats::AudioPlaybackStats;
 use super::base_audio_context::{AnyBaseAudioContext, AudioContextState, BaseAudioContext};
 use super::media_element_audio_source_node::MediaElementAudioSourceNode;
 use super::media_stream_audio_destination_node::MediaStreamAudioDestinationNode;
@@ -79,8 +80,9 @@ pub(crate) struct AudioContext {
     allowed_to_start: bool,
     pending_resume_promises: GcRefCell<Vec<WebIdlPromise>>,
     suspended_by_user: Cell<bool>,
+    playback_stats: Cell<Option<Ref<AudioPlaybackStats>>>,
     #[gc(untraced)]
-    renderer: RefCell<Option<Arc<RealtimeAudioRenderer>>>,
+    pub(super) renderer: RefCell<Option<Arc<RealtimeAudioRenderer>>>,
 }
 
 impl Inherits<BaseAudioContext> for AudioContext {
@@ -181,6 +183,7 @@ impl AudioContext {
             allowed_to_start: true,
             pending_resume_promises: GcRefCell::new(Vec::new()),
             suspended_by_user: Cell::new(false),
+            playback_stats: Cell::new(None),
             renderer: RefCell::new(None),
         });
         context
@@ -310,11 +313,19 @@ impl AudioContext {
                 });
         }
 
-        // 12. Return context.
+        // 13. Set [[playback stats]] to a new instance of AudioPlaybackStats.
+        context
+            .playback_stats
+            .set(Some(AudioPlaybackStats::create(cx.vm(), context)));
+
+        // 14. Return context.
         Ok(context)
     }
 
     pub(crate) fn document_became_inactive(&self) {
+        if let Some(playback_stats) = self.playback_stats.get() {
+            playback_stats.stop_updates();
+        }
         // Release the audio output device and the GC roots held by the renderer's callbacks, so a context belonging to a
         // navigated-away document stops playing and can eventually be collected.
         self.context.shutdown_audio_worklet();
@@ -346,6 +357,11 @@ impl AudioContext {
             .borrow()
             .as_ref()
             .map_or(0., |renderer| renderer.output_latency()))
+    }
+
+    // https://webaudio.github.io/web-audio-api/#dom-audiocontext-playbackstats
+    pub(crate) fn playback_stats(&self, _: &mut CallContext) -> WebIdlResult<Ref<AudioPlaybackStats>> {
+        Ok(self.playback_stats.get().expect("an AudioContext has playback stats"))
     }
 
     // https://webaudio.github.io/web-audio-api/#dom-audiocontext-getoutputtimestamp
@@ -845,6 +861,10 @@ impl AudioContext {
     }
 
     fn run_control_message_to_close(&self, vm: &Vm, promise: WebIdlPromise) {
+        if let Some(playback_stats) = self.playback_stats.get() {
+            playback_stats.stop_updates();
+        }
+
         // 1. Attempt to release system resources.
         self.context.shutdown_audio_worklet();
         if let Some(renderer) = &*self.renderer.borrow() {

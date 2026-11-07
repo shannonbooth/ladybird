@@ -1,0 +1,2 @@
+Same playback stats object: true
+Playback stats are stable while suspended: true

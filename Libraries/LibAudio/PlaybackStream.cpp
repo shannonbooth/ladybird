@@ -7,7 +7,14 @@
 #include <LibAudio/ClientConnection.h>
 #include <LibAudio/NullPlaybackStream.h>
 
+#include <LibAudio/SharedAudioFrameRing.h>
+
 namespace Audio {
+
+PlaybackUnderruns PlaybackStream::playback_underruns() const
+{
+    return {};
+}
 
 // The null fallback needs the callback the failed AudioServer stream was given, and a callback is not copyable. Only
 // one of the two ever calls it.

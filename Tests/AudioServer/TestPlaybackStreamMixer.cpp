@@ -700,3 +700,29 @@ TEST_CASE(letting_go_of_the_mixer_reports_every_audible_group_inaudible)
     fixture.mixer->report_every_group_inaudible();
     EXPECT(fixture.audibility_reports == (Vector<AudibilityReport> { { AUTHORIZED_GROUP, AUDIBLE }, { AUTHORIZED_GROUP, INAUDIBLE } }));
 }
+
+TEST_CASE(playback_underruns_count_frames_and_continuous_events)
+{
+    MixerFixture fixture;
+    auto stream = fixture.add_client(1);
+    fixture.mixer->resume_client(1);
+
+    EXPECT_EQ(stream.try_push(constant_frames(8, 0.5f)), 8u);
+    fixture.render_and_report(16);
+    fixture.render_and_report(16);
+    auto underruns = stream.playback_underruns().value();
+    EXPECT_EQ(underruns.frames, 24u);
+    EXPECT_EQ(underruns.events, 1u);
+
+    EXPECT_EQ(stream.try_push(constant_frames(8, 0.5f)), 8u);
+    fixture.render_and_report(16);
+    underruns = stream.playback_underruns().value();
+    EXPECT_EQ(underruns.frames, 32u);
+    EXPECT_EQ(underruns.events, 2u);
+
+    fixture.mixer->discard_client(1);
+    fixture.render_and_report(16);
+    underruns = stream.playback_underruns().value();
+    EXPECT_EQ(underruns.frames, 32u);
+    EXPECT_EQ(underruns.events, 2u);
+}

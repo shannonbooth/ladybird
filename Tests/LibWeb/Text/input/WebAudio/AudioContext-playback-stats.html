@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const context = new AudioContext();
+        const stats = context.playbackStats;
+        println(`Same playback stats object: ${stats === context.playbackStats}`);
+
+        const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+        while (stats.totalDuration === 0)
+            await wait(20);
+
+        await context.suspend();
+        const beforeWait = JSON.stringify(stats);
+        await wait(1100);
+        println(`Playback stats are stable while suspended: ${JSON.stringify(stats) === beforeWait}`);
+        await context.close();
+    });
+</script>

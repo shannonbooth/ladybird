@@ -12,6 +12,7 @@ interface AudioContext : BaseAudioContext {
     constructor(optional AudioContextOptions contextOptions = {});
     readonly attribute double baseLatency;
     readonly attribute double outputLatency;
+    [SameObject] readonly attribute AudioPlaybackStats playbackStats;
     AudioTimestamp getOutputTimestamp ();
     [CreatesPromise] Promise<undefined> resume ();
     [CreatesPromise] Promise<undefined> suspend ();

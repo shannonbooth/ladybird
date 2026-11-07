@@ -18,6 +18,8 @@
 
 namespace Audio {
 
+struct PlaybackUnderruns;
+
 enum class OutputState {
     Playing,
     Suspended,
@@ -39,6 +41,7 @@ public:
     static NonnullRefPtr<CreatePromise> create(OutputState, u32 target_latency_ms, NonnullRefPtr<OutputSession>, AudioDataRequestCallback);
 
     virtual SampleSpecification sample_specification() const = 0;
+    virtual PlaybackUnderruns playback_underruns() const;
 
     virtual ~PlaybackStream() = default;
 

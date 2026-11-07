@@ -8,6 +8,7 @@
 
 #include <AK/Atomic.h>
 #include <AK/Error.h>
+#include <AK/Optional.h>
 #include <AK/Platform.h>
 #include <AK/SeqLock.h>
 #include <AK/Span.h>
@@ -26,6 +27,12 @@ struct PlaybackStreamConsumptionAnchor {
     bool playing { false };
 };
 static_assert(IsTriviallyCopyable<PlaybackStreamConsumptionAnchor>);
+
+struct PlaybackUnderruns {
+    u64 frames { 0 };
+    u64 events { 0 };
+};
+static_assert(IsTriviallyCopyable<PlaybackUnderruns>);
 
 // A single-producer, single-consumer ring of interleaved float frames in shared memory, with the consumption anchor.
 class AUDIO_API SharedAudioFrameRing final : public AudioFrameRingBase {
@@ -90,12 +97,15 @@ public:
     void discard_all();
     // `played_at_ns` is when the device will have played everything consumed so far.
     void publish_consumption(i64 played_at_ns, bool playing);
+    void publish_playback_underruns(PlaybackUnderruns const& underruns) { m_shared_header->underruns.store(underruns); }
+    Optional<PlaybackUnderruns> playback_underruns() const { return m_shared_header->underruns.read(); }
 
 private:
     struct Header {
         AudioFrameRingHeader ring;
         u32 sample_rate { 0 };
         AK_CACHE_ALIGNED SeqLock<PlaybackStreamConsumptionAnchor> consumption;
+        AK_CACHE_ALIGNED SeqLock<PlaybackUnderruns> underruns;
     };
     static constexpr size_t SAMPLES_OFFSET = (sizeof(Header) + AK_SYSTEM_CACHE_ALIGNMENT_SIZE - 1) & ~(AK_SYSTEM_CACHE_ALIGNMENT_SIZE - 1);
 

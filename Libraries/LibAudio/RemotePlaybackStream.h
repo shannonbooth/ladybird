@@ -28,6 +28,7 @@ public:
     virtual ~RemotePlaybackStream() override;
 
     virtual SampleSpecification sample_specification() const override { return m_sample_specification; }
+    virtual PlaybackUnderruns playback_underruns() const override;
     virtual NonnullRefPtr<Core::ThreadedPromise<void>> resume() override;
     virtual NonnullRefPtr<Core::ThreadedPromise<void>> drain_buffer_and_suspend() override;
     virtual NonnullRefPtr<Core::ThreadedPromise<void>> discard_buffer_and_suspend() override;
@@ -68,6 +69,7 @@ private:
 
     mutable Mutex m_mutex;
     Optional<SharedAudioFrameRing> m_ring;
+    mutable PlaybackUnderruns m_last_playback_underruns;
     State m_state { State::Suspended };
     bool m_waiting_for_data { false };
     // Counts notify_data_available() calls, so a notification that lands while the callback is running is not lost

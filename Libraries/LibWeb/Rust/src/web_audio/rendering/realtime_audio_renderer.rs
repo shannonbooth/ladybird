@@ -25,6 +25,7 @@ unsafe extern "C" {
     fn web_audio_output_resume(stream: *mut c_void);
     fn web_audio_output_drain_and_suspend(stream: *mut c_void);
     fn web_audio_output_discard_and_suspend(stream: *mut c_void);
+    fn web_audio_output_playback_underruns(stream: *mut c_void, duration: *mut f64, events: *mut u64);
     fn web_audio_monotonic_now_nanoseconds() -> i64;
 }
 
@@ -34,14 +35,18 @@ pub trait RealtimeAudioRendererClient {
     fn output_recovered(&self);
 }
 
+#[derive(Default)]
 struct OutputTiming {
     context_start_time: f64,
     context_end_time: f64,
     requested_at_nanoseconds: i64,
     plays_at_nanoseconds: i64,
+    latency_reset_frame: u64,
+    average_latency: f64,
+    minimum_latency: f64,
+    maximum_latency: f64,
 }
 
-// The scheduled presentation time and context frame range of the latest device buffer.
 #[derive(Default)]
 struct OutputAnchor {
     version: AtomicU64,
@@ -49,12 +54,16 @@ struct OutputAnchor {
     context_end_time: AtomicU64,
     requested_at_nanoseconds: AtomicI64,
     plays_at_nanoseconds: AtomicI64,
+    latency_reset_frame: AtomicU64,
+    average_latency: AtomicU64,
+    minimum_latency: AtomicU64,
+    maximum_latency: AtomicU64,
 }
 
 impl OutputAnchor {
-    fn store(&self, timing: OutputTiming) {
-        let version = self.version.load(Ordering::Relaxed);
-        self.version.store(version.wrapping_add(1), Ordering::Relaxed);
+    fn store(&self, sequence: u64, timing: OutputTiming) {
+        let version = sequence.wrapping_mul(2);
+        self.version.store(version.wrapping_sub(1), Ordering::Relaxed);
         fence(Ordering::SeqCst);
         self.context_start_time
             .store(timing.context_start_time.to_bits(), Ordering::Relaxed);
@@ -64,32 +73,92 @@ impl OutputAnchor {
             .store(timing.requested_at_nanoseconds, Ordering::Relaxed);
         self.plays_at_nanoseconds
             .store(timing.plays_at_nanoseconds, Ordering::Relaxed);
-        self.version.store(version.wrapping_add(2), Ordering::Release);
+        self.latency_reset_frame
+            .store(timing.latency_reset_frame, Ordering::Relaxed);
+        self.average_latency
+            .store(timing.average_latency.to_bits(), Ordering::Relaxed);
+        self.minimum_latency
+            .store(timing.minimum_latency.to_bits(), Ordering::Relaxed);
+        self.maximum_latency
+            .store(timing.maximum_latency.to_bits(), Ordering::Relaxed);
+        self.version.store(version, Ordering::Release);
     }
 
-    fn read(&self) -> Option<OutputTiming> {
-        for _retry in 0..32 {
-            let version_before = self.version.load(Ordering::Acquire);
-            if version_before == 0 {
-                return None;
-            }
-            if !version_before.is_multiple_of(2) {
-                continue;
-            }
-            let copy = OutputTiming {
-                context_start_time: f64::from_bits(self.context_start_time.load(Ordering::Relaxed)),
-                context_end_time: f64::from_bits(self.context_end_time.load(Ordering::Relaxed)),
-                requested_at_nanoseconds: self.requested_at_nanoseconds.load(Ordering::Relaxed),
-                plays_at_nanoseconds: self.plays_at_nanoseconds.load(Ordering::Relaxed),
-            };
-            fence(Ordering::Acquire);
-            let version_after = self.version.load(Ordering::Relaxed);
-            if version_before == version_after {
-                return Some(copy);
-            }
+    fn read(&self, sequence: u64) -> Option<OutputTiming> {
+        let expected_version = sequence.wrapping_mul(2);
+        if self.version.load(Ordering::Acquire) != expected_version {
+            return None;
         }
-        None
+        let copy = OutputTiming {
+            context_start_time: f64::from_bits(self.context_start_time.load(Ordering::Relaxed)),
+            context_end_time: f64::from_bits(self.context_end_time.load(Ordering::Relaxed)),
+            requested_at_nanoseconds: self.requested_at_nanoseconds.load(Ordering::Relaxed),
+            plays_at_nanoseconds: self.plays_at_nanoseconds.load(Ordering::Relaxed),
+            latency_reset_frame: self.latency_reset_frame.load(Ordering::Relaxed),
+            average_latency: f64::from_bits(self.average_latency.load(Ordering::Relaxed)),
+            minimum_latency: f64::from_bits(self.minimum_latency.load(Ordering::Relaxed)),
+            maximum_latency: f64::from_bits(self.maximum_latency.load(Ordering::Relaxed)),
+        };
+        fence(Ordering::Acquire);
+        (self.version.load(Ordering::Relaxed) == expected_version).then_some(copy)
     }
+}
+
+impl OutputTiming {
+    fn latency(&self) -> f64 {
+        (self.plays_at_nanoseconds - self.requested_at_nanoseconds).max(0) as f64 / 1e9
+    }
+}
+
+// Keep enough anchors to look past the native stream's queued buffers without allocating in its callback.
+const OUTPUT_HISTORY_CAPACITY: usize = 128;
+
+struct OutputHistory {
+    latest_sequence: AtomicU64,
+    anchors: [OutputAnchor; OUTPUT_HISTORY_CAPACITY],
+}
+
+impl Default for OutputHistory {
+    fn default() -> Self {
+        Self {
+            latest_sequence: AtomicU64::new(0),
+            anchors: std::array::from_fn(|_| OutputAnchor::default()),
+        }
+    }
+}
+
+impl OutputHistory {
+    fn store(&self, timing: OutputTiming) {
+        let sequence = self.latest_sequence.load(Ordering::Relaxed) + 1;
+        self.anchors[sequence as usize % OUTPUT_HISTORY_CAPACITY].store(sequence, timing);
+        self.latest_sequence.store(sequence, Ordering::Release);
+    }
+
+    fn recent_anchors(&self) -> impl Iterator<Item = OutputTiming> + '_ {
+        let latest = self.latest_sequence.load(Ordering::Acquire);
+        let oldest = latest.saturating_sub(OUTPUT_HISTORY_CAPACITY as u64 - 1).max(1);
+        (oldest..=latest)
+            .rev()
+            .filter_map(|sequence| self.anchors[sequence as usize % OUTPUT_HISTORY_CAPACITY].read(sequence))
+    }
+
+    fn latest(&self) -> Option<OutputTiming> {
+        self.recent_anchors().next()
+    }
+
+    fn last_played(&self, now_nanoseconds: i64) -> Option<OutputTiming> {
+        self.recent_anchors()
+            .find(|timing| timing.plays_at_nanoseconds <= now_nanoseconds)
+    }
+}
+
+#[derive(Default)]
+struct LatencyStatistics {
+    reset_frame: u64,
+    frames: f64,
+    weighted_latency: f64,
+    minimum_latency: f64,
+    maximum_latency: f64,
 }
 
 // State below is only used on the audio thread, except that the device configuration is recorded on the control
@@ -101,6 +170,7 @@ struct RenderState {
     playhead_step: f64,
     playhead: f64,
     pending_samples: Vec<f32>,
+    latency_statistics: LatencyStatistics,
 }
 
 // Renders an AudioContext's graph in real time, pulled by the audio output device: the playback stream's data request
@@ -120,7 +190,9 @@ pub struct RealtimeAudioRenderer {
     suspended: AtomicBool,
     output_interrupted: AtomicBool,
     shutting_down: AtomicBool,
-    output_anchor: OutputAnchor,
+    output_history: OutputHistory,
+    latency_reset_frame: AtomicU64,
+    retired_underruns: ControlThreadCell<(f64, u64)>,
     state: UnsafeCell<RenderState>,
 }
 
@@ -148,7 +220,9 @@ impl RealtimeAudioRenderer {
             suspended: AtomicBool::new(false),
             output_interrupted: AtomicBool::new(false),
             shutting_down: AtomicBool::new(false),
-            output_anchor: OutputAnchor::default(),
+            output_history: OutputHistory::default(),
+            latency_reset_frame: AtomicU64::new(0),
+            retired_underruns: ControlThreadCell::new((0., 0)),
             state: UnsafeCell::new(RenderState {
                 graph: RenderGraph::default(),
                 device_bus: None,
@@ -156,6 +230,7 @@ impl RealtimeAudioRenderer {
                 playhead_step: 1.,
                 playhead: 0.,
                 pending_samples: Vec::new(),
+                latency_statistics: LatencyStatistics::default(),
             }),
         })
     }
@@ -221,6 +296,8 @@ impl RealtimeAudioRenderer {
         if self.shutting_down.load(Ordering::SeqCst) {
             return;
         }
+        let underruns = self.playback_underruns();
+        self.retired_underruns.replace(underruns);
         *self.playback_stream.lock().unwrap() = None;
         if self.output_interrupted.swap(true, Ordering::AcqRel) {
             return;
@@ -258,7 +335,7 @@ impl RealtimeAudioRenderer {
     }
 
     pub fn output_timestamp(&self) -> Option<(f64, i64)> {
-        let timing = self.output_anchor.read()?;
+        let timing = self.output_history.latest()?;
         let now_nanoseconds = unsafe { web_audio_monotonic_now_nanoseconds() };
         let elapsed = ((now_nanoseconds - timing.plays_at_nanoseconds) as f64 / 1e9).clamp(
             -timing.context_start_time,
@@ -271,9 +348,36 @@ impl RealtimeAudioRenderer {
     }
 
     pub fn output_latency(&self) -> f64 {
-        self.output_anchor.read().map_or(0., |timing| {
-            (timing.plays_at_nanoseconds - timing.requested_at_nanoseconds).max(0) as f64 / 1e9
-        })
+        self.output_history.latest().map_or(0., |timing| timing.latency())
+    }
+
+    pub fn last_played_latency(&self) -> f64 {
+        let now_nanoseconds = unsafe { web_audio_monotonic_now_nanoseconds() };
+        self.output_history
+            .last_played(now_nanoseconds)
+            .map_or(0., |timing| timing.latency())
+    }
+
+    pub fn playback_underruns(&self) -> (f64, u64) {
+        let (mut duration, mut events) = (0., 0);
+        if let Some(stream) = self.playback_stream() {
+            unsafe { web_audio_output_playback_underruns(stream.pointer, &raw mut duration, &raw mut events) };
+        }
+        let retired = self.retired_underruns.get();
+        (duration + retired.0, events.saturating_add(retired.1))
+    }
+
+    pub fn reset_playback_latency_statistics(&self, reset_time: f64) {
+        let reset_frame = (reset_time * f64::from(self.sample_rate)).round() as u64;
+        self.latency_reset_frame.store(reset_frame, Ordering::Release);
+    }
+
+    pub fn playback_latency_statistics(&self) -> Option<(f64, f64, f64)> {
+        let timing = self.output_history.latest()?;
+        if timing.latency_reset_frame != self.latency_reset_frame.load(Ordering::Acquire) {
+            return None;
+        }
+        Some((timing.average_latency, timing.minimum_latency, timing.maximum_latency))
     }
 
     unsafe fn fill_output_buffer(self: &Arc<Self>, buffer: &mut [f32], buffer_starts_playing_at: i64) -> usize {
@@ -312,11 +416,41 @@ impl RealtimeAudioRenderer {
             state.playhead += state.playhead_step;
         }
 
-        self.output_anchor.store(OutputTiming {
+        let reset_frame = self.latency_reset_frame.load(Ordering::Acquire);
+        let latency = (buffer_starts_playing_at - requested_at_nanoseconds).max(0) as f64 / 1e9;
+        let statistics = &mut state.latency_statistics;
+        if reset_frame != statistics.reset_frame {
+            *statistics = LatencyStatistics {
+                reset_frame,
+                ..Default::default()
+            };
+        }
+        let frames = (context_end_frame - context_start_frame.max(reset_frame as f64)).max(0.);
+        if frames > 0. {
+            if statistics.frames == 0. {
+                statistics.minimum_latency = latency;
+                statistics.maximum_latency = latency;
+            } else {
+                statistics.minimum_latency = statistics.minimum_latency.min(latency);
+                statistics.maximum_latency = statistics.maximum_latency.max(latency);
+            }
+            statistics.frames += frames;
+            statistics.weighted_latency += frames * latency;
+        }
+        self.output_history.store(OutputTiming {
             context_start_time: context_start_frame / sample_rate,
             context_end_time: context_end_frame / sample_rate,
             requested_at_nanoseconds,
             plays_at_nanoseconds: buffer_starts_playing_at,
+            latency_reset_frame: if statistics.frames > 0. { reset_frame } else { u64::MAX },
+            average_latency: if statistics.frames > 0. {
+                (statistics.weighted_latency / statistics.frames)
+                    .clamp(statistics.minimum_latency, statistics.maximum_latency)
+            } else {
+                0.
+            },
+            minimum_latency: statistics.minimum_latency,
+            maximum_latency: statistics.maximum_latency,
         });
         buffer.len()
     }
@@ -419,6 +553,27 @@ mod tests {
 
     #[unsafe(no_mangle)]
     extern "C" fn web_audio_output_discard_and_suspend(_: *mut c_void) {}
+
+    #[unsafe(no_mangle)]
+    extern "C" fn web_audio_output_playback_underruns(_: *mut c_void, _: *mut f64, _: *mut u64) {}
+
+    #[test]
+    fn playback_latency_uses_the_last_presented_buffer() {
+        let history = OutputHistory::default();
+        history.store(OutputTiming {
+            requested_at_nanoseconds: 10_000_000,
+            plays_at_nanoseconds: 20_000_000,
+            ..Default::default()
+        });
+        history.store(OutputTiming {
+            requested_at_nanoseconds: 25_000_000,
+            plays_at_nanoseconds: 40_000_000,
+            ..Default::default()
+        });
+        assert!(history.last_played(19_999_999).is_none());
+        assert_eq!(history.last_played(30_000_000).unwrap().latency(), 0.010);
+        assert_eq!(history.last_played(40_000_000).unwrap().latency(), 0.015);
+    }
 
     #[test]
     fn replacing_an_output_stream_reports_interruption_and_resets_channel_alignment() {

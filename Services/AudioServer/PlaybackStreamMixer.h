@@ -94,6 +94,8 @@ private:
         Function<void()> on_drained;
         // When the device will have played the last frame consumed from this ring.
         i64 played_at_ns { 0 };
+        PlaybackUnderruns underruns {};
+        bool underrun_active { false };
     };
 
     // Shared with the device callback, which may still be running while the mixer is torn down.

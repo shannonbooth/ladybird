@@ -208,6 +208,16 @@ void RemotePlaybackStream::drain_completed()
         m_state = State::Suspended;
 }
 
+PlaybackUnderruns RemotePlaybackStream::playback_underruns() const
+{
+    MutexLocker locker(m_mutex);
+    if (m_ring.has_value()) {
+        if (auto underruns = m_ring->playback_underruns(); underruns.has_value())
+            m_last_playback_underruns = *underruns;
+    }
+    return m_last_playback_underruns;
+}
+
 void RemotePlaybackStream::connection_lost()
 {
     {

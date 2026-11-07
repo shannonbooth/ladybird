@@ -230,8 +230,10 @@ void PlaybackStreamMixer::drain_client(MixerClientId id, Function<void()> on_dra
         if (!client.has_value())
             return;
         if (client->state != ClientState::Suspended) {
-            if (client->state == ClientState::Playing)
+            if (client->state == ClientState::Playing) {
                 client->state = ClientState::Draining;
+                client->underrun_active = false;
+            }
             if (client->on_drained) {
                 client->on_drained = [previous = move(client->on_drained), on_drained = move(on_drained)]() mutable {
                     previous();
@@ -259,6 +261,7 @@ void PlaybackStreamMixer::discard_client(MixerClientId id)
         client->ring.discard_all();
         client->ring.publish_consumption(MonotonicTime::now().nanoseconds(), false);
         client->state = ClientState::Suspended;
+        client->underrun_active = false;
         cancelled_drain = move(client->on_drained);
     }
     if (was_active)
@@ -364,6 +367,16 @@ ReadonlySpan<float> PlaybackStreamMixer::MixState::mix_into(Span<float> buffer, 
                 consumed_frames = client.ring.pop_mixing_into(group_mix.samples, client.gain);
             } else {
                 consumed_frames = client.ring.discard(buffer.size() / client.ring.channel_count());
+            }
+            if (client.state == ClientState::Playing) {
+                auto missing_frames = buffer.size() / client.ring.channel_count() - consumed_frames;
+                if (missing_frames != 0) {
+                    client.underruns.frames += missing_frames;
+                    if (!client.underrun_active || consumed_frames != 0)
+                        ++client.underruns.events;
+                    client.ring.publish_playback_underruns(client.underruns);
+                }
+                client.underrun_active = missing_frames != 0;
             }
             if (consumed_frames > 0)
                 client.played_at_ns = (buffer_starts_playing_at + AK::Duration::from_time_units(static_cast<i64>(consumed_frames), 1, client.ring.sample_rate())).nanoseconds();
