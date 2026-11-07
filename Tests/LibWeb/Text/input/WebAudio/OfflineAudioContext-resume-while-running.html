@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const sampleRate = 32768;
+        const context = new OfflineAudioContext(1, 256, sampleRate);
+        try {
+            await context.resume();
+        } catch (error) {
+            println(`Before start: ${error.name}`);
+        }
+
+        const suspended = context.suspend(128 / sampleRate);
+        const rendering = context.startRendering();
+        await context.resume();
+        println("Resume while running resolved");
+
+        await suspended;
+        println(`Scheduled suspension: ${context.state}`);
+        await context.resume();
+        println(`After resume: ${context.state}`);
+        await rendering;
+
+        try {
+            await context.resume();
+        } catch (error) {
+            println(`After completion: ${error.name}`);
+        }
+    });
+</script>

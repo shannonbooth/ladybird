@@ -1,0 +1,5 @@
+Before start: InvalidStateError
+Resume while running resolved
+Scheduled suspension: suspended
+After resume: running
+After completion: InvalidStateError

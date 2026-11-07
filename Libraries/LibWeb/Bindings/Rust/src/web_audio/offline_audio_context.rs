@@ -398,31 +398,75 @@ impl OfflineAudioContext {
 
     // https://webaudio.github.io/web-audio-api/#dom-offlineaudiocontext-resume
     pub(crate) fn resume(&self, cx: &mut CallContext, promise: WebIdlPromise) -> WebIdlResult<()> {
-        // FIXME: 1. If this’s relevant global object’s associated Document is not fully active then return a promise rejected with "InvalidStateError" DOMException.
+        // 1. If this’s relevant global object’s associated Document is not fully active then return a promise rejected with "InvalidStateError" DOMException.
+        if !self.context.document_is_fully_active() {
+            return Err(Exception::Dom(
+                "InvalidStateError",
+                Utf16String::from_ascii(b"The document is not fully active"),
+            ));
+        }
+
         // 2. Let promise be a new Promise.
         // NB: The binding creates promise before calling this method.
+
         // 3. Abort these steps and reject promise with InvalidStateError when any of following conditions is true:
-        if self.renderer.borrow().is_none() || self.context.state_value() != AudioContextState::Suspended {
+        //    - The [[control thread state]] on the OfflineAudioContext is closed.
+        //    - The [[rendering started]] slot on the OfflineAudioContext is false.
+        let control_thread_state = self.context.control_state();
+        if control_thread_state == AudioContextState::Closed || !self.rendering_started.get() {
             reject_promise_with_exception(
                 cx.vm(),
                 promise,
                 Exception::Dom(
                     "InvalidStateError",
-                    Utf16String::from_ascii(b"The OfflineAudioContext is not suspended"),
+                    Utf16String::from_ascii(b"The OfflineAudioContext has not started rendering or is closed"),
                 ),
             );
             return Ok(());
         }
-        self.renderer.borrow().as_ref().unwrap().resume();
 
         // 4. Set the [[control thread state]] flag on the OfflineAudioContext to running.
         self.context.set_control_state(AudioContextState::Running);
-        self.context.set_state(AudioContextState::Running);
-        self.context.set_rendering_state(AudioContextState::Running);
-        self.queue_a_statechange_event(cx.vm());
 
         // 5. Queue a control message to resume the OfflineAudioContext.
-        resolve_promise(cx.vm(), promise, Value::UNDEFINED);
+        let was_suspended = control_thread_state == AudioContextState::Suspended;
+        // NB: Wake a suspended renderer in the settlement task so completion cannot overtake the state change.
+        self.context.queue_a_media_element_task(
+            cx.vm(),
+            (self.this(), promise, was_suspended),
+            |vm, (context, promise, was_suspended)| {
+                // 1. Set the [[rendering thread state]] on the OfflineAudioContext to running.
+                // 2. Start rendering the audio graph.
+                if was_suspended {
+                    context.context.set_rendering_state(AudioContextState::Running);
+                    context
+                        .renderer
+                        .borrow()
+                        .as_ref()
+                        .expect("rendering has started")
+                        .resume();
+                }
+
+                // 3. In case of failure, queue a media element task to reject promise and abort the remaining steps.
+                // NB: Waking the offline render thread is infallible.
+
+                // 4. queue a media element task to execute the following steps:
+                with_temporary_execution_context_and_callbacks(promise_realm(promise), || {
+                    // 4.1. Resolve promise.
+                    resolve_promise(vm, promise, Value::UNDEFINED);
+
+                    // 4.2. If the state attribute of the OfflineAudioContext is not already "running":
+                    // NB: A resume of an already running renderer leaves any later suspension alone.
+                    if was_suspended && context.context.state_value() != AudioContextState::Running {
+                        // 4.2.1. Set the state attribute of the OfflineAudioContext to "running".
+                        context.context.set_state(AudioContextState::Running);
+
+                        // 4.2.2. Queue a media element task to fire an event named statechange at the OfflineAudioContext.
+                        context.queue_a_statechange_event(vm);
+                    }
+                });
+            },
+        );
 
         // 6. Return promise.
         Ok(())
