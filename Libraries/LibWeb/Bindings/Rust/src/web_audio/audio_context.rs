@@ -76,8 +76,6 @@ pub(crate) struct AudioTimestamp {
 #[gc(crate = libjs_rust)]
 pub(crate) struct AudioContext {
     context: BaseAudioContext,
-    base_latency: f64,
-    output_latency: f64,
     allowed_to_start: bool,
     pending_resume_promises: GcRefCell<Vec<WebIdlPromise>>,
     suspended_by_user: Cell<bool>,
@@ -115,7 +113,7 @@ impl GetTheParent for AudioContext {
 
 unsafe extern "C" {
     fn web_audio_output_factory_create(global: *mut c_void) -> FfiSharedCppObject;
-    fn web_audio_realtime_context_performance_now(global: *mut c_void) -> f64;
+    fn web_audio_realtime_context_performance_time(global: *mut c_void, monotonic_nanoseconds: i64) -> f64;
 }
 
 struct RendererClient {
@@ -167,8 +165,6 @@ impl AudioContext {
         // 1. Let context be a new AudioContext object.
         let context = allocate(cx.vm(), |defer_gc| Self {
             context: BaseAudioContext::new(defer_gc, global, 0.),
-            base_latency: 0.,
-            output_latency: 0.,
             allowed_to_start: true,
             pending_resume_promises: GcRefCell::new(Vec::new()),
             suspended_by_user: Cell::new(false),
@@ -313,35 +309,41 @@ impl AudioContext {
         0.
     }
 
+    // https://webaudio.github.io/web-audio-api/#dom-audiocontext-baselatency
     pub(crate) fn base_latency(&self, _: &mut CallContext) -> WebIdlResult<f64> {
-        Ok(self.base_latency)
+        Ok(f64::from(self.context.render_quantum_size_value()) / f64::from(self.context.sample_rate_value()))
     }
 
+    // https://webaudio.github.io/web-audio-api/#dom-audiocontext-outputlatency
     pub(crate) fn output_latency(&self, _: &mut CallContext) -> WebIdlResult<f64> {
-        Ok(self.output_latency)
+        Ok(self
+            .renderer
+            .borrow()
+            .as_ref()
+            .map_or(0., |renderer| renderer.output_latency()))
     }
 
     // https://webaudio.github.io/web-audio-api/#dom-audiocontext-getoutputtimestamp
     pub(crate) fn get_output_timestamp(&self, _: &mut CallContext) -> WebIdlResult<AudioTimestamp> {
-        let renderer = self.renderer.borrow();
-
         // If the context's rendering graph has not yet processed a block of audio, then
         // getOutputTimestamp call returns an AudioTimestamp instance with both members
         // containing zero.
-        if renderer.as_ref().is_none_or(|renderer| renderer.frames_rendered() == 0) {
+        let Some((context_time, monotonic_time)) = self
+            .renderer
+            .borrow()
+            .as_ref()
+            .and_then(|renderer| renderer.output_timestamp())
+        else {
             return Ok(AudioTimestamp {
                 context_time: Some(0.),
                 performance_time: Some(0.),
             });
-        }
+        };
 
-        // FIXME: performanceTime should be the moment the sample frame at contextTime was rendered by the output device.
-        //        We sample performance.now() when getOutputTimestamp() is called instead of caching a timestamp when the
-        //        renderer produced that block, so the returned pair does not describe a single output instant.
         Ok(AudioTimestamp {
-            context_time: Some(renderer.as_ref().unwrap().output_time_played()),
+            context_time: Some(context_time),
             performance_time: Some(unsafe {
-                web_audio_realtime_context_performance_now(self.context.global_event_target().as_ptr())
+                web_audio_realtime_context_performance_time(self.context.global_event_target().as_ptr(), monotonic_time)
             }),
         })
     }

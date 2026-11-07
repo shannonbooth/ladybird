@@ -1,0 +1,4 @@
+Base latency is one render quantum: true
+Timestamp is on the output timeline: true
+Output latency is finite: true
+The suspended timestamp describes the same frame and time: true

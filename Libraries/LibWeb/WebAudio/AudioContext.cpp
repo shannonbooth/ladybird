@@ -10,8 +10,9 @@
 #include <AK/Time.h>
 #include <LibAudio/PlaybackStream.h>
 #include <LibMedia/Sinks/AudioOutputFactory.h>
+#include <LibWeb/HTML/Scripting/Environments.h>
 #include <LibWeb/HTML/Window.h>
-#include <LibWeb/HighResolutionTime/Performance.h>
+#include <LibWeb/HighResolutionTime/TimeOrigin.h>
 #include <LibWeb/Page/Page.h>
 #include <LibWeb/WebAudio/RustFFI.h>
 
@@ -20,7 +21,7 @@ namespace Web::WebAudio {
 static constexpr u32 TARGET_LATENCY_MS = 100;
 
 extern "C" RustFFI::FfiSharedCppObject web_audio_output_factory_create(DOM::EventTarget*);
-extern "C" double web_audio_realtime_context_performance_now(DOM::EventTarget*);
+extern "C" double web_audio_realtime_context_performance_time(DOM::EventTarget*, i64);
 
 RustFFI::FfiSharedCppObject web_audio_output_factory_create(DOM::EventTarget* global)
 {
@@ -72,6 +73,9 @@ void RustFFI::web_audio_output_discard_and_suspend(void* stream)
     static_cast<Audio::PlaybackStream*>(stream)->discard_buffer_and_suspend()->when_rejected([](auto&&) { });
 }
 i64 RustFFI::web_audio_monotonic_now_nanoseconds() { return MonotonicTime::now().nanoseconds(); }
-double web_audio_realtime_context_performance_now(DOM::EventTarget* global) { return as<HTML::Window>(*global).performance()->now(); }
+double web_audio_realtime_context_performance_time(DOM::EventTarget* global, i64 monotonic_nanoseconds)
+{
+    return HighResolutionTime::relative_high_resolution_time(monotonic_nanoseconds / 1e6, HTML::relevant_global_object(as<HTML::Window>(*global)));
+}
 
 }

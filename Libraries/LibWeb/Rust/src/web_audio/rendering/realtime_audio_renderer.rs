@@ -9,7 +9,7 @@
 use std::cell::UnsafeCell;
 use std::ffi::c_void;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering, fence};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering, fence};
 use std::sync::{Arc, Mutex};
 
 use super::audio_bus::AudioBus;
@@ -32,37 +32,54 @@ pub trait RealtimeAudioRendererClient {
     fn sources_ended(&self, nodes: &[u64]);
 }
 
-// The output buffer most recently handed to the stream, and when its first frame plays.
+struct OutputTiming {
+    context_start_time: f64,
+    context_end_time: f64,
+    requested_at_nanoseconds: i64,
+    plays_at_nanoseconds: i64,
+}
+
+// The scheduled presentation time and context frame range of the latest device buffer.
 #[derive(Default)]
 struct OutputAnchor {
     version: AtomicU64,
-    first_frame_index: AtomicU64,
-    end_frame_index: AtomicU64,
+    context_start_time: AtomicU64,
+    context_end_time: AtomicU64,
+    requested_at_nanoseconds: AtomicI64,
     plays_at_nanoseconds: AtomicI64,
 }
 
 impl OutputAnchor {
-    fn store(&self, first_frame_index: u64, end_frame_index: u64, plays_at_nanoseconds: i64) {
+    fn store(&self, timing: OutputTiming) {
         let version = self.version.load(Ordering::Relaxed);
         self.version.store(version.wrapping_add(1), Ordering::Relaxed);
         fence(Ordering::SeqCst);
-        self.first_frame_index.store(first_frame_index, Ordering::Relaxed);
-        self.end_frame_index.store(end_frame_index, Ordering::Relaxed);
-        self.plays_at_nanoseconds.store(plays_at_nanoseconds, Ordering::Relaxed);
+        self.context_start_time
+            .store(timing.context_start_time.to_bits(), Ordering::Relaxed);
+        self.context_end_time
+            .store(timing.context_end_time.to_bits(), Ordering::Relaxed);
+        self.requested_at_nanoseconds
+            .store(timing.requested_at_nanoseconds, Ordering::Relaxed);
+        self.plays_at_nanoseconds
+            .store(timing.plays_at_nanoseconds, Ordering::Relaxed);
         self.version.store(version.wrapping_add(2), Ordering::Release);
     }
 
-    fn read(&self) -> Option<(u64, u64, i64)> {
+    fn read(&self) -> Option<OutputTiming> {
         for _retry in 0..32 {
             let version_before = self.version.load(Ordering::Acquire);
+            if version_before == 0 {
+                return None;
+            }
             if !version_before.is_multiple_of(2) {
                 continue;
             }
-            let copy = (
-                self.first_frame_index.load(Ordering::Relaxed),
-                self.end_frame_index.load(Ordering::Relaxed),
-                self.plays_at_nanoseconds.load(Ordering::Relaxed),
-            );
+            let copy = OutputTiming {
+                context_start_time: f64::from_bits(self.context_start_time.load(Ordering::Relaxed)),
+                context_end_time: f64::from_bits(self.context_end_time.load(Ordering::Relaxed)),
+                requested_at_nanoseconds: self.requested_at_nanoseconds.load(Ordering::Relaxed),
+                plays_at_nanoseconds: self.plays_at_nanoseconds.load(Ordering::Relaxed),
+            };
             fence(Ordering::Acquire);
             let version_after = self.version.load(Ordering::Relaxed);
             if version_before == version_after {
@@ -79,7 +96,6 @@ struct RenderState {
     graph: RenderGraph,
     device_bus: Option<Box<AudioBus>>,
     device_channel_count: usize,
-    frames_output: u64,
     playhead_step: f64,
     playhead: f64,
     pending_samples: Vec<f32>,
@@ -102,7 +118,6 @@ pub struct RealtimeAudioRenderer {
     suspended: AtomicBool,
     shutting_down: AtomicBool,
     output_anchor: OutputAnchor,
-    device_sample_rate: AtomicU32,
     state: UnsafeCell<RenderState>,
 }
 
@@ -130,12 +145,10 @@ impl RealtimeAudioRenderer {
             suspended: AtomicBool::new(false),
             shutting_down: AtomicBool::new(false),
             output_anchor: OutputAnchor::default(),
-            device_sample_rate: AtomicU32::new(0),
             state: UnsafeCell::new(RenderState {
                 graph: RenderGraph::default(),
                 device_bus: None,
                 device_channel_count: 0,
-                frames_output: 0,
                 playhead_step: 1.,
                 playhead: 0.,
                 pending_samples: Vec::new(),
@@ -175,7 +188,6 @@ impl RealtimeAudioRenderer {
         state
             .pending_samples
             .reserve_exact(pending_capacity.saturating_sub(state.pending_samples.len()));
-        self.device_sample_rate.store(sample_rate, Ordering::Relaxed);
         state.device_bus = Some(Box::new(AudioBus::new(channel_count, self.quantum_size)));
 
         // When the device sample rate differs from the context's, the rendered audio is resampled by advancing
@@ -226,23 +238,23 @@ impl RealtimeAudioRenderer {
         self.frames_rendered.load(Ordering::SeqCst)
     }
 
-    /// The amount of audio the output device has played so far, in seconds.
-    pub fn output_time_played(&self) -> f64 {
+    pub fn output_timestamp(&self) -> Option<(f64, i64)> {
+        let timing = self.output_anchor.read()?;
         let now_nanoseconds = unsafe { web_audio_monotonic_now_nanoseconds() };
-        let maybe_anchor = self.output_anchor.read();
-        let device_sample_rate = self.device_sample_rate.load(Ordering::Relaxed);
-        if maybe_anchor.is_none() || device_sample_rate == 0 {
-            return 0.;
-        }
-        let (first_frame_index, end_frame_index, plays_at_nanoseconds) = maybe_anchor.unwrap();
-        let seconds_since_buffer_started = (now_nanoseconds - plays_at_nanoseconds).max(0) as f64 / 1e9;
-        let buffer_start_seconds = first_frame_index as f64 / f64::from(device_sample_rate);
-        let buffer_end_seconds = end_frame_index as f64 / f64::from(device_sample_rate);
-        if buffer_end_seconds < buffer_start_seconds + seconds_since_buffer_started {
-            buffer_end_seconds
-        } else {
-            buffer_start_seconds + seconds_since_buffer_started
-        }
+        let elapsed = ((now_nanoseconds - timing.plays_at_nanoseconds) as f64 / 1e9).clamp(
+            -timing.context_start_time,
+            timing.context_end_time - timing.context_start_time,
+        );
+        Some((
+            timing.context_start_time + elapsed,
+            timing.plays_at_nanoseconds + (elapsed * 1e9) as i64,
+        ))
+    }
+
+    pub fn output_latency(&self) -> f64 {
+        self.output_anchor.read().map_or(0., |timing| {
+            (timing.plays_at_nanoseconds - timing.requested_at_nanoseconds).max(0) as f64 / 1e9
+        })
     }
 
     unsafe fn fill_output_buffer(self: &Arc<Self>, buffer: &mut [f32], buffer_starts_playing_at: i64) -> usize {
@@ -252,12 +264,12 @@ impl RealtimeAudioRenderer {
         }
         let channel_count = state.device_channel_count;
         let frames_requested = buffer.len() / channel_count;
-        self.output_anchor.store(
-            state.frames_output,
-            state.frames_output + frames_requested as u64,
-            buffer_starts_playing_at,
-        );
-        state.frames_output += frames_requested as u64;
+        let requested_at_nanoseconds = unsafe { web_audio_monotonic_now_nanoseconds() };
+        let pending_frames = state.pending_samples.len() / channel_count;
+        let context_start_frame =
+            self.frames_rendered.load(Ordering::Relaxed) as f64 - pending_frames as f64 + state.playhead;
+        let context_end_frame = context_start_frame + frames_requested as f64 * state.playhead_step;
+        let sample_rate = f64::from(self.sample_rate);
         for frame in 0..frames_requested {
             let mut first_frame = state.playhead as usize;
             let fraction = (state.playhead - first_frame as f64) as f32;
@@ -281,6 +293,12 @@ impl RealtimeAudioRenderer {
             state.playhead += state.playhead_step;
         }
 
+        self.output_anchor.store(OutputTiming {
+            context_start_time: context_start_frame / sample_rate,
+            context_end_time: context_end_frame / sample_rate,
+            requested_at_nanoseconds,
+            plays_at_nanoseconds: buffer_starts_playing_at,
+        });
         buffer.len()
     }
 
@@ -368,6 +386,11 @@ pub(crate) unsafe extern "C" fn web_audio_realtime_renderer_output_lost(renderer
 mod tests {
     use super::*;
     use crate::css::style::pipeline::allocation_count::count_allocations;
+
+    #[unsafe(no_mangle)]
+    extern "C" fn web_audio_monotonic_now_nanoseconds() -> i64 {
+        0
+    }
 
     #[test]
     fn resamples_a_device_buffer_without_allocating() {

@@ -2,8 +2,7 @@ Harness status: OK
 
 Found 18 tests
 
-17 Pass
-1 Fail
+18 Pass
 Pass	AudioContext with no hint hint
 Pass	AudioContext with "default" hint
 Pass	AudioContext with "hardware" hint
@@ -21,4 +20,4 @@ Pass	AudioContext [Throws Exception]: sampleRate 48000, renderSizeHint 0
 Pass	AudioContext [Throws Exception]: sampleRate 3000, renderSizeHint 18001
 Pass	AudioContext [Throws Exception]: sampleRate 48000, renderSizeHint 288001
 Pass	AudioContext [Throws Exception]: sampleRate 48000, renderSizeHint -1
-Fail	Base latency scales with render quantum size
+Pass	Base latency scales with render quantum size

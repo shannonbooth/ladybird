@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const context = new AudioContext({ sampleRate: 48000, renderSizeHint: 256 });
+        println(`Base latency is one render quantum: ${context.baseLatency === 256 / context.sampleRate}`);
+
+        const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+        while (context.getOutputTimestamp().performanceTime === 0)
+            await wait(10);
+
+        const timestamp = context.getOutputTimestamp();
+        println(`Timestamp is on the output timeline: ${timestamp.contextTime >= 0 &&
+            timestamp.contextTime <= context.currentTime && timestamp.performanceTime <= performance.now() + 1}`);
+        println(`Output latency is finite: ${Number.isFinite(context.outputLatency) && context.outputLatency >= 0}`);
+
+        await context.suspend();
+        await wait(300);
+        const first = context.getOutputTimestamp();
+        await wait(50);
+        const second = context.getOutputTimestamp();
+        println(`The suspended timestamp describes the same frame and time: ${first.contextTime === second.contextTime &&
+            first.performanceTime === second.performanceTime}`);
+        await context.close();
+    });
+</script>
