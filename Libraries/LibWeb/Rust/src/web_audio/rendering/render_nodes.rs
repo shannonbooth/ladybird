@@ -1527,6 +1527,7 @@ struct ConvolverRenderNode {
     // into and which the transform consumes as a whole.
     window: [Vec<f32>; 2],
     input_channel_count: usize,
+    stereo_tail_frames: usize,
     transform_real: Vec<f32>,
     transform_imag: Vec<f32>,
 
@@ -1536,19 +1537,13 @@ struct ConvolverRenderNode {
     accumulator_imag: Vec<f64>,
 }
 
-// Folds a second channel's history into the first the way down-mixing folds the channels themselves.
-fn average_history(into: &mut [f32], other: &[f32]) {
-    for index in 0..into.len() {
-        into[index] = 0.5 * (into[index] + other[index]);
-    }
-}
-
 impl NodeProcessor for ConvolverRenderNode {
     fn handle_message(&mut self, message: &NodeMessage) {
         if let NodeMessage::SetConvolverKernel(set_kernel) = message {
             self.kernel = set_kernel.kernel.clone();
             self.delay_line = set_kernel.delay_line.clone();
             self.delay_line_index = 0;
+            self.stereo_tail_frames = 0;
         }
     }
 
@@ -1556,9 +1551,19 @@ impl NodeProcessor for ConvolverRenderNode {
         unsafe {
             let input = BusRef(data.pull_input(graph, context, 0).cast_mut());
             let convolver_output = BusRef(data.output(0));
-            let input_channel_count = input
+            let source_channel_count = input
                 .channel_count()
                 .min(super::convolver_kernel::ConvolverDelayLine::MAX_CHANNEL_COUNT);
+            let input_channel_count = if source_channel_count == 2 || self.stereo_tail_frames != 0 {
+                2
+            } else {
+                1
+            };
+            if source_channel_count == 2 {
+                self.stereo_tail_frames = self.kernel.as_ref().map_or(0, |kernel| kernel.response_length() - 1);
+            } else {
+                self.stereo_tail_frames = self.stereo_tail_frames.saturating_sub(context.quantum_size);
+            }
 
             // Mix the history the same way the input itself is mixed, so that the tail of the impulse response keeps playing
             // across a change in the number of input channels.
@@ -1579,23 +1584,19 @@ impl NodeProcessor for ConvolverRenderNode {
                         delay_line.imag_shared(1).fill(0.);
                     }
                 }
-            } else if self.input_channel_count == 2 && input_channel_count == 1 && speakers {
-                let [left, right] = &mut self.window;
-                average_history(left, right);
-                if let Some(delay_line) = &self.delay_line {
-                    average_history(delay_line.real_shared(0), delay_line.real_shared(1));
-                    average_history(delay_line.imag_shared(0), delay_line.imag_shared(1));
-                }
             }
             self.input_channel_count = input_channel_count;
             let partition_size = context.quantum_size;
             for channel in 0..input_channel_count {
                 // Slide this quantum's samples into the window, dropping the oldest half.
                 let window = &mut self.window[channel];
-                let input_samples = input.channel(channel);
-                for frame in 0..partition_size {
-                    window[frame] = window[partition_size + frame];
-                    window[partition_size + frame] = input_samples[frame];
+                window.copy_within(partition_size.., 0);
+                if channel < source_channel_count {
+                    window[partition_size..].copy_from_slice(input.channel(channel));
+                } else if speakers {
+                    window[partition_size..].copy_from_slice(input.channel(0));
+                } else {
+                    window[partition_size..].fill(0.);
                 }
             }
             let Some(kernel) = &self.kernel else {
@@ -2147,6 +2148,7 @@ pub fn create_convolver_render_node(node_id: u64, quantum_size: usize) -> Box<No
             delay_line_index: 0,
             window: std::array::from_fn(|_| vec![0.; 2 * quantum_size]),
             input_channel_count: 0,
+            stereo_tail_frames: 0,
             transform_real: vec![0.; 2 * quantum_size],
             transform_imag: vec![0.; 2 * quantum_size],
             accumulator_real: vec![0.; quantum_size + 1],

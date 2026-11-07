@@ -43,6 +43,7 @@ struct Channel {
 pub struct ConvolverKernel {
     channels: Vec<Channel>,
     partition_count: usize,
+    response_length: usize,
     bin_count: usize,
 }
 
@@ -151,8 +152,13 @@ impl ConvolverKernel {
         Some(Arc::new(Self {
             channels,
             partition_count,
+            response_length: length,
             bin_count,
         }))
+    }
+
+    pub(super) fn response_length(&self) -> usize {
+        self.response_length
     }
 
     pub fn channel_count(&self) -> usize {
