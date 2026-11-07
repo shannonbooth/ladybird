@@ -122,6 +122,7 @@ fn prune_live_channel_views(views: &mut Vec<AudioBufferChannelView>) {
 }
 
 impl AudioBuffer {
+    // https://webaudio.github.io/web-audio-api/#dom-audiobuffer-audiobuffer
     pub(crate) fn construct(cx: &mut CallContext, options: AudioBufferOptions) -> WebIdlResult<Ref<Self>> {
         let vm = cx.vm();
 
@@ -138,10 +139,9 @@ impl AudioBuffer {
                 .into());
         }
 
-        // 2. Let b be a new AudioBuffer object.
-        // 3. Respectively assign the values of the attributes numberOfChannels, length, sampleRate of the AudioBufferOptions passed in the
-        //    constructor to the internal slots [[number of channels]], [[length]], [[sample rate]].
-        // 4. Set the internal slot [[internal data]] of this AudioBuffer to the result of calling CreateByteDataBlock([[length]] * [[number of channels]]).
+        // 2. Respectively assign the values of the members numberOfChannels, length, sampleRate of options to this’s internal slots [[number of channels]], [[length]], [[sample rate]].
+        // 3. Set this’s [[internal data]] to the result of calling CreateByteDataBlock([[length]] * [[number of channels]] * 4).
+        // Note: This initializes the underlying storage to zero. Each sample is a 32-bit float, i.e. 4 bytes.
         Self::create(vm, options.number_of_channels, options.length, options.sample_rate).map_err(|_| {
             vm.throw_completion::<()>(ErrorKind::InternalError, ErrorType::OutOfMemory, &[])
                 .unwrap_err()
