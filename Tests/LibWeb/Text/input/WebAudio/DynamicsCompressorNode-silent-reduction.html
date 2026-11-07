@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const context = new OfflineAudioContext(1, 512, 32768);
+        const compressor = new DynamicsCompressorNode(context);
+        compressor.connect(context.destination);
+        await context.startRendering();
+        println(`Silent input has zero reduction: ${compressor.reduction === 0}`);
+    });
+</script>

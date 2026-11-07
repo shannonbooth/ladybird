@@ -1,15 +1,16 @@
 Harness status: OK
 
-Found 327 tests
+Found 325 tests
 
-327 Pass
+324 Pass
+1 Fail
 Pass	# AUDIT TASK RUNNER STARTED.
 Pass	Executing "initialize"
 Pass	Executing "Offline createGain"
 Pass	Executing "Offline createDelay"
 Pass	Executing "Offline createBufferSource"
 Pass	Executing "Offline createStereoPanner"
-Pass	Executing "Offline createDynamicsCompressor"
+Fail	Executing "Offline createDynamicsCompressor"
 Pass	Executing "Offline createBiquadFilter"
 Pass	Executing "Offline createOscillator"
 Pass	Executing "Offline createPanner"
@@ -127,8 +128,6 @@ Pass	  DynamicsCompressorNode.release.maxValue is read-only is equal to true.
 Pass	  Set DynamicsCompressorNode.release.value = -1 is equal to 0.
 Pass	  Set DynamicsCompressorNode.release.value = 3 is equal to 1.
 Pass	  DynamicsCompressorNode.release was clipped to lie within the nominal range is equal to true.
-Pass	  Nominal ranges for AudioParam(s) of DynamicsCompressorNode are correct
-Pass	< [Offline createDynamicsCompressor] All assertions passed. (total 46 assertions)
 Pass	> [Offline createBiquadFilter] 
 Pass	  BiquadFilterNode.frequency.minValue is equal to 0.
 Pass	  BiquadFilterNode.frequency.maxValue is equal to 24000.

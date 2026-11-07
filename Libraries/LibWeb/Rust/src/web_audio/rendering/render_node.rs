@@ -104,6 +104,10 @@ impl RenderAudioParam {
         self.max_value
     }
 
+    pub fn publish_current_value(&self, value: f32) {
+        self.timeline.publish_current_value(value);
+    }
+
     pub fn set_automation_rate(&self, automation_rate: AutomationRate) {
         self.automation_rate.store(automation_rate as u8, Ordering::SeqCst);
     }

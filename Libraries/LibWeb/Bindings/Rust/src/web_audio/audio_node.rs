@@ -331,6 +331,8 @@ impl AudioNode {
             ));
         }
 
+        destination_param.verify_can_modify()?;
+
         // Connect node's output to destination_param.
         self.param_connections.borrow_mut(cx.vm()).push(param_connection);
 

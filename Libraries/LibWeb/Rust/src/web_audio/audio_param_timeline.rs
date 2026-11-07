@@ -178,6 +178,14 @@ impl AudioParamTimeline {
         self.edit(Some(value), |state, _| state.fallback_value = value);
     }
 
+    pub(super) fn publish_current_value(&self, value: f32) {
+        let _ = self
+            .current_value
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |previous_value| {
+                Some((previous_value & !u64::from(u32::MAX)) | u64::from(value.to_bits()))
+            });
+    }
+
     fn snapshot(&self) -> Snapshot<'_> {
         // Register before loading so the writer cannot free the snapshot between the load and its first use.
         self.readers.fetch_add(1, Ordering::SeqCst);

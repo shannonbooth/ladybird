@@ -1,0 +1,7 @@
+Look-ahead first output frame: 288
+Compression matches the ratio: true
+Explicit makeup gain applied: true
+Meter reading: -12.00 dB
+Initial automatic gain: 10.80 dB
+Rejected automatic gain changes: 9/9
+Updated automatic gain: 5.40 dB

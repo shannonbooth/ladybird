@@ -7,10 +7,15 @@
 
 use std::ffi::c_void;
 use std::ptr::NonNull;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use ak::Utf16String;
 use libjs_rust::api::Trace;
-use libweb_rust::web_audio::rendering::render_nodes::create_passthrough_render_node;
+use libweb_rust::web_audio::control_message::SetChannelConfig;
+use libweb_rust::web_audio::rendering::dynamics_compressor_render_node::{
+    DynamicsCompressorParams, create_dynamics_compressor_render_node, initial_automatic_makeup_gain,
+};
 
 use super::audio_node::{
     AnyAudioNode, AudioNode, AudioNodeDefaultOptions, AudioNodeOptions, ChannelCountMode, ChannelInterpretation,
@@ -43,7 +48,10 @@ pub(crate) struct DynamicsCompressorNode {
     release: Ref<AudioParam>,
 
     // https://webaudio.github.io/web-audio-api/#dom-dynamicscompressornode-internal-reduction-slot
-    reduction: f32, // [[internal reduction]]
+    #[gc(untraced)]
+    internal_reduction: Arc<AtomicU32>,
+    pub(super) makeup_gain: Ref<AudioParam>,
+    pub(super) automatic_makeup_gain: bool,
 }
 
 impl Inherits<AudioNode> for DynamicsCompressorNode {
@@ -70,6 +78,15 @@ impl GetTheParent for DynamicsCompressorNode {
     }
 }
 
+pub(crate) enum MakeupGainOptions {
+    Automatic,
+}
+
+pub(crate) enum FloatOrMakeupGainOptions {
+    Float(f32),
+    MakeupGainOptions(MakeupGainOptions),
+}
+
 pub(crate) struct DynamicsCompressorOptions {
     pub parent: AudioNodeOptions,
     pub threshold: f32,
@@ -77,6 +94,7 @@ pub(crate) struct DynamicsCompressorOptions {
     pub ratio: f32,
     pub attack: f32,
     pub release: f32,
+    pub makeup_gain: FloatOrMakeupGainOptions,
 }
 
 impl DynamicsCompressorNode {
@@ -94,7 +112,10 @@ impl DynamicsCompressorNode {
         context: AnyBaseAudioContext,
         options: &DynamicsCompressorOptions,
     ) -> WebIdlResult<Ref<Self>> {
-        // Create the node and allocate memory
+        let initial_makeup_gain = match options.makeup_gain {
+            FloatOrMakeupGainOptions::Float(value) => Some(value),
+            FloatOrMakeupGainOptions::MakeupGainOptions(MakeupGainOptions::Automatic) => None,
+        };
         let node = allocate(cx.vm(), |defer_gc| Self {
             node: AudioNode::new(defer_gc, context, 2),
             threshold: AudioParam::create(
@@ -157,7 +178,20 @@ impl DynamicsCompressorNode {
                 FixedAutomationRate::Yes,
                 ParameterType::Simple,
             ),
-            reduction: 0.,
+            internal_reduction: Arc::new(AtomicU32::new(0_f32.to_bits())),
+            makeup_gain: AudioParam::create(
+                cx.vm(),
+                context,
+                None,
+                0.,
+                initial_makeup_gain,
+                f32::MIN,
+                770.6368,
+                AutomationRate::KRate,
+                FixedAutomationRate::Yes,
+                ParameterType::Simple,
+            ),
+            automatic_makeup_gain: initial_makeup_gain.is_none(),
         });
         node.node.set_this(AnyAudioNode::DynamicsCompressorNode(node));
         node.node.event_target().set_owner(node);
@@ -166,6 +200,7 @@ impl DynamicsCompressorNode {
         node.ratio.set_owner(AnyAudioNode::DynamicsCompressorNode(node));
         node.attack.set_owner(AnyAudioNode::DynamicsCompressorNode(node));
         node.release.set_owner(AnyAudioNode::DynamicsCompressorNode(node));
+        node.makeup_gain.set_owner(AnyAudioNode::DynamicsCompressorNode(node));
 
         // Default options for channel count and interpretation
         // https://webaudio.github.io/web-audio-api/#DynamicsCompressorNode
@@ -175,15 +210,41 @@ impl DynamicsCompressorNode {
             channel_interpretation: ChannelInterpretation::Speakers,
         };
 
-        // FIXME: Set tail-time to yes
         node.node
             .initialize_audio_node_options(cx, &options.parent, &default_options)?;
 
-        // FIXME: Implement actual dynamics compression; for now the signal passes through unchanged.
-        node.node.queue_render_node_creation(create_passthrough_render_node(
-            node.node.node_id(),
-            context.render_quantum_size_value() as usize,
-        ));
+        if node.automatic_makeup_gain {
+            node.makeup_gain
+                .render_param()
+                .publish_current_value(initial_automatic_makeup_gain(
+                    options.threshold,
+                    options.knee,
+                    options.ratio,
+                ));
+        }
+        let config = SetChannelConfig {
+            node_id: node.node.node_id(),
+            channel_count: node.node.channel_count_value() as usize,
+            channel_count_mode: node.node.channel_count_mode(cx)?,
+            channel_interpretation: node.node.channel_interpretation(cx)?,
+        };
+        let params = DynamicsCompressorParams {
+            threshold: Arc::clone(node.threshold.render_param()),
+            knee: Arc::clone(node.knee.render_param()),
+            ratio: Arc::clone(node.ratio.render_param()),
+            attack: Arc::clone(node.attack.render_param()),
+            release: Arc::clone(node.release.render_param()),
+            makeup_gain: Arc::clone(node.makeup_gain.render_param()),
+        };
+        node.node
+            .queue_render_node_creation(create_dynamics_compressor_render_node(
+                config,
+                context.render_quantum_size_value() as usize,
+                context.sample_rate_value(),
+                params,
+                node.automatic_makeup_gain,
+                Arc::clone(&node.internal_reduction),
+            ));
         Ok(node)
     }
 
@@ -207,8 +268,13 @@ impl DynamicsCompressorNode {
         Ok(self.release)
     }
 
+    pub(crate) fn makeup_gain(&self, _: &mut CallContext) -> WebIdlResult<Ref<AudioParam>> {
+        Ok(self.makeup_gain)
+    }
+
+    // https://webaudio.github.io/web-audio-api/#dom-dynamicscompressornode-reduction
     pub(crate) fn reduction(&self, _: &mut CallContext) -> WebIdlResult<f32> {
-        Ok(self.reduction)
+        Ok(f32::from_bits(self.internal_reduction.load(Ordering::Relaxed)))
     }
 
     // https://webaudio.github.io/web-audio-api/#dom-audionode-channelcount

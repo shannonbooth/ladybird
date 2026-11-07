@@ -1921,19 +1921,6 @@ impl NodeProcessor for PannerRenderNode {
     }
 }
 
-// Passes the input through unchanged; used for nodes whose processing is not implemented yet but which should not
-// silence the signal path, like DynamicsCompressorNode.
-struct PassthroughRenderNode;
-
-impl NodeProcessor for PassthroughRenderNode {
-    unsafe fn process(&mut self, data: &RenderNodeData, graph: &RenderGraph, context: &RenderContext) {
-        unsafe {
-            let input = BusRef(data.pull_input(graph, context, 0).cast_mut());
-            BusRef(data.output(0)).copy_from(&input);
-        }
-    }
-}
-
 pub fn create_destination_render_node(node_id: u64, quantum_size: usize, channel_count: usize) -> Box<NodeHandle> {
     let mut data = RenderNodeData::new(node_id, 1, 1, quantum_size, channel_count);
     data.reserve_output_channels(0, MAX_NUMBER_OF_CHANNELS);
@@ -2197,10 +2184,4 @@ pub fn create_panner_render_node(
             param_values: std::array::from_fn(|_| vec![0.; quantum_size]),
         },
     )
-}
-
-pub fn create_passthrough_render_node(node_id: u64, quantum_size: usize) -> Box<NodeHandle> {
-    let mut data = RenderNodeData::new(node_id, 1, 1, quantum_size, 1);
-    data.reserve_output_channels(0, MAX_NUMBER_OF_CHANNELS);
-    node_handle(data, PassthroughRenderNode)
 }

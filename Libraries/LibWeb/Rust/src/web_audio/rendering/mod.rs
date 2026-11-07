@@ -31,6 +31,7 @@ pub mod script_processor_pipe;
 pub mod analyser_render_node;
 pub mod audio_frame_ring;
 pub mod audio_worklet_render_node;
+pub mod dynamics_compressor_render_node;
 pub mod media_stream_destination_render_node;
 pub mod media_stream_source_render_node;
 pub mod script_processor_render_node;

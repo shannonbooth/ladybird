@@ -1,3 +1,6 @@
+// https://webaudio.github.io/web-audio-api/#enumdef-makeupgainoptions
+enum MakeupGainOptions { "automatic" };
+
 // https://webaudio.github.io/web-audio-api/#DynamicsCompressorOptions
 dictionary DynamicsCompressorOptions : AudioNodeOptions {
     float attack = 0.003;
@@ -5,6 +8,7 @@ dictionary DynamicsCompressorOptions : AudioNodeOptions {
     float ratio = 12;
     float release = 0.25;
     float threshold = -24;
+    (float or MakeupGainOptions) makeupGain = "automatic";
 };
 
 // https://webaudio.github.io/web-audio-api/#DynamicsCompressorNode
@@ -18,4 +22,5 @@ interface DynamicsCompressorNode : AudioNode {
     readonly attribute float reduction;
     readonly attribute AudioParam attack;
     readonly attribute AudioParam release;
+    readonly attribute AudioParam makeupGain;
 };

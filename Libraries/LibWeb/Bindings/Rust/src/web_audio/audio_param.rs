@@ -106,6 +106,20 @@ impl AudioParam {
         self.owner.set(Some(owner));
     }
 
+    // https://webaudio.github.io/web-audio-api/#dom-dynamicscompressornode-makeupgain
+    pub(crate) fn verify_can_modify(&self) -> WebIdlResult<()> {
+        if let Some(AnyAudioNode::DynamicsCompressorNode(compressor)) = self.owner.get()
+            && compressor.automatic_makeup_gain
+            && Arc::ptr_eq(compressor.makeup_gain.render_param(), &self.render_param)
+        {
+            return Err(Exception::Dom(
+                "InvalidStateError",
+                Utf16String::from_ascii(b"Automatic makeup gain cannot be modified"),
+            ));
+        }
+        Ok(())
+    }
+
     pub(crate) fn context_value(&self) -> AnyBaseAudioContext {
         self.context
     }
@@ -136,6 +150,7 @@ impl AudioParam {
 
     // https://webaudio.github.io/web-audio-api/#dom-audioparam-value
     pub(crate) fn set_value(this: &Ref<Self>, cx: &mut CallContext, value: f32) -> WebIdlResult<()> {
+        this.verify_can_modify()?;
         // Setting this attribute has the effect of assigning the requested value to the [[current value]] slot, and calling
         // the setValueAtTime() method with the current AudioContext's currentTime and [[current value]].
         this.timeline.set_current_value(value);
@@ -204,6 +219,7 @@ impl AudioParam {
         value: f32,
         mut start_time: f64,
     ) -> WebIdlResult<Ref<Self>> {
+        this.verify_can_modify()?;
         // A RangeError exception MUST be thrown if startTime is negative or is not a finite number.
         if start_time < 0. {
             return Err(Exception::range_error("startTime must not be negative"));
@@ -222,6 +238,7 @@ impl AudioParam {
         value: f32,
         mut end_time: f64,
     ) -> WebIdlResult<Ref<Self>> {
+        this.verify_can_modify()?;
         // A RangeError exception MUST be thrown if endTime is negative or is not a finite number.
         if end_time < 0. {
             return Err(Exception::range_error("endTime must not be negative"));
@@ -245,6 +262,7 @@ impl AudioParam {
         value: f32,
         mut end_time: f64,
     ) -> WebIdlResult<Ref<Self>> {
+        this.verify_can_modify()?;
         // A RangeError exception MUST be thrown if value is equal to 0.
         if value == 0. {
             return Err(Exception::range_error("value must not be zero"));
@@ -278,6 +296,7 @@ impl AudioParam {
         mut start_time: f64,
         time_constant: f32,
     ) -> WebIdlResult<Ref<Self>> {
+        this.verify_can_modify()?;
         // A RangeError exception MUST be thrown if startTime is negative or is not a finite number.
         if start_time < 0. {
             return Err(Exception::range_error("startTime must not be negative"));
@@ -309,6 +328,7 @@ impl AudioParam {
         mut start_time: f64,
         duration: f64,
     ) -> WebIdlResult<Ref<Self>> {
+        this.verify_can_modify()?;
         // An InvalidStateError exception MUST be thrown if values has a length less than 2.
         if values.len() < 2 {
             return Err(this.context_error(
@@ -344,6 +364,7 @@ impl AudioParam {
         _: &mut CallContext,
         mut cancel_time: f64,
     ) -> WebIdlResult<Ref<Self>> {
+        this.verify_can_modify()?;
         // A RangeError exception MUST be thrown if cancelTime is negative.
         if cancel_time < 0. {
             return Err(Exception::range_error("cancelTime must not be negative"));
@@ -361,6 +382,7 @@ impl AudioParam {
         _: &mut CallContext,
         mut cancel_time: f64,
     ) -> WebIdlResult<Ref<Self>> {
+        this.verify_can_modify()?;
         // A RangeError exception MUST be thrown if cancelTime is negative.
         if cancel_time < 0. {
             return Err(Exception::range_error("cancelTime must not be negative"));
