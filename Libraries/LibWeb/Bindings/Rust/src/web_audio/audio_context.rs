@@ -48,10 +48,22 @@ pub(crate) enum AudioContextLatencyCategoryOrDouble {
     Double(f64),
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum AudioContextRenderSizeCategory {
+    Default,
+    Hardware,
+}
+
+pub(crate) enum AudioContextRenderSizeHint {
+    AudioContextRenderSizeCategory(AudioContextRenderSizeCategory),
+    UnsignedLong(u32),
+}
+
 pub(crate) struct AudioContextOptions {
     #[allow(dead_code, reason = "the C++ constructor ignores latencyHint")]
     pub latency_hint: AudioContextLatencyCategoryOrDouble,
     pub sample_rate: Option<f32>,
+    pub render_size_hint: AudioContextRenderSizeHint,
 }
 
 pub(crate) struct AudioTimestamp {
@@ -166,16 +178,6 @@ impl AudioContext {
             .context
             .initialize(cx.vm(), AnyBaseAudioContext::AudioContext(context));
         context.context.event_target().set_owner(context);
-        context.context.listener.set(Some(AudioListener::create(
-            cx.vm(),
-            AnyBaseAudioContext::AudioContext(context),
-        )));
-        context.context.destination.set(Some(AudioDestinationNode::create(
-            cx,
-            AnyBaseAudioContext::AudioContext(context),
-            2,
-        )?));
-
         // 2. Set a [[control thread state]] to suspended on context.
         context.context.set_control_state(AudioContextState::Suspended);
 
@@ -208,7 +210,42 @@ impl AudioContext {
             context.context.set_sample_rate(44100.);
         }
 
-        // 11. If context is allowed to start, send a control message to start processing.
+        // 11.4. Set the [[render quantum size]] of context based on the value of the contextOptions.renderSizeHint:
+        use AudioContextRenderSizeHint::{AudioContextRenderSizeCategory as Category, UnsignedLong};
+        // 11.4.1. If it has the default value of "default", set the [[render quantum size]] private slot to 128.
+        if matches!(
+            context_options.render_size_hint,
+            Category(AudioContextRenderSizeCategory::Default)
+        ) {
+            context
+                .context
+                .set_render_quantum_size(BaseAudioContext::DEFAULT_RENDER_QUANTUM_SIZE);
+        // 11.4.2. Else, if it has the value of "hardware", set the [[render quantum size]] private slot to 0.
+        } else if matches!(
+            context_options.render_size_hint,
+            Category(AudioContextRenderSizeCategory::Hardware)
+        ) {
+            // AD-HOC: The output always uses the default size, so report it before the context runs, as required by WPT.
+            context
+                .context
+                .set_render_quantum_size(BaseAudioContext::DEFAULT_RENDER_QUANTUM_SIZE);
+        // 11.4.3. Else, if an integer has been passed, a NotSupportedError MUST be thrown if the value is outside the range specified in § 2.5 Supported Render Quantum Sizes, otherwise set the [[render quantum size]] private slot to the passed value.
+        } else if let UnsignedLong(render_quantum_size) = context_options.render_size_hint {
+            context.context.verify_render_quantum_size(render_quantum_size)?;
+            context.context.set_render_quantum_size(render_quantum_size);
+        }
+
+        context.context.listener.set(Some(AudioListener::create(
+            cx.vm(),
+            AnyBaseAudioContext::AudioContext(context),
+        )));
+        context.context.destination.set(Some(AudioDestinationNode::create(
+            cx,
+            AnyBaseAudioContext::AudioContext(context),
+            2,
+        )?));
+
+        // 12. If context is allowed to start, send a control message to start processing.
         // FIXME: The context is currently always allowed to start; this should be gated on sticky activation.
         if context.allowed_to_start {
             // FIXME: 1. Let document be the current settings object's relevant global object's associated Document.
@@ -219,7 +256,7 @@ impl AudioContext {
                 Arc::clone(context.context.control_message_queue()),
                 context.context.destination_value().parent().node_id(),
                 context.context.sample_rate_value(),
-                BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+                context.context.render_quantum_size_value() as usize,
                 SharedCppObject {
                     pointer: factory.pointer,
                     retain: factory.retain,
@@ -237,10 +274,17 @@ impl AudioContext {
             context
                 .context
                 .queue_a_media_element_task(cx.vm(), context, |_, context| {
-                    // 1. Set the state attribute of the AudioContext to "running".
+                    // 8.1. If the [[render quantum size]] of the AudioContext is 0, set it to the actual hardware render quantum size chosen during resource acquisition.
+                    if context.context.render_quantum_size.get() == 0 {
+                        context
+                            .context
+                            .set_render_quantum_size(context.context.render_quantum_size_value());
+                    }
+
+                    // 8.2. Set the state attribute of the AudioContext to "running".
                     context.context.set_state(AudioContextState::Running);
 
-                    // 2. Fire an event named statechange at the AudioContext.
+                    // 8.3. fire an event named statechange at the AudioContext.
                     context.context.dispatch_statechange();
                 });
         }
@@ -393,7 +437,11 @@ impl AudioContext {
         self.context
             .queue_a_media_element_task(vm, (self.this(), promise), |vm, (context, promise)| {
                 // 6.1. If the [[render quantum size]] of the AudioContext is 0, set it to the actual hardware render quantum size chosen during resource acquisition.
-                // NB: This implementation always uses a fixed quantum size.
+                if context.context.render_quantum_size.get() == 0 {
+                    context
+                        .context
+                        .set_render_quantum_size(context.context.render_quantum_size_value());
+                }
 
                 // 6.2. Resolve all promises from [[pending resume promises]] in order.
                 // 6.3. Clear [[pending resume promises]]. Additionally, remove those promises from [[pending promises]].

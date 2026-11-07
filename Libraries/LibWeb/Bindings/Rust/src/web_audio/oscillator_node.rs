@@ -22,7 +22,7 @@ use super::audio_node::{
 };
 use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate, ParameterType};
 use super::audio_scheduled_source_node::AudioScheduledSourceNode;
-use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
+use super::base_audio_context::AnyBaseAudioContext;
 use super::periodic_wave::PeriodicWave;
 use crate::bindings::event_target::{CppEventTarget, GetTheParent};
 use crate::bindings::interface::{Inherits, Ref, Wrappable, allocate};
@@ -153,7 +153,7 @@ impl OscillatorNode {
             .parent()
             .queue_render_node_creation(create_oscillator_render_node(
                 node.node.parent().node_id(),
-                BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+                context.render_quantum_size_value() as usize,
                 Arc::clone(node.frequency.render_param()),
                 Arc::clone(node.detune.render_param()),
             ));

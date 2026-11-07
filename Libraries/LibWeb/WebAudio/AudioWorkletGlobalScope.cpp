@@ -23,14 +23,15 @@ namespace Web::WebAudio {
 
 GC_DEFINE_ALLOCATOR(AudioWorkletGlobalScope);
 
-GC::Ref<AudioWorkletGlobalScope> AudioWorkletGlobalScope::create(GC::Ref<AudioWorklet> worklet, float sample_rate)
+GC::Ref<AudioWorkletGlobalScope> AudioWorkletGlobalScope::create(GC::Ref<AudioWorklet> worklet, float sample_rate, u32 render_quantum_size)
 {
-    return GC::Heap::the().allocate<AudioWorkletGlobalScope>(worklet, sample_rate);
+    return GC::Heap::the().allocate<AudioWorkletGlobalScope>(worklet, sample_rate, render_quantum_size);
 }
 
-AudioWorkletGlobalScope::AudioWorkletGlobalScope(GC::Ref<AudioWorklet> worklet, float sample_rate)
+AudioWorkletGlobalScope::AudioWorkletGlobalScope(GC::Ref<AudioWorklet> worklet, float sample_rate, u32 render_quantum_size)
     : m_worklet(worklet)
     , m_sample_rate(sample_rate)
+    , m_quantum_size(render_quantum_size)
 {
 }
 

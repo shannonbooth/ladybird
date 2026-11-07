@@ -105,7 +105,7 @@ impl ChannelSplitterNode {
         node.node
             .queue_render_node_creation(create_channel_splitter_render_node(
                 node.node.node_id(),
-                BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+                context.render_quantum_size_value() as usize,
                 options.number_of_outputs as usize,
             ));
         Ok(node)

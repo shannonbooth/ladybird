@@ -24,7 +24,7 @@ class WEB_API AudioWorkletGlobalScope final : public HTML::WorkletGlobalScope {
     GC_DECLARE_ALLOCATOR(AudioWorkletGlobalScope);
 
 public:
-    static GC::Ref<AudioWorkletGlobalScope> create(GC::Ref<AudioWorklet>, float sample_rate);
+    static GC::Ref<AudioWorkletGlobalScope> create(GC::Ref<AudioWorklet>, float sample_rate, u32 render_quantum_size);
 
     virtual ~AudioWorkletGlobalScope() override;
 
@@ -64,7 +64,7 @@ public:
     virtual void initialize_web_interfaces_impl() override;
 
 private:
-    AudioWorkletGlobalScope(GC::Ref<AudioWorklet>, float sample_rate);
+    AudioWorkletGlobalScope(GC::Ref<AudioWorklet>, float sample_rate, u32 render_quantum_size);
 
     virtual void visit_edges(Cell::Visitor&) override;
 
@@ -77,7 +77,7 @@ private:
     u64 m_current_frame { 0 };
     double m_current_time { 0 };
     float m_sample_rate { 0 };
-    WebIDL::UnsignedLong m_quantum_size { 128 };
+    WebIDL::UnsignedLong m_quantum_size;
 };
 
 }

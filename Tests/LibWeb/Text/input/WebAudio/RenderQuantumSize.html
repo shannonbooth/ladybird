@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const realtime = new AudioContext({ renderSizeHint: "hardware" });
+        println(`Hardware size before running: ${realtime.renderQuantumSize}`);
+        await new Promise(resolve => realtime.onstatechange = resolve);
+        println(`Hardware size selected: ${realtime.renderQuantumSize > 0}`);
+        await realtime.close();
+
+        const context = new OfflineAudioContext({ length: 400, sampleRate: 48000, renderSizeHint: 129 });
+        const impulse = new AudioBuffer({ length: 1, sampleRate: context.sampleRate });
+        impulse.getChannelData(0)[0] = 1;
+        const response = new AudioBuffer({ length: 160, sampleRate: context.sampleRate });
+        response.getChannelData(0).set([1, 0.25, 0.5], 127);
+        response.getChannelData(0)[159] = -0.5;
+        const source = new AudioBufferSourceNode(context, { buffer: impulse });
+        const convolver = new ConvolverNode(context, { buffer: response, disableNormalization: true });
+        source.connect(convolver).connect(context.destination);
+        source.start();
+        const samples = (await context.startRendering()).getChannelData(0);
+        println(`Convolver preserved the impulse response: ${samples.every((value, i) => Math.abs(value - (response.getChannelData(0)[i] ?? 0)) < 1e-6)}`);
+
+        for (const [renderSizeHint, bufferSize] of [[100, 256], [66000, 16384]]) {
+            const context = new OfflineAudioContext({ length: 1, sampleRate: 48000, renderSizeHint });
+            try {
+                context.createScriptProcessor(bufferSize, 1, 1);
+                println(`renderSizeHint ${renderSizeHint}, bufferSize ${bufferSize}: created`);
+            } catch (error) {
+                println(`renderSizeHint ${renderSizeHint}, bufferSize ${bufferSize}: ${error.name}`);
+            }
+        }
+
+        for (const [renderSizeHint, bufferSize, length] of [[64, 256, 1024]]) {
+            const context = new OfflineAudioContext({ length, sampleRate: 48000, renderSizeHint });
+            const ramp = new AudioBuffer({ length, sampleRate: context.sampleRate });
+            ramp.getChannelData(0).forEach((_, index, data) => data[index] = index + 1);
+            const source = new AudioBufferSourceNode(context, { buffer: ramp });
+            const processor = context.createScriptProcessor(bufferSize, 1, 1);
+            let events = 0;
+            let inputIsContiguous = true;
+            processor.onaudioprocess = event => {
+                const input = event.inputBuffer.getChannelData(0);
+                inputIsContiguous &&= input.every((value, index) => value === events * bufferSize + index + 1);
+                event.outputBuffer.copyToChannel(input, 0);
+                ++events;
+            };
+            source.connect(processor).connect(context.destination);
+            source.start();
+            const output = (await context.startRendering()).getChannelData(0);
+            const latency = output.findIndex(value => value !== 0);
+            const copied = output.slice(latency, Math.min(length, latency + events * bufferSize));
+            println(`renderSizeHint ${renderSizeHint}, bufferSize ${bufferSize}: input is contiguous: ${events > 0 && inputIsContiguous}, output is the delayed input: ${latency >= 0 && copied.every((value, index) => value === index + 1)}`);
+        }
+    });
+</script>

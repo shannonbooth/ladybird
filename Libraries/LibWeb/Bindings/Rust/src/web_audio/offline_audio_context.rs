@@ -20,6 +20,7 @@ use libweb_rust::web_audio::rendering::offline_audio_renderer::{OfflineAudioRend
 
 use super::audio_array::overwrite_float32_array;
 use super::audio_buffer::AudioBuffer;
+use super::audio_context::{AudioContextRenderSizeCategory, AudioContextRenderSizeHint};
 use super::audio_destination_node::AudioDestinationNode;
 use super::audio_listener::AudioListener;
 use super::base_audio_context::{AnyBaseAudioContext, AudioContextState, BaseAudioContext};
@@ -38,6 +39,7 @@ pub(crate) struct OfflineAudioContextOptions {
     pub number_of_channels: u32,
     pub length: u32,
     pub sample_rate: f32,
+    pub render_size_hint: AudioContextRenderSizeHint,
 }
 
 // https://webaudio.github.io/web-audio-api/#OfflineAudioContext
@@ -141,11 +143,6 @@ impl OfflineAudioContext {
         c.context
             .initialize(cx.vm(), AnyBaseAudioContext::OfflineAudioContext(c));
         c.context.event_target().set_owner(c);
-        c.context.listener.set(Some(AudioListener::create(
-            cx.vm(),
-            AnyBaseAudioContext::OfflineAudioContext(c),
-        )));
-
         // 1. Set the [[control thread state]] for c to "suspended".
         c.context.set_control_state(AudioContextState::Suspended);
         c.context.set_state(AudioContextState::Suspended);
@@ -153,20 +150,39 @@ impl OfflineAudioContext {
         // 2. Set the [[rendering thread state]] for c to "suspended".
         c.context.set_rendering_state(AudioContextState::Suspended);
 
-        // FIXME: 3. Determine the [[render quantum size]] for this OfflineAudioContext, based on the value of the renderSizeHint:
-        // 4. Construct an AudioDestinationNode with its channelCount set to contextOptions.numberOfChannels.
+        // 3. Set the sampleRate for c, based on the value of contextOptions.sampleRate.
+        // NB: BaseAudioContext was created with contextOptions.sampleRate.
+
+        // 4. Determine the [[render quantum size]] for c, based on the value of the contextOptions.renderSizeHint:
+        use AudioContextRenderSizeHint::{AudioContextRenderSizeCategory as Category, UnsignedLong};
+        // 4.1. If it has the default value of "default" or "hardware", set the [[render quantum size]] private slot to 128.
+        if matches!(context_options.render_size_hint, Category(_)) {
+            c.context
+                .set_render_quantum_size(BaseAudioContext::DEFAULT_RENDER_QUANTUM_SIZE);
+        // 4.2. Else, if an integer has been passed, a NotSupportedError MUST be thrown if the value is outside the range specified in § 2.5 Supported Render Quantum Sizes, otherwise set the [[render quantum size]] private slot to the passed value.
+        } else if let UnsignedLong(render_quantum_size) = context_options.render_size_hint {
+            c.context.verify_render_quantum_size(render_quantum_size)?;
+            c.context.set_render_quantum_size(render_quantum_size);
+        }
+
+        c.context.listener.set(Some(AudioListener::create(
+            cx.vm(),
+            AnyBaseAudioContext::OfflineAudioContext(c),
+        )));
+
+        // 5. Construct an AudioDestinationNode with its channelCount set to contextOptions.numberOfChannels.
         c.context.destination.set(Some(AudioDestinationNode::create(
             cx,
             AnyBaseAudioContext::OfflineAudioContext(c),
             context_options.number_of_channels,
         )?));
 
-        // FIXME: 5. Let messageChannel be a new MessageChannel.
-        // FIXME: 6. Let controlSidePort be the value of messageChannel’s port1 attribute.
-        // FIXME: 7. Let renderingSidePort be the value of messageChannel’s port2 attribute.
-        // FIXME: 8. Let serializedRenderingSidePort be the result of StructuredSerializeWithTransfer(renderingSidePort, « renderingSidePort »).
-        // FIXME: 9. Set this audioWorklet's port to controlSidePort.
-        // FIXME: 10. Queue a control message to set the MessagePort on the AudioContextGlobalScope, with serializedRenderingSidePort.
+        // FIXME: 6. Let messageChannel be a new MessageChannel.
+        // FIXME: 7. Let controlSidePort be the value of messageChannel’s port1 attribute.
+        // FIXME: 8. Let renderingSidePort be the value of messageChannel’s port2 attribute.
+        // FIXME: 9. Let serializedRenderingSidePort be the result of StructuredSerializeWithTransfer(renderingSidePort, « renderingSidePort »).
+        // FIXME: 10. Set this audioWorklet's port to controlSidePort.
+        // FIXME: 11. Queue a control message to set the MessagePort on the AudioContextGlobalScope, with serializedRenderingSidePort.
         Ok(c)
     }
 
@@ -183,6 +199,9 @@ impl OfflineAudioContext {
                 number_of_channels,
                 length,
                 sample_rate,
+                render_size_hint: AudioContextRenderSizeHint::AudioContextRenderSizeCategory(
+                    AudioContextRenderSizeCategory::Default,
+                ),
             },
         )
     }
@@ -278,7 +297,7 @@ impl OfflineAudioContext {
             self.number_of_channels as usize,
             self.length as usize,
             self.context.sample_rate_value(),
-            BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+            self.context.render_quantum_size_value() as usize,
         );
         *self.renderer.borrow_mut() = Some(Arc::clone(&renderer));
         renderer.set_client(Some(Rc::new(RendererClient {
@@ -477,7 +496,7 @@ impl OfflineAudioContext {
     // https://webaudio.github.io/web-audio-api/#dom-offlineaudiocontext-suspend
     pub(crate) fn suspend(&self, cx: &mut CallContext, promise: WebIdlPromise, suspend_time: f64) -> WebIdlResult<()> {
         // Note that the maximum precision of suspension is the size of the render quantum and the specified suspension time will be rounded up to the nearest render quantum boundary.
-        let quantum_size = f64::from(BaseAudioContext::RENDER_QUANTUM_SIZE);
+        let quantum_size = f64::from(self.context.render_quantum_size_value());
         let mut frame = suspend_time * f64::from(self.context.sample_rate_value());
         // NB: Snap to the nearest frame first, so that frame / sampleRate is not rounded up into the next quantum.
         if (frame - frame.round()).abs() < 1. / 2048. {

@@ -74,6 +74,7 @@ unsafe extern "C" {
         node_id: u64,
         channels: u32,
         sample_rate: u32,
+        quantum_size: usize,
         render_node: *mut *mut c_void,
     ) -> FfiSharedCppObject;
     fn web_audio_media_destination_clear_drain(state: *mut c_void);
@@ -123,6 +124,7 @@ impl MediaStreamAudioDestinationNode {
                 node.node.node_id(),
                 node.node.channel_count_value(),
                 sample_rate,
+                context.parent().render_quantum_size_value() as usize,
                 &raw mut render_node,
             )
         };

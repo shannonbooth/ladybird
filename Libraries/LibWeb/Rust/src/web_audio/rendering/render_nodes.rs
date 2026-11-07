@@ -1612,10 +1612,9 @@ impl NodeProcessor for ConvolverRenderNode {
             if partition_count > 0 {
                 for channel in 0..input_channel_count {
                     let window = &self.window[channel];
-                    for frame in 0..transform_size {
-                        self.transform_real[frame] = window[frame];
-                        self.transform_imag[frame] = 0.;
-                    }
+                    self.transform_real[..window.len()].copy_from_slice(window);
+                    self.transform_real[window.len()..].fill(0.);
+                    self.transform_imag.fill(0.);
                     self.fft.transform(
                         &mut self.transform_real,
                         &mut self.transform_imag,
@@ -1718,7 +1717,7 @@ impl NodeProcessor for ConvolverRenderNode {
                     let head = kernel.head(route.kernel_channel);
                     for frame in 0..partition_size {
                         let mut sample = 0_f32;
-                        for tap in 0..partition_size {
+                        for tap in 0..head.len() {
                             sample += head[tap] * window[partition_size + frame - tap];
                         }
                         output_samples[frame] += sample;
@@ -1726,9 +1725,9 @@ impl NodeProcessor for ConvolverRenderNode {
                     let delay_line_real = delay_line.real_shared(route.input_channel);
                     let delay_line_imag = delay_line.imag_shared(route.input_channel);
                     for partition in 0..partition_count {
-                        // Partition N of the impulse response pairs up with the window from N + 1 quanta ago.
+                        let partition_age = partition + kernel.first_partition();
                         let delay_line_slot =
-                            (self.delay_line_index + delay_line_length - partition - 1) % delay_line_length;
+                            (self.delay_line_index + delay_line_length - partition_age) % delay_line_length;
                         let input_real = &delay_line_real[delay_line_slot * bin_count..];
                         let input_imag = &delay_line_imag[delay_line_slot * bin_count..];
                         let kernel_real = kernel.partition_real(route.kernel_channel, partition);
@@ -2136,23 +2135,24 @@ pub fn create_wave_shaper_render_node(node_id: u64, quantum_size: usize) -> Box<
 }
 
 pub fn create_convolver_render_node(node_id: u64, quantum_size: usize) -> Box<NodeHandle> {
+    let transform_size = (2 * quantum_size).next_power_of_two();
     let mut data = RenderNodeData::new(node_id, 1, 1, quantum_size, 1);
     data.reserve_output_channels(0, 2);
     data.channel_count_mode.set(ChannelCountMode::ClampedMax);
     node_handle(
         data,
         ConvolverRenderNode {
-            fft: FFT::new(2 * quantum_size),
+            fft: FFT::new(transform_size),
             kernel: None,
             delay_line: None,
             delay_line_index: 0,
             window: std::array::from_fn(|_| vec![0.; 2 * quantum_size]),
             input_channel_count: 0,
             stereo_tail_frames: 0,
-            transform_real: vec![0.; 2 * quantum_size],
-            transform_imag: vec![0.; 2 * quantum_size],
-            accumulator_real: vec![0.; quantum_size + 1],
-            accumulator_imag: vec![0.; quantum_size + 1],
+            transform_real: vec![0.; transform_size],
+            transform_imag: vec![0.; transform_size],
+            accumulator_real: vec![0.; transform_size / 2 + 1],
+            accumulator_imag: vec![0.; transform_size / 2 + 1],
         },
     )
 }

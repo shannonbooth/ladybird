@@ -91,7 +91,7 @@ fn block_count_for_context(context: AnyBaseAudioContext, buffer_size: usize) -> 
     if matches!(context, AnyBaseAudioContext::OfflineAudioContext(_)) {
         return 2;
     }
-    let quantum_size = BaseAudioContext::RENDER_QUANTUM_SIZE as usize;
+    let quantum_size = context.render_quantum_size_value() as usize;
     let sizing = libweb_rust::web_audio::rendering::audio_worklet_pipe::ring_sizing_for_device_latency(
         100,
         context.sample_rate_value(),
@@ -149,7 +149,7 @@ impl ScriptProcessorNode {
             .node
             .queue_render_node_creation(create_script_processor_render_node(
                 script_processor_node.node.node_id(),
-                BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+                context.render_quantum_size_value() as usize,
                 Arc::clone(&pipe),
             ));
         Ok(script_processor_node)

@@ -23,7 +23,7 @@ use super::audio_context::AudioContext;
 use super::audio_node::{
     AnyAudioNode, AudioNode, AudioNodeDefaultOptions, AudioNodeOptions, ChannelCountMode, ChannelInterpretation,
 };
-use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
+use super::base_audio_context::AnyBaseAudioContext;
 use crate::bindings::conversions::CppInterface;
 use crate::bindings::cpp_cell::CppCell;
 use crate::bindings::event_target::{CppEventTarget, GetTheParent};
@@ -179,7 +179,7 @@ impl MediaStreamAudioSourceNode {
         node.node.queue_render_node_creation(unsafe {
             create_media_stream_source_render_node(
                 node.node.node_id(),
-                BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+                context.parent().render_quantum_size_value() as usize,
                 callbacks.assume_init(),
             )
         });

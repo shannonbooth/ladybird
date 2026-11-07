@@ -14,7 +14,7 @@ use libweb_rust::web_audio::audio_param_timeline::{AudioParamTimeline, InsertRes
 use libweb_rust::web_audio::rendering::render_node::RenderAudioParam;
 
 use super::audio_node::AnyAudioNode;
-use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
+use super::base_audio_context::AnyBaseAudioContext;
 use crate::bindings::interface::{Ref, Wrappable, allocate};
 use crate::bindings::{CallContext, Exception, WebIdlResult};
 
@@ -88,7 +88,7 @@ impl AudioParam {
                 max_value,
                 parameter_type,
                 automation_rate,
-                BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+                context.render_quantum_size_value() as usize,
             ));
             Self {
                 context,

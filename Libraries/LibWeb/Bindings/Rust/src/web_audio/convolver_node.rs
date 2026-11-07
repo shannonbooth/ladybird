@@ -23,7 +23,7 @@ use super::audio_buffer::AudioBuffer;
 use super::audio_node::{
     AnyAudioNode, AudioNode, AudioNodeDefaultOptions, AudioNodeOptions, ChannelCountMode, ChannelInterpretation,
 };
-use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
+use super::base_audio_context::AnyBaseAudioContext;
 use crate::bindings::event_target::{CppEventTarget, GetTheParent};
 use crate::bindings::interface::{Inherits, Ref, Wrappable, allocate};
 use crate::bindings::{CallContext, Exception, WebIdlResult};
@@ -88,7 +88,7 @@ impl ConvolverNode {
         node.node.event_target().set_owner(node);
         node.node.queue_render_node_creation(create_convolver_render_node(
             node.node.node_id(),
-            BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+            context.render_quantum_size_value() as usize,
         ));
 
         // 1. Set the attributes normalize to the inverse of the value of disableNormalization.
@@ -160,7 +160,7 @@ impl ConvolverNode {
                         channels: &channels,
                         sample_rate: contents.sample_rate,
                     },
-                    BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+                    self.node.context_value().render_quantum_size_value() as usize,
                     self.normalize.get(),
                 );
             }

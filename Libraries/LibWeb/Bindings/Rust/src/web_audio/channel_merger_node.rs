@@ -105,7 +105,7 @@ impl ChannelMergerNode {
             .initialize_audio_node_options(cx, &options.parent, &default_options)?;
         node.node.queue_render_node_creation(create_channel_merger_render_node(
             node.node.node_id(),
-            BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+            context.render_quantum_size_value() as usize,
             options.number_of_inputs as usize,
         ));
         Ok(node)

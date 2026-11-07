@@ -29,11 +29,13 @@
 namespace Web::WebAudio {
 
 extern "C" float web_rust_audio_context_sample_rate(void const*);
+extern "C" u32 web_rust_audio_context_render_quantum_size(void const*);
 extern "C" DOM::EventTarget* web_rust_audio_context_global(void const*);
 extern "C" JS::Object* web_rust_audio_context_global_wrapper(void const*);
 extern "C" void web_rust_audio_context_document_inactive(void*);
 extern "C" void web_rust_audio_context_decoded(JSVM*, void*, MediaClient::Client::DecodedAudioData*);
 float BaseAudioContext::sample_rate() const { return web_rust_audio_context_sample_rate(this); }
+u32 BaseAudioContext::render_quantum_size() const { return web_rust_audio_context_render_quantum_size(this); }
 GC::Ref<DOM::EventTarget> BaseAudioContext::relevant_global_event_target() const { return *web_rust_audio_context_global(this); }
 JS::Object& BaseAudioContext::relevant_global_object() const { return *web_rust_audio_context_global_wrapper(this); }
 extern "C" HTML::UniqueTaskSource* web_audio_context_create_task_source();

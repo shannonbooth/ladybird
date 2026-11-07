@@ -28,7 +28,7 @@ use super::audio_array::overwrite_float32_array;
 use super::audio_node::{
     AnyAudioNode, AudioNode, AudioNodeDefaultOptions, AudioNodeOptions, ChannelCountMode, ChannelInterpretation,
 };
-use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
+use super::base_audio_context::AnyBaseAudioContext;
 use crate::bindings::event_target::{CppEventTarget, GetTheParent};
 use crate::bindings::interface::{Inherits, Ref, Wrappable, allocate};
 use crate::bindings::{CallContext, Exception, WebIdlResult};
@@ -100,7 +100,7 @@ pub(crate) struct AnalyserOptions {
 }
 
 unsafe extern "C" {
-    fn web_audio_analyser_create_ring(callbacks: *mut AudioFrameRingCallbacks) -> FfiSharedCppObject;
+    fn web_audio_analyser_create_ring(capacity: usize, callbacks: *mut AudioFrameRingCallbacks) -> FfiSharedCppObject;
 }
 
 impl AnalyserNode {
@@ -143,7 +143,8 @@ impl AnalyserNode {
             .initialize_audio_node_options(cx, &options.parent, &default_options)?;
         node.history.borrow_mut().resize(MAX_FFT_SIZE as usize, 0.);
         let mut callbacks = std::mem::MaybeUninit::uninit();
-        let ring = unsafe { web_audio_analyser_create_ring(callbacks.as_mut_ptr()) };
+        let capacity = context.render_quantum_size_value().max(MAX_FFT_SIZE) as usize;
+        let ring = unsafe { web_audio_analyser_create_ring(capacity, callbacks.as_mut_ptr()) };
         let callbacks = unsafe { callbacks.assume_init() };
         *node.time_domain_ring.borrow_mut() = Some(AudioFrameRing {
             owner: SharedCppObject {
@@ -156,7 +157,7 @@ impl AnalyserNode {
         node.node.queue_render_node_creation(unsafe {
             create_analyser_render_node(
                 node.node.node_id(),
-                BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+                context.render_quantum_size_value() as usize,
                 ring,
                 callbacks,
             )

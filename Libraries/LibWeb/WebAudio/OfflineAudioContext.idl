@@ -4,7 +4,7 @@ dictionary OfflineAudioContextOptions {
     // FIXME: length should be nullable.
     required unsigned long length;
     required float sampleRate;
-    // FIXME: (AudioContextRenderSizeCategory or unsigned long) renderSizeHint = "default";
+    AudioContextRenderSizeHint renderSizeHint = "default";
 };
 
 // https://webaudio.github.io/web-audio-api/#OfflineAudioContext

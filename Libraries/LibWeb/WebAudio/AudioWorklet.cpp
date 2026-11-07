@@ -60,7 +60,7 @@ GC::Ref<HTML::WorkletGlobalScope> AudioWorklet::create_global_scope()
         Bindings::main_thread_vm(),
         outside_settings.agent_cluster_cross_origin_isolation_mode(),
         [&](JS::Realm& realm) -> GC::Ref<JS::Object> {
-            scope = AudioWorkletGlobalScope::create(*this, m_context->sample_rate());
+            scope = AudioWorkletGlobalScope::create(*this, m_context->sample_rate(), m_context->render_quantum_size());
             return Bindings::create_global_object_wrapper(realm, GC::Ref { *scope });
         },
         nullptr);

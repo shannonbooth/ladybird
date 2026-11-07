@@ -10,7 +10,7 @@ use libweb_rust::web_audio::control_message::ControlMessage;
 use libweb_rust::web_audio::rendering::audio_listener::RenderAudioListener;
 
 use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate, ParameterType};
-use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
+use super::base_audio_context::AnyBaseAudioContext;
 use crate::bindings::interface::{Ref, Wrappable, allocate};
 use crate::bindings::{CallContext, WebIdlResult};
 
@@ -155,7 +155,7 @@ impl AudioListener {
         ];
         context.queue_control_message(ControlMessage::SetAudioListener(Box::new(RenderAudioListener::new(
             params,
-            BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+            context.render_quantum_size_value() as usize,
         ))));
         listener
     }

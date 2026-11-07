@@ -2,5 +2,5 @@ Harness status: OK
 
 Found 1 tests
 
-1 Fail
-Fail	Offline suspend quantizes to custom render quantum size
+1 Pass
+Pass	Offline suspend quantizes to custom render quantum size

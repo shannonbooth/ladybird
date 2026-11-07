@@ -1,0 +1,6 @@
+Hardware size before running: 128
+Hardware size selected: true
+Convolver preserved the impulse response: true
+renderSizeHint 100, bufferSize 256: NotSupportedError
+renderSizeHint 66000, bufferSize 16384: NotSupportedError
+renderSizeHint 64, bufferSize 256: input is contiguous: true, output is the delayed input: true

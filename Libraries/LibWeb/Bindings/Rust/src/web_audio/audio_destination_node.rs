@@ -18,7 +18,7 @@ use libweb_rust::web_audio::rendering::render_nodes::create_destination_render_n
 use super::audio_node::{
     AnyAudioNode, AudioNode, AudioNodeDefaultOptions, AudioNodeOptions, ChannelCountMode, ChannelInterpretation,
 };
-use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
+use super::base_audio_context::AnyBaseAudioContext;
 use crate::bindings::event_target::{CppEventTarget, GetTheParent};
 use crate::bindings::interface::{Inherits, Ref, Wrappable, allocate};
 use crate::bindings::{CallContext, Exception, WebIdlResult};
@@ -99,7 +99,7 @@ impl AudioDestinationNode {
             .initialize_audio_node_options(cx, &AudioNodeOptions::default(), &default_options)?;
         node.node.queue_render_node_creation(create_destination_render_node(
             node.node.node_id(),
-            BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+            context.render_quantum_size_value() as usize,
             channel_count as usize,
         ));
         Ok(node)

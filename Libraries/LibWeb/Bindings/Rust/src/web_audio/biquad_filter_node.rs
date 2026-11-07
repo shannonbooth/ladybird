@@ -23,7 +23,7 @@ use super::audio_node::{
     AnyAudioNode, AudioNode, AudioNodeDefaultOptions, AudioNodeOptions, ChannelCountMode, ChannelInterpretation,
 };
 use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate, ParameterType};
-use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
+use super::base_audio_context::AnyBaseAudioContext;
 use crate::bindings::event_target::{CppEventTarget, GetTheParent};
 use crate::bindings::interface::{Inherits, Ref, Wrappable, allocate};
 use crate::bindings::{CallContext, Exception, WebIdlResult};
@@ -164,7 +164,7 @@ impl BiquadFilterNode {
             .initialize_audio_node_options(cx, &options.parent, &default_options)?;
         node.node.queue_render_node_creation(create_biquad_filter_render_node(
             node.node.node_id(),
-            BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+            context.render_quantum_size_value() as usize,
             Arc::clone(node.frequency.render_param()),
             Arc::clone(node.detune.render_param()),
             Arc::clone(node.q.render_param()),

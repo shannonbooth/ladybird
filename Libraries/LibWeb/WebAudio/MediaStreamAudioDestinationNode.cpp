@@ -64,7 +64,7 @@ static void* create_render_node(u64 node_id, size_t quantum_size, size_t channel
 }
 
 extern "C" void web_audio_media_destination_create_stream(MediaCapture::MediaStream**, MediaCapture::MediaStreamTrack**);
-extern "C" RustFFI::FfiSharedCppObject web_audio_media_destination_create_state(MediaCapture::MediaStreamTrack*, u64, u32, u32, void**);
+extern "C" RustFFI::FfiSharedCppObject web_audio_media_destination_create_state(MediaCapture::MediaStreamTrack*, u64, u32, u32, size_t, void**);
 extern "C" void web_audio_media_destination_clear_drain(MediaStreamDestinationSharedState*);
 extern "C" JS::Object* web_audio_media_destination_wrap_stream(JS::Realm*, MediaCapture::MediaStream*);
 void web_audio_media_destination_create_stream(MediaCapture::MediaStream** out_stream, MediaCapture::MediaStreamTrack** out_track)
@@ -75,7 +75,7 @@ void web_audio_media_destination_create_stream(MediaCapture::MediaStream** out_s
     *out_stream = stream.ptr();
     *out_track = track.ptr();
 }
-RustFFI::FfiSharedCppObject web_audio_media_destination_create_state(MediaCapture::MediaStreamTrack* track, u64 node_id, u32 channel_count, u32 sample_rate, void** render_node)
+RustFFI::FfiSharedCppObject web_audio_media_destination_create_state(MediaCapture::MediaStreamTrack* track, u64 node_id, u32 channel_count, u32 sample_rate, size_t quantum_size, void** render_node)
 {
     // Advertise the delivery format in the track's settings so downstream consumers (e.g. a
     // MediaStreamAudioSourceNode built on this track) can size their pipelines for it.
@@ -90,17 +90,17 @@ RustFFI::FfiSharedCppObject web_audio_media_destination_create_state(MediaCaptur
     // the control thread drains on a deferred-invoke cadence after each burst; 8192 frames
     // (~170 ms at 48 kHz) absorb a full burst plus scheduling jitter.
     static constexpr size_t ring_capacity_in_frames = 8192;
-    auto ring = adopt_ref(*new Audio::SpscAudioFrameRing(ring_capacity_in_frames, channel_count));
+    auto ring = adopt_ref(*new Audio::SpscAudioFrameRing(max(ring_capacity_in_frames, quantum_size), channel_count));
     auto shared_state = adopt_ref(*new MediaStreamDestinationSharedState(move(ring)));
 
     // The drain callback runs (and is later cleared) exclusively on the control thread; it is
     // the only place a GC root crosses into the shared state, so the render thread never
     // touches GC-managed memory.
-    shared_state->drain = [track = GC::make_root(*track), ring = shared_state->ring, sample_rate, chunk = Vector<float>()]() mutable {
+    shared_state->drain = [track = GC::make_root(*track), ring = shared_state->ring, sample_rate, quantum_size, chunk = Vector<float>()]() mutable {
         // Forward the rendered audio to the track in render-quantum-sized chunks — the
         // granularity real-time consumers pace themselves against.
         auto channel_count = ring->channel_count();
-        chunk.resize(128 * channel_count);
+        chunk.resize(quantum_size * channel_count);
         while (true) {
             auto frame_count = ring->try_pop(chunk);
             if (frame_count == 0)
@@ -109,7 +109,7 @@ RustFFI::FfiSharedCppObject web_audio_media_destination_create_state(MediaCaptur
         }
     };
 
-    *render_node = create_render_node(node_id, 128, channel_count, shared_state, Core::EventLoop::current());
+    *render_node = create_render_node(node_id, quantum_size, channel_count, shared_state, Core::EventLoop::current());
     return { &shared_state.leak_ref(), [](void* state) { static_cast<MediaStreamDestinationSharedState*>(state)->ref(); }, [](void* state) { static_cast<MediaStreamDestinationSharedState*>(state)->unref(); } };
 }
 void web_audio_media_destination_clear_drain(MediaStreamDestinationSharedState* state) { state->drain = nullptr; }

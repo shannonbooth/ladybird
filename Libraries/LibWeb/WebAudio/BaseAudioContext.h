@@ -19,6 +19,7 @@ class BaseAudioContext : public Bindings::RustInterfaceCell {
 
 public:
     float sample_rate() const;
+    u32 render_quantum_size() const;
     GC::Ref<DOM::EventTarget> relevant_global_event_target() const;
     JS::Object& relevant_global_object() const;
 };

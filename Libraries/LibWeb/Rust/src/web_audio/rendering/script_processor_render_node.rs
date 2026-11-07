@@ -41,43 +41,54 @@ impl NodeProcessor for ScriptProcessorRenderNode {
                 return;
             }
             let config = &self.pipe.config;
-            if self.frame_in_block == 0 {
-                self.block_start_frame = context.quantum_start_frame;
-                self.block_is_owned = self.pipe.is_block_owned_by_rendering_thread(self.block);
-            }
-            if self.block_is_owned {
-                if config.input_channel_count > 0 {
-                    let input_bus = BusRef(data.pull_input(graph, context, 0).cast_mut());
-                    for channel in 0..config.input_channel_count {
-                        let (pointer, length) = self.pipe.input_channel(self.block, channel);
-                        let destination = &mut ak::slice_from_raw_parts_mut(pointer, length)
-                            [self.frame_in_block..self.frame_in_block + context.quantum_size];
-                        if channel < input_bus.channel_count() {
-                            destination.copy_from_slice(input_bus.channel(channel));
-                        } else {
-                            destination.fill(0.);
+            let input_bus = if config.input_channel_count > 0 {
+                Some(BusRef(data.pull_input(graph, context, 0).cast_mut()))
+            } else {
+                None
+            };
+            let mut offset = 0;
+            while offset < context.quantum_size {
+                if self.pipe.is_shut_down() {
+                    break;
+                }
+                if self.frame_in_block == 0 {
+                    self.block_start_frame = context.quantum_start_frame + offset as u64;
+                    self.block_is_owned = self.pipe.is_block_owned_by_rendering_thread(self.block);
+                }
+                let frames = (config.buffer_size - self.frame_in_block).min(context.quantum_size - offset);
+                let block_frames = self.frame_in_block..self.frame_in_block + frames;
+                let quantum_frames = offset..offset + frames;
+                if self.block_is_owned {
+                    if let Some(input_bus) = &input_bus {
+                        for channel in 0..config.input_channel_count {
+                            let (pointer, length) = self.pipe.input_channel(self.block, channel);
+                            let destination = &mut ak::slice_from_raw_parts_mut(pointer, length)[block_frames.clone()];
+                            if channel < input_bus.channel_count() {
+                                destination.copy_from_slice(&input_bus.channel(channel)[quantum_frames.clone()]);
+                            } else {
+                                destination.fill(0.);
+                            }
+                        }
+                    }
+                    if self.pipe.has_output(self.block) {
+                        for channel in 0..config.output_channel_count {
+                            let (pointer, length) = self.pipe.output_channel(self.block, channel);
+                            let source = &ak::slice_from_raw_parts(pointer, length)[block_frames.clone()];
+                            output_bus.channel_mut(channel)[quantum_frames.clone()].copy_from_slice(source);
                         }
                     }
                 }
-                if self.pipe.has_output(self.block) {
-                    for channel in 0..config.output_channel_count {
-                        let (pointer, length) = self.pipe.output_channel(self.block, channel);
-                        let source = &ak::slice_from_raw_parts(pointer, length)
-                            [self.frame_in_block..self.frame_in_block + context.quantum_size];
-                        output_bus.channel_mut(channel).copy_from_slice(source);
+                offset += frames;
+                self.frame_in_block += frames;
+                if self.frame_in_block == config.buffer_size {
+                    if self.block_is_owned {
+                        self.pipe
+                            .hand_block_to_control_thread(self.block, self.block_start_frame);
                     }
+                    self.block = (self.block + 1) % config.block_count;
+                    self.frame_in_block = 0;
                 }
             }
-            self.frame_in_block += context.quantum_size;
-            if self.frame_in_block < config.buffer_size {
-                return;
-            }
-            if self.block_is_owned {
-                self.pipe
-                    .hand_block_to_control_thread(self.block, self.block_start_frame);
-            }
-            self.block = (self.block + 1) % config.block_count;
-            self.frame_in_block = 0;
         }
     }
 }
@@ -88,7 +99,6 @@ pub fn create_script_processor_render_node(
     pipe: Arc<ScriptProcessorPipe>,
 ) -> Box<NodeHandle> {
     let data = RenderNodeData::new(node_id, 1, 1, quantum_size, pipe.config.output_channel_count.max(1));
-    assert!(pipe.config.buffer_size.is_multiple_of(quantum_size));
     node_handle(
         data,
         ScriptProcessorRenderNode {

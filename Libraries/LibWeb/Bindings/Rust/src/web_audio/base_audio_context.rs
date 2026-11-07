@@ -98,6 +98,7 @@ pub(crate) struct BaseAudioContext {
     pub(crate) pending_promises: GcRefCell<Vec<WebIdlPromise>>,
     next_node_id: Cell<u64>,
     sample_rate: Cell<f32>,
+    pub(crate) render_quantum_size: Cell<u32>,
     pub(crate) listener: Cell<Option<Ref<AudioListener>>>,
     global_object: CppCell,
     state: Cell<AudioContextState>,
@@ -199,7 +200,7 @@ impl BaseAudioContext {
     pub(crate) const MAX_SAMPLE_RATE: f32 = 768000.;
 
     // https://webaudio.github.io/web-audio-api/#render-quantum-size
-    pub(crate) const RENDER_QUANTUM_SIZE: u32 = 128;
+    pub(crate) const DEFAULT_RENDER_QUANTUM_SIZE: u32 = 128;
 
     pub(crate) fn new(_defer_gc: &DeferGc<'_>, global_object: CppCell, sample_rate: f32) -> Self {
         Self {
@@ -208,6 +209,7 @@ impl BaseAudioContext {
             pending_promises: GcRefCell::new(Vec::new()),
             next_node_id: Cell::new(0),
             sample_rate: Cell::new(sample_rate),
+            render_quantum_size: Cell::new(Self::DEFAULT_RENDER_QUANTUM_SIZE),
             listener: Cell::new(None),
             global_object,
             state: Cell::new(AudioContextState::Suspended),
@@ -450,8 +452,35 @@ impl BaseAudioContext {
         Ok(self.state_value())
     }
 
+    // https://webaudio.github.io/web-audio-api/#dom-baseaudiocontext-renderquantumsize
     pub(crate) fn render_quantum_size(&self, _: &mut CallContext) -> WebIdlResult<u32> {
-        Ok(Self::RENDER_QUANTUM_SIZE)
+        Ok(self.render_quantum_size.get())
+    }
+
+    pub(crate) fn render_quantum_size_value(&self) -> u32 {
+        let render_quantum_size = self.render_quantum_size.get();
+        if render_quantum_size == 0 {
+            // NB: The platform output uses the default quantum for the hardware category.
+            Self::DEFAULT_RENDER_QUANTUM_SIZE
+        } else {
+            render_quantum_size
+        }
+    }
+
+    pub(crate) fn set_render_quantum_size(&self, render_quantum_size: u32) {
+        self.render_quantum_size.set(render_quantum_size);
+    }
+
+    // https://webaudio.github.io/web-audio-api/#render-quantum-sizes
+    pub(crate) fn verify_render_quantum_size(&self, render_quantum_size: u32) -> WebIdlResult<()> {
+        let maximum = (6. * f64::from(self.sample_rate_value())).floor() as u32;
+        if !(1..=maximum).contains(&render_quantum_size) {
+            return Err(Exception::Dom(
+                "NotSupportedError",
+                Utf16String::from_ascii(b"Unsupported render quantum size"),
+            ));
+        }
+        Ok(())
     }
 
     pub(crate) fn current_time(&self, _: &mut CallContext) -> WebIdlResult<f64> {
@@ -684,6 +713,13 @@ impl BaseAudioContext {
             buffer_size = ScriptProcessorNode::DEFAULT_BUFFER_SIZE as u32;
         }
         ScriptProcessorNode::validate_options(buffer_size as i32, number_of_input_channels, number_of_output_channels)?;
+        // AD-HOC: Reject a buffer size that is not a multiple of the render quantum size, as required by WPT.
+        if !buffer_size.is_multiple_of(self.render_quantum_size_value()) {
+            return Err(Exception::Dom(
+                "NotSupportedError",
+                Utf16String::from_ascii(b"The buffer size is not a multiple of the render quantum size"),
+            ));
+        }
         ScriptProcessorNode::create(
             cx,
             self.this(),
@@ -751,6 +787,11 @@ impl AnyBaseAudioContext {
 #[unsafe(no_mangle)]
 pub(crate) unsafe extern "C" fn web_rust_audio_context_sample_rate(cell: *mut c_void) -> f32 {
     unsafe { AnyBaseAudioContext::from_abi(cell) }.sample_rate_value()
+}
+
+#[unsafe(no_mangle)]
+pub(crate) unsafe extern "C" fn web_rust_audio_context_render_quantum_size(cell: *mut c_void) -> u32 {
+    unsafe { AnyBaseAudioContext::from_abi(cell) }.render_quantum_size_value()
 }
 
 #[unsafe(no_mangle)]

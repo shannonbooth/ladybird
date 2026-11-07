@@ -15,7 +15,7 @@ use libweb_rust::web_audio::rendering::render_nodes::create_constant_source_rend
 use super::audio_node::AnyAudioNode;
 use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate, ParameterType};
 use super::audio_scheduled_source_node::AudioScheduledSourceNode;
-use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
+use super::base_audio_context::AnyBaseAudioContext;
 use crate::bindings::event_target::{CppEventTarget, GetTheParent};
 use crate::bindings::interface::{Inherits, Ref, Wrappable, allocate};
 use crate::bindings::{CallContext, WebIdlResult};
@@ -94,7 +94,7 @@ impl ConstantSourceNode {
             .parent()
             .queue_render_node_creation(create_constant_source_render_node(
                 node.node.parent().node_id(),
-                BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+                context.render_quantum_size_value() as usize,
                 Arc::clone(node.offset.render_param()),
             ));
         Ok(node)

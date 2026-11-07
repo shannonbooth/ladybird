@@ -2,23 +2,23 @@ Harness status: OK
 
 Found 18 tests
 
-3 Pass
-15 Fail
+17 Pass
+1 Fail
 Pass	AudioContext with no hint hint
 Pass	AudioContext with "default" hint
 Pass	AudioContext with "hardware" hint
-Fail	AudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 1
-Fail	AudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 13
-Fail	AudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 127
-Fail	AudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 129
-Fail	AudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 256
-Fail	AudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 500
-Fail	AudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 16383
-Fail	AudioContext [Honored Exactly]: sampleRate 3000, renderSizeHint 18000
-Fail	AudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 288000
-Fail	AudioContext [Honored Exactly]: sampleRate 44100.1, renderSizeHint 264600
-Fail	AudioContext [Throws Exception]: sampleRate 48000, renderSizeHint 0
-Fail	AudioContext [Throws Exception]: sampleRate 3000, renderSizeHint 18001
-Fail	AudioContext [Throws Exception]: sampleRate 48000, renderSizeHint 288001
-Fail	AudioContext [Throws Exception]: sampleRate 48000, renderSizeHint -1
+Pass	AudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 1
+Pass	AudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 13
+Pass	AudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 127
+Pass	AudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 129
+Pass	AudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 256
+Pass	AudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 500
+Pass	AudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 16383
+Pass	AudioContext [Honored Exactly]: sampleRate 3000, renderSizeHint 18000
+Pass	AudioContext [Honored Exactly]: sampleRate 48000, renderSizeHint 288000
+Pass	AudioContext [Honored Exactly]: sampleRate 44100.1, renderSizeHint 264600
+Pass	AudioContext [Throws Exception]: sampleRate 48000, renderSizeHint 0
+Pass	AudioContext [Throws Exception]: sampleRate 3000, renderSizeHint 18001
+Pass	AudioContext [Throws Exception]: sampleRate 48000, renderSizeHint 288001
+Pass	AudioContext [Throws Exception]: sampleRate 48000, renderSizeHint -1
 Fail	Base latency scales with render quantum size

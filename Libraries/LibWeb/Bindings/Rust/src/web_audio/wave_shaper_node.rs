@@ -22,7 +22,7 @@ use super::audio_array::{copy_float32_array, float32_array_length, overwrite_flo
 use super::audio_node::{
     AnyAudioNode, AudioNode, AudioNodeDefaultOptions, AudioNodeOptions, ChannelCountMode, ChannelInterpretation,
 };
-use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
+use super::base_audio_context::AnyBaseAudioContext;
 use crate::bindings::event_target::{CppEventTarget, GetTheParent};
 use crate::bindings::interface::{Inherits, Ref, Wrappable, allocate};
 use crate::bindings::{CallContext, Exception, WebIdlResult};
@@ -110,7 +110,7 @@ impl WaveShaperNode {
             .initialize_audio_node_options(cx, &options.parent, &default_options)?;
         node.node.queue_render_node_creation(create_wave_shaper_render_node(
             node.node.node_id(),
-            BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+            context.render_quantum_size_value() as usize,
         ));
         node.oversample.set(options.oversample);
 

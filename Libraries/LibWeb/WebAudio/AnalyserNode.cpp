@@ -11,10 +11,10 @@
 
 namespace Web::WebAudio {
 
-extern "C" RustFFI::FfiSharedCppObject web_audio_analyser_create_ring(RustFFI::AudioFrameRingCallbacks*);
-RustFFI::FfiSharedCppObject web_audio_analyser_create_ring(RustFFI::AudioFrameRingCallbacks* callbacks)
+extern "C" RustFFI::FfiSharedCppObject web_audio_analyser_create_ring(size_t, RustFFI::AudioFrameRingCallbacks*);
+RustFFI::FfiSharedCppObject web_audio_analyser_create_ring(size_t capacity, RustFFI::AudioFrameRingCallbacks* callbacks)
 {
-    auto* ring = new Audio::SpscAudioFrameRing(32768, 1);
+    auto* ring = new Audio::SpscAudioFrameRing(capacity, 1);
     *callbacks = {
         [](void* ring) { return static_cast<Audio::SpscAudioFrameRing*>(ring)->channel_count(); },
         [](void* ring) { return static_cast<Audio::SpscAudioFrameRing*>(ring)->frames_available(); },

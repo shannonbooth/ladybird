@@ -43,6 +43,7 @@ struct Channel {
 pub struct ConvolverKernel {
     channels: Vec<Channel>,
     partition_count: usize,
+    first_partition: usize,
     response_length: usize,
     bin_count: usize,
 }
@@ -98,15 +99,12 @@ impl ConvolverKernel {
             1.
         };
 
-        // Each partition is zero-padded to twice its length so that the cyclic convolution of the transform produces the
-        // linear convolution the rendering thread is after.
-        let transform_size = 2 * partition_size;
-        let bin_count = partition_size + 1;
-        let partition_count = if length > partition_size {
-            (length - partition_size).div_ceil(partition_size)
-        } else {
-            0
-        };
+        // Zero-padding to at least twice the partition length keeps cyclic wrap outside the output window.
+        let transform_size = (2 * partition_size).next_power_of_two();
+        let bin_count = transform_size / 2 + 1;
+        let head_length = partition_size.min(length).min(128);
+        let first_partition = usize::from(head_length == partition_size || head_length == length);
+        let partition_count = length.div_ceil(partition_size) - first_partition;
 
         let fft = FFT::new(transform_size);
         let mut real = vec![0.; transform_size];
@@ -116,26 +114,22 @@ impl ConvolverKernel {
         for samples in contents.channels {
             let samples = samples.as_slice();
             let mut channel = Channel {
-                head: vec![0.; partition_size],
+                head: vec![0.; head_length],
                 real: vec![0.; partition_count * bin_count],
                 imag: vec![0.; partition_count * bin_count],
             };
 
-            for frame in 0..partition_size.min(length) {
+            for frame in 0..head_length {
                 channel.head[frame] = samples[frame] * scale;
             }
 
             for partition in 0..partition_count {
-                let offset = (partition + 1) * partition_size;
+                let offset = (partition + first_partition) * partition_size;
                 let frames_in_partition = partition_size.min(length - offset);
-                for frame in 0..frames_in_partition {
+                real.fill(0.);
+                imag.fill(0.);
+                for frame in head_length.saturating_sub(offset)..frames_in_partition {
                     real[frame] = samples[offset + frame] * scale;
-                }
-                for frame in frames_in_partition..transform_size {
-                    real[frame] = 0.;
-                }
-                for frame in 0..transform_size {
-                    imag[frame] = 0.;
                 }
 
                 fft.transform(&mut real, &mut imag, FFTDirection::Forward);
@@ -152,6 +146,7 @@ impl ConvolverKernel {
         Some(Arc::new(Self {
             channels,
             partition_count,
+            first_partition,
             response_length: length,
             bin_count,
         }))
@@ -168,6 +163,10 @@ impl ConvolverKernel {
     // The number of partitions that are held in the frequency domain, which excludes the time-domain head.
     pub fn partition_count(&self) -> usize {
         self.partition_count
+    }
+
+    pub(super) fn first_partition(&self) -> usize {
+        self.first_partition
     }
 
     pub fn bin_count(&self) -> usize {

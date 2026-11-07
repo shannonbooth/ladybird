@@ -432,11 +432,11 @@ impl AudioWorkletNode {
             ring_sizing_for_device_latency(
                 100,
                 context.sample_rate_value(),
-                BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+                context.render_quantum_size_value() as usize,
             )
         };
         let pipe = AudioWorkletPipe::new(Config {
-            quantum_size: BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+            quantum_size: context.render_quantum_size_value() as usize,
             input_count: options.number_of_inputs as usize,
             output_count: options.number_of_outputs as usize,
             input_channel_capacity,
@@ -466,7 +466,7 @@ impl AudioWorkletNode {
             node.node.node_id(),
             options.number_of_inputs as usize,
             options.number_of_outputs as usize,
-            BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+            context.render_quantum_size_value() as usize,
             &output_channel_capacity,
             node.node.channel_count_value() as usize,
             node.node.channel_count_mode(cx)?,
