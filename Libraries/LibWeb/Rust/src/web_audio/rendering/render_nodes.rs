@@ -1563,14 +1563,23 @@ impl NodeProcessor for ConvolverRenderNode {
             // Mix the history the same way the input itself is mixed, so that the tail of the impulse response keeps playing
             // across a change in the number of input channels.
             // https://webaudio.github.io/web-audio-api/#channel-up-mixing-and-down-mixing
+            let speakers = data.channel_interpretation.get() == ChannelInterpretation::Speakers;
             if self.input_channel_count == 1 && input_channel_count == 2 {
                 let [left, right] = &mut self.window;
-                right.copy_from_slice(left);
-                if let Some(delay_line) = &self.delay_line {
-                    delay_line.real_shared(1).copy_from_slice(delay_line.real_shared(0));
-                    delay_line.imag_shared(1).copy_from_slice(delay_line.imag_shared(0));
+                if speakers {
+                    right.copy_from_slice(left);
+                    if let Some(delay_line) = &self.delay_line {
+                        delay_line.real_shared(1).copy_from_slice(delay_line.real_shared(0));
+                        delay_line.imag_shared(1).copy_from_slice(delay_line.imag_shared(0));
+                    }
+                } else {
+                    right.fill(0.);
+                    if let Some(delay_line) = &self.delay_line {
+                        delay_line.real_shared(1).fill(0.);
+                        delay_line.imag_shared(1).fill(0.);
+                    }
                 }
-            } else if self.input_channel_count == 2 && input_channel_count == 1 {
+            } else if self.input_channel_count == 2 && input_channel_count == 1 && speakers {
                 let [left, right] = &mut self.window;
                 average_history(left, right);
                 if let Some(delay_line) = &self.delay_line {
