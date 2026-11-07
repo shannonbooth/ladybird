@@ -21,6 +21,7 @@ pub(crate) mod fork;
 pub(crate) mod fork_vec;
 #[cfg(test)]
 mod gfx_test_stubs;
+pub(crate) mod graph;
 pub(crate) mod heap_size;
 pub(crate) use libcompositing_rust::fast_hash;
 

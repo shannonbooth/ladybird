@@ -1,0 +1,2 @@
+The muted oscillator fires ended once: true
+The cycle remains silent: true

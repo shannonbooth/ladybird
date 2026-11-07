@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        for (const feedback of ["audio input", "gain parameter", "delay"]) {
+            const context = new OfflineAudioContext(1, 384, 48000);
+            const buffer = new AudioBuffer({ length: 1, sampleRate: context.sampleRate });
+            buffer.getChannelData(0)[0] = 1;
+            const source = new AudioBufferSourceNode(context, { buffer });
+            const gain = new GainNode(context, { gain: 0.5 });
+            source.connect(gain).connect(context.destination);
+            if (feedback === "audio input") {
+                gain.connect(gain);
+            } else if (feedback === "gain parameter") {
+                gain.connect(gain.gain);
+            } else {
+                const delay = new DelayNode(context, { delayTime: 0 });
+                gain.connect(delay).connect(gain);
+            }
+            source.start();
+            const rendered = await context.startRendering();
+            const samples = rendered.getChannelData(0);
+            println(`${feedback}: ${[samples[0], samples[128], samples[256]]}`);
+            println(`Other samples silent: ${samples.every((sample, index) => index % 128 === 0 || sample === 0)}`);
+        }
+    });
+</script>

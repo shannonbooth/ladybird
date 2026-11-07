@@ -7,12 +7,14 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 
 use super::audio_bus::AudioBus;
 use super::audio_listener::RenderAudioListener;
 use super::node_message::node_message_target;
 use super::render_node::{NodeHandle, RenderContext};
+use crate::graph::nodes_on_a_cycle;
 use crate::web_audio::control_message::ControlMessage;
 
 // The rendering thread's mirror of the audio graph. Nodes and connections are added and updated exclusively through
@@ -22,6 +24,7 @@ pub struct RenderGraph {
     nodes: NodeMap,
     destination_id: u64,
     listener: Option<Box<RenderAudioListener>>,
+    ordered_node_list: RefCell<Vec<u64>>,
     current_quantum: Cell<u64>,
     incoming_connections_dirty: Cell<bool>,
 }
@@ -32,6 +35,7 @@ impl Default for RenderGraph {
             nodes: NodeMap::default(),
             destination_id: 0,
             listener: None,
+            ordered_node_list: RefCell::new(Vec::new()),
             current_quantum: Cell::new(0),
             incoming_connections_dirty: Cell::new(false),
         }
@@ -95,6 +99,7 @@ impl RenderGraph {
             unsafe {
                 self.rebuild_incoming_connections();
             }
+            self.order_audio_nodes();
             self.incoming_connections_dirty.set(false);
         }
 
@@ -103,24 +108,27 @@ impl RenderGraph {
             listener.compute_values(self, context);
         }
 
-        // Process the destination first so the main graph is processed in dependency order.
-        if let Some(destination_node) = self.destination() {
-            self.process_node(destination_node, context);
+        // 4.4. For each AudioNode, in ordered node list:
+        let ordered_node_list = self.ordered_node_list.borrow();
+        for node_id in &*ordered_node_list {
+            self.process_node(self.node(*node_id).unwrap(), context);
         }
-        // Advance unconnected sources and process sinks with no outputs.
-        for graph_node in self.nodes.values() {
-            self.process_node(graph_node, context);
+
+        // NB: A DelayReader only observes samples from earlier quanta, so writes can follow all reads.
+        for node in self.nodes.values() {
+            if node.data().is_cycle_breaker.get() {
+                unsafe { node.node.write_delay(self, context) };
+            }
         }
     }
 
     // Returns the source node's output bus, processing the node first if it has not been processed in this quantum.
-    // Re-entrant pulls caused by cycles return the output rendered in the previous quantum.
     pub fn pull_output(&self, source: u64, output_index: usize, context: &RenderContext) -> *mut AudioBus {
         let Some(source_node) = self.node(source) else {
             return std::ptr::null_mut();
         };
         let data = source_node.data();
-        if output_index >= data.output_count() {
+        if output_index >= data.output_count() || data.is_processing.get() {
             return std::ptr::null_mut();
         }
         self.process_node(source_node, context);
@@ -132,11 +140,15 @@ impl RenderGraph {
         if data.processed_quantum.get() == self.current_quantum.get() || data.is_processing.get() {
             return;
         }
-        data.is_processing.set(true);
-        unsafe {
-            node.node.process(self, context);
+        if data.is_muted.get() {
+            for index in 0..data.output_count() {
+                unsafe { &mut *data.output(index) }.zero();
+            }
+        } else {
+            data.is_processing.set(true);
+            unsafe { node.node.process(self, context) };
+            data.is_processing.set(false);
         }
-        data.is_processing.set(false);
         data.processed_quantum.set(self.current_quantum.get());
     }
 
@@ -156,11 +168,11 @@ impl RenderGraph {
         self.node(self.destination_id)
     }
 
-    // Drains the set of nodes that stopped playing since the last call and retires their permanently silent render nodes.
-    pub fn take_ended_nodes(&mut self) -> Vec<u64> {
+    // Retire ended sources even if a cycle muted their processing for this quantum.
+    pub fn take_ended_nodes(&mut self, context: &RenderContext) -> Vec<u64> {
         let mut ended_nodes = Vec::new();
         for (&node_id, graph_node) in self.nodes.iter() {
-            if unsafe { graph_node.node.take_ended_notification() } {
+            if unsafe { graph_node.node.has_ended(context) } {
                 ended_nodes.push(node_id);
             }
         }
@@ -171,6 +183,130 @@ impl RenderGraph {
             self.incoming_connections_dirty.set(true);
         }
         ended_nodes
+    }
+
+    // https://webaudio.github.io/web-audio-api/#rendering-a-graph
+    fn order_audio_nodes(&self) {
+        // 4.2.1. Let ordered node list be an empty list of AudioNodes and AudioListener. It will contain an ordered list of AudioNodes and the AudioListener when this ordering algorithm terminates.
+        let mut ordered_node_list = self.ordered_node_list.borrow_mut();
+        ordered_node_list.clear();
+
+        // 4.2.2. Let nodes be the set of all nodes created by this BaseAudioContext, and still alive.
+        let nodes: Vec<_> = self.nodes.values().collect();
+        let node_indices: HashMap<_, _> = nodes
+            .iter()
+            .enumerate()
+            .map(|(index, node)| (node.data().node_id, index))
+            .collect();
+
+        // 4.2.3. Add the AudioListener to nodes.
+        // NB: The final index represents the AudioListener.
+        let mut edges = vec![Vec::new(); nodes.len() + 1];
+        let mut audio_input_counts = Vec::with_capacity(nodes.len());
+        for (index, node) in nodes.iter().enumerate() {
+            let inputs = unsafe { &*node.data().input_connections.get() };
+            edges[index].extend(
+                inputs
+                    .iter()
+                    .flatten()
+                    .filter_map(|input| node_indices.get(&input.source).copied()),
+            );
+            audio_input_counts.push(edges[index].len());
+            node.node.for_each_param(&mut |param| unsafe {
+                param.for_each_input(&mut |source| edges[index].extend(node_indices.get(&source).copied()));
+            });
+        }
+        if let Some(listener) = self.listener() {
+            for param in listener.params() {
+                unsafe {
+                    param.for_each_input(&mut |source| edges[nodes.len()].extend(node_indices.get(&source).copied()));
+                }
+            }
+        }
+
+        // 4.2.4. Let cycle breakers be an empty set of DelayNodes. It will contain all the DelayNodes that are part of a cycle.
+        let mut cycle_breakers = Vec::new();
+
+        let on_a_cycle = nodes_on_a_cycle(&edges);
+        // 4.2.5. For each AudioNode node in nodes:
+        for (index, node) in nodes.iter().enumerate() {
+            // 4.2.5.1. If node is a DelayNode that is part of a cycle, add it to cycle breakers and remove it from nodes.
+            node.data().is_cycle_breaker.set(false);
+            if node.data().is_delay && on_a_cycle[index] {
+                cycle_breakers.push(index);
+            }
+        }
+
+        let split_delays = !cycle_breakers.is_empty();
+
+        // 4.2.6. For each DelayNode delay in cycle breakers:
+        for delay in cycle_breakers {
+            // 4.2.6.1. Let delayWriter and delayReader respectively be a DelayWriter and a DelayReader, for delay. Add delayWriter and delayReader to nodes. Disconnect delay from all its input and outputs.
+            // Note: This breaks the cycle: if a DelayNode is in a cycle, its two ends can be considered separately, because delay lines cannot be smaller than one render quantum when in a cycle.
+            // AD-HOC: The reader keeps its delayTime inputs, so a cycle through delayTime is still muted.
+            // NB: The writer runs after the ordered list.
+            nodes[delay].data().is_cycle_breaker.set(true);
+            edges[delay].drain(..audio_input_counts[delay]);
+        }
+
+        // 4.2.7. If nodes contains cycles, mute all the AudioNodes that are part of this cycle, and remove them from nodes.
+        let mut marked = if split_delays {
+            nodes_on_a_cycle(&edges)
+        } else {
+            on_a_cycle
+        };
+        for (node, &muted) in nodes.iter().zip(&marked) {
+            node.data().is_muted.set(muted);
+        }
+
+        // 4.2.8. Consider all elements in nodes to be unmarked. While there are unmarked elements in nodes:
+        let mut walk = Vec::new();
+        for node in 0..edges.len() {
+            // 4.2.8.1. Choose an element node in nodes.
+            // 4.2.8.2. Visit node.
+            if !marked[node] {
+                Self::visit(node, &nodes, &edges, &mut marked, &mut walk, &mut ordered_node_list);
+            }
+        }
+
+        // 4.2.9. Reverse the order of ordered node list.
+        // NB: Visit appends instead of prepending, so the order is already reversed.
+    }
+
+    // https://webaudio.github.io/web-audio-api/#visit
+    fn visit(
+        node: usize,
+        nodes: &[&NodeHandle],
+        edges: &[Vec<usize>],
+        marked: &mut [bool],
+        walk: &mut Vec<(usize, usize)>,
+        ordered_node_list: &mut Vec<u64>,
+    ) {
+        // 1. If node is marked, abort these steps.
+        // 2. Mark node.
+        marked[node] = true;
+        walk.push((node, 0));
+        while let Some((node, next_edge)) = walk.last_mut() {
+            let node = *node;
+            // 3. If node is an AudioNode, Visit each AudioNode connected to the input of node.
+            // 4. For each AudioParam param of node:
+            // 4.1. For each AudioNode param input node connected to param:
+            // 4.1.1. Visit param input node
+            if let Some(&dependency) = edges[node].get(*next_edge) {
+                *next_edge += 1;
+                if !marked[dependency] {
+                    marked[dependency] = true;
+                    walk.push((dependency, 0));
+                }
+            } else {
+                // 5. Add node to the beginning of ordered node list.
+                // NB: The listener is computed separately in step 4.3.
+                if let Some(node) = nodes.get(node) {
+                    ordered_node_list.push(node.data().node_id);
+                }
+                walk.pop();
+            }
+        }
     }
 
     unsafe fn rebuild_incoming_connections(&self) {
@@ -398,14 +534,14 @@ mod tests {
         let bus = unsafe { &*graph.destination().unwrap().data().output(0) };
         assert_eq!(bus.channel(0), &[0., 0.75, 0.75, 0.]);
         assert_eq!(bus.channel(1), &[0., 0.75, 0.75, 0.]);
-        let mut ended = graph.take_ended_nodes();
+        let mut ended = graph.take_ended_nodes(&context);
         ended.sort();
         assert_eq!(ended, [1, 3]);
         assert_eq!(Arc::strong_count(&param), 1);
         context.quantum_start_frame = 4;
         graph.render_quantum(&context);
         assert!(unsafe { &*graph.destination().unwrap().data().output(0) }.is_silent());
-        assert!(graph.take_ended_nodes().is_empty());
+        assert!(graph.take_ended_nodes(&context).is_empty());
     }
 
     #[test]

@@ -312,7 +312,7 @@ impl RealtimeAudioRenderer {
         }
         self.frames_rendered
             .fetch_add(self.quantum_size as u64, Ordering::SeqCst);
-        let ended_nodes = state.graph.take_ended_nodes();
+        let ended_nodes = state.graph.take_ended_nodes(&context);
         if !ended_nodes.is_empty() {
             let renderer = Arc::clone(self);
             self.control_thread.post(move || {

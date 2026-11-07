@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const context = new OfflineAudioContext(1, 512, 32768);
+        const oscillator = new OscillatorNode(context);
+        oscillator.connect(oscillator.frequency);
+        oscillator.connect(context.destination);
+
+        let ended = 0;
+        oscillator.onended = () => ++ended;
+        oscillator.start();
+        oscillator.stop(128 / context.sampleRate);
+
+        const rendered = await context.startRendering();
+        println(`The muted oscillator fires ended once: ${ended === 1}`);
+        println(`The cycle remains silent: ${rendered.getChannelData(0).every(sample => sample === 0)}`);
+    });
+</script>

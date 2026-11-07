@@ -93,9 +93,13 @@ impl BusRef {
 pub(super) trait NodeProcessor: Send {
     unsafe fn process(&mut self, data: &RenderNodeData, graph: &RenderGraph, context: &RenderContext);
 
+    unsafe fn write_delay(&mut self, _data: &RenderNodeData, _graph: &RenderGraph, _context: &RenderContext) {
+        unreachable!("only a delay node writes to a delay line")
+    }
+
     fn handle_message(&mut self, _message: &NodeMessage) {}
     fn for_each_param(&self, _callback: &mut dyn FnMut(&RenderAudioParam)) {}
-    fn take_ended_notification(&mut self) -> bool {
+    fn has_ended(&self, _context: &RenderContext) -> bool {
         false
     }
 }
@@ -116,6 +120,10 @@ impl<T: NodeProcessor> RenderNode for NativeRenderNode<T> {
         }
     }
 
+    unsafe fn write_delay(&self, graph: &RenderGraph, context: &RenderContext) {
+        unsafe { (&mut *self.processor.get()).write_delay(&self.data, graph, context) };
+    }
+
     unsafe fn handle_message(&self, message: &NodeMessage) {
         unsafe { &mut *self.processor.get() }.handle_message(message);
     }
@@ -124,8 +132,8 @@ impl<T: NodeProcessor> RenderNode for NativeRenderNode<T> {
         unsafe { &*self.processor.get() }.for_each_param(callback);
     }
 
-    unsafe fn take_ended_notification(&self) -> bool {
-        unsafe { &mut *self.processor.get() }.take_ended_notification()
+    unsafe fn has_ended(&self, context: &RenderContext) -> bool {
+        unsafe { &*self.processor.get() }.has_ended(context)
     }
 }
 
@@ -210,8 +218,6 @@ struct ScheduledSourceRenderNode {
 
     // Playback naturally ran out of content before the scheduled stop time, e.g. a non-looping buffer finished.
     content_ended: bool,
-    ended: bool,
-    ended_pending: bool,
 }
 
 impl Default for ScheduledSourceRenderNode {
@@ -221,8 +227,6 @@ impl Default for ScheduledSourceRenderNode {
             stop_time: f64::INFINITY,
             start_time_needs_clamping: false,
             content_ended: false,
-            ended: false,
-            ended_pending: false,
         }
     }
 }
@@ -269,20 +273,9 @@ impl ScheduledSourceRenderNode {
         self.start_time.is_some_and(|start_time| time >= start_time) && time < self.stop_time && !self.content_ended
     }
 
-    // Marks this node as ended once the quantum has advanced past the stop time or the content was exhausted.
-    fn update_ended_state(&mut self, context: &RenderContext) {
-        if self.start_time.is_none() || self.ended {
-            return;
-        }
-        let quantum_end_time = context.frame_time(context.quantum_size);
-        if quantum_end_time >= self.stop_time || self.content_ended {
-            self.ended = true;
-            self.ended_pending = true;
-        }
-    }
-
-    fn take_ended_notification(&mut self) -> bool {
-        std::mem::replace(&mut self.ended_pending, false)
+    // https://webaudio.github.io/web-audio-api/#dom-audioscheduledsourcenode-onended
+    fn has_ended(&self, context: &RenderContext) -> bool {
+        self.start_time.is_some() && (self.content_ended || context.frame_time(context.quantum_size) >= self.stop_time)
     }
 }
 
@@ -306,7 +299,6 @@ impl ConstantSourceRenderNode {
                     0.
                 };
             }
-            self.source.update_ended_state(context);
         }
     }
 }
@@ -327,8 +319,8 @@ impl NodeProcessor for ConstantSourceRenderNode {
         callback(&self.offset);
     }
 
-    fn take_ended_notification(&mut self) -> bool {
-        self.source.take_ended_notification()
+    fn has_ended(&self, context: &RenderContext) -> bool {
+        self.source.has_ended(context)
     }
 }
 
@@ -446,7 +438,6 @@ impl OscillatorRenderNode {
                     self.phase += 2. * PI;
                 }
             }
-            self.source.update_ended_state(context);
         }
     }
 }
@@ -497,8 +488,8 @@ impl NodeProcessor for OscillatorRenderNode {
         callback(&self.detune);
     }
 
-    fn take_ended_notification(&mut self) -> bool {
-        self.source.take_ended_notification()
+    fn has_ended(&self, context: &RenderContext) -> bool {
+        self.source.has_ended(context)
     }
 }
 
@@ -562,7 +553,6 @@ impl AudioBufferSourceRenderNode {
             source_output.set_channel_count(self.buffer.as_ref().map_or(1, |buffer| buffer.channels.len()));
             source_output.zero();
             if self.buffer.is_none() || !self.source.has_started() {
-                self.source.update_ended_state(context);
                 return;
             }
 
@@ -658,7 +648,6 @@ impl AudioBufferSourceRenderNode {
                 self.playhead += playhead_increment;
                 self.played_time += computed_playback_rate.abs() / context.sample_rate;
             }
-            self.source.update_ended_state(context);
         }
     }
 }
@@ -701,63 +690,151 @@ impl NodeProcessor for AudioBufferSourceRenderNode {
         callback(&self.detune);
     }
 
-    fn take_ended_notification(&mut self) -> bool {
-        self.source.take_ended_notification()
+    fn has_ended(&self, context: &RenderContext) -> bool {
+        self.source.has_ended(context)
+    }
+}
+
+struct DelayLine {
+    history: Vec<Vec<f32>>,
+    channel_counts: Vec<u8>,
+    write_index: usize,
+}
+
+struct DelayWriter;
+
+impl DelayWriter {
+    // https://webaudio.github.io/web-audio-api/#delaywriter
+    unsafe fn write(&self, delay_line: &mut DelayLine, input: &BusRef, context: &RenderContext) {
+        let channel_count = unsafe { input.channel_count() };
+        let history_length = delay_line.channel_counts.len();
+        if delay_line.history.len() < channel_count {
+            delay_line
+                .history
+                .resize_with(channel_count, || vec![0.; history_length]);
+        }
+        for frame in 0..context.quantum_size {
+            let index = (delay_line.write_index + frame) % history_length;
+            delay_line.channel_counts[index] = channel_count as u8;
+            for channel in 0..channel_count {
+                delay_line.history[channel][index] = unsafe { input.channel(channel) }[frame];
+            }
+        }
+        delay_line.write_index = (delay_line.write_index + context.quantum_size) % history_length;
+    }
+}
+
+struct DelayReader {
+    delay_time: Arc<RenderAudioParam>,
+    delay_values: Vec<f32>,
+}
+
+impl DelayReader {
+    // https://webaudio.github.io/web-audio-api/#delayreader
+    unsafe fn read(
+        &mut self,
+        delay_line: &DelayLine,
+        write_index: usize,
+        delay_output: &BusRef,
+        delay_frame_range: std::ops::RangeInclusive<f64>,
+        graph: &RenderGraph,
+        context: &RenderContext,
+    ) {
+        unsafe { self.delay_time.compute(graph, context, &mut self.delay_values) };
+        let history_length = delay_line.channel_counts.len();
+        unsafe {
+            delay_output.set_channel_count(delay_line.history.len().max(1));
+            delay_output.zero();
+        }
+        let mut output_channel_count = 1;
+        for frame in 0..context.quantum_size {
+            let delay_frames = (f64::from(self.delay_values[frame]) * context.sample_rate)
+                .clamp(*delay_frame_range.start(), *delay_frame_range.end());
+            let read_position = (write_index as f64 + frame as f64 - delay_frames).rem_euclid(history_length as f64);
+            let read_index = read_position as usize % history_length;
+            let fraction = read_position.fract() as f32;
+            let next_index = (read_index + 1) % history_length;
+            let channel_count = delay_line.channel_counts[read_index] as usize;
+            let next_channel_count = delay_line.channel_counts[next_index] as usize;
+            let frame_channel_count = if fraction == 0. {
+                channel_count
+            } else {
+                channel_count.max(next_channel_count)
+            };
+            output_channel_count = output_channel_count.max(frame_channel_count);
+            for channel in 0..frame_channel_count {
+                let history = &delay_line.history[channel];
+                let sample_a = if channel < channel_count {
+                    history[read_index]
+                } else {
+                    0.
+                };
+                let sample = if fraction == 0. {
+                    sample_a
+                } else {
+                    let sample_b = if channel < next_channel_count {
+                        history[next_index]
+                    } else {
+                        0.
+                    };
+                    sample_a + fraction * (sample_b - sample_a)
+                };
+                unsafe { delay_output.channel_mut(channel)[frame] = sample };
+            }
+        }
+        unsafe { delay_output.set_channel_count(output_channel_count) };
     }
 }
 
 // https://webaudio.github.io/web-audio-api/#DelayNode
 struct DelayRenderNode {
-    delay_time: Arc<RenderAudioParam>,
-    delay_values: Vec<f32>,
     max_delay_time: f64,
-    history: Vec<Vec<f32>>,
-    write_index: usize,
+    delay_line: DelayLine,
+    delay_writer: DelayWriter,
+    delay_reader: DelayReader,
 }
 
 impl NodeProcessor for DelayRenderNode {
+    // https://webaudio.github.io/web-audio-api/#DelayNode-processing
     unsafe fn process(&mut self, data: &RenderNodeData, graph: &RenderGraph, context: &RenderContext) {
+        let minimum_delay_frames = if data.is_cycle_breaker.get() {
+            context.quantum_size as f64
+        } else {
+            0.
+        };
+        let maximum_delay_frames = (self.max_delay_time * context.sample_rate).max(minimum_delay_frames);
+        if self.delay_line.channel_counts.is_empty() {
+            let history_length = (self.max_delay_time * context.sample_rate).ceil() as usize;
+            self.delay_line
+                .channel_counts
+                .resize(history_length.max(context.quantum_size) + context.quantum_size + 2, 0);
+        }
+        let write_index = self.delay_line.write_index;
+        if !data.is_cycle_breaker.get() {
+            unsafe { self.write_delay(data, graph, context) };
+        }
         unsafe {
-            let input = BusRef(data.pull_input(graph, context, 0).cast_mut());
-            self.delay_time.compute(graph, context, &mut self.delay_values);
-            let history_length = (self.max_delay_time * context.sample_rate).ceil() as usize + 2;
-            if self.history.len() != input.channel_count()
-                || (!self.history.is_empty() && self.history[0].len() != history_length)
-            {
-                self.history.resize_with(input.channel_count(), Vec::new);
-                for channel_history in &mut self.history {
-                    channel_history.clear();
-                    channel_history.resize(history_length, 0.);
-                }
-                self.write_index = 0;
-            }
-            let delay_output = BusRef(data.output(0));
-            delay_output.set_channel_count(input.channel_count());
-            for frame in 0..context.quantum_size {
-                let delay_seconds = clamp(f64::from(self.delay_values[frame]), 0., self.max_delay_time);
-                let delay_frames = delay_seconds * context.sample_rate;
-                for channel_index in 0..input.channel_count() {
-                    let channel_history = &mut self.history[channel_index];
-                    channel_history[self.write_index] = input.channel(channel_index)[frame];
-
-                    // Read with linear interpolation to support fractional delays.
-                    let mut read_position = self.write_index as f64 - delay_frames;
-                    while read_position < 0. {
-                        read_position += history_length as f64;
-                    }
-                    let read_index = read_position as usize;
-                    let fraction = (read_position - read_index as f64) as f32;
-                    let sample_a = channel_history[read_index % history_length];
-                    let sample_b = channel_history[(read_index + 1) % history_length];
-                    delay_output.channel_mut(channel_index)[frame] = sample_a + fraction * (sample_b - sample_a);
-                }
-                self.write_index = (self.write_index + 1) % history_length;
-            }
+            self.delay_reader.read(
+                &self.delay_line,
+                write_index,
+                &BusRef(data.output(0)),
+                minimum_delay_frames..=maximum_delay_frames,
+                graph,
+                context,
+            );
         }
     }
 
+    unsafe fn write_delay(&mut self, data: &RenderNodeData, graph: &RenderGraph, context: &RenderContext) {
+        if self.delay_line.channel_counts.is_empty() {
+            return;
+        }
+        let input = BusRef(unsafe { data.pull_input(graph, context, 0) }.cast_mut());
+        unsafe { self.delay_writer.write(&mut self.delay_line, &input, context) };
+    }
+
     fn for_each_param(&self, callback: &mut dyn FnMut(&RenderAudioParam)) {
-        callback(&self.delay_time);
+        callback(&self.delay_reader.delay_time);
     }
 }
 
@@ -1927,14 +2004,21 @@ pub fn create_delay_render_node(
 ) -> Box<NodeHandle> {
     let mut data = RenderNodeData::new(node_id, 1, 1, quantum_size, 1);
     data.reserve_output_channels(0, MAX_NUMBER_OF_CHANNELS);
+    data.is_delay = true;
     node_handle(
         data,
         DelayRenderNode {
-            delay_time,
-            delay_values: vec![0.; quantum_size],
             max_delay_time,
-            history: Vec::new(),
-            write_index: 0,
+            delay_line: DelayLine {
+                history: Vec::new(),
+                channel_counts: Vec::new(),
+                write_index: 0,
+            },
+            delay_writer: DelayWriter,
+            delay_reader: DelayReader {
+                delay_time,
+                delay_values: vec![0.; quantum_size],
+            },
         },
     )
 }

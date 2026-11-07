@@ -240,6 +240,9 @@ pub struct RenderNodeData {
     // Bookkeeping used by RenderGraph to process every node at most once per render quantum.
     pub processed_quantum: std::cell::Cell<u64>,
     pub is_processing: std::cell::Cell<bool>,
+    pub(super) is_delay: bool,
+    pub(super) is_cycle_breaker: std::cell::Cell<bool>,
+    pub(super) is_muted: std::cell::Cell<bool>,
 }
 
 // SAFETY: Render-node data is transferred to one rendering thread before it is accessed.
@@ -275,6 +278,9 @@ impl RenderNodeData {
             outgoing_param_connections: UnsafeCell::new(Vec::new()),
             processed_quantum: std::cell::Cell::new(u64::MAX),
             is_processing: std::cell::Cell::new(false),
+            is_delay: false,
+            is_cycle_breaker: std::cell::Cell::new(false),
+            is_muted: std::cell::Cell::new(false),
         }
     }
 
@@ -369,11 +375,15 @@ pub(crate) trait RenderNode: Send {
 
     unsafe fn process(&self, graph: &super::render_graph::RenderGraph, context: &RenderContext);
 
+    unsafe fn write_delay(&self, _graph: &super::render_graph::RenderGraph, _context: &RenderContext) {
+        unreachable!("only a delay node writes to a delay line")
+    }
+
     unsafe fn handle_message(&self, _message: &super::node_message::NodeMessage) {}
     fn for_each_param(&self, _callback: &mut dyn FnMut(&RenderAudioParam)) {}
 
     // Returns true exactly once after this node has stopped playing, so the main thread can fire an ended event.
-    unsafe fn take_ended_notification(&self) -> bool {
+    unsafe fn has_ended(&self, _context: &RenderContext) -> bool {
         false
     }
 }
@@ -399,6 +409,12 @@ impl OutputGraph for super::render_graph::RenderGraph {
 }
 
 impl RenderAudioParam {
+    pub(super) unsafe fn for_each_input(&self, callback: &mut dyn FnMut(u64)) {
+        for input in unsafe { &(*self.state.get()).inputs } {
+            callback(input.source);
+        }
+    }
+
     pub(crate) unsafe fn clear_inputs(&self) {
         unsafe { &mut (*self.state.get()).inputs }.clear();
     }

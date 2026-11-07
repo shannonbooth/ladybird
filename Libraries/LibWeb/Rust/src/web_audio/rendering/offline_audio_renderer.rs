@@ -213,7 +213,7 @@ impl OfflineAudioRenderer {
             }
             current_frame += self.quantum_size as u64;
             self.frames_rendered.store(current_frame, Ordering::SeqCst);
-            let ended_nodes = graph.take_ended_nodes();
+            let ended_nodes = graph.take_ended_nodes(&context);
             if !ended_nodes.is_empty() {
                 self.post_to_control_thread(Notification::SourcesEnded(ended_nodes));
             }
