@@ -47,17 +47,17 @@ private:
     void const* m_renderer { nullptr };
 };
 
-void RustFFI::web_audio_output_open(void* factory, void const* renderer)
+void RustFFI::web_audio_output_open(void* factory, void const* renderer, u64 generation)
 {
     auto reference = adopt_ref(*new RendererReference(renderer));
-    auto promise = static_cast<Media::AudioOutputFactory*>(factory)->open_output(Audio::OutputState::Suspended, TARGET_LATENCY_MS, [reference](Span<float> buffer, MonotonicTime buffer_starts_playing_at) {
-        return buffer.trim(RustFFI::web_audio_realtime_renderer_fill(reference->renderer(), buffer, buffer_starts_playing_at.nanoseconds()));
+    auto promise = static_cast<Media::AudioOutputFactory*>(factory)->open_output(Audio::OutputState::Suspended, TARGET_LATENCY_MS, [reference, generation](Span<float> buffer, MonotonicTime buffer_starts_playing_at) {
+        return buffer.trim(RustFFI::web_audio_realtime_renderer_fill(reference->renderer(), generation, buffer, buffer_starts_playing_at.nanoseconds()));
     });
-    promise->when_resolved([reference](NonnullRefPtr<Audio::PlaybackStream>& stream) {
-        stream->on_output_lost = [reference] { RustFFI::web_audio_realtime_renderer_output_lost(reference->renderer()); };
+    promise->when_resolved([reference, generation](NonnullRefPtr<Audio::PlaybackStream>& stream) {
+        stream->on_output_lost = [reference, generation] { RustFFI::web_audio_realtime_renderer_output_lost(reference->renderer(), generation); };
         auto specification = stream->sample_specification();
         RustFFI::FfiSharedCppObject shared_stream { stream.ptr(), [](void* stream) { static_cast<Audio::PlaybackStream*>(stream)->ref(); }, [](void* stream) { static_cast<Audio::PlaybackStream*>(stream)->unref(); } };
-        RustFFI::web_audio_realtime_renderer_output_opened(reference->renderer(), shared_stream, specification.channel_count(), specification.sample_rate());
+        RustFFI::web_audio_realtime_renderer_output_opened(reference->renderer(), generation, shared_stream, specification.channel_count(), specification.sample_rate());
     });
 }
 

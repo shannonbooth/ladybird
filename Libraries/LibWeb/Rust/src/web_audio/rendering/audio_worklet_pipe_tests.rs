@@ -52,7 +52,7 @@ unsafe extern "C" fn web_audio_deferred_invoke(
     });
 }
 
-fn run_posted_tasks() {
+pub(super) fn run_posted_tasks() {
     loop {
         let task = EVENT_LOOP.with(|event_loop| event_loop.lock().unwrap().pop_front());
         let Some(task) = task else {
