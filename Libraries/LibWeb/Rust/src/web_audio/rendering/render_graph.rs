@@ -43,7 +43,7 @@ impl Default for RenderGraph {
 }
 
 impl RenderGraph {
-    pub fn apply_control_messages(&mut self, messages: Vec<ControlMessage>) {
+    pub fn apply_control_messages(&mut self, messages: impl IntoIterator<Item = ControlMessage>) {
         for message in messages {
             match message {
                 ControlMessage::AddNode(add_node) => {
@@ -550,7 +550,7 @@ mod tests {
         let mut graph = RenderGraph::default();
         graph.set_destination(2);
         graph.apply_control_messages(queue.drain());
-        assert!(queue.drain().is_empty());
+        assert!(queue.drain().next().is_none());
         assert_eq!(graph.node(1).unwrap().data().channel_count.get(), 2);
         assert_eq!(Arc::strong_count(&param), 3);
         let mut context = RenderContext {
@@ -639,8 +639,7 @@ mod tests {
                 }),
             ]);
             // Apply topology changes before counting DSP allocations.
-            unsafe { graph.rebuild_incoming_connections() };
-            graph.incoming_connections_dirty.set(false);
+            graph.render_quantum(&context);
             let (_, allocations) = count_allocations(|| graph.render_quantum(&context));
             assert_eq!(allocations.everywhere, 0);
             let output = unsafe { &*graph.destination().unwrap().data().output(0) };
