@@ -1,0 +1,2 @@
+Listener position with a silent panner: 20
+Two panners share the connected listener position: true

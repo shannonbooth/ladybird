@@ -6,6 +6,7 @@
  */
 
 pub mod audio_bus;
+pub mod audio_listener;
 pub mod biquad_coefficients;
 pub mod convolver_kernel;
 pub mod fft;

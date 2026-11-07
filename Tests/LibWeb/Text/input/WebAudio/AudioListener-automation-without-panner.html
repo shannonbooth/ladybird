@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const context = new OfflineAudioContext(1, 512, 16000);
+        context.listener.positionX.setValueAtTime(10, 0);
+        context.listener.positionX.linearRampToValueAtTime(20, 256 / context.sampleRate);
+        const suspended = context.suspend(384 / context.sampleRate);
+        const rendered = context.startRendering();
+        await suspended;
+        println(`Listener position: ${context.listener.positionX.value}`);
+        await context.resume();
+        await rendered;
+    });
+</script>

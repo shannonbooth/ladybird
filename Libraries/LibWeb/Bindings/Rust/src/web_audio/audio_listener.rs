@@ -6,9 +6,11 @@
  */
 
 use libjs_rust::api::{Trace, Vm};
+use libweb_rust::web_audio::control_message::ControlMessage;
+use libweb_rust::web_audio::rendering::audio_listener::RenderAudioListener;
 
 use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate, ParameterType};
-use super::base_audio_context::AnyBaseAudioContext;
+use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
 use crate::bindings::interface::{Ref, Wrappable, allocate};
 use crate::bindings::{CallContext, WebIdlResult};
 
@@ -30,7 +32,7 @@ pub(crate) struct AudioListener {
 impl Wrappable for AudioListener {}
 impl AudioListener {
     pub(crate) fn create(vm: &Vm, context: AnyBaseAudioContext) -> Ref<Self> {
-        allocate(vm, |_| Self {
+        let listener = allocate(vm, |_| Self {
             forward_x: AudioParam::create(
                 vm,
                 context,
@@ -139,7 +141,23 @@ impl AudioListener {
                 FixedAutomationRate::No,
                 ParameterType::Simple,
             ),
-        })
+        });
+        let params = [
+            listener.position_x.render_param(),
+            listener.position_y.render_param(),
+            listener.position_z.render_param(),
+            listener.forward_x.render_param(),
+            listener.forward_y.render_param(),
+            listener.forward_z.render_param(),
+            listener.up_x.render_param(),
+            listener.up_y.render_param(),
+            listener.up_z.render_param(),
+        ];
+        context.queue_control_message(ControlMessage::SetAudioListener(Box::new(RenderAudioListener::new(
+            params,
+            BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
+        ))));
+        listener
     }
 
     pub(crate) fn forward_x(&self, _: &mut CallContext) -> WebIdlResult<Ref<AudioParam>> {

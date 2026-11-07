@@ -10,6 +10,7 @@
 use std::cell::Cell;
 
 use super::audio_bus::AudioBus;
+use super::audio_listener::RenderAudioListener;
 use super::node_message::node_message_target;
 use super::render_node::{NodeHandle, RenderContext};
 use crate::web_audio::control_message::ControlMessage;
@@ -20,6 +21,7 @@ use crate::web_audio::control_message::ControlMessage;
 pub struct RenderGraph {
     nodes: NodeMap,
     destination_id: u64,
+    listener: Option<Box<RenderAudioListener>>,
     current_quantum: Cell<u64>,
     incoming_connections_dirty: Cell<bool>,
 }
@@ -29,6 +31,7 @@ impl Default for RenderGraph {
         Self {
             nodes: NodeMap::default(),
             destination_id: 0,
+            listener: None,
             current_quantum: Cell::new(0),
             incoming_connections_dirty: Cell::new(false),
         }
@@ -70,6 +73,10 @@ impl RenderGraph {
                             .set(config.channel_interpretation);
                     }
                 }
+                ControlMessage::SetAudioListener(listener) => {
+                    self.listener = Some(listener);
+                    self.incoming_connections_dirty.set(true);
+                }
                 ControlMessage::NodeMessage(node_message) => {
                     if let Some(target_node) = self.node(node_message_target(&node_message)) {
                         unsafe {
@@ -89,6 +96,11 @@ impl RenderGraph {
                 self.rebuild_incoming_connections();
             }
             self.incoming_connections_dirty.set(false);
+        }
+
+        // 4.3. Compute the value(s) of the AudioListener’s AudioParams for this block.
+        if let Some(listener) = self.listener() {
+            listener.compute_values(self, context);
         }
 
         // Process the destination first so the main graph is processed in dependency order.
@@ -136,6 +148,10 @@ impl RenderGraph {
         self.destination_id = node_id;
     }
 
+    pub(super) fn listener(&self) -> Option<&RenderAudioListener> {
+        self.listener.as_deref()
+    }
+
     pub fn destination(&self) -> Option<&NodeHandle> {
         self.node(self.destination_id)
     }
@@ -158,6 +174,11 @@ impl RenderGraph {
     }
 
     unsafe fn rebuild_incoming_connections(&self) {
+        if let Some(listener) = self.listener() {
+            for param in listener.params() {
+                unsafe { param.clear_inputs() };
+            }
+        }
         for graph_node in self.nodes.values() {
             let data = graph_node.data();
             for input_index in 0..data.input_count() {

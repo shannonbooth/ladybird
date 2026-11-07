@@ -247,7 +247,6 @@ impl PannerNode {
         // FIXME: Set tail-time to maybe
         node.node
             .initialize_audio_node_options(cx, &options.parent, &default_options)?;
-        let listener = context.listener_value();
         let params = [
             node.position_x.render_param(),
             node.position_y.render_param(),
@@ -255,15 +254,6 @@ impl PannerNode {
             node.orientation_x.render_param(),
             node.orientation_y.render_param(),
             node.orientation_z.render_param(),
-            listener.position_x.render_param(),
-            listener.position_y.render_param(),
-            listener.position_z.render_param(),
-            listener.forward_x.render_param(),
-            listener.forward_y.render_param(),
-            listener.forward_z.render_param(),
-            listener.up_x.render_param(),
-            listener.up_y.render_param(),
-            listener.up_z.render_param(),
         ];
         node.node.queue_render_node_creation(create_panner_render_node(
             node.node.node_id(),

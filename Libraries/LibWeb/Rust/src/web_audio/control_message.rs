@@ -9,6 +9,7 @@
 use std::ffi::c_void;
 use std::sync::Arc;
 
+use super::rendering::audio_listener::RenderAudioListener;
 use super::rendering::node_message::{NodeMessage, SharedCppObject};
 use super::rendering::render_node::{
     ChannelCountMode, ChannelInterpretation, NodeHandle, OutgoingNodeConnection, OutgoingParamConnection,
@@ -47,6 +48,7 @@ pub enum ControlMessage {
     RemoveNode(RemoveNode),
     ReplaceConnections(ReplaceConnections),
     SetChannelConfig(SetChannelConfig),
+    SetAudioListener(Box<RenderAudioListener>),
     NodeMessage(NodeMessage),
 }
 

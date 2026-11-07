@@ -1694,27 +1694,12 @@ struct PannerParams {
     orientation_z: Arc<RenderAudioParam>,
 }
 
-struct ListenerParams {
-    position_x: Arc<RenderAudioParam>,
-    position_y: Arc<RenderAudioParam>,
-    position_z: Arc<RenderAudioParam>,
-    forward_x: Arc<RenderAudioParam>,
-    forward_y: Arc<RenderAudioParam>,
-    forward_z: Arc<RenderAudioParam>,
-    up_x: Arc<RenderAudioParam>,
-    up_y: Arc<RenderAudioParam>,
-    up_z: Arc<RenderAudioParam>,
-}
-
 // https://webaudio.github.io/web-audio-api/#PannerNode
 struct PannerRenderNode {
     params: PannerParams,
-    listener_params: ListenerParams,
     config: SetPannerParameters,
 
-    // One buffer of computed values per panner and listener param, in the order of the Params and ListenerParams
-    // struct members.
-    param_values: Vec<Vec<f32>>,
+    param_values: [Vec<f32>; 6],
 }
 
 impl NodeProcessor for PannerRenderNode {
@@ -1731,15 +1716,6 @@ impl NodeProcessor for PannerRenderNode {
         callback(&self.params.orientation_x);
         callback(&self.params.orientation_y);
         callback(&self.params.orientation_z);
-        callback(&self.listener_params.position_x);
-        callback(&self.listener_params.position_y);
-        callback(&self.listener_params.position_z);
-        callback(&self.listener_params.forward_x);
-        callback(&self.listener_params.forward_y);
-        callback(&self.listener_params.forward_z);
-        callback(&self.listener_params.up_x);
-        callback(&self.listener_params.up_y);
-        callback(&self.listener_params.up_z);
     }
 
     // https://webaudio.github.io/web-audio-api/#Spatialization
@@ -1759,19 +1735,11 @@ impl NodeProcessor for PannerRenderNode {
                 &self.params.orientation_x,
                 &self.params.orientation_y,
                 &self.params.orientation_z,
-                &self.listener_params.position_x,
-                &self.listener_params.position_y,
-                &self.listener_params.position_z,
-                &self.listener_params.forward_x,
-                &self.listener_params.forward_y,
-                &self.listener_params.forward_z,
-                &self.listener_params.up_x,
-                &self.listener_params.up_y,
-                &self.listener_params.up_z,
             ];
             for param_index in 0..params.len() {
                 params[param_index].compute(graph, context, &mut self.param_values[param_index]);
             }
+            let listener_values = graph.listener().expect("a panner has a listener").values();
             let output_left = panner_output.channel_mut(0);
             let output_right = panner_output.channel_mut(1);
             let input_left = input.channel(0);
@@ -1792,19 +1760,19 @@ impl NodeProcessor for PannerRenderNode {
                     f64::from(self.param_values[5][frame]),
                 ]);
                 let listener_position = DoubleVector3([
-                    f64::from(self.param_values[6][frame]),
-                    f64::from(self.param_values[7][frame]),
-                    f64::from(self.param_values[8][frame]),
+                    f64::from(listener_values[0][frame]),
+                    f64::from(listener_values[1][frame]),
+                    f64::from(listener_values[2][frame]),
                 ]);
                 let listener_forward = DoubleVector3([
-                    f64::from(self.param_values[9][frame]),
-                    f64::from(self.param_values[10][frame]),
-                    f64::from(self.param_values[11][frame]),
+                    f64::from(listener_values[3][frame]),
+                    f64::from(listener_values[4][frame]),
+                    f64::from(listener_values[5][frame]),
                 ]);
                 let listener_up = DoubleVector3([
-                    f64::from(self.param_values[12][frame]),
-                    f64::from(self.param_values[13][frame]),
-                    f64::from(self.param_values[14][frame]),
+                    f64::from(listener_values[6][frame]),
+                    f64::from(listener_values[7][frame]),
+                    f64::from(listener_values[8][frame]),
                 ]);
                 let mut azimuth = compute_azimuth(source_position, listener_position, listener_forward, listener_up);
                 let distance = (source_position - listener_position).length();
@@ -2097,7 +2065,7 @@ pub fn create_convolver_render_node(node_id: u64, quantum_size: usize) -> Box<No
 pub fn create_panner_render_node(
     node_id: u64,
     quantum_size: usize,
-    params: &[&Arc<RenderAudioParam>; 15],
+    params: &[&Arc<RenderAudioParam>; 6],
 ) -> Box<NodeHandle> {
     let data = RenderNodeData::new(node_id, 1, 1, quantum_size, 2);
     data.channel_count_mode.set(ChannelCountMode::ClampedMax);
@@ -2112,19 +2080,8 @@ pub fn create_panner_render_node(
                 orientation_y: Arc::clone(params[4]),
                 orientation_z: Arc::clone(params[5]),
             },
-            listener_params: ListenerParams {
-                position_x: Arc::clone(params[6]),
-                position_y: Arc::clone(params[7]),
-                position_z: Arc::clone(params[8]),
-                forward_x: Arc::clone(params[9]),
-                forward_y: Arc::clone(params[10]),
-                forward_z: Arc::clone(params[11]),
-                up_x: Arc::clone(params[12]),
-                up_y: Arc::clone(params[13]),
-                up_z: Arc::clone(params[14]),
-            },
             config: SetPannerParameters::default(),
-            param_values: (0..15).map(|_| vec![0.; quantum_size]).collect(),
+            param_values: std::array::from_fn(|_| vec![0.; quantum_size]),
         },
     )
 }
