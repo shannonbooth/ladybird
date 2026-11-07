@@ -1,8 +1,8 @@
 Harness status: OK
 
-Found 44 tests
+Found 45 tests
 
-44 Pass
+45 Pass
 Pass	# AUDIT TASK RUNNER STARTED.
 Pass	Executing "basic"
 Pass	Executing "options-1"
@@ -21,16 +21,17 @@ Pass	  context.destination.channelInterpretation is equal to speakers.
 Pass	< [basic] All assertions passed. (total 8 assertions)
 Pass	> [options-1] Required options
 Pass	  new OfflineAudioContext() threw TypeError: "Overload resolution failed".
-Pass	  new OfflineAudioContext({}) threw TypeError: "Required property length is missing or undefined".
+Pass	  new OfflineAudioContext({}) threw TypeError: "Required property sampleRate is missing or undefined".
 Pass	  new OfflineAudioContext({"length":42}) threw TypeError: "Required property sampleRate is missing or undefined".
-Pass	  new OfflineAudioContext({"sampleRate":12345}) threw TypeError: "Required property length is missing or undefined".
+Pass	  new OfflineAudioContext({"sampleRate":12345}) did not throw an exception.
+Pass	  c2.length is equal to null.
 Pass	  c2 = new OfflineAudioContext({"length":42,"sampleRate":12345}) did not throw an exception.
 Pass	  c2.destination.channelCount is equal to 1.
 Pass	  c2.length is equal to 42.
 Pass	  c2.sampleRate is equal to 12345.
 Pass	  c2.destination.channelCountMode is equal to explicit.
 Pass	  c2.destination.channelInterpretation is equal to speakers.
-Pass	< [options-1] All assertions passed. (total 10 assertions)
+Pass	< [options-1] All assertions passed. (total 11 assertions)
 Pass	> [options-2] Invalid options
 Pass	  new OfflineAudioContext({"length":42,"sampleRate":8000,"numberOfChannels":33}) threw NotSupportedError: "Number of channels is greater than allowed range".
 Pass	  new OfflineAudioContext({"length":0,"sampleRate":8000}) threw NotSupportedError: "Length of buffer must be at least 1".

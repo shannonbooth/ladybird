@@ -3,3 +3,4 @@
 Input matches its frame: true
 test-constructor-error renders silence: true
 test-process-error renders silence: true
+Close settles rendering: rejected

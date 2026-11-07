@@ -1,0 +1,9 @@
+Finite chunk lengths: 128,172
+Graph state persisted: true
+Finite state: closed
+Open context length: null
+Default chunk length: 128
+Open context after close: closed
+Initial suspension: suspended
+Closed render results: AbortError,AbortError
+Closed suspension result: InvalidStateError

@@ -2,9 +2,9 @@ Harness status: OK
 
 Found 5 tests
 
-5 Fail
-Fail	close before rendering closes the context
-Fail	calling close twice rejects the second call
-Fail	close after rendering a chunk closes the context
-Fail	close while rendering a large chunk stops the context
-Fail	close while suspended rejects current and queued incremental renders
+5 Pass
+Pass	close before rendering closes the context
+Pass	calling close twice rejects the second call
+Pass	close after rendering a chunk closes the context
+Pass	close while rendering a large chunk stops the context
+Pass	close while suspended rejects current and queued incremental renders

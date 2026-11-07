@@ -1,2 +1,2 @@
 128
-InvalidStateError: Rendering is already started
+InvalidStateError: The context is closed

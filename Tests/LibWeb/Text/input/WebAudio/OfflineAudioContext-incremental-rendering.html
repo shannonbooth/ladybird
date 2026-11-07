@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const finite = new OfflineAudioContext({ length: 300, sampleRate: 32768 });
+        const sample = new ConstantSourceNode(finite, { offset: 1 });
+        sample.connect(finite.destination);
+        sample.start();
+        sample.offset.setValueAtTime(2, 128 / finite.sampleRate);
+
+        const first = finite.startRendering(1);
+        const final = finite.startRendering();
+        const chunks = await Promise.all([first, final]);
+        println(`Finite chunk lengths: ${chunks.map(chunk => chunk.length)}`);
+        println(`Graph state persisted: ${chunks.every((chunk, i) => chunk.getChannelData(0).every(value => value === i + 1))}`);
+        println(`Finite state: ${finite.state}`);
+
+        const open = new OfflineAudioContext({ sampleRate: 32768 });
+        const buffer = await open.startRendering();
+        println(`Open context length: ${open.length}`);
+        println(`Default chunk length: ${buffer.length}`);
+        await open.close();
+        println(`Open context after close: ${open.state}`);
+
+        const interrupted = new OfflineAudioContext({ sampleRate: 32768 });
+        const initialSuspend = interrupted.suspend(0);
+        const futureSuspend = interrupted.suspend(10).catch(error => error.name);
+        const renders = [interrupted.startRendering(), interrupted.startRendering()]
+            .map(promise => promise.catch(error => error.name));
+        await initialSuspend;
+        println(`Initial suspension: ${interrupted.state}`);
+        await interrupted.close();
+        println(`Closed render results: ${await Promise.all(renders)}`);
+        println(`Closed suspension result: ${await futureSuspend}`);
+    });
+</script>

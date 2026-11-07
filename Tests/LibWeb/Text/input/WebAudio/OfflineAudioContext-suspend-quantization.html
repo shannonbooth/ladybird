@@ -6,7 +6,7 @@
         const context = new OfflineAudioContext(1, 384, sampleRate);
         const first = context.suspend(128 / sampleRate);
         const second = context.suspend(128.25 / sampleRate);
-        for (const frame of [-128, 0, 255, 384]) {
+        for (const frame of [-128, -0.25, 255, 384]) {
             try {
                 await context.suspend(frame / sampleRate);
             } catch (error) {

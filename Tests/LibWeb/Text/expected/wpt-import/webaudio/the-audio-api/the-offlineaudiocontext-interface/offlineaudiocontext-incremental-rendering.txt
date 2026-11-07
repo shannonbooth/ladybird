@@ -1,0 +1,11 @@
+Harness status: OK
+
+Found 6 tests
+
+6 Pass
+Pass	Finite length and no chunk size returns the remaining length
+Pass	Null length and no chunk size returns one render quantum
+Pass	Null length and a chunk size returns the rounded chunk size
+Pass	Finite length and a chunk size returns rounded chunks and the remainder
+Pass	startRendering rejects when committed frames reach the render length
+Pass	suspend at a chunk boundary is applied by the next startRendering call

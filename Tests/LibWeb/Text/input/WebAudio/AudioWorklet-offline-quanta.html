@@ -59,6 +59,13 @@
                 await error;
                 println(`${name} renders silence: ${samples.every(sample => sample === 0)}`);
             }
+
+            const closing = new OfflineAudioContext(1, 48000, 48000);
+            await closing.audioWorklet.addModule(url);
+            new AudioWorkletNode(closing, "test-offline", { numberOfInputs: 0 }).connect(closing.destination);
+            const rendering = closing.startRendering();
+            await closing.close();
+            println(`Close settles rendering: ${(await Promise.allSettled([rendering]))[0].status}`);
         } finally {
             URL.revokeObjectURL(url);
         }

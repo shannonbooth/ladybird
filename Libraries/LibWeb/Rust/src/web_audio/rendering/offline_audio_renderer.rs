@@ -8,7 +8,7 @@
 #![allow(clippy::needless_range_loop, clippy::manual_memcpy)]
 
 use std::cell::UnsafeCell;
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -20,12 +20,18 @@ use crate::web_audio::control_thread::{ControlThread, ControlThreadCell};
 
 pub trait OfflineAudioRendererClient {
     fn rendering_suspended(&self, suspend_time: f64);
-    fn rendering_completed(&self, rendered_channels: &[Vec<f32>]);
+    fn rendering_completed(&self, end_frame: u64, rendered_channels: &[Vec<f32>]);
     fn sources_ended(&self, nodes: &[u64]);
 }
 
+struct RenderJob {
+    end_frame: u64,
+    channels: Vec<Vec<f32>>,
+}
+
 #[derive(Default)]
-struct SuspensionState {
+struct RenderingState {
+    jobs: VecDeque<RenderJob>,
     suspend_frames: HashSet<u64>,
 
     // The next render quantum boundary at which the rendering thread will look for a scheduled suspension. It is
@@ -36,32 +42,28 @@ struct SuspensionState {
     shutting_down: bool,
 }
 
-// Renders an OfflineAudioContext's graph on a dedicated rendering thread, which is created when rendering starts and
-// exits once the last render quantum has been processed. Progress is reported back to the control thread by posting
-// events to the main thread's event loop.
+// The offline render thread retains the graph between render jobs.
 // https://webaudio.github.io/web-audio-api/#OfflineAudioContext
 pub struct OfflineAudioRenderer {
     control_message_queue: Arc<ControlMessageQueue>,
     destination_node_id: u64,
     number_of_channels: usize,
-    length: usize,
     sample_rate: f32,
     quantum_size: usize,
     control_thread: ControlThread,
     client: ControlThreadCell<Option<Rc<dyn OfflineAudioRendererClient>>>,
     thread: UnsafeCell<Option<std::thread::Thread>>,
     graph: UnsafeCell<RenderGraph>,
-    rendered_channels: UnsafeCell<Vec<Vec<f32>>>,
     frames_rendered: AtomicU64,
-    suspend_mutex: Mutex<SuspensionState>,
-    resume_signal: Condvar,
+    rendering_state: Mutex<RenderingState>,
+    rendering_state_changed: Condvar,
 }
 
 // SAFETY: One render thread owns graph/sample mutations, and suspension/progress use the original synchronization.
 unsafe impl Send for OfflineAudioRenderer {}
 unsafe impl Sync for OfflineAudioRenderer {}
 enum Notification {
-    Complete,
+    Complete(RenderJob),
     Suspended(f64),
     SourcesEnded(Vec<u64>),
 }
@@ -71,30 +73,22 @@ impl OfflineAudioRenderer {
         control_message_queue: Arc<ControlMessageQueue>,
         destination_node_id: u64,
         number_of_channels: usize,
-        length: usize,
         sample_rate: f32,
         quantum_size: usize,
     ) -> Arc<Self> {
-        let mut rendered_channels = Vec::new();
-        rendered_channels.resize_with(number_of_channels, Vec::new);
-        for channel in &mut rendered_channels {
-            channel.resize(length, 0.);
-        }
         Arc::new(Self {
             control_message_queue,
             destination_node_id,
             number_of_channels,
-            length,
             sample_rate,
             quantum_size,
             control_thread: ControlThread::current(),
             client: ControlThreadCell::new(None),
             thread: UnsafeCell::new(None),
             graph: UnsafeCell::new(RenderGraph::default()),
-            rendered_channels: UnsafeCell::new(rendered_channels),
             frames_rendered: AtomicU64::new(0),
-            suspend_mutex: Mutex::new(SuspensionState::default()),
-            resume_signal: Condvar::new(),
+            rendering_state: Mutex::new(RenderingState::default()),
+            rendering_state_changed: Condvar::new(),
         })
     }
 
@@ -120,18 +114,26 @@ impl OfflineAudioRenderer {
         drop(thread);
     }
 
+    pub fn enqueue_rendering(&self, end_frame: u64, length: usize) {
+        let channels = (0..self.number_of_channels).map(|_| vec![0.; length]).collect();
+        let mut state = self.rendering_state.lock().unwrap();
+        state.jobs.push_back(RenderJob { end_frame, channels });
+        self.rendering_state_changed.notify_one();
+    }
+
     /// Ends rendering without completing it, unblocking the rendering thread if it is waiting in a suspension.
     pub fn stop(&self) {
-        let mut state = self.suspend_mutex.lock().unwrap();
+        let mut state = self.rendering_state.lock().unwrap();
         state.shutting_down = true;
-        self.resume_signal.notify_all();
+        state.jobs.clear();
+        self.rendering_state_changed.notify_all();
     }
 
     /// Registers a suspension at the given render quantum boundary. Returns false if the rendering thread already
     /// looked for suspensions at that boundary.
     pub fn request_suspend(&self, frame: u64) -> bool {
-        let mut state = self.suspend_mutex.lock().unwrap();
-        if frame <= self.frames_rendered() || frame < state.next_suspend_check_frame {
+        let mut state = self.rendering_state.lock().unwrap();
+        if frame < self.frames_rendered() || frame < state.next_suspend_check_frame {
             return false;
         }
         state.suspend_frames.insert(frame);
@@ -139,9 +141,9 @@ impl OfflineAudioRenderer {
     }
 
     pub fn resume(&self) {
-        let mut state = self.suspend_mutex.lock().unwrap();
+        let mut state = self.rendering_state.lock().unwrap();
         state.suspended = false;
-        self.resume_signal.notify_all();
+        self.rendering_state_changed.notify_all();
     }
 
     pub fn frames_rendered(&self) -> u64 {
@@ -155,10 +157,7 @@ impl OfflineAudioRenderer {
                 return;
             };
             match notification {
-                Notification::Complete => {
-                    // SAFETY: The rendering thread posts the completion after its last write.
-                    client.rendering_completed(unsafe { &*renderer.rendered_channels.get() });
-                }
+                Notification::Complete(job) => client.rendering_completed(job.end_frame, &job.channels),
                 Notification::Suspended(time) => client.rendering_suspended(time),
                 Notification::SourcesEnded(nodes) => client.sources_ended(&nodes),
             }
@@ -166,58 +165,76 @@ impl OfflineAudioRenderer {
     }
 
     fn render_thread_main(self: &Arc<Self>) {
-        let mut current_frame = 0_u64;
-        while current_frame < self.length as u64 {
-            // Suspend rendering if a suspension was scheduled at this render quantum boundary.
-            {
-                let mut state = self.suspend_mutex.lock().unwrap();
+        let mut current_frame = 0;
+        loop {
+            let mut job = {
+                let state = self.rendering_state.lock().unwrap();
+                let mut state = self
+                    .rendering_state_changed
+                    .wait_while(state, |state| state.jobs.is_empty() && !state.shutting_down)
+                    .unwrap();
                 if state.shutting_down {
                     return;
                 }
-                state.next_suspend_check_frame = current_frame + self.quantum_size as u64;
-                if state.suspend_frames.remove(&current_frame) {
-                    state.suspended = true;
-                    let suspend_time = current_frame as f64 / f64::from(self.sample_rate);
-                    self.post_to_control_thread(Notification::Suspended(suspend_time));
-                    while state.suspended && !state.shutting_down {
-                        state = self.resume_signal.wait(state).unwrap();
-                    }
+                state.jobs.pop_front().unwrap()
+            };
+            let first_frame = current_frame;
+
+            // 1. Given the current connections and scheduled changes, start rendering buffer’s length sample-frames of audio into buffer.
+            while current_frame < job.end_frame {
+                // 2. For every render quantum, check and suspend rendering if necessary.
+                {
+                    let mut state = self.rendering_state.lock().unwrap();
                     if state.shutting_down {
                         return;
                     }
-                }
-            }
-            let graph = unsafe { &mut *self.graph.get() };
-            graph.apply_control_messages(self.control_message_queue.drain());
-            let context = RenderContext {
-                sample_rate: f64::from(self.sample_rate),
-                quantum_size: self.quantum_size,
-                quantum_start_frame: current_frame,
-            };
-            graph.render_quantum(&context);
+                    state.next_suspend_check_frame = current_frame + self.quantum_size as u64;
+                    if state.suspend_frames.remove(&current_frame) {
+                        state.suspended = true;
+                        let suspend_time = current_frame as f64 / f64::from(self.sample_rate);
+                        self.post_to_control_thread(Notification::Suspended(suspend_time));
 
-            // Copy the destination's captured output into the rendered buffer.
-            if let Some(destination_node) = graph.destination() {
-                let destination_output = unsafe { &*destination_node.data().output(0) };
-                let frames_to_copy = self.quantum_size.min(self.length - current_frame as usize);
-                let rendered_channels = unsafe { &mut *self.rendered_channels.get() };
-                for channel_index in 0..self.number_of_channels {
-                    if channel_index >= destination_output.channel_count() {
-                        break;
-                    }
-                    let samples = destination_output.channel(channel_index);
-                    for frame in 0..frames_to_copy {
-                        rendered_channels[channel_index][current_frame as usize + frame] = samples[frame];
+                        // 3. If a suspended context is resumed, continue to render the buffer.
+                        state = self
+                            .rendering_state_changed
+                            .wait_while(state, |state| state.suspended && !state.shutting_down)
+                            .unwrap();
+                        if state.shutting_down {
+                            return;
+                        }
                     }
                 }
+                let graph = unsafe { &mut *self.graph.get() };
+                graph.apply_control_messages(self.control_message_queue.drain());
+                let context = RenderContext {
+                    sample_rate: f64::from(self.sample_rate),
+                    quantum_size: self.quantum_size,
+                    quantum_start_frame: current_frame,
+                };
+                graph.render_quantum(&context);
+
+                if let Some(destination_node) = graph.destination() {
+                    let destination_output = unsafe { &*destination_node.data().output(0) };
+                    let offset = (current_frame - first_frame) as usize;
+                    for (channel, samples) in job
+                        .channels
+                        .iter_mut()
+                        .enumerate()
+                        .take(destination_output.channel_count())
+                    {
+                        let frames_to_copy = self.quantum_size.min(samples.len() - offset);
+                        samples[offset..offset + frames_to_copy]
+                            .copy_from_slice(&destination_output.channel(channel)[..frames_to_copy]);
+                    }
+                }
+                current_frame += self.quantum_size as u64;
+                self.frames_rendered.store(current_frame, Ordering::SeqCst);
+                let ended_nodes = graph.take_ended_nodes(&context);
+                if !ended_nodes.is_empty() {
+                    self.post_to_control_thread(Notification::SourcesEnded(ended_nodes));
+                }
             }
-            current_frame += self.quantum_size as u64;
-            self.frames_rendered.store(current_frame, Ordering::SeqCst);
-            let ended_nodes = graph.take_ended_nodes(&context);
-            if !ended_nodes.is_empty() {
-                self.post_to_control_thread(Notification::SourcesEnded(ended_nodes));
-            }
+            self.post_to_control_thread(Notification::Complete(job));
         }
-        self.post_to_control_thread(Notification::Complete);
     }
 }

@@ -9,13 +9,14 @@
 #![allow(clippy::collapsible_if, reason = "preserve the C++ branch structure")]
 
 use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use ak::Utf16String;
-use libjs_rust::api::{CellRoot, EmbedderCell, GcRefCell, PromiseCapability, Trace, Value, Vm};
+use libjs_rust::api::{CellRoot, EmbedderCell, GcRefCell, Trace, Value, Vm};
 use libweb_rust::web_audio::rendering::offline_audio_renderer::{OfflineAudioRenderer, OfflineAudioRendererClient};
 
 use super::audio_array::overwrite_float32_array;
@@ -37,7 +38,7 @@ use crate::bindings::{CallContext, Exception, WebIdlResult};
 
 pub(crate) struct OfflineAudioContextOptions {
     pub number_of_channels: u32,
-    pub length: u32,
+    pub length: Option<u32>,
     pub sample_rate: f32,
     pub render_size_hint: AudioContextRenderSizeHint,
 }
@@ -47,10 +48,12 @@ pub(crate) struct OfflineAudioContextOptions {
 #[gc(crate = libjs_rust)]
 pub(crate) struct OfflineAudioContext {
     context: BaseAudioContext,
-    length: u32,
+    length: Option<u32>,
     number_of_channels: u32,
     rendering_started: Cell<bool>,
-    rendered_buffer: Cell<Option<Ref<AudioBuffer>>>,
+    rendered_buffers: GcRefCell<VecDeque<(u64, Ref<AudioBuffer>, WebIdlPromise)>>,
+    committed_frames: Cell<u64>,
+    rendered_frames: Cell<u64>,
     #[gc(untraced)]
     renderer: RefCell<Option<Arc<OfflineAudioRenderer>>>,
 
@@ -68,6 +71,12 @@ impl Wrappable for OfflineAudioContext {
     fn cpp_parent(&self) -> Option<NonNull<c_void>> {
         self.context.cpp_parent()
     }
+
+    const FINALIZES: bool = true;
+
+    fn finalize(context: Ref<Self>) {
+        context.document_became_inactive();
+    }
 }
 
 impl GetTheParent for OfflineAudioContext {
@@ -79,7 +88,6 @@ impl GetTheParent for OfflineAudioContext {
 struct RendererClient {
     vm: NonNull<Vm>,
     context: CellRoot<EmbedderCell<Wrapped<OfflineAudioContext>>>,
-    promise: CellRoot<PromiseCapability>,
 }
 
 impl RendererClient {
@@ -94,10 +102,10 @@ impl OfflineAudioRendererClient for RendererClient {
         self.context.cell().handle_suspended(self.vm(), suspend_time);
     }
 
-    fn rendering_completed(&self, rendered_channels: &[Vec<f32>]) {
+    fn rendering_completed(&self, end_frame: u64, rendered_channels: &[Vec<f32>]) {
         self.context
             .cell()
-            .finish_rendering(self.vm(), self.promise.cell(), rendered_channels);
+            .finish_rendering(self.vm(), end_frame, rendered_channels);
     }
 
     fn sources_ended(&self, nodes: &[u64]) {
@@ -123,7 +131,7 @@ impl OfflineAudioContext {
         // A NotSupportedError exception MUST be thrown if any of the arguments is negative, zero, or outside its nominal range.
         BaseAudioContext::verify_audio_options_inside_nominal_range(
             context_options.number_of_channels,
-            context_options.length,
+            context_options.length.unwrap_or(1),
             context_options.sample_rate,
         )?;
         let window = window_from_global_object(cx.realm().global_object())
@@ -136,7 +144,9 @@ impl OfflineAudioContext {
             length: context_options.length,
             number_of_channels: context_options.number_of_channels,
             rendering_started: Cell::new(false),
-            rendered_buffer: Cell::new(None),
+            rendered_buffers: GcRefCell::new(VecDeque::new()),
+            committed_frames: Cell::new(0),
+            rendered_frames: Cell::new(0),
             renderer: RefCell::new(None),
             suspend_promises: GcRefCell::new(Vec::new()),
         });
@@ -197,7 +207,7 @@ impl OfflineAudioContext {
             cx,
             OfflineAudioContextOptions {
                 number_of_channels,
-                length,
+                length: Some(length),
                 sample_rate,
                 render_size_hint: AudioContextRenderSizeHint::AudioContextRenderSizeCategory(
                     AudioContextRenderSizeCategory::Default,
@@ -207,7 +217,12 @@ impl OfflineAudioContext {
     }
 
     // https://webaudio.github.io/web-audio-api/#dom-offlineaudiocontext-startrendering
-    pub(crate) fn start_rendering(&self, cx: &mut CallContext, promise: WebIdlPromise) -> WebIdlResult<()> {
+    pub(crate) fn start_rendering(
+        &self,
+        cx: &mut CallContext,
+        promise: WebIdlPromise,
+        chunk_size: Option<u32>,
+    ) -> WebIdlResult<()> {
         // 1. If this’s relevant global object’s associated Document is not fully active then return a promise rejected with "InvalidStateError" DOMException.
         if !self.context.document_is_fully_active() {
             return Err(Exception::Dom(
@@ -227,37 +242,61 @@ impl OfflineAudioContext {
         // 2. Let promise be a new promise.
         // NB: The bindings create the promise.
 
-        // FIXME: 3. If the [[control thread state]] on the OfflineAudioContext is closed, reject promise with InvalidStateError and abort these steps.
-        // 4. If the OfflineAudioContext’s length is not null and [[committed frames]] is greater than or equal to OfflineAudioContext’s length, reject promise with InvalidStateError and abort these steps.
-        // NB: One-shot rendering commits the entire length on success.
-        if self.rendering_started.get() {
-            reject_promise_with_exception(
-                cx.vm(),
-                promise,
-                Exception::Dom(
-                    "InvalidStateError",
-                    Utf16String::from_ascii(b"Rendering is already started"),
-                ),
-            );
-            return Ok(());
+        // 3. If the [[control thread state]] on the OfflineAudioContext is closed, reject promise with InvalidStateError and abort these steps.
+        if self.context.control_state() == AudioContextState::Closed {
+            return Err(Exception::Dom(
+                "InvalidStateError",
+                Utf16String::from_ascii(b"The context is closed"),
+            ));
         }
 
-        // FIXME: 5. Let bufferLength be a number initialized to the value of the chunkSize.
-        // FIXME: 5.1. If the OfflineAudioContext’s length is null:
-        // FIXME: 5.1.1. If chunkSize is null, set bufferLength to render quantum size.
-        // FIXME: 5.2. Otherwise, if the OfflineAudioContext’s length is not null:
-        // FIXME: 5.2.1. If chunkSize is not null and [[committed frames]] + chunkSize is less than the OfflineAudioContext’s length, set bufferLength to chunkSize.
-        // FIXME: 5.2.2. Otherwise, set bufferLength to length - [[committed frames]].
-        // FIXME: 6. If bufferLength is not a multiple of render quantum size, round it up to the next multiple of the render quantum size.
+        // 4. If the OfflineAudioContext’s length is not null and [[committed frames]] is greater than or equal to OfflineAudioContext’s length, reject promise with InvalidStateError and abort these steps.
+        let committed_frames = self.committed_frames.get();
+        if self.length.is_some_and(|length| committed_frames >= u64::from(length)) {
+            return Err(Exception::Dom(
+                "InvalidStateError",
+                Utf16String::from_ascii(b"The context has already committed all its frames"),
+            ));
+        }
+
+        // 5. Let bufferLength be a number initialized to the value of the chunkSize.
+        let mut buffer_length = chunk_size.map(u64::from);
+        let render_quantum_size = u64::from(self.context.render_quantum_size_value());
+
+        // 5.1. If the OfflineAudioContext’s length is null:
+        if self.length.is_none() {
+            // 5.1.1. If chunkSize is null, set bufferLength to render quantum size.
+            if chunk_size.is_none() {
+                buffer_length = Some(render_quantum_size);
+            }
+        // 5.2. Otherwise, if the OfflineAudioContext’s length is not null:
+        } else if let Some(length) = self.length {
+            let remaining = u64::from(length) - committed_frames;
+            // 5.2.1. If chunkSize is not null and [[committed frames]] + chunkSize is less than the OfflineAudioContext’s length, set bufferLength to chunkSize.
+            if let Some(chunk_size) = chunk_size
+                && u64::from(chunk_size) < remaining
+            {
+                buffer_length = Some(u64::from(chunk_size));
+            } else {
+                // 5.2.2. Otherwise, set bufferLength to length - [[committed frames]].
+                buffer_length = Some(remaining);
+            }
+        }
+
+        // 6. If bufferLength is not a multiple of render quantum size, round it up to the next multiple of the render quantum size.
+        let mut buffer_length = buffer_length.unwrap().div_ceil(render_quantum_size) * render_quantum_size;
+        // AD-HOC: Trim the final finite chunk to length, as required by WPT.
+        if let Some(length) = self.length {
+            buffer_length = buffer_length.min(u64::from(length) - committed_frames);
+        }
 
         // 7. Create a new AudioBuffer buffer, with a number of channels and sample rate equal respectively to the numberOfChannels and sampleRate values passed to this instance’s constructor in the contextOptions parameter; and length equal to bufferLength.
-        // NB: Without chunked rendering, bufferLength is the context’s length.
-        let buffer_result = self.context.create_buffer(
-            cx,
-            self.number_of_channels,
-            self.length,
-            self.context.sample_rate_value(),
-        );
+        let buffer_result = u32::try_from(buffer_length)
+            .map_err(|_| Exception::range_error("The render buffer is too large"))
+            .and_then(|length| {
+                self.context
+                    .create_buffer(cx, self.number_of_channels, length, self.context.sample_rate_value())
+            });
 
         // 8. If an exception was thrown during the preceding AudioBuffer constructor call, reject promise with this exception and return promise.
         let buffer = match buffer_result {
@@ -272,12 +311,14 @@ impl OfflineAudioContext {
         self.rendering_started.set(true);
 
         // 10. Set [[committed frames]] to the sum of [[committed frames]] and the buffer’s length.
-        // NB: The one-shot rendering guard also records that all frames have been committed.
+        let end_frame = committed_frames + buffer_length;
+        self.committed_frames.set(end_frame);
 
         // 11. Append buffer to [[rendered buffers]] and begin offline rendering for buffer.
-        // NB: The one-shot renderer stores a single buffer.
-        self.rendered_buffer.set(Some(buffer));
-        self.begin_offline_rendering(cx.vm(), promise);
+        self.rendered_buffers
+            .borrow_mut(cx.vm())
+            .push_back((end_frame, buffer, promise));
+        self.begin_offline_rendering(cx.vm(), end_frame, buffer_length as usize);
 
         // 12. Append promise to [[pending promises]].
         self.context.pending_promises.borrow_mut(cx.vm()).push(promise);
@@ -287,64 +328,71 @@ impl OfflineAudioContext {
     }
 
     // https://webaudio.github.io/web-audio-api/#begin-offline-rendering
-    fn begin_offline_rendering(&self, vm: &Vm, promise: WebIdlPromise) {
-        // 1. Given the current connections and scheduled changes, start rendering buffer’s length sample-frames of audio into buffer.
-        // 2. For every render quantum, check and suspend rendering if necessary.
-        // 3. If a suspended context is resumed, continue to render the buffer.
-        let renderer = OfflineAudioRenderer::new(
-            Arc::clone(self.context.control_message_queue()),
-            self.context.destination_value().parent().node_id(),
-            self.number_of_channels as usize,
-            self.length as usize,
-            self.context.sample_rate_value(),
-            self.context.render_quantum_size_value() as usize,
-        );
-        *self.renderer.borrow_mut() = Some(Arc::clone(&renderer));
-        renderer.set_client(Some(Rc::new(RendererClient {
-            vm: NonNull::from(vm),
-            context: CellRoot::new(self.this()),
-            promise: CellRoot::new(promise),
-        })));
-        for (frame, _) in &*self.suspend_promises.borrow() {
-            renderer.request_suspend(*frame);
+    fn begin_offline_rendering(&self, vm: &Vm, end_frame: u64, length: usize) {
+        let mut renderer = self.renderer.borrow_mut();
+        let first_render = renderer.is_none();
+        let renderer = renderer.get_or_insert_with(|| {
+            let renderer = OfflineAudioRenderer::new(
+                Arc::clone(self.context.control_message_queue()),
+                self.context.destination_value().parent().node_id(),
+                self.number_of_channels as usize,
+                self.context.sample_rate_value(),
+                self.context.render_quantum_size_value() as usize,
+            );
+            for (frame, _) in &*self.suspend_promises.borrow() {
+                renderer.request_suspend(*frame);
+            }
+            renderer
+        });
+        if self.rendered_buffers.borrow().len() == 1 {
+            renderer.set_client(Some(Rc::new(RendererClient {
+                vm: NonNull::from(vm),
+                context: CellRoot::new(self.this()),
+            })));
         }
-
-        // AD-HOC: Other engines transition the context to "running" once rendering starts.
-        self.context.set_control_state(AudioContextState::Running);
-        self.context.set_state(AudioContextState::Running);
-        self.context.set_rendering_state(AudioContextState::Running);
-        self.queue_a_statechange_event(vm);
-        renderer.start_rendering();
+        if first_render {
+            // AD-HOC: Other engines transition the context to "running" once rendering starts.
+            self.context.set_control_state(AudioContextState::Running);
+            self.context.set_state(AudioContextState::Running);
+            self.context.set_rendering_state(AudioContextState::Running);
+            self.queue_a_statechange_event(vm);
+            renderer.start_rendering();
+        }
+        renderer.enqueue_rendering(end_frame, length);
     }
 
-    fn finish_rendering(&self, vm: &Vm, promise: WebIdlPromise, rendered_channels: &[Vec<f32>]) {
-        // NB: Copy the rendered samples into [[rendered buffer]].
-        let buffer = self.rendered_buffer.get().expect("offline rendering has a buffer");
+    fn finish_rendering(&self, vm: &Vm, end_frame: u64, rendered_channels: &[Vec<f32>]) {
+        let Some((_, buffer, promise)) = self
+            .rendered_buffers
+            .borrow()
+            .iter()
+            .find(|entry| entry.0 == end_frame)
+            .copied()
+        else {
+            return;
+        };
         let mut cx = CallContext::new(vm, self.context.realm());
-        for channel_index in 0..self.number_of_channels {
-            let channel_data = AudioBuffer::get_channel_data(&buffer, &mut cx, channel_index)
+        for (channel_index, samples) in rendered_channels.iter().enumerate() {
+            let channel_data = AudioBuffer::get_channel_data(&buffer, &mut cx, channel_index as u32)
                 .unwrap_or_else(|_| panic!("the rendered channel exists"));
-            overwrite_float32_array(&channel_data, &rendered_channels[channel_index as usize]);
+            overwrite_float32_array(&channel_data, samples);
         }
 
-        // AD-HOC: Other engines transition the context to "closed" once rendering completes.
-        self.context.set_control_state(AudioContextState::Closed);
-        self.context.set_state(AudioContextState::Closed);
-        self.context.set_rendering_state(AudioContextState::Closed);
-        self.queue_a_statechange_event(vm);
-
-        self.context.shutdown_audio_worklet();
-
-        // NB: Break the reference cycle between the renderer's callbacks and this context.
-        self.renderer.borrow().as_ref().unwrap().set_client(None);
-
         // 4. Once the rendering is complete, queue a media element task to execute the following steps:
-        self.context
-            .queue_a_media_element_task(vm, (self.this(), promise), |vm, (context, promise)| {
+        self.context.queue_a_media_element_task(
+            vm,
+            (self.this(), promise, buffer, end_frame),
+            |vm, (context, promise, buffer, end_frame)| {
+                if context
+                    .rendered_buffers
+                    .borrow()
+                    .front()
+                    .is_none_or(|entry| entry.0 != end_frame)
+                {
+                    return;
+                }
                 let realm = promise_realm(promise);
                 with_temporary_execution_context_and_callbacks(realm, || {
-                    let buffer = context.rendered_buffer.get().unwrap();
-
                     // 4.1. Resolve the promise created by startRendering() with buffer.
                     resolve_promise(
                         vm,
@@ -361,30 +409,53 @@ impl OfflineAudioContext {
                         .borrow_mut(vm)
                         .retain(|pending| *pending != promise);
 
-                    // FIXME: 4.3. Remove buffer from [[rendered buffers]].
-                    // FIXME: 4.4. Set [[rendered frames]] to the sum of [[rendered frames]] and the length of buffer.
+                    // 4.3. Remove buffer from [[rendered buffers]].
+                    context.rendered_buffers.borrow_mut(vm).pop_front();
+
+                    // 4.4. Set [[rendered frames]] to the sum of [[rendered frames]] and the length of buffer.
+                    context.rendered_frames.set(end_frame);
+
                     // 4.5. If length is not null:
-                    // NB: One-shot rendering always has a length.
-                    // 4.5.1. If [[rendered frames]] is greater than or equal to length, Queue a control message to close the OfflineAudioContext.
-                    // NB: The context was closed when rendering completed.
-                    // 4.5.2. Queue a media element task to fire an event named complete at the OfflineAudioContext using OfflineAudioCompletionEvent whose renderedBuffer property is set to buffer.
-                    context.context.queue_a_media_element_task(vm, context, |vm, context| {
-                        let event = CppEvent::create_for_owner(
-                            context.context.realm(),
-                            &Utf16String::from_ascii(b"complete"),
-                            false,
-                            false,
-                            false,
-                        );
-                        let event =
-                            OfflineAudioCompletionEvent::create(vm, event, context.rendered_buffer.get().unwrap());
-                        context.context.event_target().dispatch_event(&event.event);
-                    });
+                    if let Some(length) = context.length {
+                        // 4.5.1. If [[rendered frames]] is greater than or equal to length, Queue a control message to close the OfflineAudioContext.
+                        if context.rendered_frames.get() >= u64::from(length)
+                            && context.context.control_state() != AudioContextState::Closed
+                        {
+                            // AD-HOC: Close in this task rather than through a control message, so "closed" is visible
+                            //         by the time complete fires.
+                            context.context.set_control_state(AudioContextState::Closed);
+                            context.run_close_control_message(vm, None);
+                        }
+
+                        // 4.5.2. Queue a media element task to fire an event named complete at the OfflineAudioContext using OfflineAudioCompletionEvent whose renderedBuffer property is set to buffer.
+                        context
+                            .context
+                            .queue_a_media_element_task(vm, (context, buffer), |vm, (context, buffer)| {
+                                let event = CppEvent::create_for_owner(
+                                    context.context.realm(),
+                                    &Utf16String::from_ascii(b"complete"),
+                                    false,
+                                    false,
+                                    false,
+                                );
+                                let event = OfflineAudioCompletionEvent::create(vm, event, buffer);
+                                context.context.event_target().dispatch_event(&event.event);
+                            });
+                    }
+
+                    // NB: Only pending render jobs keep the context rooted through the renderer.
+                    if context.rendered_buffers.borrow().is_empty() {
+                        context.renderer.borrow().as_ref().unwrap().set_client(None);
+                    }
                 });
-            });
+            },
+        );
     }
 
     fn handle_suspended(&self, vm: &Vm, suspend_time: f64) {
+        if self.context.control_state() == AudioContextState::Closed {
+            return;
+        }
         self.context.set_control_state(AudioContextState::Suspended);
         self.context.set_state(AudioContextState::Suspended);
         self.context.set_rendering_state(AudioContextState::Suspended);
@@ -508,7 +579,13 @@ impl OfflineAudioContext {
             .borrow()
             .as_ref()
             .map_or(0, |renderer| renderer.frames_rendered());
-        if frame <= current_frame as f64 || frame >= f64::from(self.length) {
+        // AD-HOC: Allow suspending at the first frame before rendering starts, as required by WPT.
+        let is_initial_suspension = suspend_time == 0. && !self.rendering_started.get();
+        if self.context.control_state() == AudioContextState::Closed
+            || (!is_initial_suspension && frame <= current_frame as f64)
+            || self.length.is_some_and(|length| frame >= f64::from(length))
+            || frame >= u64::MAX as f64
+        {
             return Err(Exception::Dom(
                 "InvalidStateError",
                 Utf16String::from_ascii(b"The quantized suspend time is outside the remaining rendering interval"),
@@ -547,16 +624,115 @@ impl OfflineAudioContext {
     }
 
     // https://webaudio.github.io/web-audio-api/#dom-offlineaudiocontext-length
-    pub(crate) fn length(&self, _: &mut CallContext) -> WebIdlResult<u32> {
-        // The size of the buffer in sample-frames. This is the same as the value of the length parameter for the constructor.
+    pub(crate) fn length(&self, _: &mut CallContext) -> WebIdlResult<Option<u32>> {
         Ok(self.length)
     }
 
+    // https://webaudio.github.io/web-audio-api/#dom-offlineaudiocontext-close
+    pub(crate) fn close(&self, cx: &mut CallContext, promise: WebIdlPromise) -> WebIdlResult<()> {
+        // 1. If this’s relevant global object’s associated Document is not fully active then return a promise rejected with "InvalidStateError" DOMException.
+        if !self.context.document_is_fully_active() {
+            return Err(Exception::Dom(
+                "InvalidStateError",
+                Utf16String::from_ascii(b"The document is not fully active"),
+            ));
+        }
+
+        // 2. Let promise be a new Promise.
+        // NB: The bindings create the promise.
+
+        // 3. If the [[control thread state]] flag on the OfflineAudioContext is closed reject the promise with InvalidStateError, abort these steps, returning promise.
+        if self.context.control_state() == AudioContextState::Closed {
+            return Err(Exception::Dom(
+                "InvalidStateError",
+                Utf16String::from_ascii(b"The context is closed"),
+            ));
+        }
+
+        // 4. Set the [[control thread state]] flag on the OfflineAudioContext to closed.
+        self.context.set_control_state(AudioContextState::Closed);
+
+        // 5. Queue a control message to close the OfflineAudioContext.
+        self.run_close_control_message(cx.vm(), Some(promise));
+
+        // 6. Return promise.
+        Ok(())
+    }
+
+    // https://webaudio.github.io/web-audio-api/#dom-offlineaudiocontext-close
+    fn run_close_control_message(&self, vm: &Vm, promise: Option<WebIdlPromise>) {
+        // 1. Set the [[rendering thread state]] to suspended.
+        // Note: This will stop rendering.
+        self.context.set_rendering_state(AudioContextState::Suspended);
+        self.document_became_inactive();
+
+        // 2. If this control message is being run in a reaction to the document being unloaded, abort this algorithm.
+        // Note: There is no need to notify the control thread in this case.
+        // NB: Document cleanup stops the renderer directly.
+
+        // 3. queue a media element task to execute the following steps:
+        let finish = |vm: &Vm, (context, promise): (Ref<Self>, Option<WebIdlPromise>)| {
+            with_temporary_execution_context_and_callbacks(context.context.realm(), || {
+                // AD-HOC: Cancel outstanding rendering and suspension requests, as required by WPT.
+                context.cancel_pending_rendering(vm);
+                // 3.1. Resolve promise.
+                if let Some(promise) = promise {
+                    resolve_promise(vm, promise, Value::UNDEFINED);
+                }
+
+                // 3.2. If the state attribute of the OfflineAudioContext is not already "closed":
+                if context.context.state_value() != AudioContextState::Closed {
+                    // 3.2.1. Set the state attribute of the OfflineAudioContext to "closed".
+                    context.context.set_state(AudioContextState::Closed);
+
+                    // 3.2.2. queue a media element task to fire an event named statechange at the OfflineAudioContext.
+                    context.queue_a_statechange_event(vm);
+                }
+            });
+        };
+        if promise.is_some() {
+            self.context
+                .queue_a_media_element_task(vm, (self.this(), promise), finish);
+        } else {
+            // NB: The completed finite render is already settling in a media element task.
+            finish(vm, (self.this(), None));
+        }
+    }
+
+    fn cancel_pending_rendering(&self, vm: &Vm) {
+        loop {
+            let Some((_, _, promise)) = self.rendered_buffers.borrow().front().copied() else {
+                break;
+            };
+            reject_promise_with_exception(
+                vm,
+                promise,
+                Exception::Dom("AbortError", Utf16String::from_ascii(b"The context was closed")),
+            );
+            self.context
+                .pending_promises
+                .borrow_mut(vm)
+                .retain(|pending| *pending != promise);
+            self.rendered_buffers.borrow_mut(vm).pop_front();
+        }
+        loop {
+            let Some((_, promise)) = self.suspend_promises.borrow().last().copied() else {
+                break;
+            };
+            reject_promise_with_exception(
+                vm,
+                promise,
+                Exception::Dom("InvalidStateError", Utf16String::from_ascii(b"The context was closed")),
+            );
+            self.suspend_promises.borrow_mut(vm).pop();
+        }
+    }
+
     pub(crate) fn document_became_inactive(&self) {
-        self.context.shutdown_audio_worklet();
         if let Some(renderer) = &*self.renderer.borrow() {
             renderer.stop();
             renderer.set_client(None);
         }
+        self.context.shutdown_audio_worklet();
     }
 }
