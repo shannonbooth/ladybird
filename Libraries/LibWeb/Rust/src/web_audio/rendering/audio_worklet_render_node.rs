@@ -28,20 +28,22 @@ impl NodeProcessor for AudioWorkletRenderNode {
 
     unsafe fn process(&mut self, data: &RenderNodeData, graph: &RenderGraph, context: &RenderContext) {
         unsafe {
+            data.actively_processing.set(Some(false));
             // A failed (processor threw) or shut-down (node finalized / context closed) worklet renders
             // silence forever; the pump side owns the state transitions.
             if self.pipe.state() != WorkletPipeState::Running {
                 for output in 0..data.output_count() {
-                    BusRef(data.output(output)).zero();
+                    let output_bus = BusRef(data.output(output));
+                    output_bus.set_channel_count(1);
+                    output_bus.zero();
                 }
                 return;
             }
             self.pipe.try_push_input(|slot| {
                 AudioWorkletPipe::set_start_frame(slot, context.quantum_start_frame);
                 for input in 0..data.input_count() {
-                    // Unlike the render graph's silent mono bus, an unconnected worklet input
-                    // is represented by an empty channel array in process().
-                    if (&*data.input_connections.get())[input].is_empty() {
+                    // https://webaudio.github.io/web-audio-api/#audioworkletprocess-callback-parameters
+                    if !data.input_is_actively_processing(graph, context, input) {
                         *self.pipe.channel_count(slot, false, input) = 0;
                         continue;
                     }
@@ -70,6 +72,7 @@ impl NodeProcessor for AudioWorkletRenderNode {
                 self.pipe.wait_for_offline_output();
             }
             let popped = self.pipe.try_pop_output(|slot| {
+                data.actively_processing.set(Some(AudioWorkletPipe::flag(slot)));
                 for output in 0..data.output_count() {
                     let output_bus = BusRef(data.output(output));
                     let channel_count = (*self.pipe.channel_count(slot, true, output) as usize)
@@ -87,7 +90,9 @@ impl NodeProcessor for AudioWorkletRenderNode {
             });
             if !popped {
                 for output in 0..data.output_count() {
-                    BusRef(data.output(output)).zero();
+                    let output_bus = BusRef(data.output(output));
+                    output_bus.set_channel_count(1);
+                    output_bus.zero();
                 }
                 return;
             }

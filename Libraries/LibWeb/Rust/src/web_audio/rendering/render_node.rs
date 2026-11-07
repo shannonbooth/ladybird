@@ -243,6 +243,7 @@ pub struct RenderNodeData {
     pub(super) is_delay: bool,
     pub(super) is_cycle_breaker: std::cell::Cell<bool>,
     pub(super) is_muted: std::cell::Cell<bool>,
+    pub(super) actively_processing: std::cell::Cell<Option<bool>>,
 }
 
 // SAFETY: Render-node data is transferred to one rendering thread before it is accessed.
@@ -281,6 +282,7 @@ impl RenderNodeData {
             is_delay: false,
             is_cycle_breaker: std::cell::Cell::new(false),
             is_muted: std::cell::Cell::new(false),
+            actively_processing: std::cell::Cell::new(None),
         }
     }
 
@@ -311,6 +313,18 @@ impl RenderNodeData {
             *self.outgoing_node_connections.get() = node_connections;
             *self.outgoing_param_connections.get() = param_connections;
         }
+    }
+
+    pub(super) fn input_is_actively_processing(
+        &self,
+        graph: &super::render_graph::RenderGraph,
+        context: &RenderContext,
+        input_index: usize,
+    ) -> bool {
+        let input_connections = unsafe { &*self.input_connections.get() };
+        input_connections[input_index]
+            .iter()
+            .any(|connection| graph.is_actively_processing(connection.source, context))
     }
 
     // Pulls and mixes all connections to the given input into a single bus with the input's computed number of channels.

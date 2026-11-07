@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const context = new OfflineAudioContext(1, 640, 32768);
+        const url = URL.createObjectURL(new Blob([`
+            class TestActivity extends AudioWorkletProcessor {
+                process(inputs, outputs) {
+                    outputs[0][0].fill(inputs[0].length === 0 ? 10 : 20);
+                    return false;
+                }
+            }
+            registerProcessor("test-activity", TestActivity);
+            class TestReactivation extends AudioWorkletProcessor {
+                process(inputs, outputs) {
+                    outputs[0][0].fill(1);
+                    return currentFrame >= 256;
+                }
+            }
+            registerProcessor("test-reactivation", TestReactivation);
+        `], { type: "text/javascript" }));
+        try {
+            await context.audioWorklet.addModule(url);
+            const source = new ConstantSourceNode(context, { offset: 0 });
+            const gain = new GainNode(context);
+            const worklet = new AudioWorkletNode(context, "test-activity");
+            source.connect(gain).connect(worklet).connect(context.destination);
+            source.start(128 / context.sampleRate);
+            source.stop(384 / context.sampleRate);
+            const samples = (await context.startRendering()).getChannelData(0);
+            println(`Output by block: ${[0, 128, 256, 384, 512].map(frame => samples[frame])}`);
+
+            // An input that starts after process() returned false makes the node process again.
+            const restarted = new OfflineAudioContext(1, 768, 32768);
+            await restarted.audioWorklet.addModule(url);
+            const restartedWorklet = new AudioWorkletNode(restarted, "test-activity");
+            for (const [start, stop] of [[128, 256], [512, 640]]) {
+                const source = new ConstantSourceNode(restarted, { offset: 0 });
+                source.connect(restartedWorklet);
+                source.start(start / restarted.sampleRate);
+                source.stop(stop / restarted.sampleRate);
+            }
+            restartedWorklet.connect(restarted.destination);
+            const restartedSamples = (await restarted.startRendering()).getChannelData(0);
+            println(`Restarted input by block: ${[0, 128, 256, 384, 512, 640].map(frame => restartedSamples[frame])}`);
+
+            // Returning true while an input is active keeps the node processing after the input stops.
+            const reactivated = new OfflineAudioContext(1, 640, 32768);
+            await reactivated.audioWorklet.addModule(url);
+            const reactivatedSource = new ConstantSourceNode(reactivated, { offset: 0 });
+            const reactivatedWorklet = new AudioWorkletNode(reactivated, "test-reactivation");
+            reactivatedSource.connect(reactivatedWorklet).connect(reactivated.destination);
+            reactivatedSource.start(256 / reactivated.sampleRate);
+            reactivatedSource.stop(384 / reactivated.sampleRate);
+            const reactivatedSamples = (await reactivated.startRendering()).getChannelData(0);
+            println(`Reactivated by block: ${[0, 128, 256, 384, 512].map(frame => reactivatedSamples[frame])}`);
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    });
+</script>

@@ -31,6 +31,7 @@ pub(crate) struct AudioWorkletProcessor {
     global_scope: CppCell,
     pub(super) node_reference: Ref<AudioWorkletNode>,
     pub(super) callable_process: Cell<bool>,
+    pub(super) active_source: Cell<bool>,
     port: Ref<MessagePort>,
 }
 
@@ -70,6 +71,7 @@ impl AudioWorkletProcessor {
 
             // 4. Set processor’s [[callable process]] to true.
             callable_process: Cell::new(true),
+            active_source: Cell::new(true),
 
             // 5. Let deserializedPort be the result of looking up transferred port from the pending processor construction data.
             port: {

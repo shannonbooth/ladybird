@@ -45,6 +45,7 @@ impl NodeProcessor for MediaStreamSourceRenderNode {
             // The number of channels of the output corresponds to the number of channels of the track.
             source_output.set_channel_count(self.channel_count as usize);
             source_output.zero();
+            data.actively_processing.set(Some(false));
             let Some(ring) = &self.ring else {
                 return;
             };
@@ -60,6 +61,8 @@ impl NodeProcessor for MediaStreamSourceRenderNode {
             self.interleaved_scratch
                 .resize(frames_to_pop * self.channel_count as usize, 0.);
             let frames_popped = ring.try_pop(&mut self.interleaved_scratch);
+            // AD-HOC: The spec keeps a live, unmuted, enabled track active even when no frames have arrived.
+            data.actively_processing.set(Some(frames_popped != 0));
             for channel_index in 0..self.channel_count as usize {
                 let output_samples = source_output.channel_mut(channel_index);
                 for frame in 0..frames_popped {

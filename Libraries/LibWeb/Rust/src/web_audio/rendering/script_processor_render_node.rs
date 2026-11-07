@@ -27,6 +27,7 @@ impl NodeProcessor for ScriptProcessorRenderNode {
             let output_bus = BusRef(data.output(0));
             output_bus.set_channel_count(self.pipe.config.output_channel_count.max(1));
             output_bus.zero();
+            data.actively_processing.set(Some(false));
             if self.pipe.is_shut_down() {
                 return;
             }
@@ -40,6 +41,7 @@ impl NodeProcessor for ScriptProcessorRenderNode {
             {
                 return;
             }
+            data.actively_processing.set(Some(true));
             let config = &self.pipe.config;
             let input_bus = if config.input_channel_count > 0 {
                 Some(BusRef(data.pull_input(graph, context, 0).cast_mut()))

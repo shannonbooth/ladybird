@@ -476,9 +476,7 @@ impl AudioWorkletNode {
         ));
         context.add_audio_worklet_pipe(Arc::clone(&pipe));
 
-        // FIXME: Implement the spec's actively-processing keep-alive (drop this when the processor's
-        //        process() return value has been false and inputs are silent). For now a live worklet
-        //        node stays registered with the context until the context goes away.
+        // https://webaudio.github.io/web-audio-api/#active-source
         context.add_playing_source(vm, AnyAudioNode::AudioWorkletNode(node));
 
         // 8. Queue a control message to invoke the constructor of the corresponding AudioWorkletProcessor.
@@ -562,6 +560,7 @@ impl AudioWorkletNode {
                     if pipe.state() != WorkletPipeState::ShutDown {
                         pipe.set_state(WorkletPipeState::Failed);
                     }
+                    self.node.context_value().remove_playing_source(vm, self.node.node_id());
                     self.fire_processor_error(error.value());
                     None
                 }
@@ -616,6 +615,19 @@ impl AudioWorkletNode {
                 let _ = unsafe {
                     pipe.try_read_input(|input_slot| {
                         processed_one = true;
+
+                        let has_active_input =
+                            (0..config.input_count).any(|input| input_slot.actual_channel_count(input) != 0);
+                        // AD-HOC: The spec calls process() for every live AudioWorkletNode, even an inactive one.
+                        if !processor.active_source.get() && !has_active_input {
+                            output_full = !pipe.try_write_output(|output_slot| {
+                                output_slot.set_start_frame(input_slot.start_frame());
+                                for output in 0..config.output_count {
+                                    output_slot.set_actual_channel_count(output, 0);
+                                }
+                            });
+                            return;
+                        }
 
                         // https://webaudio.github.io/web-audio-api/#rendering-loop — currentFrame/currentTime
                         // reflect the block being processed.
@@ -764,12 +776,21 @@ impl AudioWorkletNode {
                             return;
                         }
 
-                        let processor_active = result.to_boolean();
+                        // 4.4.4.12.5. Set processor’s active source flag to ToBoolean(callResult.[[Value]]).
+                        let active_source = result.to_boolean();
+                        if processor.active_source.replace(active_source) != active_source {
+                            let context = self.node.context_value();
+                            if active_source {
+                                context.add_playing_source(vm, AnyAudioNode::AudioWorkletNode(self.this()));
+                            } else {
+                                context.remove_playing_source(vm, self.node.node_id());
+                            }
+                        }
 
                         // Push the processed quantum back; read outputs defensively (detached → silence).
                         let pushed = pipe.try_write_output(|output_slot| {
                             output_slot.set_start_frame(input_slot.start_frame());
-                            output_slot.set_processor_active(processor_active);
+                            output_slot.set_processor_active(true);
                             for output in 0..config.output_count {
                                 let channel_count = output_channel_count(output);
                                 output_slot.set_actual_channel_count(output, channel_count as u32);
@@ -813,6 +834,9 @@ impl AudioWorkletNode {
                     processor.callable_process.set(false);
 
                     // 4.4.4.13.3.2. Set processor’s active source flag to false.
+                    processor.active_source.set(false);
+                    self.node.context_value().remove_playing_source(vm, self.node.node_id());
+
                     // 4.4.4.13.3.3. Make a silent output buffer available for reading.
                     // NB: A failed pipe renders silence.
                     pipe.set_state(WorkletPipeState::Failed);

@@ -273,6 +273,13 @@ impl ScheduledSourceRenderNode {
         self.start_time.is_some_and(|start_time| time >= start_time) && time < self.stop_time && !self.content_ended
     }
 
+    fn is_active_in_quantum(&self, context: &RenderContext) -> bool {
+        self.start_time.is_some_and(|start_time| {
+            start_time.max(context.quantum_start_time()) < self.stop_time.min(context.frame_time(context.quantum_size))
+                && !self.content_ended
+        })
+    }
+
     // https://webaudio.github.io/web-audio-api/#dom-audioscheduledsourcenode-onended
     fn has_ended(&self, context: &RenderContext) -> bool {
         self.start_time.is_some() && (self.content_ended || context.frame_time(context.quantum_size) >= self.stop_time)
@@ -306,6 +313,8 @@ impl ConstantSourceRenderNode {
 impl NodeProcessor for ConstantSourceRenderNode {
     unsafe fn process(&mut self, data: &RenderNodeData, graph: &RenderGraph, context: &RenderContext) {
         self.source.process(context);
+        data.actively_processing
+            .set(Some(self.source.is_active_in_quantum(context)));
         unsafe {
             self.process_source(data, graph, context);
         }
@@ -445,6 +454,8 @@ impl OscillatorRenderNode {
 impl NodeProcessor for OscillatorRenderNode {
     unsafe fn process(&mut self, data: &RenderNodeData, graph: &RenderGraph, context: &RenderContext) {
         self.source.process(context);
+        data.actively_processing
+            .set(Some(self.source.is_active_in_quantum(context)));
         unsafe {
             self.process_source(data, graph, context);
         }
@@ -552,7 +563,10 @@ impl AudioBufferSourceRenderNode {
             let source_output = BusRef(data.output(0));
             source_output.set_channel_count(self.buffer.as_ref().map_or(1, |buffer| buffer.channels.len()));
             source_output.zero();
+            data.actively_processing.set(Some(false));
             if self.buffer.is_none() || !self.source.has_started() {
+                data.actively_processing
+                    .set(Some(self.source.is_active_in_quantum(context)));
                 return;
             }
 
@@ -639,6 +653,7 @@ impl AudioBufferSourceRenderNode {
                     self.source.content_ended = true;
                     continue;
                 }
+                data.actively_processing.set(Some(true));
                 if self.playhead >= 0. && self.playhead < buffer_length {
                     for channel_index in 0..buffer.channels.len() {
                         source_output.channel_mut(channel_index)[frame] =
@@ -647,6 +662,9 @@ impl AudioBufferSourceRenderNode {
                 }
                 self.playhead += playhead_increment;
                 self.played_time += computed_playback_rate.abs() / context.sample_rate;
+            }
+            if data.actively_processing.get() == Some(false) {
+                source_output.set_channel_count(1);
             }
         }
     }

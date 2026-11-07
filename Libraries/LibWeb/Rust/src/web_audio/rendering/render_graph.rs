@@ -135,18 +135,46 @@ impl RenderGraph {
         unsafe { data.output(output_index) }
     }
 
+    pub(super) fn is_actively_processing(&self, node_id: u64, context: &RenderContext) -> bool {
+        self.node(node_id).is_some_and(|node| {
+            self.process_node(node, context);
+            node.data().actively_processing.get().unwrap_or(false)
+        })
+    }
+
     fn process_node(&self, node: &NodeHandle, context: &RenderContext) {
         let data = node.data();
         if data.processed_quantum.get() == self.current_quantum.get() || data.is_processing.get() {
             return;
         }
+        data.actively_processing.set(None);
         if data.is_muted.get() {
+            data.actively_processing.set(Some(false));
             for index in 0..data.output_count() {
                 unsafe { &mut *data.output(index) }.zero();
             }
         } else {
             data.is_processing.set(true);
             unsafe { node.node.process(self, context) };
+
+            // https://webaudio.github.io/web-audio-api/#actively-processing
+            if data.actively_processing.get().is_none() {
+                let actively_processing = if data.is_cycle_breaker.get() {
+                    (0..data.output_count()).any(|index| {
+                        let output = unsafe { &*data.output(index) };
+                        (0..output.channel_count()).any(|channel| {
+                            output
+                                .channel(channel)
+                                .iter()
+                                .any(|sample| sample.abs() >= f32::MIN_POSITIVE)
+                        })
+                    })
+                } else {
+                    (0..data.input_count()).any(|index| data.input_is_actively_processing(self, context, index))
+                        || (0..data.output_count()).any(|index| !unsafe { &*data.output(index) }.is_silent())
+                };
+                data.actively_processing.set(Some(actively_processing));
+            }
             data.is_processing.set(false);
         }
         data.processed_quantum.set(self.current_quantum.get());

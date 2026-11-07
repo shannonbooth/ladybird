@@ -337,6 +337,10 @@ impl BaseAudioContext {
         }
     }
 
+    pub(crate) fn remove_playing_source(&self, vm: &Vm, node_id: u64) {
+        self.playing_sources.borrow_mut(vm).retain(|entry| entry.0 != node_id);
+    }
+
     pub(crate) fn add_script_processor_node(&self, vm: &Vm, node: Ref<ScriptProcessorNode>) {
         let mut nodes = self.script_processor_nodes.borrow_mut();
         nodes.retain(|node| node.get().is_some());
