@@ -7,7 +7,7 @@
 
 use libjs_rust::api::{Trace, Vm};
 
-use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate};
+use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate, ParameterType};
 use super::base_audio_context::AnyBaseAudioContext;
 use crate::bindings::interface::{Ref, Wrappable, allocate};
 use crate::bindings::{CallContext, WebIdlResult};
@@ -40,6 +40,7 @@ impl AudioListener {
                 f32::MAX,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
             forward_y: AudioParam::create(
                 vm,
@@ -50,6 +51,7 @@ impl AudioListener {
                 f32::MAX,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
             forward_z: AudioParam::create(
                 vm,
@@ -60,6 +62,7 @@ impl AudioListener {
                 f32::MAX,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
             position_x: AudioParam::create(
                 vm,
@@ -70,6 +73,7 @@ impl AudioListener {
                 f32::MAX,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
             position_y: AudioParam::create(
                 vm,
@@ -80,6 +84,7 @@ impl AudioListener {
                 f32::MAX,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
             position_z: AudioParam::create(
                 vm,
@@ -90,6 +95,7 @@ impl AudioListener {
                 f32::MAX,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
             up_x: AudioParam::create(
                 vm,
@@ -100,6 +106,7 @@ impl AudioListener {
                 f32::MAX,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
             up_y: AudioParam::create(
                 vm,
@@ -110,6 +117,7 @@ impl AudioListener {
                 f32::MAX,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
             up_z: AudioParam::create(
                 vm,
@@ -120,6 +128,7 @@ impl AudioListener {
                 f32::MAX,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
         })
     }

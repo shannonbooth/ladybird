@@ -15,7 +15,7 @@ use libweb_rust::web_audio::rendering::render_nodes::create_passthrough_render_n
 use super::audio_node::{
     AnyAudioNode, AudioNode, AudioNodeDefaultOptions, AudioNodeOptions, ChannelCountMode, ChannelInterpretation,
 };
-use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate};
+use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate, ParameterType};
 use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
 use crate::bindings::event_target::{CppEventTarget, GetTheParent};
 use crate::bindings::interface::{Inherits, Ref, Wrappable, allocate};
@@ -106,6 +106,7 @@ impl DynamicsCompressorNode {
                 0.,
                 AutomationRate::KRate,
                 FixedAutomationRate::Yes,
+                ParameterType::Simple,
             ),
             knee: AudioParam::create(
                 cx.vm(),
@@ -116,6 +117,7 @@ impl DynamicsCompressorNode {
                 40.,
                 AutomationRate::KRate,
                 FixedAutomationRate::Yes,
+                ParameterType::Simple,
             ),
             ratio: AudioParam::create(
                 cx.vm(),
@@ -126,6 +128,7 @@ impl DynamicsCompressorNode {
                 20.,
                 AutomationRate::KRate,
                 FixedAutomationRate::Yes,
+                ParameterType::Simple,
             ),
             attack: AudioParam::create(
                 cx.vm(),
@@ -136,6 +139,7 @@ impl DynamicsCompressorNode {
                 1.,
                 AutomationRate::KRate,
                 FixedAutomationRate::Yes,
+                ParameterType::Simple,
             ),
             release: AudioParam::create(
                 cx.vm(),
@@ -146,6 +150,7 @@ impl DynamicsCompressorNode {
                 1.,
                 AutomationRate::KRate,
                 FixedAutomationRate::Yes,
+                ParameterType::Simple,
             ),
             reduction: 0.,
         });

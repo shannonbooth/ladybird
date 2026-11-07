@@ -13,7 +13,7 @@ use libjs_rust::api::Trace;
 use libweb_rust::web_audio::rendering::render_nodes::create_constant_source_render_node;
 
 use super::audio_node::AnyAudioNode;
-use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate};
+use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate, ParameterType};
 use super::audio_scheduled_source_node::AudioScheduledSourceNode;
 use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
 use crate::bindings::event_target::{CppEventTarget, GetTheParent};
@@ -83,6 +83,7 @@ impl ConstantSourceNode {
                 f32::MAX,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
         });
         node.node.parent().set_this(AnyAudioNode::ConstantSourceNode(node));

@@ -42,6 +42,12 @@ pub enum AutomationRate {
     KRate,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ParameterType {
+    Simple,
+    Compound,
+}
+
 struct Input {
     source: u64,
     output_index: usize,
@@ -59,11 +65,12 @@ pub struct RenderAudioParam {
     timeline: Arc<AudioParamTimeline>,
     min_value: f32,
     max_value: f32,
+    parameter_type: ParameterType,
     automation_rate: AtomicU8,
     state: UnsafeCell<RenderAudioParamState>,
 }
 
-// SAFETY: Only the rendering thread accesses state, and other threads use only the atomic automation rate.
+// SAFETY: Only the rendering thread accesses state.
 unsafe impl Send for RenderAudioParam {}
 unsafe impl Sync for RenderAudioParam {}
 
@@ -72,6 +79,7 @@ impl RenderAudioParam {
         timeline: Arc<AudioParamTimeline>,
         min_value: f32,
         max_value: f32,
+        parameter_type: ParameterType,
         automation_rate: AutomationRate,
         quantum_size: usize,
     ) -> Self {
@@ -79,12 +87,21 @@ impl RenderAudioParam {
             timeline,
             min_value,
             max_value,
+            parameter_type,
             automation_rate: AtomicU8::new(automation_rate as u8),
             state: UnsafeCell::new(RenderAudioParamState {
                 inputs: Vec::new(),
                 input_scratch: AudioBus::new(1, quantum_size),
             }),
         }
+    }
+
+    pub fn min_value(&self) -> f32 {
+        self.min_value
+    }
+
+    pub fn max_value(&self) -> f32 {
+        self.max_value
     }
 
     pub fn set_automation_rate(&self, automation_rate: AutomationRate) {
@@ -155,21 +172,15 @@ impl RenderAudioParam {
         }
 
         // 4. If this AudioParam is a compound parameter, compute its final value with other AudioParams.
-        // NB: None of the AudioParams backed by a render node are compound parameters.
+        // NB: The render node combines the components before applying the compound range.
 
         // 5. Set computedValue to paramComputedValue.
 
-        // NB: The computedValue is clamped to the simple nominal range for this parameter.
         // https://webaudio.github.io/web-audio-api/#simple-nominal-range
-        for value in output {
-            assert!(self.max_value >= self.min_value);
-            *value = if *value > self.max_value {
-                self.max_value
-            } else if *value < self.min_value {
-                self.min_value
-            } else {
-                *value
-            };
+        if self.parameter_type == ParameterType::Simple {
+            for value in output {
+                *value = value.clamp(self.min_value, self.max_value);
+            }
         }
     }
 }

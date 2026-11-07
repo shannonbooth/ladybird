@@ -434,6 +434,10 @@ impl OscillatorRenderNode {
                 // NB: The computed frequency is clamped to the Nyquist frequency.
                 let mut computed_frequency =
                     f64::from(self.frequency_values[frame]) * math::exp2(f64::from(self.detune_values[frame]) / 1200.);
+                // AD-HOC: The spec only replaces NaN in each component, but 0 * inf is NaN.
+                if computed_frequency.is_nan() {
+                    computed_frequency = 0.;
+                }
                 computed_frequency = clamp(computed_frequency, -nyquist_frequency, nyquist_frequency);
                 output_samples[frame] = self.sample_waveform(self.phase, computed_frequency, nyquist_frequency);
                 self.phase += 2. * PI * computed_frequency / context.sample_rate;
@@ -565,8 +569,12 @@ impl AudioBufferSourceRenderNode {
             // NB: The playback rate is k-rate, so a single computed value is used for the entire quantum. The playhead is
             //     tracked in buffer sample frames so that unity-rate playback of a buffer at the context's sample rate
             //     advances by exactly one frame per rendered frame and reproduces the buffer bit-exactly.
-            let computed_playback_rate =
+            let mut computed_playback_rate =
                 f64::from(self.playback_rate_values[0]) * math::exp2(f64::from(self.detune_values[0]) / 1200.);
+            // AD-HOC: The spec only replaces NaN in each component, but 0 * inf is NaN.
+            if computed_playback_rate.is_nan() {
+                computed_playback_rate = 0.;
+            }
             let buffer = self.buffer.as_ref().unwrap();
             let buffer_sample_rate = f64::from(buffer.sample_rate);
             let playhead_increment = computed_playback_rate * buffer_sample_rate / context.sample_rate;
@@ -907,8 +915,12 @@ impl NodeProcessor for BiquadFilterRenderNode {
             }
             let nyquist_frequency = context.sample_rate / 2.;
             let compute_coefficients_for_frame = |frame: usize| {
-                let computed_frequency =
+                let mut computed_frequency =
                     f64::from(self.frequency_values[frame]) * math::exp2(f64::from(self.detune_values[frame]) / 1200.);
+                // AD-HOC: The spec only replaces NaN in each component, but 0 * inf is NaN.
+                if computed_frequency.is_nan() {
+                    computed_frequency = 0.;
+                }
                 let normalized_frequency = clamp(computed_frequency / nyquist_frequency, 0., 1.);
                 compute_biquad_coefficients(
                     self.r#type,

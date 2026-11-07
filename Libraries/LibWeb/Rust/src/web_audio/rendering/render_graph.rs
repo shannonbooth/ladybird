@@ -313,7 +313,7 @@ mod tests {
     use crate::web_audio::rendering::node_message::{NodeMessage, StartSource, StopSource};
     use crate::web_audio::rendering::render_node::{
         AutomationRate, ChannelCountMode, ChannelInterpretation, OutgoingNodeConnection, OutgoingParamConnection,
-        RenderAudioParam,
+        ParameterType, RenderAudioParam,
     };
     use crate::web_audio::rendering::render_nodes::{
         create_channel_merger_render_node, create_constant_source_render_node, create_destination_render_node,
@@ -324,7 +324,14 @@ mod tests {
     #[test]
     fn control_queue_rendering_and_ended_node_retirement() {
         let timeline = Arc::new(AudioParamTimeline::new(0.75));
-        let param = Arc::new(RenderAudioParam::new(timeline, -1., 1., AutomationRate::ARate, 4));
+        let param = Arc::new(RenderAudioParam::new(
+            timeline,
+            -1.,
+            1.,
+            ParameterType::Simple,
+            AutomationRate::ARate,
+            4,
+        ));
         let queue = ControlMessageQueue::default();
         queue.enqueue(ControlMessage::SetChannelConfig(SetChannelConfig {
             node_id: 1,
@@ -391,6 +398,7 @@ mod tests {
             Arc::new(AudioParamTimeline::new(0.5)),
             -1.,
             1.,
+            ParameterType::Simple,
             AutomationRate::ARate,
             context.quantum_size,
         ));
@@ -398,6 +406,7 @@ mod tests {
             Arc::new(AudioParamTimeline::new(1.)),
             f32::MIN,
             f32::MAX,
+            ParameterType::Simple,
             AutomationRate::ARate,
             context.quantum_size,
         ));

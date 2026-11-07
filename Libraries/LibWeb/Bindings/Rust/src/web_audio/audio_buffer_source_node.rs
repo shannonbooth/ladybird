@@ -21,7 +21,7 @@ use super::audio_buffer::AudioBuffer;
 use super::audio_node::{
     AnyAudioNode, AudioNodeDefaultOptions, AudioNodeOptions, ChannelCountMode, ChannelInterpretation,
 };
-use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate};
+use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate, ParameterType};
 use super::audio_scheduled_source_node::AudioScheduledSourceNode;
 use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
 use crate::bindings::event_target::{CppEventTarget, GetTheParent};
@@ -261,6 +261,7 @@ impl AudioBufferSourceNode {
                 f32::MAX,
                 AutomationRate::KRate,
                 FixedAutomationRate::Yes,
+                ParameterType::Compound,
             ),
             detune: AudioParam::create(
                 cx.vm(),
@@ -271,6 +272,7 @@ impl AudioBufferSourceNode {
                 f32::MAX,
                 AutomationRate::KRate,
                 FixedAutomationRate::Yes,
+                ParameterType::Compound,
             ),
             r#loop: Cell::new(options.r#loop),
             loop_start: Cell::new(options.loop_start),

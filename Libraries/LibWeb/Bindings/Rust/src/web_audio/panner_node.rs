@@ -18,7 +18,7 @@ use libweb_rust::web_audio::rendering::render_nodes::create_panner_render_node;
 use super::audio_node::{
     AnyAudioNode, AudioNode, AudioNodeDefaultOptions, AudioNodeOptions, ChannelCountMode, ChannelInterpretation,
 };
-use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate};
+use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate, ParameterType};
 use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
 use crate::bindings::event_target::{CppEventTarget, GetTheParent};
 use crate::bindings::interface::{Inherits, Ref, Wrappable, allocate};
@@ -156,6 +156,7 @@ impl PannerNode {
                 f32::MAX,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
             position_y: AudioParam::create(
                 cx.vm(),
@@ -166,6 +167,7 @@ impl PannerNode {
                 f32::MAX,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
             position_z: AudioParam::create(
                 cx.vm(),
@@ -176,6 +178,7 @@ impl PannerNode {
                 f32::MAX,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
             orientation_x: AudioParam::create(
                 cx.vm(),
@@ -186,6 +189,7 @@ impl PannerNode {
                 f32::MAX,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
             orientation_y: AudioParam::create(
                 cx.vm(),
@@ -196,6 +200,7 @@ impl PannerNode {
                 f32::MAX,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
             orientation_z: AudioParam::create(
                 cx.vm(),
@@ -206,6 +211,7 @@ impl PannerNode {
                 f32::MAX,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
             distance_model: Cell::new(options.distance_model),
             ref_distance: Cell::new(options.ref_distance),

@@ -1,0 +1,5 @@
+OscillatorNode: true
+BiquadFilterNode: true
+OscillatorNode recovers from a NaN combined value: true
+BiquadFilterNode recovers from a NaN combined value: true
+AudioBufferSourceNode recovers from a NaN combined value: true

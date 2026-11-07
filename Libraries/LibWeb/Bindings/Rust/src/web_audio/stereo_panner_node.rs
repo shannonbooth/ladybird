@@ -16,7 +16,7 @@ use libweb_rust::web_audio::rendering::render_nodes::create_stereo_panner_render
 use super::audio_node::{
     AnyAudioNode, AudioNode, AudioNodeDefaultOptions, AudioNodeOptions, ChannelCountMode, ChannelInterpretation,
 };
-use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate};
+use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate, ParameterType};
 use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
 use crate::bindings::event_target::{CppEventTarget, GetTheParent};
 use crate::bindings::interface::{Inherits, Ref, Wrappable, allocate};
@@ -88,6 +88,7 @@ impl StereoPannerNode {
                 1.,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
         });
         node.node.set_this(AnyAudioNode::StereoPannerNode(node));

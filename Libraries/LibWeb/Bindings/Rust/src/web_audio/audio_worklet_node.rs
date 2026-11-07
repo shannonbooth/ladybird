@@ -30,7 +30,7 @@ use super::audio_array::{float32_array_length, overwrite_float32_array};
 use super::audio_node::{
     AnyAudioNode, AudioNode, AudioNodeDefaultOptions, AudioNodeOptions, ChannelCountMode, ChannelInterpretation,
 };
-use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate};
+use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate, ParameterType};
 use super::audio_param_map::AudioParamMap;
 use super::audio_worklet_processor::AudioWorkletProcessor;
 use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
@@ -289,6 +289,7 @@ impl AudioWorkletNode {
                 descriptor.max_value,
                 descriptor.automation_rate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             );
             if let Some(parameter_data) = &options.parameter_data {
                 if let Some(entry) = parameter_data.iter().find(|entry| entry.0 == descriptor.name) {

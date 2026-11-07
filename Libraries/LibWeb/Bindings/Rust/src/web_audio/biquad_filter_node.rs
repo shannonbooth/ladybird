@@ -22,7 +22,7 @@ use super::audio_array::{copy_float32_array, float32_array_length, overwrite_flo
 use super::audio_node::{
     AnyAudioNode, AudioNode, AudioNodeDefaultOptions, AudioNodeOptions, ChannelCountMode, ChannelInterpretation,
 };
-use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate};
+use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate, ParameterType};
 use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
 use crate::bindings::event_target::{CppEventTarget, GetTheParent};
 use crate::bindings::interface::{Inherits, Ref, Wrappable, allocate};
@@ -104,6 +104,7 @@ impl BiquadFilterNode {
                 context.nyquist_frequency(),
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Compound,
             ),
             detune: AudioParam::create(
                 cx.vm(),
@@ -114,6 +115,7 @@ impl BiquadFilterNode {
                 1200. * ak::math::log2(f32::MAX),
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Compound,
             ),
             q: AudioParam::create(
                 cx.vm(),
@@ -124,6 +126,7 @@ impl BiquadFilterNode {
                 f32::MAX,
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
             gain: AudioParam::create(
                 cx.vm(),
@@ -134,6 +137,7 @@ impl BiquadFilterNode {
                 40. * ak::math::log10(f32::MAX),
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Simple,
             ),
         });
         node.node.set_this(AnyAudioNode::BiquadFilterNode(node));

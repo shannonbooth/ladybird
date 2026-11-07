@@ -18,7 +18,7 @@ use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
 use crate::bindings::interface::{Ref, Wrappable, allocate};
 use crate::bindings::{CallContext, Exception, WebIdlResult};
 
-pub(crate) use libweb_rust::web_audio::rendering::render_node::AutomationRate;
+pub(crate) use libweb_rust::web_audio::rendering::render_node::{AutomationRate, ParameterType};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -43,8 +43,6 @@ pub(crate) struct AudioParam {
 
     // https://webaudio.github.io/web-audio-api/#dom-audioparam-current-value-slot
     default_value: f32,
-    min_value: f32,
-    max_value: f32,
     #[gc(untraced)]
     automation_rate: Cell<AutomationRate>,
     #[gc(untraced)]
@@ -52,16 +50,6 @@ pub(crate) struct AudioParam {
 }
 
 impl Wrappable for AudioParam {}
-fn clamp(value: f32, min: f32, max: f32) -> f32 {
-    assert!(max >= min);
-    if value > max {
-        return max;
-    }
-    if value < min {
-        return min;
-    }
-    value
-}
 
 fn max(a: f64, b: f64) -> f64 {
     if a < b { b } else { a }
@@ -79,6 +67,7 @@ impl AudioParam {
         max_value: f32,
         automation_rate: AutomationRate,
         fixed_automation_rate: FixedAutomationRate,
+        parameter_type: ParameterType,
     ) -> Ref<Self> {
         allocate(vm, |_| {
             let timeline = Arc::new(AudioParamTimeline::new(default_value));
@@ -86,6 +75,7 @@ impl AudioParam {
                 Arc::clone(&timeline),
                 min_value,
                 max_value,
+                parameter_type,
                 automation_rate,
                 BaseAudioContext::RENDER_QUANTUM_SIZE as usize,
             ));
@@ -95,8 +85,6 @@ impl AudioParam {
                 timeline,
                 render_param,
                 default_value,
-                min_value,
-                max_value,
                 automation_rate: Cell::new(automation_rate),
                 fixed_automation_rate,
             }
@@ -129,7 +117,10 @@ impl AudioParam {
     pub(crate) fn value(&self, _: &mut CallContext) -> WebIdlResult<f32> {
         // Each AudioParam includes minValue and maxValue attributes that together form the simple nominal range
         // for the parameter. In effect, value of the parameter is clamped to the range [minValue, maxValue].
-        Ok(clamp(self.timeline.current_value(), self.min_value, self.max_value))
+        Ok(self
+            .timeline
+            .current_value()
+            .clamp(self.render_param.min_value(), self.render_param.max_value()))
     }
 
     // https://webaudio.github.io/web-audio-api/#dom-audioparam-value
@@ -171,12 +162,12 @@ impl AudioParam {
 
     // https://webaudio.github.io/web-audio-api/#dom-audioparam-minvalue
     pub(crate) fn min_value(&self, _: &mut CallContext) -> WebIdlResult<f32> {
-        Ok(self.min_value)
+        Ok(self.render_param.min_value())
     }
 
     // https://webaudio.github.io/web-audio-api/#dom-audioparam-maxvalue
     pub(crate) fn max_value(&self, _: &mut CallContext) -> WebIdlResult<f32> {
-        Ok(self.max_value)
+        Ok(self.render_param.max_value())
     }
 
     fn map_insert_result(&self, vm: &Vm, result: InsertResult) -> WebIdlResult<()> {

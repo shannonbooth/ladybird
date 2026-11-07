@@ -20,7 +20,7 @@ use libweb_rust::web_audio::rendering::render_nodes::create_oscillator_render_no
 use super::audio_node::{
     AnyAudioNode, AudioNodeDefaultOptions, AudioNodeOptions, ChannelCountMode, ChannelInterpretation,
 };
-use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate};
+use super::audio_param::{AudioParam, AutomationRate, FixedAutomationRate, ParameterType};
 use super::audio_scheduled_source_node::AudioScheduledSourceNode;
 use super::base_audio_context::{AnyBaseAudioContext, BaseAudioContext};
 use super::periodic_wave::PeriodicWave;
@@ -112,6 +112,7 @@ impl OscillatorNode {
                 context.nyquist_frequency(),
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Compound,
             ),
             detune: AudioParam::create(
                 cx.vm(),
@@ -122,6 +123,7 @@ impl OscillatorNode {
                 1200. * ak::math::log2(f32::MAX),
                 AutomationRate::ARate,
                 FixedAutomationRate::No,
+                ParameterType::Compound,
             ),
             periodic_wave: Cell::new(None),
         });

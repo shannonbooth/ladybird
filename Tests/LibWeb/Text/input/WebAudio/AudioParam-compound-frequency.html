@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        async function render(createNode, frequency, detune) {
+            const context = new OfflineAudioContext(1, 128, 32768);
+            createNode(context, frequency, detune).connect(context.destination);
+            return (await context.startRendering()).getChannelData(0);
+        }
+
+        const oscillator = (context, frequency, detune) => {
+            const node = new OscillatorNode(context, { frequency, detune });
+            node.start();
+            return node;
+        };
+
+        const biquad = (context, frequency, detune) => {
+            const buffer = context.createBuffer(1, 1, context.sampleRate);
+            buffer.getChannelData(0)[0] = 1;
+            const source = new AudioBufferSourceNode(context, { buffer });
+            const node = new BiquadFilterNode(context, { frequency, detune });
+            source.connect(node);
+            source.start();
+            return node;
+        };
+
+        for (const [name, createNode] of [["OscillatorNode", oscillator], ["BiquadFilterNode", biquad]]) {
+            const detuned = await render(createNode, 32768, -2400);
+            const reference = await render(createNode, 8192, 0);
+            println(`${name}: ${detuned.every((sample, index) => sample === reference[index])}`);
+        }
+
+        // 0 Hz with a detune of 2e6 cents combines to 0 * Infinity. The node must recover once that changes.
+        const ones = context => {
+            const buffer = context.createBuffer(1, 256, context.sampleRate);
+            buffer.getChannelData(0).fill(1);
+            return buffer;
+        };
+        const nanCases = [
+            ["OscillatorNode", (context, time) => {
+                const node = new OscillatorNode(context, { frequency: 0, detune: 2e6 });
+                node.frequency.setValueAtTime(1000, time);
+                node.detune.setValueAtTime(0, time);
+                node.start();
+                return node;
+            }],
+            ["BiquadFilterNode", (context, time) => {
+                const source = new AudioBufferSourceNode(context, { buffer: ones(context) });
+                const node = new BiquadFilterNode(context, { frequency: 0, detune: 2e6 });
+                node.frequency.setValueAtTime(1000, time);
+                node.detune.setValueAtTime(0, time);
+                source.connect(node);
+                source.start();
+                return node;
+            }],
+            ["AudioBufferSourceNode", (context, time) => {
+                const node = new AudioBufferSourceNode(context, { buffer: ones(context), playbackRate: 0, detune: 2e6 });
+                node.playbackRate.setValueAtTime(1, time);
+                node.detune.setValueAtTime(0, time);
+                node.start();
+                return node;
+            }],
+        ];
+        for (const [name, createNode] of nanCases) {
+            const context = new OfflineAudioContext(1, 256, 32768);
+            createNode(context, 128 / context.sampleRate).connect(context.destination);
+            const recovered = (await context.startRendering()).getChannelData(0).slice(128);
+            println(`${name} recovers from a NaN combined value: ${recovered.every(Number.isFinite) && recovered.some(sample => sample !== 0)}`);
+        }
+    });
+</script>
