@@ -264,4 +264,21 @@ describe("length and name of bound functions", () => {
         expect(Math.max.bind().name).toBe("bound max");
         expect(Math.max.bind().length).toBe(2);
     });
+
+    test("a very deep chain of bound functions does not overflow the stack", () => {
+        let f = function (...args) {
+            return new.target ? { args } : args.length;
+        };
+        for (let i = 0; i < 300_000; ++i) {
+            f = f.bind();
+            // Keeps each bind from copying an ever longer "bound bound ..." name.
+            Object.defineProperty(f, "name", { value: "" });
+        }
+
+        expect(() => {
+            ({}) instanceof f;
+        }).toThrowWithMessage(InternalError, "Call stack size limit exceeded");
+        expect(f(1, 2)).toBe(2);
+        expect(new f(1, 2).args).toEqual([1, 2]);
+    });
 });
