@@ -54,6 +54,7 @@ static constexpr size_t skia_resource_cache_limit = 256 * MiB;
 static constexpr auto skia_deferred_cleanup_interval = AK::Duration::from_seconds(1);
 static constexpr auto skia_aggressive_cleanup_interval = AK::Duration::from_seconds(5);
 static constexpr auto skia_deferred_cleanup_resource_age = std::chrono::seconds(5);
+static constexpr auto skia_idle_cleanup_delay = AK::Duration::from_seconds(6);
 static constexpr auto skia_resource_cache_high_watermark = 384 * MiB;
 static constexpr auto skia_resource_cache_critical_watermark = 512 * MiB;
 
@@ -148,6 +149,14 @@ void SkiaBackendContext::perform_post_flush_cleanup()
 
     s_last_deferred_cleanup = now;
     context->performDeferredCleanup(skia_deferred_cleanup_resource_age);
+
+    if (!m_idle_cleanup_timer) {
+        m_idle_cleanup_timer = Core::Timer::create_single_shot(skia_idle_cleanup_delay, [this] {
+            // Skia can make the final submission's resources purgeable during this cleanup.
+            sk_context()->performDeferredCleanup(std::chrono::milliseconds(0));
+        });
+    }
+    m_idle_cleanup_timer->restart();
 
     size_t resource_bytes = 0;
     context->getResourceCacheUsage(nullptr, &resource_bytes);
