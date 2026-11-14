@@ -222,12 +222,25 @@ impl Generator<'_> {
                 tag::PAREN => {}
                 tag::CALL | tag::OPT_CALL => self.call(tree.node_list(b).len()),
                 tag::NEW => self.construct(tree.node_list(b).len()),
-                tag::CALL_ARRAY => self.call_with_array(),
+                tag::CALL_ARRAY => {
+                    let arguments = tree.node_list(b);
+                    if arguments.len() == 1
+                        && b_column[arguments.at(0).index()] != 0
+                        && tags[arguments.at(0).index()] == tag::SPREAD
+                    {
+                        self.call_with_spread();
+                    } else {
+                        self.call_with_array();
+                    }
+                }
                 tag::CALL_DIRECT_EVAL => self.direct_eval(tree.node_list(b).len()),
                 tag::CALL_DIRECT_EVAL_ARRAY => self.direct_eval_with_array(),
                 tag::NEW_ARRAY => self.construct_with_array(),
                 tag::ARRAY_SPREAD => {}
+                // NB: The parser sets b on the array mark and the spread of a call whose only argument is a spread.
+                tag::MARK_ARRAY_START if b != 0 => {}
                 tag::MARK_ARRAY_START => self.array_begin(a as usize),
+                tag::SPREAD if b != 0 && tags[row + 1] == tag::CALL_ARRAY => {}
                 tag::SPREAD => self.append_element(true),
                 tag::MARK_APPEND => self.append_element(false),
                 tag::OBJECT_SPREAD => self.object_spread(),

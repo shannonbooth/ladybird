@@ -2506,6 +2506,31 @@ impl Generator<'_> {
         self.push_value(dst, callee.first_temporary);
     }
 
+    /// A call whose only argument is a spread of the iterable on top of the stack.
+    pub(super) fn call_with_spread(&mut self) {
+        let (iterable, _) = self.pop_operand();
+        let callee = self.pop_value();
+        let (callee_operand, this_value) = if callee.kind == ValKind::Callee {
+            (callee.a, callee.b)
+        } else {
+            (callee.a, self.context.constants.add_undefined())
+        };
+        self.release_temporaries_from(callee.first_temporary);
+        let dst = self.temporary();
+        let call_feedback = self.next_call_feedback();
+        self.put_with_destination(
+            op::CallWithSpread {
+                call_feedback,
+                dst,
+                callee: callee_operand,
+                this_value,
+                iterable,
+            },
+            dst,
+        );
+        self.push_value(dst, callee.first_temporary);
+    }
+
     pub(super) fn construct_with_array(&mut self) {
         let (arguments, _) = self.pop_operand();
         let (callee, first_temporary) = self.pop_operand();
