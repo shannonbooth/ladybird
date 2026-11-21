@@ -2163,6 +2163,9 @@ void CanonicalTraversable::did_attempt_to_populate_the_history_entry_document(We
         .document_id = *parameters.document_id,
     };
 
+    // 9. Let entryToReplace be targetNavigable's active session history entry.
+    auto const& entry_to_replace = *navigable->active_session_history_entry();
+
     // 11. Let documentState be a new document state with
     //     [...]
     //     initiator origin: initiatorOrigin
@@ -2172,6 +2175,7 @@ void CanonicalTraversable::did_attempt_to_populate_the_history_entry_document(We
     // 12. Let historyEntry be a new session history entry, with
     //     URL: entryToReplace's URL
     //     document state: documentState
+    history_entry->url = entry_to_replace.url;
     navigable->populate_document_for_javascript_url(*navigation, move(history_entry), navigable->create_and_initialize_a_document(response_document));
 }
 
