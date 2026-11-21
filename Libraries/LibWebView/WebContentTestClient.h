@@ -32,7 +32,7 @@ private:
 
     virtual WebContentTestClientPageStub* page_stub(Web::PageId const&) override;
     virtual void did_expire_cookies_with_time_offset(AK::Duration) override;
-    virtual void did_spoof_document_origin_for_testing(Web::PageId, Web::HTML::EnvironmentId environment_id, URL::Origin) override;
+    virtual void did_spoof_current_url_for_testing(Web::PageId, Web::HTML::EnvironmentId environment_id, URL::URL, URL::Origin) override;
     virtual void did_store_hsts_policy_for_testing(String domain, HTTP::HSTS::ParsedHSTSPolicy) override;
     virtual void did_request_clear_storage_for_testing(Web::PageId, Web::StorageAPI::StorageEndpointType, Web::HTML::EnvironmentId environment_id) override;
     virtual Messages::WebContentTestClient::DidRequestUiProcessSessionHistoryForTestingResponse did_request_ui_process_session_history_for_testing(Web::PageId page_id) override;

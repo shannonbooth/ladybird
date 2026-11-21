@@ -1598,7 +1598,9 @@ WebIDL::ExceptionOr<Document*> Document::open(Optional<Utf16String> const&, Opti
             new_url.set_fragment({});
 
         // 3. Run the URL and history update steps with document and newURL.
-        HTML::perform_url_and_history_update_steps(*this, move(new_url));
+        // NB: The UI process checks newURL against entryDocument's.
+        auto entry_document_id = &entry_document != this ? Optional<HTML::CrossProcessId> { entry_document.id() } : OptionalNone {};
+        HTML::perform_url_and_history_update_steps(*this, move(new_url), {}, HTML::HistoryHandlingBehavior::Replace, entry_document_id);
     }
 
     // AD-HOC: Record that this document was an initial about:blank before document.open() cleared the flag, so the

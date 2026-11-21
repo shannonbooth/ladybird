@@ -1633,7 +1633,11 @@ void CanonicalNavigable::did_commit_navigation(CanonicalSessionHistoryEntry& ent
     if (m_active_session_history_entry->document_state != entry.document_state)
         m_active_session_history_entry->document_state->document = nullptr;
     entry.document_state->document = document;
-    m_active_session_history_entry = entry;
+
+    // NB: Within the same document, the process hosting it activated entry as it applied the step, and reported that
+    //     and each entry it made active since, so the active entry is already the one it holds.
+    if (active_document_changed || m_active_session_history_entry->document_state != entry.document_state)
+        m_active_session_history_entry = entry;
 
     if (document != previous_document) {
         document->make_active();

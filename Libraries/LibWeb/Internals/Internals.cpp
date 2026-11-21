@@ -1347,7 +1347,7 @@ void Internals::spoof_current_url(Utf16String const& url_string)
     window.associated_document().set_url(url.value());
     window.associated_document().set_origin(origin);
     HTML::relevant_settings_object(window.associated_document()).creation_url = url.release_value();
-    page().client().page_did_spoof_document_origin_for_testing(window.associated_document().relevant_settings_object(), origin);
+    page().client().page_did_spoof_current_url_for_testing(window.associated_document().relevant_settings_object(), window.associated_document().url(), origin);
 }
 
 void Internals::spoof_current_origin_in_this_process(Utf16String const& url_string)

@@ -1,0 +1,36 @@
+<!doctype html>
+<script src="../include.js"></script>
+<script>
+    // Going back to an entry from before a document.open() restores that entry's URL, then fires popstate before the UI
+    // process hears of it. A document.open() from that event takes the restored URL.
+    promiseTest(async () => {
+        if (document.readyState !== "complete")
+            await new Promise(resolve => window.addEventListener("load", resolve, { once: true }));
+
+        const iframe = document.createElement("iframe");
+        await new Promise(resolve => {
+            iframe.addEventListener("load", resolve, { once: true });
+            iframe.srcdoc = "srcdoc";
+            document.body.append(iframe);
+        });
+        await internals.flushSessionHistoryTraversalQueue();
+
+        iframe.contentWindow.history.pushState(null, "", "about:srcdoc#second");
+        iframe.contentDocument.open();
+        iframe.contentDocument.close();
+        await internals.flushSessionHistoryTraversalQueue();
+
+        // The handler runs in the iframe, so document.open() takes the iframe's own URL.
+        // document.open() erases the iframe window's listeners, so the handler reports to this window.
+        const opened = new Promise(resolve => window.addEventListener("message", resolve, { once: true }));
+        iframe.contentWindow.eval(`addEventListener("popstate", () => {
+            document.open();
+            document.close();
+            parent.postMessage("opened", "*");
+        }, { once: true });`);
+        iframe.contentWindow.history.back();
+        await opened;
+        await internals.flushSessionHistoryTraversalQueue();
+        println(`Opened during popstate: ${iframe.contentWindow.location.href}`);
+    });
+</script>

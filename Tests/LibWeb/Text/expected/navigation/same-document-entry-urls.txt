@@ -1,0 +1,5 @@
+Inserted: about:blank#inserted
+Opened then pushed: true
+Raced a traversal: about:srcdoc
+Query: ?query
+Other path: SecurityError

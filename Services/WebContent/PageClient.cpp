@@ -1899,6 +1899,11 @@ void PageClient::page_did_request_set_system_focus(bool has_system_focus)
     client().did_request_set_system_focus(m_id, has_system_focus);
 }
 
+void PageClient::page_did_update_document_for_history_step_application(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
+{
+    client().async_did_update_document_for_history_step_application(m_id, operation_id, navigable_id);
+}
+
 void PageClient::page_did_end_initial_about_blank(Web::HTML::CrossProcessId document_id)
 {
     client().async_did_end_initial_about_blank(m_id, document_id);
@@ -2090,10 +2095,10 @@ void PageClient::close_tab_for_testing()
         test_connection->async_did_request_close_tab_for_testing(m_id);
 }
 
-void PageClient::page_did_spoof_document_origin_for_testing(Web::HTML::EnvironmentSettingsObject const& environment, URL::Origin const& origin)
+void PageClient::page_did_spoof_current_url_for_testing(Web::HTML::EnvironmentSettingsObject const& environment, URL::URL const& url, URL::Origin const& origin)
 {
     if (auto* test_connection = client().test_connection())
-        test_connection->did_spoof_document_origin_for_testing(m_id, environment.id, origin);
+        test_connection->did_spoof_current_url_for_testing(m_id, environment.id, url, origin);
 }
 
 void PageClient::stop_loading_through_ui_process_for_testing()

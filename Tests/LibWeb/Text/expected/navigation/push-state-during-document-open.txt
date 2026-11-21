@@ -1,0 +1,2 @@
+Pushed during document.open(): true
+Page's process: alive

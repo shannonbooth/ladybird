@@ -10,6 +10,8 @@
 #include <AK/TemporaryChange.h>
 #include <LibCore/EventLoop.h>
 #include <LibURL/Site.h>
+#include <LibWebCommon/HTML/BrowsingContext.h>
+#include <LibWebCommon/HTML/History.h>
 #include <LibWebView/Application.h>
 #include <LibWebView/CanonicalBrowsingContext.h>
 #include <LibWebView/CanonicalBrowsingContextGroup.h>
@@ -1322,6 +1324,8 @@ void CanonicalTraversable::did_not_receive_reply(OwedReply const& owed)
             operation->algorithm->nonchanging_navigable_updated();
         return;
     }
+    case OwedReply::Kind::DocumentUpdatedForContinuation:
+        return;
     case OwedReply::Kind::ChangingJob:
     case OwedReply::Kind::ContinuationApplied: {
         auto* operation = find_history_operation(owed.id);
@@ -1625,6 +1629,9 @@ void CanonicalTraversable::send_changing_navigable_continuation_task(HistoryOper
     auto endpoint = changing_job_endpoint(changing_navigable);
     auto continuation = *changing_navigable.continuation;
     endpoint->owe_reply({ OwedReply::Kind::ContinuationApplied, operation.operation_id, changing_navigable.id });
+    // NB: The process updates targetEntry's document as it applies the continuation, which it reports before applying
+    //     the rest of it.
+    endpoint->owe_reply({ OwedReply::Kind::DocumentUpdatedForContinuation, operation.operation_id, changing_navigable.id });
     endpoint->async_apply_changing_navigable_continuation(
         operation.operation_id, changing_navigable.id, changing_navigable.target_entry->identity(),
         continuation.history_object_length_and_index.script_history_length,
@@ -2072,23 +2079,77 @@ void CanonicalTraversable::append_history_queue_steps(SessionHistoryTraversalSte
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#url-and-history-update-steps
-// 3. Let newEntry be a new session history entry, with
-//      document state: activeEntry's document state
-// NB: Navigating to a fragment does the same. The process hosting the navigable's active document reports the entry's
-//     other fields.
-NonnullRefPtr<CanonicalSessionHistoryEntry> CanonicalTraversable::session_history_entry_for(CanonicalNavigable const& navigable, Web::HTML::SameDocumentNavigationEntry const& same_document_entry) const
+// NB: Navigating to a fragment does the same, in its steps 6, 13 and 14. The process hosting navigable's active
+//     document ran these steps, and reports newEntry with the synchronous navigation steps it appended before any event
+//     these steps fire. The UI process accepts newEntry only if these steps could have created it for that document.
+static ErrorOr<RefPtr<CanonicalSessionHistoryEntry>> session_history_entry_for(RefPtr<WebContentPage> const& requesting_page, CanonicalNavigable& navigable, Web::FinalizeSameDocumentNavigationHistoryOperationParameters const& parameters)
 {
-    auto entry = CanonicalSessionHistoryEntry::create(navigable.active_session_history_entry()->document_state);
-    entry->url = same_document_entry.url;
-    entry->directive_state_id = same_document_entry.directive_state_id;
-    entry->directive_state_value = same_document_entry.directive_state_value;
-    entry->classic_history_api_state = same_document_entry.classic_history_api_state;
-    entry->navigation_api_state = same_document_entry.navigation_api_state;
-    entry->navigation_api_key = same_document_entry.navigation_api_key;
-    entry->navigation_api_id = same_document_entry.navigation_api_id;
-    entry->scroll_restoration_mode = same_document_entry.scroll_restoration_mode;
-    entry->scroll_position_data = same_document_entry.scroll_position_data;
-    return entry;
+    auto const& reported_entry = parameters.target_entry;
+    auto const& new_url = reported_entry.url;
+
+    // 2. Let activeEntry be navigable's active session history entry.
+    auto active_entry = navigable.active_session_history_entry();
+
+    // NB: A document the UI process has replaced since reported the entry, and finalizing it does nothing.
+    auto document = active_entry->document_state->document;
+    if (!document || active_entry->document_state->id != reported_entry.document_state_id)
+        return RefPtr<CanonicalSessionHistoryEntry> {};
+
+    // NB: Each caller of these steps limits newURL. Pushing state and the Navigation API need document to be able to
+    //     have its URL rewritten to newURL. Navigating to a fragment needs newURL to have a fragment and to equal
+    //     activeEntry's URL without it, which an error document's URL of about:error is not. A new window's or
+    //     iframe's initial about:blank takes a URL that matches about:blank. The document open steps give document the
+    //     URL of their entryDocument, which must be same origin with document.
+    auto document_may_take_new_url = [&] {
+        if (Web::HTML::can_have_its_url_rewritten(document->url(), new_url))
+            return true;
+        if (new_url.fragment().has_value() && new_url.equals(active_entry->url, URL::ExcludeFragment::Yes))
+            return true;
+        if (document->is_initial_about_blank() && Web::HTML::url_matches_about_blank(new_url))
+            return true;
+        if (!parameters.entry_document_id.has_value())
+            return false;
+        RefPtr<CanonicalDocument> entry_document;
+        requesting_page->client().for_each_page([&](WebContentPage& page) {
+            entry_document = page.hosted_document_with_id(*parameters.entry_document_id);
+            return entry_document ? IterationDecision::Break : IterationDecision::Continue;
+        });
+        return entry_document
+            && entry_document->origin().is_same_origin(document->origin())
+            && !new_url.fragment().has_value()
+            && new_url.equals(entry_document->url(), URL::ExcludeFragment::Yes);
+    };
+    if (!document_may_take_new_url())
+        return Error::from_string_literal("same-document entry with a URL its document cannot take");
+
+    // 3. Let newEntry be a new session history entry, with
+    //      URL: newURL
+    //      document state: activeEntry's document state
+    // NB: The process hosting the document reports newEntry's other fields.
+    auto new_entry = CanonicalSessionHistoryEntry::create(active_entry->document_state);
+    new_entry->url = new_url;
+    new_entry->directive_state_id = reported_entry.directive_state_id;
+    new_entry->directive_state_value = reported_entry.directive_state_value;
+    new_entry->classic_history_api_state = reported_entry.classic_history_api_state;
+    new_entry->navigation_api_state = reported_entry.navigation_api_state;
+    new_entry->navigation_api_key = reported_entry.navigation_api_key;
+    new_entry->navigation_api_id = reported_entry.navigation_api_id;
+    new_entry->scroll_restoration_mode = reported_entry.scroll_restoration_mode;
+    new_entry->scroll_position_data = reported_entry.scroll_position_data;
+
+    // 4. If document's is initial about:blank is true, then set historyHandling to "replace".
+    // NB: A fragment navigation of an initial about:blank is a replace too, as the navigation must be a replace.
+    if (document->is_initial_about_blank() && parameters.history_handling != Web::HTML::HistoryHandlingBehavior::Replace)
+        return Error::from_string_literal("same-document entry pushed for an initial about:blank");
+
+    // 9. Set the URL given document to newURL.
+    // NB: Navigating to a fragment sets navigable's active document's URL to url.
+    document->set_url(new_url);
+
+    // 11. Set navigable's active session history entry to newEntry.
+    navigable.set_active_session_history_entry(new_entry);
+    navigable.send_replicated_state();
+    return new_entry;
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate
@@ -2147,13 +2208,13 @@ void CanonicalTraversable::did_attempt_to_populate_the_history_entry_document(We
         return;
 
     // 8. Assert: initiatorOrigin is newDocument's origin.
-    // NB: The UI process creates its newDocument with initiatorOrigin, and with the opener policy evaluating a
-    //     javascript: URL gives it: targetNavigable's active document's opener policy.
+    // NB: The UI process creates its newDocument with initiatorOrigin, and with what evaluating a javascript: URL gives
+    //     it: a response whose URL is targetNavigable's active document's URL, and that document's opener policy.
     auto const& coop = navigable->active_document().opener_policy();
     NavigationLoader::ResponseDocument response_document {
         .is_inline_content = false,
-        .coop_enforcement_result = { .url = history_entry->url, .origin = *initiator_origin, .opener_policy = coop },
-        .response_url = history_entry->url,
+        .coop_enforcement_result = { .url = navigation->url, .origin = *initiator_origin, .opener_policy = coop },
+        .response_url = navigable->active_document().url(),
         .request_current_url = {},
         .origin = *initiator_origin,
         .opener_policy = coop,
@@ -2223,13 +2284,16 @@ void CanonicalTraversable::enqueue_history_operation(Web::HTML::CrossProcessId o
 
         // https://html.spec.whatwg.org/multipage/browsing-the-web.html#url-and-history-update-steps
         // NB: The process hosting navigable's active document ran these steps, and reports newEntry with the
-        //     synchronous navigation steps it appended. Those steps make newEntry navigable's active entry here: they
-        //     can jump the queue ahead of the steps creating navigable's nested history, and then find no session
-        //     history to hold newEntry.
+        //     synchronous navigation steps it appended.
         if (auto navigable = find(parameters.navigable_id); navigable.has_value()) {
+            auto entry = session_history_entry_for(requesting_page, *navigable, parameters);
+            if (entry.is_error()) {
+                requesting_page->client().did_misbehave("request_history_operation"sv, entry.error().string_literal());
+                return;
+            }
             if (parameters.previous_entry_persisted_state.has_value())
                 update_session_history_entry_persisted_state(*navigable, *parameters.previous_entry_persisted_state);
-            target_entry = session_history_entry_for(*navigable, parameters.target_entry);
+            target_entry = entry.release_value();
             session_history_changed();
         }
     }
@@ -2504,9 +2568,6 @@ void CanonicalTraversable::finalize_a_same_document_navigation(HistoryOperation&
     // Canonical entries carry a stable ID and a copied value for a directive state shared across
     // history entries. Keep those copies synchronized when the shared state is mutated.
     m_session_history.update_directive_state_value(target_entry->directive_state_id, target_entry->directive_state_value);
-
-    target_navigable->set_active_session_history_entry(target_entry);
-    target_navigable->send_replicated_state();
 
     // 6. Apply the push/replace history step targetStep to traversable given historyHandling and userInvolvement.
     apply_the_push_or_replace_history_step(operation, *target_step, request.history_handling, request.user_involvement);
@@ -2844,7 +2905,11 @@ void CanonicalTraversable::abandon_browser_traversal_load()
         return;
 
     // NB: The job set the current entry to its target entry, which a later step to that entry would see as no change.
-    set_current_session_history_entry(active_session_history_entry());
+    //     The active entry can be one a synchronous navigation has yet to put in session history.
+    if (auto* current_entry = m_session_history.get_the_target_history_entry(*this, m_session_history.current_step()))
+        set_current_session_history_entry(*current_entry);
+    else
+        set_current_session_history_entry(active_session_history_entry());
     finish_history_operation(traversal->operation_id);
 }
 
@@ -3010,14 +3075,41 @@ void CanonicalTraversable::did_receive_changing_navigable_history_job_ready(WebC
     operation->algorithm->changing_navigable_job_completed(*changing_navigable, disposition);
 }
 
+// https://html.spec.whatwg.org/multipage/browsing-the-web.html#update-document-for-history-step-application
+// NB: The process hosting targetEntry's document is applying the changing navigable continuation the UI process sent
+//     it, and has activated targetEntry. AD-HOC: It sets a document that was not new to targetEntry's URL, as the spec
+//     does not but a same-document traversal needs. Both happen before this fires events that can update the document's
+//     history again.
+void CanonicalTraversable::did_update_document_for_history_step_application(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, CanonicalNavigable& navigable)
+{
+    if (!source_page.take_owed_reply({ OwedReply::Kind::DocumentUpdatedForContinuation, operation_id, navigable.id() }))
+        return;
+    auto* operation = find_history_operation(operation_id);
+    auto* changing_navigable = operation ? operation->pending_changing_job(navigable.id()) : nullptr;
+    if (!changing_navigable)
+        return;
+    auto& target_entry = *changing_navigable->target_entry;
+    auto const& document = target_entry.document_state->document;
+    if (!document || document != &navigable.active_document())
+        return;
+    document->set_url(target_entry.url);
+
+    // NB: For a same-document step, the entries the process makes active from here on reach the UI process before it
+    //     acknowledges the step. Activating targetEntry when that acknowledgement arrives would undo them.
+    navigable.set_active_session_history_entry(target_entry);
+}
+
 void CanonicalTraversable::did_receive_changing_navigable_continuation_applied(WebContentPage& source_page, Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id, Optional<Web::HTML::HostedNavigableState> activated_navigable_state, Optional<Web::HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state)
 {
     if (!source_page.take_owed_reply({ OwedReply::Kind::ContinuationApplied, operation_id, navigable_id }))
         return;
+    // NB: A process that applied no continuation, having dequeued none, updated no document for it.
+    (void)source_page.take_owed_reply({ OwedReply::Kind::DocumentUpdatedForContinuation, operation_id, navigable_id });
     auto* operation = find_history_operation(operation_id);
     if (auto* changing_navigable = operation ? operation->pending_changing_job(navigable_id) : nullptr) {
         auto& navigable = changing_navigable->navigable();
         auto document = move(changing_navigable->populated_document);
+
         Optional<Web::HTML::PendingSessionHistoryEntryDescriptor> populated_history_entry;
         if (auto population_loader = changing_navigable->population_loader())
             populated_history_entry = population_loader->request().history_entry;

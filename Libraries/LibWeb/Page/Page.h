@@ -786,7 +786,7 @@ public:
     virtual String dump_site_isolation_process_tree_for_testing() { return {}; }
     virtual void crash_remote_frame_processes_for_testing() { }
     virtual void close_tab_for_testing() { }
-    virtual void page_did_spoof_document_origin_for_testing(HTML::EnvironmentSettingsObject const&, URL::Origin const&) { }
+    virtual void page_did_spoof_current_url_for_testing(HTML::EnvironmentSettingsObject const&, URL::URL const&, URL::Origin const&) { }
     virtual void stop_loading_through_ui_process_for_testing() { }
     virtual void reload_through_ui_process_for_testing([[maybe_unused]] bool bypass_cache) { }
     virtual void traverse_history_by_delta_through_ui_process_for_testing(i32) { }
@@ -937,6 +937,7 @@ public:
     virtual void page_did_update_session_history_entry_scroll_restoration_mode([[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] HTML::SessionHistoryEntryIdentity const& entry_identity, [[maybe_unused]] HTML::ScrollRestorationMode scroll_restoration_mode) { }
     virtual void page_did_update_session_history_entry_document_state_navigable_target_name([[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] HTML::SessionHistoryEntryIdentity const& entry_identity, [[maybe_unused]] Utf16String const& navigable_target_name) { }
     virtual void page_did_set_session_history_entry_document_state_reload_pending([[maybe_unused]] HTML::CrossProcessId navigable_id, [[maybe_unused]] Utf16String const& navigation_api_key, [[maybe_unused]] bool reload_pending) { }
+    virtual void page_did_update_document_for_history_step_application([[maybe_unused]] HTML::CrossProcessId operation_id, [[maybe_unused]] HTML::CrossProcessId navigable_id) { }
     virtual void page_did_end_initial_about_blank([[maybe_unused]] HTML::CrossProcessId document_id) { }
     virtual void page_did_request_set_system_focus([[maybe_unused]] bool has_system_focus) { }
     virtual void page_did_change_focused_navigable([[maybe_unused]] HTML::CrossProcessId navigable_id) { }

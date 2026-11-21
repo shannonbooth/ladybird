@@ -10,6 +10,7 @@
 #include <LibURL/Parser.h>
 #include <LibWebCommon/HTML/CrossProcessId.h>
 #include <LibWebView/CanonicalBrowsingContext.h>
+#include <LibWebView/CanonicalDocument.h>
 #include <LibWebView/CanonicalSessionHistoryEntry.h>
 #include <LibWebView/CanonicalTraversable.h>
 #include <LibWebView/HistoryDebug.h>
@@ -434,6 +435,8 @@ TEST_CASE(queued_same_document_entries_are_addressed_by_identity)
     current_entry.navigation_api_key = Utf16String::from_utf8("shared-key"sv);
     current_entry.navigation_api_id = Utf16String::from_utf8("current-id"sv);
     EXPECT(traversable.initialize_session_history_for_testing({ move(current_entry) }, { 0 }, 0));
+    traversable.active_document().set_url(URL::Parser::basic_parse("https://example.com/current"sv).release_value());
+    traversable.active_document().set_is_initial_about_blank(WebView::CanonicalDocument::IsInitialAboutBlank::No);
 
     auto first_entry = entry(0, "https://example.com/first"sv, 10, "main"sv);
     first_entry.navigation_api_key = Utf16String::from_utf8("shared-key"sv);
@@ -453,6 +456,7 @@ TEST_CASE(queued_same_document_entries_are_addressed_by_identity)
             .previous_entry_persisted_state = {},
             .history_handling = Web::HTML::HistoryHandlingBehavior::Push,
             .user_involvement = Web::HTML::UserNavigationInvolvement::None,
+            .entry_document_id = {},
         };
         traversable.enqueue_history_operation(operation_id, move(parameters), {});
     };

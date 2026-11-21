@@ -38,6 +38,7 @@ struct OwedReply {
         BeforeunloadCheck,
         ChangingJob,
         ContinuationApplied,
+        DocumentUpdatedForContinuation,
         NonchangingUpdate,
         DescendantUnload,
     };
@@ -98,7 +99,7 @@ public:
     Optional<bool> hosted_environment_has_cross_site_ancestor(Web::HTML::EnvironmentId const& environment_id) const;
     Optional<bool> hosted_environment_is_cross_origin_isolated(Web::HTML::EnvironmentId const& environment_id) const;
     bool hosts_an_environment_with_storage_key(Web::StorageAPI::StorageKey const&) const;
-    void spoof_document_origin_for_testing(Web::HTML::EnvironmentId const& environment_id, URL::Origin);
+    void spoof_current_url_for_testing(Web::HTML::EnvironmentId const& environment_id, URL::URL, URL::Origin);
     // Clears the bottle an environment of this page names, the way the browser's own clearing does: through the jar.
     void clear_storage_for_testing(Web::StorageAPI::StorageEndpointType, Web::HTML::EnvironmentId const&);
     // The process and page hosting the document of a navigable that a page represents. A page represents every
@@ -320,6 +321,7 @@ private:
     virtual void did_update_session_history_entry_navigation_api_state(Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryIdentity entry_identity, Web::HTML::StorageSerializationRecord navigation_api_state) override;
     virtual void did_update_session_history_entry_document_state_navigable_target_name(Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryIdentity entry_identity, Utf16String navigable_target_name) override;
     virtual void did_set_session_history_entry_document_state_reload_pending(Web::HTML::CrossProcessId navigable_id, Utf16String navigation_api_key, bool reload_pending) override;
+    virtual void did_update_document_for_history_step_application(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id) override;
     virtual void did_end_initial_about_blank(Web::HTML::CrossProcessId document_id) override;
     virtual void did_change_focused_navigable(Web::HTML::CrossProcessId navigable_id) override;
     virtual void did_request_key_event_for_testing(Web::KeyEvent event) override;

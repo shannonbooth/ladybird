@@ -88,10 +88,10 @@ Messages::WebContentTestClient::AdvancePermissionClockForTestingResponse WebCont
     return Web::Permissions::PermissionSnapshot {};
 }
 
-void WebContentTestClient::did_spoof_document_origin_for_testing(Web::PageId page_id, Web::HTML::EnvironmentId environment_id, URL::Origin origin)
+void WebContentTestClient::did_spoof_current_url_for_testing(Web::PageId page_id, Web::HTML::EnvironmentId environment_id, URL::URL url, URL::Origin origin)
 {
     if (auto* page = m_client.page(page_id))
-        page->spoof_document_origin_for_testing(environment_id, move(origin));
+        page->spoof_current_url_for_testing(environment_id, move(url), move(origin));
 }
 
 void WebContentTestClient::did_request_clear_storage_for_testing(Web::PageId page_id, Web::StorageAPI::StorageEndpointType storage_endpoint, Web::HTML::EnvironmentId environment_id)

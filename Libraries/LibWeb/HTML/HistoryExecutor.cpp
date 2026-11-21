@@ -205,7 +205,7 @@ void HistoryExecutor::traverse_the_history_by_delta(int delta, DOM::Document& so
         });
 }
 
-void HistoryExecutor::finalize_same_document_navigation(GC::Ref<LocalNavigable> target_navigable, NonnullRefPtr<SessionHistoryEntry> target_entry, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior history_handling, UserNavigationInvolvement user_involvement, Optional<SessionHistoryEntryPersistedState> previous_entry_persisted_state)
+void HistoryExecutor::finalize_same_document_navigation(GC::Ref<LocalNavigable> target_navigable, NonnullRefPtr<SessionHistoryEntry> target_entry, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior history_handling, UserNavigationInvolvement user_involvement, Optional<SessionHistoryEntryPersistedState> previous_entry_persisted_state, Optional<CrossProcessId> entry_document_id)
 {
     if (target_navigable->has_been_destroyed())
         return;
@@ -225,6 +225,7 @@ void HistoryExecutor::finalize_same_document_navigation(GC::Ref<LocalNavigable> 
         .previous_entry_persisted_state = move(previous_entry_persisted_state),
         .history_handling = history_handling,
         .user_involvement = user_involvement,
+        .entry_document_id = entry_document_id,
     };
 
     request_history_operation(
@@ -668,7 +669,7 @@ Optional<HistoryExecutor::DequeuedChangingNavigableContinuation> HistoryExecutor
 
     // 12. In both cases, let afterPotentialUnloads be the following steps:
     bool const update_only = continuation->update_only;
-    auto after_potential_unload = GC::create_function(heap(), GC::captures(navigable, update_only, target_entry, continuation, population_output, clear_classic_history_api_state, clear_navigable_target_name, GC::Ref { *displayed_document }, script_history_length, script_history_index, move(entries_for_navigation_api), continuation->navigation_type, on_complete), [](auto& navigable, auto& update_only, auto& target_entry, auto& continuation, auto& population_output, auto& clear_classic_history_api_state, auto& clear_navigable_target_name, auto& displayed_document, auto& script_history_length, auto& script_history_index, auto& entries_for_navigation_api, auto& navigation_type, auto& on_complete) {
+    auto after_potential_unload = GC::create_function(heap(), GC::captures(navigable, update_only, target_entry, continuation, population_output, clear_classic_history_api_state, clear_navigable_target_name, GC::Ref { *displayed_document }, script_history_length, script_history_index, move(entries_for_navigation_api), continuation->navigation_type, on_complete, operation_id), [](auto& navigable, auto& update_only, auto& target_entry, auto& continuation, auto& population_output, auto& clear_classic_history_api_state, auto& clear_navigable_target_name, auto& displayed_document, auto& script_history_length, auto& script_history_index, auto& entries_for_navigation_api, auto& navigation_type, auto& on_complete, auto& operation_id) {
         // AD-HOC: A provisional navigable stands in for a navigable another process hosts, which is destroyed as soon
         //         as its container is removed, e.g. while displayedDocument unloads. The provisional navigable is only
         //         discarded once that navigable's subtree has unloaded, and has no container to take over until then.
@@ -746,7 +747,12 @@ Optional<HistoryExecutor::DequeuedChangingNavigableContinuation> HistoryExecutor
         // 3. Let updateDocument be an algorithm step which performs update document for history step application given
         //    targetEntry's document, targetEntry, changingNavigableContinuation's update-only, scriptHistoryLength,
         //    scriptHistoryIndex, navigationType, entriesForNavigationAPI, and previousEntry.
-        auto update_document = GC::create_function(GC::Heap::the(), GC::captures(script_history_length, script_history_index, entries_for_navigation_api, target_entry, update_only, navigation_type, previous_entry, previous_entry_document_is_initial_about_blank, resolved_document, navigable, continuation), [](auto& script_history_length, auto& script_history_index, auto& entries_for_navigation_api, auto& target_entry, auto& update_only, auto& navigation_type, auto& previous_entry, auto& previous_entry_document_is_initial_about_blank, auto& resolved_document, auto& navigable, auto& continuation) {
+        auto update_document = GC::create_function(GC::Heap::the(), GC::captures(script_history_length, script_history_index, entries_for_navigation_api, target_entry, update_only, navigation_type, previous_entry, previous_entry_document_is_initial_about_blank, resolved_document, navigable, continuation, operation_id), [](auto& script_history_length, auto& script_history_index, auto& entries_for_navigation_api, auto& target_entry, auto& update_only, auto& navigation_type, auto& previous_entry, auto& previous_entry_document_is_initial_about_blank, auto& resolved_document, auto& navigable, auto& continuation, auto& operation_id) {
+            // NB: Update document for history step application sets document's latest entry to targetEntry, and, AD-HOC,
+            //     its URL to targetEntry's. The UI process holds both, and hears of them before that fires events
+            //     that can update document's history again.
+            navigable->page().client().page_did_update_document_for_history_step_application(operation_id, navigable->id());
+
             // NB: The specification initializes the navigation API entries for every newly activated document.
             //     Gating this on a non-null navigationType left documents activated by a creation/destruction
             //     update without an initialized navigation API entry list, which crashes the first same-document

@@ -1,0 +1,58 @@
+<!doctype html>
+<script src="../include.js"></script>
+<script>
+    // The UI process checks the URL of every same-document entry against its own copy of the document's URL. Each
+    // case gives the document a URL that it can't have its URL rewritten to from the one it had, or races a traversal.
+    promiseTest(async () => {
+        if (document.readyState !== "complete")
+            await new Promise(resolve => window.addEventListener("load", resolve, { once: true }));
+        const documentURL = location.href.split("#")[0];
+
+        // An iframe's initial about:blank takes a URL that matches about:blank as it is inserted.
+        const inserted = document.createElement("iframe");
+        inserted.src = "about:blank#inserted";
+        document.body.append(inserted);
+        await internals.flushSessionHistoryTraversalQueue();
+        println(`Inserted: ${inserted.contentWindow.location.href}`);
+
+        // document.open() gives an initial about:blank this document's URL. The entry pushed straight after is relative
+        // to that URL.
+        const opened = document.createElement("iframe");
+        document.body.append(opened);
+        opened.contentDocument.open();
+        opened.contentDocument.close();
+        opened.contentWindow.history.pushState(null, "", "#pushed");
+        await internals.flushSessionHistoryTraversalQueue();
+        println(`Opened then pushed: ${opened.contentWindow.location.href === documentURL + "#pushed"}`);
+
+        // Going back across a document.open() URL change, then pushing state before the traversal applies.
+        const reopened = document.createElement("iframe");
+        await new Promise(resolve => {
+            reopened.addEventListener("load", resolve, { once: true });
+            reopened.srcdoc = "srcdoc";
+            document.body.append(reopened);
+        });
+        await internals.flushSessionHistoryTraversalQueue();
+        reopened.contentWindow.history.pushState(null, "", "about:srcdoc#before-open");
+        reopened.contentDocument.open();
+        reopened.contentDocument.close();
+        await internals.flushSessionHistoryTraversalQueue();
+        const popstate = new Promise(resolve => reopened.contentWindow.addEventListener("popstate", resolve, { once: true }));
+        reopened.contentWindow.history.back();
+        reopened.contentWindow.history.pushState(null, "", "#racing");
+        await popstate;
+        await internals.flushSessionHistoryTraversalQueue();
+        println(`Raced a traversal: ${reopened.contentWindow.location.href}`);
+
+        // A file: document can change its query, but not its path.
+        history.pushState(null, "", "?query");
+        await internals.flushSessionHistoryTraversalQueue();
+        println(`Query: ${location.search}`);
+        try {
+            history.pushState(null, "", "other.html");
+        } catch (error) {
+            println(`Other path: ${error.name}`);
+        }
+        history.replaceState(null, "", documentURL);
+    });
+</script>

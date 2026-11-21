@@ -1,0 +1,21 @@
+<!doctype html>
+<script src="../include.js"></script>
+<script>
+    // An error document's URL is about:error, but its entry keeps the URL that failed to load. Navigating to that URL
+    // with a fragment is a fragment navigation, which pushes an entry.
+    asyncTest(async done => {
+        const iframe = document.createElement("iframe");
+        await new Promise(resolve => {
+            iframe.addEventListener("load", resolve, { once: true });
+            iframe.src = "http://127.0.0.1:9/unreachable";
+            document.body.append(iframe);
+        });
+        await internals.flushSessionHistoryTraversalQueue();
+
+        const lengthBeforeNavigation = history.length;
+        iframe.contentWindow.location.href = "http://127.0.0.1:9/unreachable#fragment";
+        await internals.flushSessionHistoryTraversalQueue();
+        println(`Fragment navigation pushed an entry: ${history.length === lengthBeforeNavigation + 1}`);
+        done();
+    });
+</script>

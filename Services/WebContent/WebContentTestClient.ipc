@@ -27,7 +27,7 @@ endpoint WebContentTestClient routed by Web::PageId page_id
     [NotRouted] did_request_microphone_state_for_testing(Web::PageId page_id) => (String state)
     [NotRouted] release_held_permission_prompt_for_testing(Web::PageId page_id, u32 waiters) => ()
     [NotRouted] advance_permission_clock_for_testing(Web::PageId page_id, u64 milliseconds) => (Web::Permissions::PermissionSnapshot snapshot)
-    [NotRouted] did_spoof_document_origin_for_testing(Web::PageId page_id, Web::HTML::EnvironmentId environment_id, URL::Origin origin) => ()
+    [NotRouted] did_spoof_current_url_for_testing(Web::PageId page_id, Web::HTML::EnvironmentId environment_id, URL::URL url, URL::Origin origin) => ()
 
     [NotRouted] did_request_ui_process_session_history_for_testing(Web::PageId page_id) => (String session_history)
     [NotRouted] did_request_site_isolation_process_tree_for_testing(Web::PageId page_id) => (String process_tree)

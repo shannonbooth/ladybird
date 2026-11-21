@@ -1,0 +1,3 @@
+pushed: #inner
+entries added: 1
+next: #replaced

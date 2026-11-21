@@ -293,10 +293,12 @@ Optional<CanonicalEnvironmentSettingsObject const&> WebContentPage::hosted_envir
     return document->relevant_global_object().relevant_settings_object();
 }
 
-void WebContentPage::spoof_document_origin_for_testing(Web::HTML::EnvironmentId const& environment_id, URL::Origin origin)
+void WebContentPage::spoof_current_url_for_testing(Web::HTML::EnvironmentId const& environment_id, URL::URL url, URL::Origin origin)
 {
-    if (auto document = document_with_hosted_environment(environment_id); document.has_value())
+    if (auto document = document_with_hosted_environment(environment_id); document.has_value()) {
+        document->set_url(move(url));
         document->set_origin_for_testing(move(origin));
+    }
 }
 
 // A child frame's container speaks for it only in the page holding the container. Any other page naming it, the
@@ -2299,6 +2301,12 @@ void WebContentPage::did_set_session_history_entry_document_state_reload_pending
     if (!navigable.has_value())
         return;
     navigable->top_level_traversable().set_session_history_entry_document_state_reload_pending(*navigable, navigation_api_key, reload_pending);
+}
+
+void WebContentPage::did_update_document_for_history_step_application(Web::HTML::CrossProcessId operation_id, Web::HTML::CrossProcessId navigable_id)
+{
+    if (auto navigable = hosted_navigable(navigable_id); navigable.has_value())
+        traversable().did_update_document_for_history_step_application(*this, operation_id, *navigable);
 }
 
 // https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-open-steps

@@ -37,6 +37,7 @@ NonnullRefPtr<CanonicalDocument> CanonicalDocument::create(Web::HTML::CrossProce
 CanonicalDocument::CanonicalDocument(Web::HTML::CrossProcessId id, URL::URL creation_url, URL::Origin origin, NonnullRefPtr<CanonicalBrowsingContext> browsing_context, NonnullRefPtr<CanonicalWindow> relevant_global_object, Web::HTML::SandboxingFlagSet active_sandboxing_flag_set, IsInitialAboutBlank is_initial_about_blank)
     : m_id(id)
     , m_creation_url(move(creation_url))
+    , m_url(m_creation_url)
     , m_origin(move(origin))
     , m_browsing_context(move(browsing_context))
     , m_relevant_global_object(move(relevant_global_object))

@@ -1,0 +1,46 @@
+<!doctype html>
+<script src="../include.js"></script>
+<script>
+    // A pushState() from currententrychange during a pushState() adds an entry of its own, after the one the outer
+    // pushState() created, so going back reaches the outer entry.
+    // The Navigation API needs a document whose origin is not opaque, so this runs in an HTTP page.
+    asyncTest(async done => {
+        const server = httpTestServer();
+        const pageURL = await server.createEcho("GET", "/push-state-during-push-state", {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+            body: `<!DOCTYPE html><script>
+                addEventListener("load", () => {
+                    const lengthBeforePush = history.length;
+                    navigation.addEventListener("currententrychange", () => {
+                        history.pushState(null, "", "#inner");
+                    }, { once: true });
+                    history.pushState(null, "", "#outer");
+                    setTimeout(() => {
+                        parent.postMessage("entries added: " + (history.length - lengthBeforePush), "*");
+                        addEventListener("popstate", () => parent.postMessage("back: " + location.hash, "*"), { once: true });
+                        history.back();
+                    }, 100);
+                });
+            <\/script>`,
+        });
+
+        const outer = document.createElement("iframe");
+        document.body.append(outer);
+        const messages = [];
+        await new Promise(resolve => {
+            window.addEventListener("message", event => {
+                if (event.source !== outer.contentWindow)
+                    return;
+                messages.push(event.data);
+                if (String(event.data).startsWith("back"))
+                    resolve();
+            });
+            outer.src = pageURL;
+        });
+        await internals.flushSessionHistoryTraversalQueue();
+        for (const message of messages)
+            println(message);
+        done();
+    });
+</script>

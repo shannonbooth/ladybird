@@ -167,6 +167,7 @@ if (NOT WIN32)
         TestRendererCookieAccess.cpp
         TestRendererOriginClaims.cpp
         TestRendererResponseBodyClaims.cpp
+        TestRendererSameDocumentEntries.cpp
         TestRendererViolationReports.cpp
         TestRequestServerClientSessions.cpp
         TestRequestServerDiskCaches.cpp

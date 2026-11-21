@@ -81,6 +81,8 @@ struct FinalizeSameDocumentNavigationHistoryOperationParameters {
     Optional<HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state;
     HTML::HistoryHandlingBehavior history_handling;
     HTML::UserNavigationInvolvement user_involvement;
+    // The entryDocument of the document open steps, when it is not the document, whose URL the document took.
+    Optional<HTML::CrossProcessId> entry_document_id;
 };
 
 struct CloseTopLevelTraversableHistoryOperationParameters {

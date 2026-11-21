@@ -1,0 +1,48 @@
+<!doctype html>
+<script src="../include.js"></script>
+<script>
+    // document.open() gives an iframe its parent's URL, and fires currententrychange before the UI process hears of it.
+    // A pushState() from that event is relative to the new URL, and leaves document.open()'s own entry unreported.
+    // The Navigation API needs a document whose origin is not opaque, so this runs in an HTTP page.
+    asyncTest(async done => {
+        const server = httpTestServer();
+        const pageURL = await server.createEcho("GET", "/push-state-during-document-open", {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+            body: `<!DOCTYPE html><script>
+                addEventListener("message", event => event.source.postMessage("alive", "*"));
+                addEventListener("load", () => {
+                    const iframe = document.createElement("iframe");
+                    iframe.addEventListener("load", () => {
+                        iframe.contentWindow.navigation.addEventListener("currententrychange", () => {
+                            iframe.contentWindow.history.pushState(null, "", location.href + "#nested");
+                        }, { once: true });
+                        iframe.contentDocument.open();
+                        iframe.contentDocument.close();
+                        setTimeout(() => parent.postMessage(iframe.contentWindow.location.href === location.href + "#nested", "*"));
+                    }, { once: true });
+                    iframe.srcdoc = "srcdoc";
+                    document.body.append(iframe);
+                });
+            <\/script><body></body>`,
+        });
+
+        const outer = document.createElement("iframe");
+        document.body.append(outer);
+        const pushed = await new Promise(resolve => {
+            window.addEventListener("message", event => {
+                if (event.source === outer.contentWindow)
+                    resolve(event.data);
+            });
+            outer.src = pageURL;
+        });
+        await internals.flushSessionHistoryTraversalQueue();
+        println(`Pushed during document.open(): ${pushed}`);
+
+        // The page's process answers once the UI process has handled its reports.
+        const alive = new Promise(resolve => window.addEventListener("message", event => resolve(event.data), { once: true }));
+        outer.contentWindow.postMessage("ping", "*");
+        println(`Page's process: ${await alive}`);
+        done();
+    });
+</script>

@@ -42,6 +42,12 @@ public:
     // https://html.spec.whatwg.org/multipage/webappapis.html#concept-environment-creation-url
     URL::URL const& creation_url() const { return m_creation_url; }
 
+    // https://dom.spec.whatwg.org/#concept-document-url
+    URL::URL const& url() const { return m_url; }
+
+    // https://html.spec.whatwg.org/multipage/urls-and-fetching.html#set-the-url
+    void set_url(URL::URL url) { m_url = move(url); }
+
     // https://dom.spec.whatwg.org/#concept-document-origin
     URL::Origin const& origin() const { return m_origin; }
     void set_origin_for_testing(URL::Origin origin) { m_origin = move(origin); }
@@ -118,6 +124,7 @@ private:
 
     Web::HTML::CrossProcessId m_id;
     URL::URL m_creation_url;
+    URL::URL m_url;
     URL::Origin m_origin;
     NonnullRefPtr<CanonicalBrowsingContext> m_browsing_context;
     NonnullRefPtr<CanonicalWindow> m_relevant_global_object;

@@ -138,7 +138,6 @@ public:
     void did_not_receive_reply(OwedReply const&);
 
     TraversableSessionHistory const& session_history() const { return m_session_history; }
-    NonnullRefPtr<CanonicalSessionHistoryEntry> session_history_entry_for(CanonicalNavigable const&, Web::HTML::SameDocumentNavigationEntry const&) const;
     size_t effective_current_session_history_step_index() const;
 
     StorageJar& session_storage() { return *m_session_storage; }
@@ -177,6 +176,7 @@ public:
     static CanonicalNavigable* navigable_with_active_browsing_context(CanonicalBrowsingContext const&);
     static void remove_from_user_agent_top_level_traversable_set(CanonicalTraversable&);
     bool update_session_history_entry_navigation_api_state(CanonicalNavigable&, Web::HTML::SessionHistoryEntryIdentity const&, Web::HTML::StorageSerializationRecord navigation_api_state);
+    void did_update_document_for_history_step_application(WebContentPage&, Web::HTML::CrossProcessId operation_id, CanonicalNavigable&);
     bool update_session_history_entry_scroll_restoration_mode(CanonicalNavigable&, Web::HTML::SessionHistoryEntryIdentity const&, Web::HTML::ScrollRestorationMode scroll_restoration_mode);
     bool update_session_history_entry_document_state_navigable_target_name(CanonicalNavigable&, Web::HTML::SessionHistoryEntryIdentity const&, Utf16String navigable_target_name);
     bool set_session_history_entry_document_state_reload_pending(CanonicalNavigable const&, Utf16String const& navigation_api_key, bool reload_pending);
