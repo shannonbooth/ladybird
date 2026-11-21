@@ -23,6 +23,7 @@ set(SOURCES
     HTML/CrossProcessId.cpp
     HTML/EmbedderPolicy.cpp
     HTML/FileFilter.cpp
+    HTML/History.cpp
     HTML/HistoryOperation.cpp
     HTML/NavigationParamsDescriptor.cpp
     HTML/NavigationPopulationRequest.cpp

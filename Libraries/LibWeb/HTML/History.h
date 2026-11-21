@@ -53,6 +53,4 @@ private:
     JS::Value m_state { JS::js_null() };
 };
 
-bool can_have_its_url_rewritten(DOM::Document const& document, URL::URL const& target_url);
-
 }

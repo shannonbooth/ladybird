@@ -16,6 +16,7 @@
 #include <LibWeb/HTML/SessionHistoryEntry.h>
 #include <LibWeb/HTML/StructuredSerialize.h>
 #include <LibWeb/HTML/Window.h>
+#include <LibWebCommon/HTML/History.h>
 
 namespace Web::HTML {
 
@@ -127,46 +128,6 @@ WebIDL::ExceptionOr<void> History::forward()
     return delta_traverse(1);
 }
 
-// https://html.spec.whatwg.org/multipage/nav-history-apis.html#can-have-its-url-rewritten
-bool can_have_its_url_rewritten(DOM::Document const& document, URL::URL const& target_url)
-{
-    // 1. Let documentURL be document's URL.
-    auto document_url = document.url();
-
-    // 2. If targetURL and documentURL differ in their scheme, username, password, host, or port components,
-    //    then return false.
-    if (target_url.scheme() != document_url.scheme()
-        || target_url.username() != document_url.username()
-        || target_url.password() != document_url.password()
-        || target_url.host() != document_url.host()
-        || target_url.port() != document_url.port())
-        return false;
-
-    // 3. If targetURL's scheme is an HTTP(S) scheme, then return true.
-    //    (Differences in path, query, and fragment are allowed for http: and https: URLs.)
-    if (target_url.scheme() == "http"sv || target_url.scheme() == "https"sv)
-        return true;
-
-    // 4. If targetURL's scheme is "file", then:
-    //    (Differences in query and fragment are allowed for file: URLs.)
-    if (target_url.scheme() == "file"sv) {
-        // 1. If targetURL and documentURL differ in their path component, then return false.
-        if (target_url.serialize_path() != document_url.serialize_path())
-            return false;
-
-        // 2. Return true.
-        return true;
-    }
-
-    // 5. If targetURL and documentURL differ in their path component or query components, then return false.
-    //    (Only differences in fragment are allowed for other types of URLs.)
-    if (target_url.serialize_path() != document_url.serialize_path() || target_url.query() != document_url.query())
-        return false;
-
-    // 6. Return true.
-    return true;
-}
-
 // https://html.spec.whatwg.org/multipage/history.html#shared-history-push/replace-state-steps
 WebIDL::ExceptionOr<void> History::shared_history_push_replace_state(JS::Realm& realm, JS::Value data, Optional<Utf16String> const& url, HistoryHandlingBehavior history_handling)
 {
@@ -195,7 +156,7 @@ WebIDL::ExceptionOr<void> History::shared_history_push_replace_state(JS::Realm& 
         new_url = parsed_url.release_value();
 
         // 3. If document cannot have its URL rewritten to newURL, then throw a "SecurityError" DOMException.
-        if (!can_have_its_url_rewritten(document, new_url))
+        if (!can_have_its_url_rewritten(document.url(), new_url))
             return WebIDL::SecurityError::create("Cannot pushState or replaceState to incompatible URL"_utf16);
     }
 

@@ -36,6 +36,7 @@
 #include <LibWeb/WebIDL/AbstractOperations.h>
 #include <LibWeb/WebIDL/Promise.h>
 #include <LibWeb/XHR/FormData.h>
+#include <LibWebCommon/HTML/History.h>
 
 namespace Web::HTML {
 
@@ -1128,7 +1129,7 @@ bool Navigation::inner_navigate_event_firing_algorithm(
     // 7.  If document can have its URL rewritten to destination's URL,
     //     and either destination's is same document is true or navigationType is not "traverse",
     //     then initialize event's canIntercept to true. Otherwise, initialize it to false.
-    event_init.can_intercept = can_have_its_url_rewritten(document, destination->raw_url()) && (destination->same_document() || navigation_type != NavigationType::Traverse);
+    event_init.can_intercept = can_have_its_url_rewritten(document.url(), destination->raw_url()) && (destination->same_document() || navigation_type != NavigationType::Traverse);
 
     // 8. Let traverseCanBeCanceled be true if all of the following are true:
     //      - navigable is a top-level traversable;

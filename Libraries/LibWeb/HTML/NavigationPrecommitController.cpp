@@ -14,6 +14,7 @@
 #include <LibWeb/HTML/Scripting/Environments.h>
 #include <LibWeb/HTML/StructuredSerialize.h>
 #include <LibWeb/HTML/Window.h>
+#include <LibWebCommon/HTML/History.h>
 
 namespace Web::HTML {
 
@@ -67,7 +68,7 @@ WebIDL::ExceptionOr<void> NavigationPrecommitController::redirect(Utf16String co
         return WebIDL::SyntaxError::create("Cannot redirect to an invalid URL"_utf16);
 
     // 8. If document cannot have its URL rewritten to destinationURL, then throw a "SecurityError" DOMException.
-    if (!can_have_its_url_rewritten(document, *destination_url))
+    if (!can_have_its_url_rewritten(document.url(), *destination_url))
         return WebIDL::SecurityError::create("Cannot redirect to a URL that the document cannot be rewritten to"_utf16);
 
     // 9. If options["history"] is "push" or "replace", then set this's event's navigationType to options["history"].
