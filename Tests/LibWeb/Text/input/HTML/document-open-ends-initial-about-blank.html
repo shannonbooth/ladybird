@@ -1,0 +1,26 @@
+<!doctype html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        if (document.readyState !== "complete")
+            await new Promise(resolve => window.addEventListener("load", resolve, { once: true }));
+
+        const iframe = document.createElement("iframe");
+        document.body.append(iframe);
+        iframe.contentWindow.marker = "initial window";
+        iframe.contentDocument.open();
+        iframe.contentDocument.close();
+        await internals.flushSessionHistoryTraversalQueue();
+
+        // The opened document is no longer the initial about:blank, so navigating it pushes an entry, and the new
+        // document gets a window of its own.
+        const lengthBeforeNavigation = history.length;
+        await new Promise(resolve => {
+            iframe.addEventListener("load", resolve, { once: true });
+            iframe.contentWindow.location.assign("about:blank");
+        });
+        await internals.flushSessionHistoryTraversalQueue();
+        println(`Navigation pushed an entry: ${history.length === lengthBeforeNavigation + 1}`);
+        println(`New window: ${iframe.contentWindow.marker === undefined}`);
+    });
+</script>

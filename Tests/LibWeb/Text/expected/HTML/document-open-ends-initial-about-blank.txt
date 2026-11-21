@@ -1,0 +1,2 @@
+Navigation pushed an entry: true
+New window: true

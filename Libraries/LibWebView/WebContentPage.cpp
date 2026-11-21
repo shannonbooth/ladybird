@@ -2301,6 +2301,14 @@ void WebContentPage::did_set_session_history_entry_document_state_reload_pending
     navigable->top_level_traversable().set_session_history_entry_document_state_reload_pending(*navigable, navigation_api_key, reload_pending);
 }
 
+// https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-open-steps
+// NB: The process hosting the document ran step 13, which sets document's is initial about:blank to false.
+void WebContentPage::did_end_initial_about_blank(Web::HTML::CrossProcessId document_id)
+{
+    if (auto document = hosted_document_with_id(document_id))
+        document->set_is_initial_about_blank(CanonicalDocument::IsInitialAboutBlank::No);
+}
+
 void WebContentPage::did_change_focused_navigable(Web::HTML::CrossProcessId navigable_id)
 {
     // A page moves focus to a navigable it hosts.

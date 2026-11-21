@@ -335,6 +335,7 @@ private:
     virtual void page_did_update_session_history_entry_document_state_navigable_target_name(Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryIdentity const& entry_identity, Utf16String const& navigable_target_name) override;
     virtual void page_did_set_session_history_entry_document_state_reload_pending(Web::HTML::CrossProcessId navigable_id, Utf16String const& navigation_api_key, bool reload_pending) override;
     virtual void page_did_request_set_system_focus(bool) override;
+    virtual void page_did_end_initial_about_blank(Web::HTML::CrossProcessId document_id) override;
     virtual void page_did_change_focused_navigable(Web::HTML::CrossProcessId) override;
     virtual void page_did_request_key_event_for_testing(Web::KeyEvent) override;
     virtual void page_did_request_webdriver_mouse_event(Web::HTML::CrossProcessId local_root_id, Web::MouseEvent, GC::Ref<GC::Function<void()>> on_handled) override;

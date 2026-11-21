@@ -1607,6 +1607,9 @@ WebIDL::ExceptionOr<Document*> Document::open(Optional<Utf16String> const&, Opti
         HTML::relevant_window(*this).navigation()->set_was_initial_about_blank_opened(true);
 
     // 13. Set document's is initial about:blank to false.
+    // NB: The UI process holds the flag too.
+    if (is_initial_about_blank())
+        page().client().page_did_end_initial_about_blank(id());
     set_is_initial_about_blank(false);
 
     // 14. If document's iframe load in progress flag is set, then set document's mute iframe load flag.

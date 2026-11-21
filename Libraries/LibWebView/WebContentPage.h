@@ -320,6 +320,7 @@ private:
     virtual void did_update_session_history_entry_navigation_api_state(Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryIdentity entry_identity, Web::HTML::StorageSerializationRecord navigation_api_state) override;
     virtual void did_update_session_history_entry_document_state_navigable_target_name(Web::HTML::CrossProcessId navigable_id, Web::HTML::SessionHistoryEntryIdentity entry_identity, Utf16String navigable_target_name) override;
     virtual void did_set_session_history_entry_document_state_reload_pending(Web::HTML::CrossProcessId navigable_id, Utf16String navigation_api_key, bool reload_pending) override;
+    virtual void did_end_initial_about_blank(Web::HTML::CrossProcessId document_id) override;
     virtual void did_change_focused_navigable(Web::HTML::CrossProcessId navigable_id) override;
     virtual void did_request_key_event_for_testing(Web::KeyEvent event) override;
     virtual void did_request_spelling_menu_action_for_testing(Web::SpellingMenuActionForTesting action, u32 guess_index) override;

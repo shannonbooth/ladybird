@@ -1899,6 +1899,11 @@ void PageClient::page_did_request_set_system_focus(bool has_system_focus)
     client().did_request_set_system_focus(m_id, has_system_focus);
 }
 
+void PageClient::page_did_end_initial_about_blank(Web::HTML::CrossProcessId document_id)
+{
+    client().async_did_end_initial_about_blank(m_id, document_id);
+}
+
 void PageClient::page_did_change_focused_navigable(Web::HTML::CrossProcessId navigable_id)
 {
     client().async_did_change_focused_navigable(m_id, navigable_id);

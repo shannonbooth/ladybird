@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    // Traversing back to a page recreates its iframe, whose initial about:blank stays active until the entry the
+    // iframe's history kept is populated. The page opening that document in the meantime must not bring down the
+    // browser. Whether the kept entry is restored after that is left open: other engines let document.open() cancel it,
+    // and the spec doesn't settle it (https://github.com/whatwg/html/issues/12724).
+    asyncTest(async done => {
+        const server = httpTestServer();
+
+        const childUrl = await server.createEcho("GET", "/document-open-reconstructed-child", {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+            body: `<!DOCTYPE html><span>child</span>`,
+        });
+
+        const awayUrl = await server.createEcho("GET", "/document-open-reconstructed-away", {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+            body: `<!DOCTYPE html>away<script>addEventListener("pageshow", () => history.back(), { once: true });<\/script>`,
+        });
+
+        // The phase survives the cross-document round trip in sessionStorage.
+        const driver = `
+            addEventListener("message", event => event.source.postMessage("alive", "*"));
+            const phase = +(sessionStorage.getItem("document-open-reconstructed-phase") || "0") + 1;
+            sessionStorage.setItem("document-open-reconstructed-phase", "" + phase);
+            const inner = document.querySelector("iframe");
+            if (phase === 1) {
+                // Navigating during the load event would replace this entry, leaving nothing to go back to.
+                addEventListener("load", () => setTimeout(() => { location.href = "${awayUrl}"; }), { once: true });
+            } else {
+                inner.contentDocument.open();
+                inner.contentDocument.write("opened");
+                inner.contentDocument.close();
+                sessionStorage.removeItem("document-open-reconstructed-phase");
+                addEventListener("load", () => setTimeout(() => parent.postMessage("opened", "*")), { once: true });
+            }
+        `;
+        const middleUrl = await server.createEcho("GET", "/document-open-reconstructed-middle", {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+            body: `<!DOCTYPE html><body><iframe src="${childUrl}"></iframe><script>${driver}<\/script></body>`,
+        });
+
+        const outer = document.createElement("iframe");
+        document.body.appendChild(outer);
+        const nextMessage = () => new Promise(resolve => {
+            window.addEventListener("message", function listener(event) {
+                if (event.source !== outer.contentWindow)
+                    return;
+                window.removeEventListener("message", listener);
+                resolve(event.data);
+            });
+        });
+        const opened = nextMessage();
+        outer.src = middleUrl;
+        println(`Recreated iframe: ${await opened}`);
+
+        // The history step for the recreated iframe runs from the traversal queue. The page answering afterwards shows
+        // that the browser and the page's process are still up.
+        await internals.flushSessionHistoryTraversalQueue();
+        const answer = nextMessage();
+        outer.contentWindow.postMessage("ping", "*");
+        println(`Page's process: ${await answer}`);
+        outer.remove();
+        done();
+    });
+</script>

@@ -1606,9 +1606,15 @@ void CanonicalTraversable::apply_changing_navigable_history_step_continuation(Ap
         // 11. Otherwise:
         // 1. Assert: navigationType is not null.
         // AD-HOC: Except for a navigable created by a document repopulated for its entry, which displays its initial
-        //         about:blank until an update for a navigable's creation or destruction restores the entry its nested
-        //         history kept. See https://github.com/whatwg/html/issues/12724.
-        VERIFY(run.navigation_type().has_value() || changing_navigable.navigable().active_document().is_initial_about_blank());
+        //         about:blank, outside its session history entries, until an update for a navigable's creation or
+        //         destruction restores the entry its nested history kept. See https://github.com/whatwg/html/issues/12724.
+        //         A page can have opened that document, so it is no longer the initial about:blank.
+        auto displays_one_of_its_session_history_entries = [&] {
+            auto const& navigable = changing_navigable.navigable();
+            auto entries = m_session_history.get_session_history_entries(navigable);
+            return entries.has_value() && any_of(*entries, [&](auto const& entry) { return entry->document_state == navigable.active_session_history_entry()->document_state; });
+        };
+        VERIFY(run.navigation_type().has_value() || !displays_one_of_its_session_history_entries());
 
         // 2. Deactivate displayedDocument, given userInvolvement, targetEntry, navigationType, and
         //    afterPotentialUnloads.

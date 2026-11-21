@@ -57,6 +57,7 @@ public:
 
     // https://html.spec.whatwg.org/multipage/dom.html#is-initial-about:blank
     bool is_initial_about_blank() const { return m_is_initial_about_blank == IsInitialAboutBlank::Yes; }
+    void set_is_initial_about_blank(IsInitialAboutBlank value) { m_is_initial_about_blank = value; }
 
     // https://html.spec.whatwg.org/multipage/dom.html#concept-document-coop
     Web::HTML::OpenerPolicy const& opener_policy() const { return m_opener_policy; }
