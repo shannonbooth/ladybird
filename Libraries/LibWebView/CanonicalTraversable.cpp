@@ -935,18 +935,14 @@ bool CanonicalTraversable::set_session_history_entry_document_state_reload_pendi
     return true;
 }
 
-Optional<i32> CanonicalTraversable::append_nested_history(CanonicalNavigable const& parent_navigable, CanonicalDocumentState& parent_document_state, Web::HTML::CrossProcessId child_navigable_id)
+Optional<i32> CanonicalTraversable::append_nested_history(CanonicalNavigable const& parent_navigable, CanonicalDocumentState& parent_document_state, Web::HTML::CrossProcessId child_navigable_id, CanonicalSessionHistoryEntry& history_entry)
 {
     VERIFY(&parent_navigable.top_level_traversable() == this);
 
     auto child_navigable = find(child_navigable_id);
     if (!child_navigable.has_value() || child_navigable->parent() != &parent_navigable)
         return {};
-    // https://html.spec.whatwg.org/multipage/document-sequences.html#create-a-new-child-navigable
-    // 10. Let historyEntry be navigable's active session history entry.
-    // NB: Read at the steps' queue position: the entry that initializing the navigable created is still its active
-    //     entry, as a synchronous navigation of the navigable finalizes only once its nested history exists.
-    auto target_step = m_session_history.append_nested_history(parent_navigable, parent_document_state, child_navigable_id, *child_navigable->active_session_history_entry());
+    auto target_step = m_session_history.append_nested_history(parent_navigable, parent_document_state, child_navigable_id, history_entry);
     if (!target_step.has_value())
         return {};
 
@@ -2208,6 +2204,15 @@ void CanonicalTraversable::enqueue_history_operation(Web::HTML::CrossProcessId o
 
     Optional<Web::HTML::CrossProcessId> synchronous_navigation_target;
     RefPtr<CanonicalSessionHistoryEntry> target_entry;
+
+    // https://html.spec.whatwg.org/multipage/document-sequences.html#create-a-new-child-navigable
+    // 10. Let historyEntry be navigable's active session history entry.
+    // NB: Taken as the process creating navigable asks for step 12's steps, since a synchronous navigation of navigable
+    //     can make another entry active before they run.
+    if (auto const* parameters = request.get_pointer<Web::NavigableCreationHistoryOperationParameters>()) {
+        if (auto navigable = find(parameters->navigable_id); navigable.has_value())
+            target_entry = navigable->active_session_history_entry();
+    }
     if (request.has<Web::FinalizeSameDocumentNavigationHistoryOperationParameters>()) {
         auto const& parameters = request.get<Web::FinalizeSameDocumentNavigationHistoryOperationParameters>();
         synchronous_navigation_target = parameters.navigable_id;
@@ -2552,7 +2557,7 @@ void CanonicalTraversable::run_history_operation(HistoryOperation& operation)
             // 4. Set historyEntry's step to targetStepSHE's step.
             // 5. Let nestedHistory be a new nested history whose id is navigable's id and entries list is « historyEntry ».
             // 6. Append nestedHistory to parentDocState's nested histories.
-            if (!append_nested_history(*parent_navigable, parent_document_state, parameters.navigable_id).has_value()) {
+            if (!operation.target_entry || !append_nested_history(*parent_navigable, parent_document_state, parameters.navigable_id, *operation.target_entry).has_value()) {
                 finish_history_operation(operation.operation_id);
                 return;
             }
@@ -2782,7 +2787,18 @@ void CanonicalTraversable::finish_history_operation(Web::HTML::CrossProcessId op
     // initial entry, whose step the steps creating it set.
     auto target_entry_step = committed_step;
     if (auto const* parameters = operation->parameters.get_pointer<Web::NavigableCreationHistoryOperationParameters>(); parameters && committed_step.has_value()) {
-        if (auto child_navigable = find(parameters->navigable_id); child_navigable.has_value())
+        // NB: The creation of a navigable whose nested history its document's entry kept puts no entry in session
+        //     history. The reply then names the entry the navigable is at.
+        auto child_navigable = find(parameters->navigable_id);
+        auto target_entry_is_in_session_history = [&] {
+            if (!child_navigable.has_value() || !operation->target_entry)
+                return false;
+            auto entries = m_session_history.get_session_history_entries(*child_navigable);
+            return entries.has_value() && any_of(*entries, [&](auto const& entry) { return entry.ptr() == operation->target_entry.ptr(); });
+        };
+        if (target_entry_is_in_session_history())
+            target_entry_step = operation->target_entry->step;
+        else if (child_navigable.has_value())
             target_entry_step = child_navigable->active_session_history_entry()->step;
     }
 
