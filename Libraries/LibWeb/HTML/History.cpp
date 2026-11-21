@@ -179,7 +179,7 @@ WebIDL::ExceptionOr<void> History::shared_history_push_replace_state(JS::Realm& 
 
     // 10. Run the URL and history update steps given document and newURL, with serializedData set to
     //     serializedData and historyHandling set to historyHandling.
-    perform_url_and_history_update_steps(document, new_url, serialized_data, history_handling);
+    perform_url_and_history_update_steps(document, new_url, SameDocumentEntrySource::HistoryAPI, serialized_data, history_handling);
 
     return {};
 }

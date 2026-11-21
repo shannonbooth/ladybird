@@ -456,6 +456,7 @@ TEST_CASE(queued_same_document_entries_are_addressed_by_identity)
             .previous_entry_persisted_state = {},
             .history_handling = Web::HTML::HistoryHandlingBehavior::Push,
             .user_involvement = Web::HTML::UserNavigationInvolvement::None,
+            .source = Web::HTML::SameDocumentEntrySource::HistoryAPI,
             .entry_document_id = {},
         };
         traversable.enqueue_history_operation(operation_id, move(parameters), {});

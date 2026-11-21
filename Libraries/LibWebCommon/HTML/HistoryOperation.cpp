@@ -158,6 +158,7 @@ ErrorOr<void> IPC::encode(Encoder& encoder, Web::FinalizeSameDocumentNavigationH
     TRY(encoder.encode(parameters.previous_entry_persisted_state));
     TRY(encoder.encode(parameters.history_handling));
     TRY(encoder.encode(parameters.user_involvement));
+    TRY(encoder.encode(parameters.source));
     TRY(encoder.encode(parameters.entry_document_id));
     return {};
 }
@@ -172,6 +173,7 @@ ErrorOr<Web::FinalizeSameDocumentNavigationHistoryOperationParameters> IPC::deco
         .previous_entry_persisted_state = TRY(decoder.decode<Optional<Web::HTML::SessionHistoryEntryPersistedState>>()),
         .history_handling = TRY(decoder.decode<Web::HTML::HistoryHandlingBehavior>()),
         .user_involvement = TRY(decoder.decode<Web::HTML::UserNavigationInvolvement>()),
+        .source = TRY(decoder.decode<Web::HTML::SameDocumentEntrySource>()),
         .entry_document_id = TRY(decoder.decode<Optional<Web::HTML::CrossProcessId>>()),
     };
 }

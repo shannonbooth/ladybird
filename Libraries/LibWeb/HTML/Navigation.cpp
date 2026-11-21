@@ -1392,7 +1392,7 @@ void Navigation::commit_a_navigate_event(GC::Ref<NavigateEvent> event, GC::Ptr<N
         //   event's navigationType.
         if (navigation_type == NavigationType::Push || navigation_type == NavigationType::Replace) {
             auto history_handling = navigation_type == NavigationType::Push ? HistoryHandlingBehavior::Push : HistoryHandlingBehavior::Replace;
-            perform_url_and_history_update_steps(document, event->destination()->raw_url(), event->classic_history_api_state(), history_handling);
+            perform_url_and_history_update_steps(document, event->destination()->raw_url(), SameDocumentEntrySource::NavigationAPIIntercept, event->classic_history_api_state(), history_handling);
         }
 
         // - "reload":

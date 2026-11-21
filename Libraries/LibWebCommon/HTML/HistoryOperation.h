@@ -14,6 +14,7 @@
 #include <LibWebCommon/HTML/CrossProcessId.h>
 #include <LibWebCommon/HTML/HistoryHandlingBehavior.h>
 #include <LibWebCommon/HTML/NavigationSourceSnapshot.h>
+#include <LibWebCommon/HTML/SameDocumentEntrySource.h>
 #include <LibWebCommon/HTML/SameDocumentNavigationEntry.h>
 #include <LibWebCommon/HTML/SandboxingFlagSet.h>
 #include <LibWebCommon/HTML/Scripting/EnvironmentId.h>
@@ -81,6 +82,7 @@ struct FinalizeSameDocumentNavigationHistoryOperationParameters {
     Optional<HTML::SessionHistoryEntryPersistedState> previous_entry_persisted_state;
     HTML::HistoryHandlingBehavior history_handling;
     HTML::UserNavigationInvolvement user_involvement;
+    HTML::SameDocumentEntrySource source;
     // The entryDocument of the document open steps, when it is not the document, whose URL the document took.
     Optional<HTML::CrossProcessId> entry_document_id;
 };

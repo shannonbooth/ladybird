@@ -535,7 +535,7 @@ WebIDL::ExceptionOr<Window::OpenedWindow> Window::window_open_steps_internal(Utf
             auto document = GC::Ref(*local_target_navigable.active_document());
             HTML::HTMLParser::the_end(document, HTML::HTMLParser::parserless_completion_token(document));
 
-            perform_url_and_history_update_steps(*local_target_navigable.active_document(), url_record.release_value());
+            perform_url_and_history_update_steps(*local_target_navigable.active_document(), url_record.release_value(), SameDocumentEntrySource::AboutBlank);
         }
 
         // 5. Otherwise, navigate targetNavigable to urlRecord using sourceDocument, with referrerPolicy set to referrerPolicy and exceptionsEnabled set to true.

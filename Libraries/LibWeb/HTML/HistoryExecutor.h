@@ -65,7 +65,7 @@ public:
     void reject_ui_navigation_api_traversal(CrossProcessId operation_id);
 
     void traverse_the_history_by_delta(int delta, DOM::Document& source_document);
-    void finalize_same_document_navigation(GC::Ref<LocalNavigable>, NonnullRefPtr<SessionHistoryEntry>, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior, UserNavigationInvolvement, Optional<SessionHistoryEntryPersistedState> previous_entry_persisted_state, Optional<CrossProcessId> entry_document_id = {});
+    void finalize_same_document_navigation(GC::Ref<LocalNavigable>, NonnullRefPtr<SessionHistoryEntry>, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior, UserNavigationInvolvement, SameDocumentEntrySource, Optional<SessionHistoryEntryPersistedState> previous_entry_persisted_state, Optional<CrossProcessId> entry_document_id = {});
 
     void run_ui_beforeunload_check(Vector<CrossProcessId> navigable_ids, Optional<SessionHistoryEntryDescriptor> target_entry, Optional<UserNavigationInvolvement> user_involvement_for_navigate_event, UnloadPromptShown, GC::Ref<GC::Function<void(CheckIfUnloadingIsCanceledResult, UnloadPromptShown)>>);
     void run_ui_changing_navigable_history_job(CrossProcessId operation_id, CrossProcessId navigable_id, SessionHistoryEntryDescriptor target_entry_descriptor, UserNavigationInvolvement, Optional<Bindings::NavigationType>, Optional<Utf16String> finalized_navigation_id, bool ongoing_navigation_is_traversal, bool needs_population, GC::Ref<OnChangingNavigableHistoryStepJobComplete>);

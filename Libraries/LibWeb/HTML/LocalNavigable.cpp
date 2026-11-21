@@ -4212,7 +4212,7 @@ void LocalNavigable::navigate_to_a_fragment(URL::URL const& url, HistoryHandling
     // Append the following session history synchronous navigation steps involving navigable to its traversable:
     // 1. Finalize a same-document navigation given traversable, navigable, historyEntry, entryToReplace,
     //    historyHandling, and userInvolvement.
-    page().history_executor().finalize_same_document_navigation(*this, history_entry, entry_to_replace, history_handling, user_involvement, move(previous_entry_persisted_state));
+    page().history_executor().finalize_same_document_navigation(*this, history_entry, entry_to_replace, history_handling, user_involvement, SameDocumentEntrySource::FragmentNavigation, move(previous_entry_persisted_state));
 
     // 15. Update document for history step application given navigable's active document, historyEntry, true,
     //     scriptHistoryIndex, scriptHistoryLength, and historyHandling.
@@ -4664,9 +4664,9 @@ void finalize_a_cross_document_navigation(GC::Ref<LocalNavigable> navigable, His
 }
 
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#url-and-history-update-steps
-// NB: The document open steps name their entryDocument when it is not document, for the UI process to check newURL
-//     against.
-void perform_url_and_history_update_steps(DOM::Document& document, URL::URL new_url, Optional<StorageSerializationRecord> serialized_data, HistoryHandlingBehavior history_handling, Optional<CrossProcessId> entry_document_id)
+// NB: The caller names itself, and the document open steps their entryDocument when it is not document, for the UI
+//     process to check newURL as that caller does.
+void perform_url_and_history_update_steps(DOM::Document& document, URL::URL new_url, SameDocumentEntrySource source, Optional<StorageSerializationRecord> serialized_data, HistoryHandlingBehavior history_handling, Optional<CrossProcessId> entry_document_id)
 {
     // 1. Let navigable be document's node navigable.
     auto navigable = document.navigable();
@@ -4740,7 +4740,7 @@ void perform_url_and_history_update_steps(DOM::Document& document, URL::URL new_
     // 14. Append the following session history synchronous navigation steps involving navigable to traversable:
     // 1. Finalize a same-document navigation given traversable, navigable, newEntry, entryToReplace,
     //    historyHandling, and "none".
-    navigable->page().history_executor().finalize_same_document_navigation(*navigable, new_entry, entry_to_replace, history_handling, UserNavigationInvolvement::None, move(previous_entry_persisted_state), entry_document_id);
+    navigable->page().history_executor().finalize_same_document_navigation(*navigable, new_entry, entry_to_replace, history_handling, UserNavigationInvolvement::None, source, move(previous_entry_persisted_state), entry_document_id);
 
     // 12. Update the navigation API entries for a same-document navigation given document's relevant global object's navigation API, newEntry, and historyHandling.
     // In the wrapper architecture the relevant global object is a JS wrapper,

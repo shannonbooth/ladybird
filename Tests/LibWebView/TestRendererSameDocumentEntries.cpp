@@ -45,9 +45,9 @@ URL::URL parse(StringView url)
     return URL::Parser::basic_parse(url).release_value();
 }
 
-// Reports a same-document entry for the view's active document, as the process hosting it does, and returns whether
-// the UI process accepted it rather than terminating that process.
-bool report_same_document_entry(WebView::HeadlessWebView& view, URL::URL url, Web::HTML::HistoryHandlingBehavior history_handling, Optional<Web::HTML::CrossProcessId> entry_document_id = {})
+// Reports a same-document entry for the view's active document, as the process hosting it does after running the
+// given operation, and returns whether the UI process accepted it rather than terminating that process.
+bool report_same_document_entry(WebView::HeadlessWebView& view, Web::HTML::SameDocumentEntrySource source, URL::URL url, Web::HTML::HistoryHandlingBehavior history_handling, Optional<Web::HTML::CrossProcessId> entry_document_id = {})
 {
     NonnullRefPtr<WebView::WebContentClient> client = view.page().client();
     auto& stub = static_cast<WebContentClientStub&>(*client);
@@ -67,6 +67,7 @@ bool report_same_document_entry(WebView::HeadlessWebView& view, URL::URL url, We
         .previous_entry_persisted_state = {},
         .history_handling = history_handling,
         .user_involvement = Web::HTML::UserNavigationInvolvement::None,
+        .source = source,
         .entry_document_id = entry_document_id,
     };
     if (history_handling == Web::HTML::HistoryHandlingBehavior::Replace)
@@ -79,9 +80,9 @@ bool report_same_document_entry(WebView::HeadlessWebView& view, URL::URL url, We
 
 }
 
-// A same-document entry gets its URL from the URL and history update steps, or from navigating to a fragment. The
-// UI process holds the document's URL and origin, so it refuses an entry those steps could not have created for the
-// document, and the process that reported it.
+// A same-document entry gets its URL from the URL and history update steps, or from navigating to a fragment, and the
+// operation that ran them limits it. The UI process holds the document's URL and origin, so it refuses an entry that
+// operation could not have created for the document, and the process that reported it.
 
 TEST_CASE(renderer_same_document_entries)
 {
@@ -99,34 +100,40 @@ TEST_CASE(renderer_same_document_entries)
 
         // A fragment is a URL the document can have its URL rewritten to, and the reported entry becomes the
         // navigable's active entry as the document's URL changes.
-        VERIFY(report_same_document_entry(*view, parse("about:blank#fragment"sv), Web::HTML::HistoryHandlingBehavior::Replace));
+        VERIFY(report_same_document_entry(*view, Web::HTML::SameDocumentEntrySource::HistoryAPI, parse("about:blank#fragment"sv), Web::HTML::HistoryHandlingBehavior::Replace));
         VERIFY(document.url() == parse("about:blank#fragment"sv));
         VERIFY(view->traversable().active_session_history_entry()->url == parse("about:blank#fragment"sv));
 
-        // A new window's initial about:blank takes any URL that matches about:blank.
-        VERIFY(report_same_document_entry(*view, parse("about:blank?query"sv), Web::HTML::HistoryHandlingBehavior::Replace));
+        // pushState() can't change an about: URL's query, but a new window's initial about:blank takes any URL that
+        // matches about:blank.
+        VERIFY(!report_same_document_entry(*WebView::HeadlessWebView::create(theme, { 800, 600 }), Web::HTML::SameDocumentEntrySource::HistoryAPI, parse("about:blank?query"sv), Web::HTML::HistoryHandlingBehavior::Replace));
+        VERIFY(report_same_document_entry(*view, Web::HTML::SameDocumentEntrySource::AboutBlank, parse("about:blank?query"sv), Web::HTML::HistoryHandlingBehavior::Replace));
         VERIFY(document.url() == parse("about:blank?query"sv));
 
         // document.open() ends the initial about:blank, whose entries can then be pushed.
         static_cast<WebContentClientStub&>(view->page().client()).did_end_initial_about_blank(view->page().id(), document.id());
         VERIFY(!document.is_initial_about_blank());
-        VERIFY(report_same_document_entry(*view, parse("about:blank?query#pushed"sv), Web::HTML::HistoryHandlingBehavior::Push));
+        VERIFY(report_same_document_entry(*view, Web::HTML::SameDocumentEntrySource::FragmentNavigation, parse("about:blank?query#pushed"sv), Web::HTML::HistoryHandlingBehavior::Push));
     }
 
-    auto refuses = [&](StringView url, Web::HTML::HistoryHandlingBehavior history_handling, Optional<Web::HTML::CrossProcessId> entry_document_id = {}) {
+    auto refuses = [&](Web::HTML::SameDocumentEntrySource source, StringView url, Web::HTML::HistoryHandlingBehavior history_handling, Optional<Web::HTML::CrossProcessId> entry_document_id = {}) {
         auto view = WebView::HeadlessWebView::create(theme, { 800, 600 });
-        return !report_same_document_entry(*view, parse(url), history_handling, entry_document_id);
+        return !report_same_document_entry(*view, source, parse(url), history_handling, entry_document_id);
     };
 
     // A local file, or a document of another origin.
-    VERIFY(refuses("file:///etc/passwd"sv, Web::HTML::HistoryHandlingBehavior::Replace));
-    VERIFY(refuses("https://victim.example/"sv, Web::HTML::HistoryHandlingBehavior::Replace));
+    VERIFY(refuses(Web::HTML::SameDocumentEntrySource::HistoryAPI, "file:///etc/passwd"sv, Web::HTML::HistoryHandlingBehavior::Replace));
+    VERIFY(refuses(Web::HTML::SameDocumentEntrySource::NavigationAPIIntercept, "https://victim.example/"sv, Web::HTML::HistoryHandlingBehavior::Replace));
 
-    // document.open() from an entry document the process does not host.
-    VERIFY(refuses("https://victim.example/"sv, Web::HTML::HistoryHandlingBehavior::Replace, Web::HTML::CrossProcessId { .namespace_id = 1, .local_id = 1 }));
+    // A fragment navigation needs a fragment.
+    VERIFY(refuses(Web::HTML::SameDocumentEntrySource::FragmentNavigation, "about:blank"sv, Web::HTML::HistoryHandlingBehavior::Replace));
+
+    // document.open() from an entry document the process does not host, or of document itself to another URL.
+    VERIFY(refuses(Web::HTML::SameDocumentEntrySource::DocumentOpen, "https://victim.example/"sv, Web::HTML::HistoryHandlingBehavior::Replace, Web::HTML::CrossProcessId { .namespace_id = 1, .local_id = 1 }));
+    VERIFY(refuses(Web::HTML::SameDocumentEntrySource::DocumentOpen, "about:blank#other"sv, Web::HTML::HistoryHandlingBehavior::Replace));
 
     // A push, as an initial about:blank's entries replace its active one.
-    VERIFY(refuses("about:blank#fragment"sv, Web::HTML::HistoryHandlingBehavior::Push));
+    VERIFY(refuses(Web::HTML::SameDocumentEntrySource::HistoryAPI, "about:blank#fragment"sv, Web::HTML::HistoryHandlingBehavior::Push));
 
     outln("PASS: renderers cannot give a same-document entry a URL its document cannot take");
 }

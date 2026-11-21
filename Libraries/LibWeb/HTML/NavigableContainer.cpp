@@ -244,7 +244,7 @@ Optional<URL::URL> NavigableContainer::shared_attribute_processing_steps_for_ifr
     // 4. If url matches about:blank and initialInsertion is true, then perform the URL and history update steps given element's content navigable's active document and url.
     if (url_matches_about_blank(url) && initial_insertion == InitialInsertion::Yes) {
         // NB: A newly inserted element's content navigable was created in this process.
-        perform_url_and_history_update_steps(*as<LocalNavigable>(*m_content_navigable).active_document(), url);
+        perform_url_and_history_update_steps(*as<LocalNavigable>(*m_content_navigable).active_document(), url, SameDocumentEntrySource::AboutBlank);
     }
 
     // 5. Return url.

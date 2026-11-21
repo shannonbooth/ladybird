@@ -205,7 +205,7 @@ void HistoryExecutor::traverse_the_history_by_delta(int delta, DOM::Document& so
         });
 }
 
-void HistoryExecutor::finalize_same_document_navigation(GC::Ref<LocalNavigable> target_navigable, NonnullRefPtr<SessionHistoryEntry> target_entry, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior history_handling, UserNavigationInvolvement user_involvement, Optional<SessionHistoryEntryPersistedState> previous_entry_persisted_state, Optional<CrossProcessId> entry_document_id)
+void HistoryExecutor::finalize_same_document_navigation(GC::Ref<LocalNavigable> target_navigable, NonnullRefPtr<SessionHistoryEntry> target_entry, RefPtr<SessionHistoryEntry> entry_to_replace, HistoryHandlingBehavior history_handling, UserNavigationInvolvement user_involvement, SameDocumentEntrySource source, Optional<SessionHistoryEntryPersistedState> previous_entry_persisted_state, Optional<CrossProcessId> entry_document_id)
 {
     if (target_navigable->has_been_destroyed())
         return;
@@ -225,6 +225,7 @@ void HistoryExecutor::finalize_same_document_navigation(GC::Ref<LocalNavigable> 
         .previous_entry_persisted_state = move(previous_entry_persisted_state),
         .history_handling = history_handling,
         .user_involvement = user_involvement,
+        .source = source,
         .entry_document_id = entry_document_id,
     };
 

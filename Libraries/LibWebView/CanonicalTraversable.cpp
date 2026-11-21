@@ -2081,7 +2081,8 @@ void CanonicalTraversable::append_history_queue_steps(SessionHistoryTraversalSte
 // https://html.spec.whatwg.org/multipage/browsing-the-web.html#url-and-history-update-steps
 // NB: Navigating to a fragment does the same, in its steps 6, 13 and 14. The process hosting navigable's active
 //     document ran these steps, and reports newEntry with the synchronous navigation steps it appended before any event
-//     these steps fire. The UI process accepts newEntry only if these steps could have created it for that document.
+//     these steps fire, and with the operation that ran them. The UI process accepts newEntry only if that operation
+//     could have created it for that document.
 static ErrorOr<RefPtr<CanonicalSessionHistoryEntry>> session_history_entry_for(RefPtr<WebContentPage> const& requesting_page, CanonicalNavigable& navigable, Web::FinalizeSameDocumentNavigationHistoryOperationParameters const& parameters)
 {
     auto const& reported_entry = parameters.target_entry;
@@ -2095,29 +2096,74 @@ static ErrorOr<RefPtr<CanonicalSessionHistoryEntry>> session_history_entry_for(R
     if (!document || active_entry->document_state->id != reported_entry.document_state_id)
         return RefPtr<CanonicalSessionHistoryEntry> {};
 
-    // NB: Each caller of these steps limits newURL. Pushing state and the Navigation API need document to be able to
-    //     have its URL rewritten to newURL. Navigating to a fragment needs newURL to have a fragment and to equal
-    //     activeEntry's URL without it, which an error document's URL of about:error is not. A new window's or
-    //     iframe's initial about:blank takes a URL that matches about:blank. The document open steps give document the
-    //     URL of their entryDocument, which must be same origin with document.
+    // NB: The operation that ran these steps limits newURL, as it would have checked it before running them.
     auto document_may_take_new_url = [&] {
-        if (Web::HTML::can_have_its_url_rewritten(document->url(), new_url))
-            return true;
-        if (new_url.fragment().has_value() && new_url.equals(active_entry->url, URL::ExcludeFragment::Yes))
-            return true;
-        if (document->is_initial_about_blank() && Web::HTML::url_matches_about_blank(new_url))
-            return true;
-        if (!parameters.entry_document_id.has_value())
-            return false;
-        RefPtr<CanonicalDocument> entry_document;
-        requesting_page->client().for_each_page([&](WebContentPage& page) {
-            entry_document = page.hosted_document_with_id(*parameters.entry_document_id);
-            return entry_document ? IterationDecision::Break : IterationDecision::Continue;
-        });
-        return entry_document
-            && entry_document->origin().is_same_origin(document->origin())
-            && !new_url.fragment().has_value()
-            && new_url.equals(entry_document->url(), URL::ExcludeFragment::Yes);
+        switch (parameters.source) {
+        case Web::HTML::SameDocumentEntrySource::HistoryAPI:
+            // https://html.spec.whatwg.org/multipage/nav-history-apis.html#shared-history-push/replace-state-steps
+            // 5.3. If document cannot have its URL rewritten to newURL, then throw a "SecurityError" DOMException.
+            return Web::HTML::can_have_its_url_rewritten(document->url(), new_url);
+
+        case Web::HTML::SameDocumentEntrySource::NavigationAPIIntercept:
+            // https://html.spec.whatwg.org/multipage/nav-history-apis.html#inner-navigate-event-firing-algorithm
+            // 7. If document can have its URL rewritten to destination's URL, and either destination's is same document
+            //    is true or navigationType is not "traverse", then initialize event's canIntercept to true. Otherwise,
+            //    initialize it to false.
+            // NB: Step 8 of redirect() checks the same of a URL a precommit handler redirects to.
+            return Web::HTML::can_have_its_url_rewritten(document->url(), new_url);
+
+        case Web::HTML::SameDocumentEntrySource::FragmentNavigation:
+            // https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate
+            // 15. If all of the following are true:
+            //     - documentResource is null;
+            //     - response is null;
+            //     - url equals navigable's active session history entry's URL with exclude fragments set to true; and
+            //     - url's fragment is non-null,
+            //     then:
+            //     1. Navigate to a fragment given navigable, url, historyHandling, userInvolvement, sourceElement,
+            //        navigationAPIState, and navigationId.
+            return new_url.fragment().has_value() && new_url.equals(active_entry->url, URL::ExcludeFragment::Yes);
+
+        case Web::HTML::SameDocumentEntrySource::DocumentOpen: {
+            // https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-open-steps
+            // NB: The process names entryDocument only if it is not document.
+            if (!parameters.entry_document_id.has_value()) {
+                // 12. If document is fully active:
+                //     1. Let newURL be a copy of entryDocument's URL.
+                return new_url == document->url();
+            }
+            RefPtr<CanonicalDocument> entry_document;
+            requesting_page->client().for_each_page([&](WebContentPage& page) {
+                entry_document = page.hosted_document_with_id(*parameters.entry_document_id);
+                return entry_document ? IterationDecision::Break : IterationDecision::Continue;
+            });
+
+            // 4. If document's origin is not same origin to entryDocument's origin, then throw a "SecurityError"
+            //    DOMException.
+            if (!entry_document || !entry_document->origin().is_same_origin(document->origin()))
+                return false;
+
+            // 12. If document is fully active:
+            //     1. Let newURL be a copy of entryDocument's URL.
+            auto entry_document_url = entry_document->url();
+
+            //     2. If entryDocument is not document, then set newURL's fragment to null.
+            entry_document_url.set_fragment({});
+            return new_url == entry_document_url;
+        }
+
+        case Web::HTML::SameDocumentEntrySource::AboutBlank:
+            // https://html.spec.whatwg.org/multipage/nav-history-apis.html#window-open-steps
+            // 15. If windowType is either "new and unrestricted" or "new with no opener":
+            //     4. If urlRecord matches about:blank, then perform the URL and history update steps given
+            //        targetNavigable's active document and urlRecord.
+            // https://html.spec.whatwg.org/multipage/iframe-embed-object.html#shared-attribute-processing-steps-for-iframe-and-frame-elements
+            // 4. If url matches about:blank and initialInsertion is true, then perform the URL and history update steps
+            //    given element's content navigable's active document and url.
+            // NB: A new window's, and a newly inserted frame's, active document is its initial about:blank.
+            return document->is_initial_about_blank() && Web::HTML::url_matches_about_blank(new_url);
+        }
+        VERIFY_NOT_REACHED();
     };
     if (!document_may_take_new_url())
         return Error::from_string_literal("same-document entry with a URL its document cannot take");
