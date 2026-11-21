@@ -20,6 +20,8 @@
 #include <LibWebCommon/UIEvents/MouseButton.h>
 #include <LibWebView/Application.h>
 #include <LibWebView/BrowsingSession.h>
+#include <LibWebView/CanonicalDocument.h>
+#include <LibWebView/CanonicalTraversable.h>
 #include <LibWebView/CookieJar.h>
 #include <LibWebView/HeadlessWebView.h>
 #include <LibWebView/Utilities.h>
@@ -423,6 +425,25 @@ TEST_CASE(browser_history_traversal)
     auto invalid_mode = static_cast<Web::HTML::ScrollRestorationMode>(to_underlying(Web::HTML::ScrollRestorationMode::Manual) + 1);
     stub.did_update_session_history_entry_scroll_restoration_mode(restored_view->page().id(), restored_view->traversable().id(), active_entry->identity(), invalid_mode);
     VERIFY(!client.is_open());
+
+    // An error document's URL is about:error, while its entry keeps the URL that failed to load. Navigating to that URL
+    // from the browser's UI isn't navigating to the active document's URL, so it pushes an entry.
+    {
+        auto error_page_view = WebView::HeadlessWebView::create(TRY_OR_FAIL(Gfx::load_system_theme(theme_path.string())), { 800, 600 });
+        size_t error_page_loads_finished = 0;
+        error_page_view->on_load_finish = [&](auto const&) { ++error_page_loads_finished; };
+
+        // NB: The view takes over a spare process, whose initial about:blank has finished loading.
+        auto unreachable_url = URL::Parser::basic_parse("http://127.0.0.1:9/unreachable"sv).release_value();
+        error_page_view->load_from_browser_ui(unreachable_url);
+        Core::EventLoop::current().spin_until([&] { return error_page_loads_finished >= 1; });
+        VERIFY(error_page_view->traversable().active_document().url() == URL::about_error());
+        auto entries_before = error_page_view->traversable().session_history().size();
+
+        error_page_view->load_from_browser_ui(unreachable_url);
+        Core::EventLoop::current().spin_until([&] { return error_page_loads_finished >= 2; });
+        VERIFY(error_page_view->traversable().session_history().size() == entries_before + 1);
+    }
 
     outln("PASS: browser history traversal");
 }

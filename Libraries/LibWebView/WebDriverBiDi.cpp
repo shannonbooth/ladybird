@@ -315,7 +315,7 @@ JsonObject WebDriverBiDi::get_the_navigable_info(CanonicalNavigable const& navig
 
     // 4. Let document be navigable's active document.
     // 5. Let url be the result of running the URL serializer, given document's URL.
-    auto url = navigable.active_document_url().serialize();
+    auto url = navigable.active_document().url().serialize();
 
     // 6. Let child infos be null.
     JsonValue child_infos;
@@ -1538,7 +1538,7 @@ void WebDriverBiDi::browsing_context_navigate(JsonObject const& params, CommandR
     // 7. Let document be navigable's active document.
     // 8. Let base be document's base URL.
     // FIXME: The browser process does not know a document's base URL, which a <base> element can change.
-    auto const& base = navigable->active_document_url();
+    auto const& base = navigable->active_document().url();
 
     // 9. Let url record be the result of applying the URL parser to url, with base URL base.
     auto url_record = URL::Parser::basic_parse(url, base);
@@ -1589,7 +1589,7 @@ void WebDriverBiDi::browsing_context_reload(JsonObject const& params, CommandRes
         LocalFileAccess local_file_access;
         if (auto const& root = navigable->active_document().local_file_root(); root.has_value())
             local_file_access = Vector { *root };
-        await_a_navigation(*navigable, navigable->active_document_url(), wait_condition, move(local_file_access), move(on_complete));
+        await_a_navigation(*navigable, navigable->active_document().url(), wait_condition, move(local_file_access), move(on_complete));
         return;
     }
 

@@ -49,12 +49,6 @@ CanonicalDocument& CanonicalNavigable::active_document() const
     return *m_active_session_history_entry->document_state->document;
 }
 
-URL::URL const& CanonicalNavigable::active_document_url() const
-{
-    VERIFY(m_active_session_history_entry);
-    return m_active_session_history_entry->url;
-}
-
 CanonicalBrowsingContext& CanonicalNavigable::active_browsing_context() const
 {
     // A navigable's active browsing context is its active document's browsing context.
@@ -208,7 +202,7 @@ void CanonicalNavigable::begin_navigation(Web::HTML::PreparedNavigationDescripto
         // 1. If url equals navigable's active document's URL, and either userInvolvement is "browser UI" or
         //    initiatorOriginSnapshot is same origin with navigable's active document's origin, then set historyHandling
         //    to "replace".
-        if (url == active_document_url()
+        if (url == active_document().url()
             && (user_involvement == Web::HTML::UserNavigationInvolvement::BrowserUI || navigation.initiator_origin_snapshot.is_same_origin(active_document().origin()))) {
             history_handling = Web::Bindings::NavigationHistoryBehavior::Replace;
         }
@@ -1352,7 +1346,7 @@ void CanonicalNavigable::send_viewport_to(WebContentPage& host) const
 
 void CanonicalNavigable::set_hosted_state(Web::HTML::HostedNavigableState state)
 {
-    m_document_blob_url = BlobURLHandle::for_url(blob_url_store(), active_document_url());
+    m_document_blob_url = BlobURLHandle::for_url(blob_url_store(), active_document().url());
     m_hosted_state = move(state);
 }
 
@@ -1429,7 +1423,7 @@ Optional<Web::HTML::ReplicatedNavigableState> CanonicalNavigable::replicated_sta
 
     return Web::HTML::ReplicatedNavigableState {
         .target_name = target_name(),
-        .active_document_url = active_document_url(),
+        .active_document_url = active_document().url(),
         .active_document_origin = active_document().origin(),
         .active_document_sandboxing_flag_set = active_document().active_sandboxing_flag_set(),
         .active_document_is_fully_active = hosted_state.active_document_is_fully_active,

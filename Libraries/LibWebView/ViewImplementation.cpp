@@ -239,7 +239,8 @@ URL::URL ViewImplementation::url() const
 {
     if (!m_top_level_traversable)
         return URL::about_blank();
-    return m_top_level_traversable->active_document_url();
+    // NB: An error page shows the URL that failed to load, which its entry keeps, rather than its document's URL.
+    return m_top_level_traversable->active_session_history_entry()->url;
 }
 
 void ViewImplementation::did_update_url()
@@ -3911,7 +3912,7 @@ void ViewImplementation::dispatch_webdriver_content_command(u64 command_id, Opti
         // NB: A cookie command is for the cookies of the active document of its browsing context when it starts.
         Optional<URL::URL> cookie_document_url;
         if (is_webdriver_cookie_command(name))
-            cookie_document_url = navigable->active_document_url();
+            cookie_document_url = navigable->active_document().url();
         m_pending_webdriver_commands.set(command_id, { *target, name, navigable_id, protocol, false, files_named_by_element_send_keys(name, payload), false, move(cookie_document_url) });
     }
     target->async_run_webdriver_command(command_id, navigable_id, name, move(payload), move(arguments));

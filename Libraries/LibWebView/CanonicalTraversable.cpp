@@ -2356,7 +2356,7 @@ void CanonicalTraversable::apply_the_reload_history_step(HistoryOperation& opera
 
     if (auto navigation_id = reload_navigation_id(operation.operation_id); navigation_id.has_value()) {
         if (auto* bidi = WebDriverBiDi::the())
-            bidi->navigation_started(*this, { .id = navigation_id, .status = WebDriverBiDi::NavigationStatusType::Pending, .url = active_document_url() });
+            bidi->navigation_started(*this, { .id = navigation_id, .status = WebDriverBiDi::NavigationStatusType::Pending, .url = active_document().url() });
     }
 
     // 2. Return the result of applying the history step step to traversable given true, null, null, userInvolvement, and "reload".
