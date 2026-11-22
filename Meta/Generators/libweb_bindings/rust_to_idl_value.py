@@ -121,7 +121,9 @@ def rust_to_idl_value(
             )
         inner = rust_to_idl_value(inner_type, parameter_attributes, value, identifier, context, what)
         return f"if {value}.is_nullish() {{ Ok(None) }} else {{ {inner}.map(Some) }}"
-    if isinstance(idl_type, IDLParameterizedType) and idl_type.name == "sequence":
+    # NB: https://webidl.spec.whatwg.org/#js-frozen-array converts a frozen array from a sequence of its type, and the
+    #     frozen array that it creates from that sequence is not observable to the implementation.
+    if isinstance(idl_type, IDLParameterizedType) and idl_type.name in ("sequence", "FrozenArray"):
         if keeps_cells_alive and is_sequence_of_cells(idl_type, context):
             element = rust_to_idl_value(idl_type.parameters[0], {}, "value", identifier, context, what)
             return f"sequence_from_js(vm, {value}, MarkedVec::new(vm), {rust_closure('value', element)})"

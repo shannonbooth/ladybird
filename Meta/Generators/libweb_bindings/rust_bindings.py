@@ -2404,7 +2404,13 @@ def write_rust_attribute_setter(
     name = attribute.attribute.name
     what = f"{interface.name}.{name}"
     conversion = rust_to_idl_value(
-        attribute.attribute.type, attribute.attribute.extended_attributes, "value", name, context, what
+        attribute.attribute.type,
+        attribute.attribute.extended_attributes,
+        "value",
+        name,
+        context,
+        what,
+        keeps_cells_alive=True,
     )
     if context.enumeration(attribute.attribute.type) is not None:
         # NB: The setter of an attribute of an enumeration type ignores a value that is not one of the enumeration's,

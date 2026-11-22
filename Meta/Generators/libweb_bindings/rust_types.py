@@ -583,11 +583,11 @@ def holds_cells(
 
 
 def is_sequence_of_cells(idl_type: IDLType, context: GenerationContext) -> bool:
-    """Whether the type is a sequence whose elements are or can hold cells, which the bindings gather in a MarkedVec
-    for a parameter."""
+    """Whether the type is a sequence or a frozen array whose elements are or can hold cells, which the bindings gather
+    in a MarkedVec for a parameter."""
     return (
         isinstance(idl_type, IDLParameterizedType)
-        and idl_type.name == "sequence"
+        and idl_type.name in ("sequence", "FrozenArray")
         and not idl_type.nullable
         and holds_cells(idl_type.parameters[0], context)
     )
