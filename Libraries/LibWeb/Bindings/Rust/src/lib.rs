@@ -190,6 +190,12 @@ pub(crate) mod media_capture;
     clippy::unnecessary_wraps,
     reason = "the bindings call every attribute and operation as one that can throw"
 )]
+pub(crate) mod media_session;
+#[cfg(not(test))]
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "the bindings call every attribute and operation as one that can throw"
+)]
 pub(crate) mod media_source_extensions;
 #[cfg(not(test))]
 #[allow(

@@ -345,7 +345,7 @@ void ActiveMediaSessionTracker::visit_edges(GC::Cell::Visitor& visitor)
     visitor.visit(m_artwork_waiters);
 }
 
-static Vector<URL::URL> ranked_artwork_urls(Vector<Bindings::MediaImage> const& images)
+static Vector<URL::URL> ranked_artwork_urls(Vector<MediaImage> const& images)
 {
     struct Candidate {
         size_t index;
@@ -623,9 +623,9 @@ Optional<MediaSessionState> ActiveMediaSessionTracker::compute_state()
     // 3. Update the media metadata presented to the platform to match the metadata for the active media session.
     // NB: Empty strings and a null bitmap represent unset metadata.
     if (auto metadata = session->metadata()) {
-        state.title = MUST(metadata->title().utf16_view().to_utf8());
-        state.artist = MUST(metadata->artist().utf16_view().to_utf8());
-        state.album = MUST(metadata->album().utf16_view().to_utf8());
+        state.title = metadata->title().to_utf8();
+        state.artist = metadata->artist().to_utf8();
+        state.album = metadata->album().to_utf8();
         state.artwork = m_artwork;
     }
 

@@ -89,12 +89,6 @@ ALLOWED_REALM_MENTIONS = {
         5,
         "the C++ glue of the Rust MediaStreamTrackEvent creates it and wraps tracks in a given realm",
     ),
-    "MediaSession": (
-        4,
-        10,
-        "MediaMetadata and ChapterInformation build the frozen arrays their [SameObject] FrozenArray attributes return, "
-        "freezing the elements too, which the generated conversion doesn't do",
-    ),
     "PictureInPicture": (
         2,
         5,

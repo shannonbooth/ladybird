@@ -935,7 +935,6 @@ class MediaCapabilities;
 
 namespace Web::MediaSession {
 
-class ChapterInformation;
 class MediaMetadata;
 class MediaSession;
 
