@@ -93,7 +93,7 @@ def write_rust_dictionary_json_conversions(out: TextIO, context: GenerationConte
         )
     if to_json:
         out.write(
-            """        pub(crate) fn to_json(self, vm: &Vm) -> ThrowCompletionOr<Utf16String> {
+            """        pub(crate) fn into_json(self, vm: &Vm) -> ThrowCompletionOr<Utf16String> {
             serialize_to_json_in_a_new_global_object(vm, |realm| self.to_js(&CallContext::new(vm, realm)))
         }
 """

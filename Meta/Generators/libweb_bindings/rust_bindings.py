@@ -2275,6 +2275,7 @@ def write_this_implementation(out: TextIO, context: GenerationContext, interface
         f"""
     /// The object that an attribute or an operation of the interface runs on: an object of the interface, or of an
     /// interface that inherits from it.
+    #[allow(clippy::enum_variant_names, reason = "the variants are named after the interfaces")]
     enum Receiver {{
 {variants}    }}
 

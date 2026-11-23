@@ -6,6 +6,8 @@
 # Rust bindings of the interfaces implemented in Rust, as to_idl_value.py writes the C++ ones. The conversions run in
 # the order of the C++ bindings and throw their errors, so that an interface behaves the same in either language.
 
+import re
+
 from dataclasses import dataclass
 from dataclasses import field
 from typing import List
@@ -63,6 +65,14 @@ DOM_STRING_TYPES = ("CSSOMString", "DOMString")
 STRING_TYPES = ("ByteString", *DOM_STRING_TYPES, "USVString")
 
 
+def rust_closure(parameter: str, conversion: str) -> str:
+    """A closure that converts its parameter, or the function the conversion calls when it passes only the parameter."""
+    function = re.fullmatch(rf"([\w:<>]+)\({parameter}\)", conversion)
+    if function is not None:
+        return function.group(1)
+    return f"|{parameter}| {conversion}"
+
+
 def buffer_source_rules(idl_type: IDLType, parameter_attributes: dict[str, str]) -> str:
     attributes = {**idl_type.extended_attributes, **parameter_attributes}
     allow_shared = "true" if "AllowShared" in attributes else "false"
@@ -114,14 +124,14 @@ def rust_to_idl_value(
     if isinstance(idl_type, IDLParameterizedType) and idl_type.name == "sequence":
         if keeps_cells_alive and is_sequence_of_cells(idl_type, context):
             element = rust_to_idl_value(idl_type.parameters[0], {}, "value", identifier, context, what)
-            return f"sequence_from_js(vm, {value}, MarkedVec::new(vm), |value| {element})"
+            return f"sequence_from_js(vm, {value}, MarkedVec::new(vm), {rust_closure('value', element)})"
         element = rust_sequence_element_to_idl_value(idl_type, identifier, context, what)
-        return f"sequence_from_js(vm, {value}, Vec::new(), |value| {element})"
+        return f"sequence_from_js(vm, {value}, Vec::new(), {rust_closure('value', element)})"
     if isinstance(idl_type, IDLParameterizedType) and idl_type.name == "record":
         if keeps_cells_alive and is_record_of_cells(idl_type, context):
             key = rust_to_idl_value(idl_type.parameters[0], {}, "key", identifier, context, what)
             record_value = rust_to_idl_value(idl_type.parameters[1], {}, "value", identifier, context, what)
-            return f"record_from_js(vm, {value}, MarkedVec::new(vm), |key| {key}, |value| {record_value})"
+            return f"record_from_js(vm, {value}, MarkedVec::new(vm), {rust_closure('key', key)}, {rust_closure('value', record_value)})"
         return rust_record_to_idl_value(idl_type, value, identifier, context, what)
     if isinstance(idl_type, IDLParameterizedType) and idl_type.name == "Promise":
         return f"to_promise(vm, {value})"
@@ -247,7 +257,7 @@ def rust_record_to_idl_value(
         )
     key = rust_to_idl_value(key_type, {}, "key", identifier, context, what)
     record_value = rust_to_idl_value(value_type, {}, "value", identifier, context, what)
-    return f"record_from_js(vm, {value}, Vec::new(), |key| {key}, |value| {record_value})"
+    return f"record_from_js(vm, {value}, Vec::new(), {rust_closure('key', key)}, {rust_closure('value', record_value)})"
 
 
 @dataclass
@@ -802,7 +812,7 @@ def write_union_from_js(out: TextIO, context: GenerationContext, union_type: IDL
                 //         2. If method is not undefined, return the result of creating a sequence of that type from
                 //            V and method.
                 if let Some(method) = iterator_method(vm, value)? {{
-                    return Ok(Self::Sequence(sequence_from_iterable(vm, value, method, MarkedVec::new(vm), |value| {element})?));
+                    return Ok(Self::Sequence(sequence_from_iterable(vm, value, method, MarkedVec::new(vm), {rust_closure("value", element)})?));
                 }}
 """
             )
@@ -815,7 +825,7 @@ def write_union_from_js(out: TextIO, context: GenerationContext, union_type: IDL
                 //         2. If method is not undefined, return the result of creating a sequence of that type from
                 //            V and method.
                 if let Some(method) = iterator_method(vm, value)? {{
-                    return Ok(Self::Sequence(sequence_from_iterable(vm, value, method, Vec::new(), |value| {element})?));
+                    return Ok(Self::Sequence(sequence_from_iterable(vm, value, method, Vec::new(), {rust_closure("value", element)})?));
                 }}
 """
             )

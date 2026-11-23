@@ -264,7 +264,7 @@ fn export_key_result_to_bytes(vm: &Vm, result: ExportKeyResult) -> WebIdlResult<
         unreachable!()
     };
     #[cfg(web_idl_bindings)]
-    let json = key.to_json(vm)?;
+    let json = key.into_json(vm)?;
     #[cfg(not(web_idl_bindings))]
     let json: Utf16String = crate::crypto::crypto_bindings::bindings_unavailable((vm, key));
     Ok(Bytes::new(String::from_utf16_lossy(&json.to_utf16()).into_bytes()))
