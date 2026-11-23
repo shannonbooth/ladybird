@@ -78,10 +78,7 @@ pub(crate) fn parse_json_web_key(vm: &Vm, data: &[u8]) -> WebIdlResult<JsonWebKe
     // 4. Let result be the object literal that results from executing the JSON.parse internal function
     //    in the context of a new global object, with text argument set to a JavaScript String containing json.
     // 5. Let key be the result of converting result to the IDL dictionary type of JsonWebKey.
-    #[cfg(web_idl_bindings)]
     let key = JsonWebKey::from_json(vm, Utf16View::of_string(&json))?;
-    #[cfg(not(web_idl_bindings))]
-    let key: JsonWebKey = bindings_unavailable((vm, Utf16View::of_string(&json)));
 
     // 6. If the kty field of key is not defined, then throw a DataError.
     if key.kty.is_none() {
@@ -93,11 +90,6 @@ pub(crate) fn parse_json_web_key(vm: &Vm, data: &[u8]) -> WebIdlResult<JsonWebKe
 
     // 7. Return key.
     Ok(key)
-}
-
-#[cfg(not(web_idl_bindings))]
-pub(crate) fn bindings_unavailable<T>(_: impl Sized) -> T {
-    unreachable!("Crypto dictionary conversions require the generated bindings")
 }
 
 pub(crate) fn resolve_crypto_key_promise(vm: &Vm, realm: Gc<Realm>, promise: WebIdlPromise, key: Ref<CryptoKey>) {

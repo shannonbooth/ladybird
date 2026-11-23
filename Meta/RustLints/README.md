@@ -59,8 +59,7 @@ Meta/RustLints/run.sh
 builds the driver on the nightly pinned in `rust-toolchain.toml` (it links that nightly's compiler, so it needs the
 `rustc-dev` component) and runs `cargo check` on `libjs_rust`, `libweb_bindings_rust` and `libweb_rust` with the driver
 as `RUSTC_WORKSPACE_WRAPPER`. Dependencies outside the workspace are compiled by the nightly's plain rustc. Set
-`LADYBIRD_RUST_LINTS_WARN=1` to report hits as warnings, so crates that depend on one with hits are still checked, and
-`LIBWEB_RUST_BINDINGS` to the `RustBindings.rs` of a build to check the generated bindings too.
+`LADYBIRD_RUST_LINTS_WARN=1` to report hits as warnings, so crates that depend on one with hits are still checked.
 
 The tests compile each `tests/ui/*.rs` against stand-ins for libjs_rust and smallvec and compare the diagnostics with
 the `//~ ERROR` annotations:

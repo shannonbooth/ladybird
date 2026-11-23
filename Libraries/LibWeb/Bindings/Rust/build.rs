@@ -7,16 +7,18 @@
 //! Finds the Rust bindings of the interfaces implemented in Rust, which Meta/Generators/generate_libweb_bindings.py
 //! writes to Bindings/RustBindings.rs in the build directory of LibWeb. A build of LibWeb names that file in
 //! LIBWEB_RUST_BINDINGS (Libraries/LibWeb/CMakeLists.txt). Building the crate on its own, as cargo test and cargo
-//! clippy do, leaves the bindings out and compiles the implementations without them. rustc tracks the file itself, as
-//! the crate includes it.
+//! clippy do, runs the generator on the IDL files of Libraries/LibWeb/idl_files.cmake instead. rustc tracks the file
+//! itself, as the crate includes it.
 //!
 //! Also generates what the WebGL implementation needs from the rest of the tree: the methods of its recorder, from the
 //! model of the command stream that libcompositing_rust has, and the GL constants. Those do not need the bindings, so
 //! every build of the crate has them.
 
 use std::env;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[path = "generate/webgl_constants.rs"]
 mod webgl_constants;
@@ -92,20 +94,112 @@ fn main() {
     generate_webgl_constants(libraries, &out_dir);
     generate_css_numeric_factories(libraries, &out_dir);
 
-    println!("cargo:rustc-check-cfg=cfg(web_idl_bindings)");
     println!("cargo:rerun-if-env-changed=LIBWEB_RUST_BINDINGS");
-    let Some(bindings) = env::var_os("LIBWEB_RUST_BINDINGS") else {
-        return;
+    let bindings = match env::var_os("LIBWEB_RUST_BINDINGS") {
+        Some(bindings) => {
+            let bindings = PathBuf::from(bindings);
+            assert!(
+                bindings.is_file(),
+                "LIBWEB_RUST_BINDINGS names {}, which does not exist; a build of LibWeb generates the bindings before \
+                 it builds the crate",
+                bindings.display()
+            );
+            bindings
+        }
+        None => generate_bindings(libraries, &out_dir),
     };
-    let bindings = PathBuf::from(bindings);
-    assert!(
-        bindings.is_file(),
-        "LIBWEB_RUST_BINDINGS names {}, which does not exist; a build of LibWeb generates the bindings before it builds \
-         the crate",
-        bindings.display()
-    );
-    println!("cargo:rustc-cfg=web_idl_bindings");
     println!("cargo:rustc-env=LIBWEB_RUST_BINDINGS={}", bindings.display());
+}
+
+/// The IDL file that a build of LibWeb generates from CSS/Units.json rather than keeping in the tree.
+const GENERATED_IDL_FILE: &str = "CSS/GeneratedCSSNumericFactoryMethods";
+
+fn run_python(python: &OsStr, script: &Path, arguments: &[&OsStr]) {
+    println!("cargo:rerun-if-changed={}", script.display());
+    let status = Command::new(python)
+        .arg(script)
+        .args(arguments)
+        // NB: Bytecode cached next to the generators would rerun the script on every build.
+        .env("PYTHONDONTWRITEBYTECODE", "1")
+        .status()
+        .unwrap_or_else(|error| panic!("run {}: {error}", script.display()));
+    assert!(status.success(), "{} failed", script.display());
+}
+
+fn python_files_in(directory: &Path) {
+    let entries = fs::read_dir(directory).unwrap_or_else(|error| panic!("read {}: {error}", directory.display()));
+    for entry in entries {
+        let path = entry.expect("directory entry").path();
+        if path.extension().is_some_and(|extension| extension == "py") {
+            println!("cargo:rerun-if-changed={}", path.display());
+        }
+    }
+}
+
+/// Generates the bindings from the IDL files that a build of LibWeb generates its bindings from.
+fn generate_bindings(libraries: &Path, out_dir: &Path) -> PathBuf {
+    let libweb = libraries.join("LibWeb");
+    let meta = libraries
+        .parent()
+        .expect("Libraries is in the root of the tree")
+        .join("Meta");
+    println!("cargo:rerun-if-env-changed=PYTHON");
+    let python = env::var_os("PYTHON").unwrap_or_else(|| if cfg!(windows) { "python" } else { "python3" }.into());
+
+    // NB: The generator derives the Rust module of an IDL file from the directory under LibWeb that holds it.
+    let generated_idl_file = out_dir.join("LibWeb").join(format!("{GENERATED_IDL_FILE}.idl"));
+    fs::create_dir_all(generated_idl_file.parent().expect("the IDL file is in a directory"))
+        .expect("the output directory is writable");
+    run_python(
+        &python,
+        &meta.join("Generators/generate_libweb_css_numeric_factory_methods.py"),
+        &[
+            "-i".as_ref(),
+            generated_idl_file.as_os_str(),
+            "-j".as_ref(),
+            libweb.join("CSS/Units.json").as_os_str(),
+        ],
+    );
+
+    let idl_list = read_tracked(&libweb.join("idl_files.cmake"));
+    let mut idl_files = String::new();
+    for line in idl_list.lines() {
+        let Some(name) = line
+            .strip_prefix("libweb_js_bindings(")
+            .and_then(|rest| rest.strip_suffix(')'))
+        else {
+            continue;
+        };
+        let path = if name == GENERATED_IDL_FILE {
+            generated_idl_file.clone()
+        } else {
+            let path = libweb.join(format!("{name}.idl"));
+            println!("cargo:rerun-if-changed={}", path.display());
+            path
+        };
+        idl_files.push_str(path.to_str().expect("the path of an IDL file is UTF-8"));
+        idl_files.push('\n');
+    }
+    let idl_files_path = out_dir.join("idl_files.txt");
+    fs::write(&idl_files_path, idl_files).expect("the output directory is writable");
+
+    python_files_in(&meta.join("Generators/libweb_bindings"));
+    for module in ["css_dimensions.py", "lexer.py", "utils.py", "webidl_parser.py"] {
+        println!("cargo:rerun-if-changed={}", meta.join("Utils").join(module).display());
+    }
+    let mut response_file = OsString::from("@");
+    response_file.push(&idl_files_path);
+    run_python(
+        &python,
+        &meta.join("Generators/generate_libweb_bindings.py"),
+        &[
+            "--rust-only".as_ref(),
+            "-o".as_ref(),
+            out_dir.as_os_str(),
+            &response_file,
+        ],
+    );
+    out_dir.join("RustBindings.rs")
 }
 
 /// The functions of the CSS namespace that make a CSSUnitValue of a unit, one for each unit of CSS/Units.json,

@@ -16,7 +16,6 @@ use libjs_rust::api::{
     EmbedderClass, EmbedderValue, ErrorKind, ErrorType, Gc, Object, Throw, Trace, Value, Visitor, Vm,
 };
 
-#[cfg(web_idl_bindings)]
 use crate::bindings::conversions::FromJs;
 use crate::bindings::environment_settings_object::{CppEnvironmentSettingsObject, relevant_settings_object};
 use crate::bindings::global_object::window_from_global_object;
@@ -165,13 +164,7 @@ pub(crate) struct Permissions;
 impl Wrappable for Permissions {}
 
 fn convert_to_permission_descriptor(vm: &Vm, value: Value) -> Result<PermissionDescriptor, Throw> {
-    #[cfg(web_idl_bindings)]
-    return PermissionDescriptor::from_js(vm, value);
-    #[cfg(not(web_idl_bindings))]
-    {
-        let _ = (vm, value);
-        unreachable!("converting to PermissionDescriptor requires the generated bindings")
-    }
+    PermissionDescriptor::from_js(vm, value)
 }
 
 impl Permissions {

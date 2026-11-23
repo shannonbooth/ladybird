@@ -18,7 +18,6 @@ use liburl_rust::url::{ExcludeFragment, UrlInput, parse_host};
 use liburl_rust::{BasicParseOptions, RustUrl, Url, basic_parse};
 
 use crate::bindings::conversions::UsvString;
-#[cfg(web_idl_bindings)]
 use crate::bindings::conversions::{ToJs, sequence_to_js};
 use crate::bindings::environment_settings_object::{CppEnvironmentSettingsObject, relevant_settings_object};
 use crate::bindings::event_target::{CppEventTarget, GetTheParent};
@@ -176,25 +175,11 @@ struct CookieDeletion {
 }
 
 fn cookie_list_item_to_js(cx: &CallContext, item: CookieListItem) -> Value {
-    // NB: The generated bindings convert the dictionary, which a build of the crate on its own leaves out.
-    #[cfg(web_idl_bindings)]
-    return ToJs::to_js(item, cx).expect("a cookie list item converts to a JS value");
-    #[cfg(not(web_idl_bindings))]
-    {
-        let _ = (item, cx);
-        unreachable!("only the generated bindings resolve a promise with the dictionary")
-    }
+    ToJs::to_js(item, cx).expect("a cookie list item converts to a JS value")
 }
 
 fn cookie_list_to_js(cx: &CallContext, cookie_list: Vec<CookieListItem>) -> Value {
-    #[cfg(web_idl_bindings)]
-    return sequence_to_js(cx, cookie_list, |item| ToJs::to_js(item, cx))
-        .expect("a cookie list converts to a JS value");
-    #[cfg(not(web_idl_bindings))]
-    {
-        let _ = (cookie_list, cx);
-        unreachable!("only the generated bindings resolve a promise with the dictionary")
-    }
+    sequence_to_js(cx, cookie_list, |item| ToJs::to_js(item, cx)).expect("a cookie list converts to a JS value")
 }
 
 fn resolve_cookie_list_item_or_null_promise(vm: &Vm, promise: WebIdlPromise, cookie_list: Vec<CookieListItem>) {

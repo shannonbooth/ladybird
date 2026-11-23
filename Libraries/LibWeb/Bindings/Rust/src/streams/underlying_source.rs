@@ -6,14 +6,10 @@
 
 //! UnderlyingSource, https://streams.spec.whatwg.org/#underlying-source-api
 
-#[cfg(not(web_idl_bindings))]
-use libjs_rust::api::{ThrowCompletionOr, Vm};
 use libjs_rust::api::{Trace, Value};
 
 use crate::bindings::CallContext;
 use crate::bindings::callback::{CallbackFunction, PromiseCallbackFunction};
-#[cfg(not(web_idl_bindings))]
-use crate::bindings::conversions::FromJs;
 use crate::bindings::interface::{Ref, wrap};
 use crate::streams::readable_byte_stream_controller::ReadableByteStreamController;
 use crate::streams::readable_stream_default_controller::ReadableStreamDefaultController;
@@ -25,15 +21,6 @@ pub(crate) struct UnderlyingSource {
     pub(crate) pull: Option<PromiseCallbackFunction>,
     pub(crate) start: Option<CallbackFunction>,
     pub(crate) r#type: Option<ReadableStreamType>,
-}
-
-/// Without the generated bindings, which a build of the crate on its own leaves out, nothing converts a JS value to the
-/// dictionary. This stands in for the conversion so that the constructor that uses it compiles.
-#[cfg(not(web_idl_bindings))]
-impl FromJs for UnderlyingSource {
-    fn from_js(_: &Vm, _: Value) -> ThrowCompletionOr<Self> {
-        unreachable!("a JS value has no conversion without the bindings")
-    }
 }
 
 // https://streams.spec.whatwg.org/#enumdef-readablestreamtype

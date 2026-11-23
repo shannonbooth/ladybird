@@ -17,10 +17,6 @@ use libjs_rust::api::{
     number_to_string, typed_array_byte_length,
 };
 
-#[cfg_attr(
-    not(web_idl_bindings),
-    allow(unused_imports, reason = "the generated bindings name the dictionaries here")
-)]
 pub(crate) use super::dictionaries::DOMMatrix2DInit;
 pub(crate) use super::dictionaries::DOMMatrixInit;
 use super::dictionaries::{FixedUpMatrixInit, Matrix2D, validate_and_fixup};

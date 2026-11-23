@@ -11,7 +11,6 @@ use ak::{Utf16String, Utf16StringUnits};
 use libjs_rust::api::{Gc, GcRefCell, NativeFunction, PropertyKey, Realm, Trace, Value, Vm};
 
 use crate::bindings::callback::PromiseCallbackFunction;
-#[cfg(web_idl_bindings)]
 use crate::bindings::conversions::ToJs;
 use crate::bindings::environment_settings_object::{CppEnvironmentSettingsObject, relevant_settings_object};
 use crate::bindings::global_object::window_from_global_object;
@@ -50,14 +49,7 @@ pub(crate) struct LockManagerSnapshot {
 
 impl LockManagerSnapshot {
     fn into_js(self, cx: &CallContext) -> Value {
-        // NB: The generated bindings convert the dictionary, which a build of the crate on its own leaves out.
-        #[cfg(web_idl_bindings)]
-        return ToJs::to_js(self, cx).expect("a lock manager snapshot converts to a JS value");
-        #[cfg(not(web_idl_bindings))]
-        {
-            let _ = (self, cx);
-            unreachable!("only the generated bindings resolve a promise with the dictionary")
-        }
+        ToJs::to_js(self, cx).expect("a lock manager snapshot converts to a JS value")
     }
 }
 

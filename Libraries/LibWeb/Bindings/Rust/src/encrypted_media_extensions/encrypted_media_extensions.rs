@@ -31,10 +31,7 @@ pub(crate) enum CapabilitiesType {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConsentStatus {
     ConsentDenied,
-    #[cfg_attr(
-        web_idl_bindings,
-        expect(dead_code, reason = "Get Consent Status is not implemented yet")
-    )]
+    #[expect(dead_code, reason = "Get Consent Status is not implemented yet")]
     InformUser,
     Allowed,
 }

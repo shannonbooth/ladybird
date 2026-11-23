@@ -18,7 +18,6 @@ use libjs_rust::api::{
 };
 
 use crate::bindings::conversions::BufferSource;
-#[cfg(web_idl_bindings)]
 use crate::bindings::conversions::ToJs;
 use crate::bindings::interface::{
     Ref, Wrappable, create_dictionary_object, with_temporary_execution_context,
@@ -249,13 +248,9 @@ fn export_key_result_to_js_value(vm: &Vm, realm: Gc<Realm>, result: ExportKeyRes
         )),
         ExportKeyResult::JsonWebKey(key) => ArrayBufferOrJsonWebKey::JsonWebKey(key),
     };
-    #[cfg(web_idl_bindings)]
-    return result.to_js(&CallContext::new(vm, realm)).map_err(Into::into);
-    #[cfg(not(web_idl_bindings))]
-    crate::crypto::crypto_bindings::bindings_unavailable(result)
+    result.to_js(&CallContext::new(vm, realm)).map_err(Into::into)
 }
 
-#[cfg_attr(not(web_idl_bindings), allow(clippy::unnecessary_wraps))]
 fn export_key_result_to_bytes(vm: &Vm, result: ExportKeyResult) -> WebIdlResult<Bytes> {
     if let ExportKeyResult::Bytes(bytes) = result {
         return Ok(bytes);
@@ -263,10 +258,7 @@ fn export_key_result_to_bytes(vm: &Vm, result: ExportKeyResult) -> WebIdlResult<
     let ExportKeyResult::JsonWebKey(key) = result else {
         unreachable!()
     };
-    #[cfg(web_idl_bindings)]
     let json = key.into_json(vm)?;
-    #[cfg(not(web_idl_bindings))]
-    let json: Utf16String = crate::crypto::crypto_bindings::bindings_unavailable((vm, key));
     Ok(Bytes::new(String::from_utf16_lossy(&json.to_utf16()).into_bytes()))
 }
 

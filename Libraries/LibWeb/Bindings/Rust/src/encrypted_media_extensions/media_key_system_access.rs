@@ -84,10 +84,7 @@ pub(crate) struct MediaKeySystemAccess {
     #[gc(untraced)]
     configuration: MediaKeySystemConfiguration,
     #[gc(untraced)]
-    #[cfg_attr(
-        web_idl_bindings,
-        expect(dead_code, reason = "createMediaKeys() is not implemented yet")
-    )]
+    #[expect(dead_code, reason = "createMediaKeys() is not implemented yet")]
     cdm_implementation: Box<dyn KeySystem>,
 }
 

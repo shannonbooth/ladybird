@@ -24,7 +24,6 @@ pub(crate) mod conversions;
 pub(crate) mod cpp_cell;
 pub(crate) mod environment_settings_object;
 pub(crate) mod event_target;
-#[cfg(web_idl_bindings)]
 pub(crate) mod generated;
 pub(crate) mod global_object;
 pub(crate) mod interface;
@@ -49,10 +48,6 @@ use crate::bindings::services::{
 
 /// Runs the steps of a [CEReactions] construct, https://html.spec.whatwg.org/multipage/custom-elements.html#cereactions
 /// An exception of the steps is in the result, which the caller rethrows after the reactions ran.
-#[cfg_attr(
-    not(web_idl_bindings),
-    allow(dead_code, reason = "only the generated bindings use the function")
-)]
 pub(crate) fn with_custom_element_reactions<R>(original_steps: impl FnOnce() -> R) -> R {
     // 1. Push a new element queue onto this object's relevant agent's custom element reactions stack.
     // SAFETY: The bindings run on the main thread.

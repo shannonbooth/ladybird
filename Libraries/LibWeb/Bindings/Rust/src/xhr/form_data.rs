@@ -285,8 +285,6 @@ impl FormData {
     }
 }
 
-// NB: The conversion of a FormDataEntryValue to a JS value is in the generated bindings.
-#[cfg(web_idl_bindings)]
 impl crate::bindings::iterable::PairIterable for FormData {
     type Key = UsvString;
     type Value = FormDataEntryValue;

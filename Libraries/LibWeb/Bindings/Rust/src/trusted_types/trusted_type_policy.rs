@@ -16,7 +16,6 @@ use libjs_rust::api::{
 };
 
 use crate::bindings::callback::CallbackFunction;
-#[cfg(web_idl_bindings)]
 use crate::bindings::conversions::FromJs;
 use crate::bindings::conversions::{to_dom_string, to_usv_string};
 use crate::bindings::interface::{Ref, Wrappable, cell_from_abi, cell_into_abi, create_dictionary_object, wrap};
@@ -402,13 +401,7 @@ fn to_optional_set_html_unsafe_options(vm: &Vm, value: Value) -> WebIdlResult<Op
     if value.is_nullish() {
         return Ok(None);
     }
-    #[cfg(web_idl_bindings)]
-    return Ok(Some(SetHTMLUnsafeOptions::from_js(vm, value)?));
-    #[cfg(not(web_idl_bindings))]
-    {
-        let _ = vm;
-        unreachable!("converting to SetHTMLUnsafeOptions requires the generated bindings")
-    }
+    Ok(Some(SetHTMLUnsafeOptions::from_js(vm, value)?))
 }
 
 // https://w3c.github.io/trusted-types/dist/spec/#get-a-sanitizer-config-copy-from-dictionary

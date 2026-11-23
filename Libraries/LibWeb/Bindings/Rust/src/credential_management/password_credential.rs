@@ -45,7 +45,7 @@ pub(crate) struct PasswordCredential {
     password: UsvString,
     // https://w3c.github.io/webappsec-credential-management/#dom-credential-origin-slot
     #[gc(untraced)]
-    #[cfg_attr(web_idl_bindings, expect(dead_code, reason = "no algorithm reads [[origin]] yet"))]
+    #[expect(dead_code, reason = "no algorithm reads [[origin]] yet")]
     origin: Origin,
 }
 

@@ -18,7 +18,6 @@ use libjs_rust::api::{
     Realm, Trace, Value, Visitor, Vm,
 };
 
-#[cfg(web_idl_bindings)]
 use crate::bindings::conversions::ToJs;
 use crate::bindings::conversions::{BufferSource, UsvString};
 use crate::bindings::interface::{Ref, allocate, with_temporary_execution_context_and_callbacks, wrap};
@@ -42,14 +41,7 @@ pub(crate) struct WebAssemblyInstantiatedSource {
 
 impl WebAssemblyInstantiatedSource {
     fn into_js(self, cx: &CallContext) -> libjs_rust::api::ThrowCompletionOr<Value> {
-        // NB: The generated bindings convert the dictionary, which a build of the crate on its own leaves out.
-        #[cfg(web_idl_bindings)]
-        return ToJs::to_js(self, cx);
-        #[cfg(not(web_idl_bindings))]
-        {
-            let _ = (self, cx);
-            unreachable!("only the generated bindings resolve a promise with the dictionary")
-        }
+        ToJs::to_js(self, cx)
     }
 }
 

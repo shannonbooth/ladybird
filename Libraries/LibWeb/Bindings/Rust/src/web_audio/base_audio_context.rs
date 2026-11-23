@@ -26,46 +26,31 @@ use libweb_rust::web_audio::control_message::ControlMessage;
 use libweb_rust::web_audio::control_message_queue::ControlMessageQueue;
 use libweb_rust::web_audio::rendering::audio_worklet_pipe::{AudioWorkletPipe, WorkletPipeState};
 
-#[cfg(web_idl_bindings)]
 use super::analyser_node::{AnalyserNode, AnalyserOptions};
 use super::audio_buffer::AudioBuffer;
-#[cfg(web_idl_bindings)]
 use super::audio_buffer_source_node::{AudioBufferSourceNode, AudioBufferSourceOptions};
 use super::audio_context::AudioContext;
 use super::audio_destination_node::AudioDestinationNode;
 use super::audio_listener::AudioListener;
 use super::audio_node::AnyAudioNode;
-#[cfg(web_idl_bindings)]
 use super::biquad_filter_node::{BiquadFilterNode, BiquadFilterOptions};
-#[cfg(web_idl_bindings)]
 use super::channel_merger_node::{ChannelMergerNode, ChannelMergerOptions};
-#[cfg(web_idl_bindings)]
 use super::channel_splitter_node::{ChannelSplitterNode, ChannelSplitterOptions};
-#[cfg(web_idl_bindings)]
 use super::constant_source_node::{ConstantSourceNode, ConstantSourceOptions};
-#[cfg(web_idl_bindings)]
 use super::convolver_node::{ConvolverNode, ConvolverOptions};
-#[cfg(web_idl_bindings)]
 use super::delay_node::{DelayNode, DelayOptions};
-#[cfg(web_idl_bindings)]
 use super::dynamics_compressor_node::{DynamicsCompressorNode, DynamicsCompressorOptions};
-#[cfg(web_idl_bindings)]
 use super::gain_node::{GainNode, GainOptions};
 use super::iir_filter_node::{IIRFilterNode, IIRFilterOptions};
 use super::media_stream_audio_source_node::MediaStreamAudioSourceNode;
 use super::offline_audio_context::OfflineAudioContext;
-#[cfg(web_idl_bindings)]
 use super::oscillator_node::{OscillatorNode, OscillatorOptions};
-#[cfg(web_idl_bindings)]
 use super::panner_node::{PannerNode, PannerOptions};
 use super::periodic_wave::{PeriodicWave, PeriodicWaveConstraints, PeriodicWaveOptions};
 use super::script_processor_node::ScriptProcessorNode;
-#[cfg(web_idl_bindings)]
 use super::stereo_panner_node::{StereoPannerNode, StereoPannerOptions};
-#[cfg(web_idl_bindings)]
 use super::wave_shaper_node::{WaveShaperNode, WaveShaperOptions};
 use crate::bindings::callback::CallbackFunction;
-#[cfg(web_idl_bindings)]
 use crate::bindings::conversions::EmptyDictionary;
 use crate::bindings::conversions::{CppInterface, ToJs};
 use crate::bindings::cpp_cell::CppCell;
@@ -532,7 +517,6 @@ impl BaseAudioContext {
     }
 }
 
-#[cfg(web_idl_bindings)]
 impl BaseAudioContext {
     // https://webaudio.github.io/web-audio-api/#dom-baseaudiocontext-createanalyser
     pub(crate) fn create_analyser(&self, cx: &mut CallContext) -> WebIdlResult<Ref<AnalyserNode>> {

@@ -276,7 +276,6 @@ pub unsafe extern "C" fn web_webgl_restore_contexts_of_this_thread(vm: *mut c_vo
 /// # Safety
 ///
 /// `vm` must be the live VM and `value` a live value.
-#[cfg(web_idl_bindings)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn web_webgl_context_attributes_from_value(
     vm: *mut c_void,

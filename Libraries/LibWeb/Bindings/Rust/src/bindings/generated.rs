@@ -5,6 +5,7 @@
  */
 
 //! The bindings of the interfaces implemented in Rust, which Meta/Generators/generate_libweb_bindings.py writes to
-//! Bindings/RustBindings.rs in the build directory of LibWeb.
+//! Bindings/RustBindings.rs in the build directory of LibWeb, or to the output directory of the build script when the
+//! crate is built on its own.
 
 include!(env!("LIBWEB_RUST_BINDINGS"));

@@ -176,20 +176,6 @@ unsafe extern "C" fn finalize_object<T: Wrappable + Trace + 'static>(cell: *mut 
     T::finalize(unsafe { Gc::from_non_null(cell) });
 }
 
-/// Without the generated bindings, which a build of the crate on its own leaves out, nothing creates or wraps an
-/// object, but the implementations still name each other's objects. This stands in for the bindings of every
-/// interface so that they compile.
-#[cfg(not(web_idl_bindings))]
-impl<T: Wrappable + Trace + Sized + 'static> Interface for T {
-    const CELL_CLASS: &'static EmbedderClass<Wrapped<Self>> = &EmbedderClass::new("");
-    const INTERFACE_NAME: u16 = 0;
-    const NAME: &'static str = "";
-
-    fn wrapper_class() -> &'static JSHostClass {
-        unreachable!("an interface has no wrappers without its bindings")
-    }
-}
-
 /// A new object of the interface, built as Heap::allocate() builds a cell.
 pub(crate) fn allocate<T: Interface>(vm: &Vm, build: impl FnOnce(&DeferGc<'_>) -> T) -> Ref<T> {
     let object = T::CELL_CLASS.allocate(vm, |defer_gc| Wrapped {
