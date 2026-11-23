@@ -21,6 +21,7 @@ from Generators.libweb_bindings import rust_bindings
 from Generators.libweb_bindings.context import GenerationContext
 from Generators.libweb_bindings.global_mixins import write_global_mixin_header
 from Generators.libweb_bindings.includes import GeneratedIncludes
+from Generators.libweb_bindings.intrinsics import InterfaceSets
 from Generators.libweb_bindings.intrinsics import collect_interface_sets
 from Generators.libweb_bindings.intrinsics import write_exposed_interface_header
 from Generators.libweb_bindings.intrinsics import write_exposed_interface_implementation
@@ -55,9 +56,13 @@ def parse_arguments() -> argparse.Namespace:
     )
     argument_parser.add_argument(
         "--common-output-path",
-        required=True,
         type=Path,
         help="Path to output the LibWebCommon headers with each module's enumerations into",
+    )
+    argument_parser.add_argument(
+        "--rust-only",
+        action="store_true",
+        help="Write only the bindings of the interfaces implemented in Rust",
     )
     argument_parser.add_argument(
         "-d",
@@ -66,7 +71,10 @@ def parse_arguments() -> argparse.Namespace:
         help="Path to write dependency file to",
     )
     argument_parser.add_argument("paths", nargs="+", type=Path, help="Paths of every IDL file that could be Exposed")
-    return argument_parser.parse_args()
+    arguments = argument_parser.parse_args()
+    if not arguments.rust_only and arguments.common_output_path is None:
+        argument_parser.error("--common-output-path is required unless --rust-only is given")
+    return arguments
 
 
 def read_input_paths(paths: List[Path]) -> List[Path]:
@@ -257,33 +265,15 @@ def generate_depfile(depfile_path: Path, dependency_paths: List[Path], output_fi
     depfile_path.write_text(depfile_contents, encoding="utf-8")
 
 
-def main() -> int:
-    arguments = parse_arguments()
-    output_directory = arguments.output_path
-    output_directory.mkdir(parents=True, exist_ok=True)
-    common_output_directory = arguments.common_output_path
+def write_cpp_bindings(
+    output_directory: Path,
+    common_output_directory: Path,
+    modules: List[Module],
+    context: GenerationContext,
+    usage: DefinitionUsage,
+    interface_sets: InterfaceSets,
+) -> List[Path]:
     common_output_directory.mkdir(parents=True, exist_ok=True)
-
-    dependency_paths: List[Path] = []
-    modules: List[Module] = []
-
-    for path in read_input_paths(arguments.paths):
-        module = parse_module(path, path.read_text(encoding="utf-8"))
-        modules.append(module)
-        dependency_paths.append(path)
-
-    context = GenerationContext(modules)
-    modules = context.modules
-
-    interface_sets = collect_interface_sets(modules)
-
-    try:
-        usage = DefinitionUsage(context)
-        rust_bindings.check_rust_bindings(context, usage, interface_sets.intrinsics)
-    except rust_bindings.UnsupportedByRustBindings as error:
-        print(f"error: {error}", file=sys.stderr)
-        return 1
-
     output_files: List[Path] = []
 
     for module in modules:
@@ -355,11 +345,46 @@ def main() -> int:
     write_generated_file(wrapper_factory_implementation_path, write_wrapper_factory_implementation, interface_sets)
     output_files.append(wrapper_factory_implementation_path)
 
+    return output_files
+
+
+def main() -> int:
+    arguments = parse_arguments()
+    output_directory = arguments.output_path
+    output_directory.mkdir(parents=True, exist_ok=True)
+
+    dependency_paths: List[Path] = []
+    modules: List[Module] = []
+
+    for path in read_input_paths(arguments.paths):
+        module = parse_module(path, path.read_text(encoding="utf-8"))
+        modules.append(module)
+        dependency_paths.append(path)
+
+    context = GenerationContext(modules)
+    modules = context.modules
+
+    interface_sets = collect_interface_sets(modules)
+
+    try:
+        usage = DefinitionUsage(context)
+        rust_bindings.check_rust_bindings(context, usage, interface_sets.intrinsics)
+    except rust_bindings.UnsupportedByRustBindings as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    output_files: List[Path] = []
+
     rust_bindings_path = output_directory / "RustBindings.rs"
     write_generated_file(
         rust_bindings_path, rust_bindings.write_rust_bindings, context, usage, interface_sets.intrinsics
     )
     output_files.append(rust_bindings_path)
+
+    if not arguments.rust_only:
+        output_files.extend(
+            write_cpp_bindings(output_directory, arguments.common_output_path, modules, context, usage, interface_sets)
+        )
 
     if arguments.depfile is not None:
         generate_depfile(arguments.depfile, dependency_paths, output_files)
