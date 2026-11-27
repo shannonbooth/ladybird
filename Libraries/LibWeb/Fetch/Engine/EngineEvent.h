@@ -112,7 +112,8 @@ using EngineEvent = Variant<
     Event::RequestBodyEndOfBody,
     Event::ReadRequestBodyStream,
     Event::RequestBodySentFromSource,
-    Event::NetworkActivity,
+    Event::TransportActivity,
+    Event::FetchNetworkActivity,
     Event::ViolationReport,
     Event::FetchEnded>;
 

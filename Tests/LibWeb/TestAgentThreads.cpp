@@ -21,6 +21,9 @@
 #include <LibWeb/Bindings/MainThreadVM.h>
 #include <LibWeb/Bindings/PlatformObject.h>
 #include <LibWeb/CSS/PropertyID.h>
+#include <LibWeb/Fetch/Engine/EngineCommand.h>
+#include <LibWeb/Fetch/Engine/EngineCommandSink.h>
+#include <LibWeb/Fetch/Engine/InlineFetchExecutor.h>
 #include <LibWeb/Fetch/Fetching/FetchEngine.h>
 #include <LibWeb/Fetch/Fetching/Fetching.h>
 #include <LibWeb/Fetch/Infrastructure/FetchAlgorithms.h>
@@ -415,6 +418,34 @@ static Web::HTML::SerializedEnvironmentSettingsObject outside_settings(URL::URL 
     };
 }
 
+// The fetch params of the fetches an agent started.
+struct StartedFetches : RefCounted<StartedFetches> {
+    Vector<NonnullRefPtr<Web::Fetch::Infrastructure::FetchParams const>> fetch_params;
+};
+
+// Records the fetch params of each fetch the agent starts, as it hands each command to the fetch engine.
+class StartRecordingEngine final : public Web::Fetch::Engine::EngineCommandSink {
+public:
+    explicit StartRecordingEngine(NonnullRefPtr<StartedFetches> started)
+        : m_engine(make<Web::Fetch::Fetching::FetchEngine>(Web::HTML::surrounding_agent().network_activity_observers, make<Web::Fetch::Engine::FetchEngineRecords::Agent>()))
+        , m_started(move(started))
+    {
+    }
+
+    virtual void attach_to_executor(Web::Fetch::Engine::FetchExecutor& executor) override { m_engine->attach_to_executor(executor); }
+
+    virtual void handle_command(Web::Fetch::Engine::EngineCommand command) override
+    {
+        if (auto const* start = command.get_pointer<Web::Fetch::Engine::Command::StartFetch>())
+            m_started->fetch_params.append(start->input.main_fetch.fetch_params);
+        m_engine->handle_command(move(command));
+    }
+
+private:
+    NonnullOwnPtr<Web::Fetch::Fetching::FetchEngine> m_engine;
+    NonnullRefPtr<StartedFetches> m_started;
+};
+
 class TestAgent {
 public:
     TestAgent()
@@ -496,24 +527,30 @@ public:
     }
 
     // Fetches the URL, and runs the worker's tasks until the fetch's request is done. Returns the fetch's params.
-    NonnullRefPtr<Web::Fetch::Infrastructure::FetchParams> fetch_until_done(StringView url)
+    NonnullRefPtr<Web::Fetch::Infrastructure::FetchParams const> fetch_until_done(StringView url)
     {
+        auto started = make_ref_counted<StartedFetches>();
+        auto& agent = Web::HTML::surrounding_agent();
+        Web::Fetch::Engine::FetchExecutorServices services {
+            .event_loop = Core::EventLoop::current_weak(),
+            .known_hsts_host_provider = agent.fetch_executor->known_hsts_host_provider(),
+        };
+        agent.fetch_executor = Web::Fetch::Engine::InlineFetchExecutor::create(move(services), make<StartRecordingEngine>(started));
+
         auto request = Web::Fetch::Infrastructure::Request::create();
         request->set_url_list({ *URL::Parser::basic_parse(url) });
         request->set_client(m_settings->address());
         auto algorithms = Web::Fetch::Infrastructure::FetchAlgorithms::create(Web::Fetch::Infrastructure::FetchAlgorithms::Input { Web::Fetch::Engine::BodyIntent::DrainAndDiscard });
 
-        GC::Ptr<Web::Fetch::Infrastructure::FetchController> controller;
         {
             Web::HTML::TemporaryExecutionContext execution_context { m_settings->realm(), Web::HTML::TemporaryExecutionContext::CallbacksEnabled::Yes };
-            controller = Web::Fetch::Fetching::fetch(m_settings->realm(), request, algorithms);
+            (void)Web::Fetch::Fetching::fetch(m_settings->realm(), request, algorithms);
         }
-        auto fetch_params = controller->original_fetch_params();
-        VERIFY(fetch_params);
         Web::HTML::current_event_loop().spin_until(GC::create_function(GC::Heap::the(), GC::captures(request), [](auto& request) {
             return request->done();
         }));
-        return fetch_params.release_nonnull();
+        VERIFY(started->fetch_params.size() == 1);
+        return started->fetch_params.take_first();
     }
 
     // What the host of a worker does once the worker's event loop is destroyed.

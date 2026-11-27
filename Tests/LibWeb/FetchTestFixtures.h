@@ -83,6 +83,34 @@ struct PostedCommands : RefCounted<PostedCommands> {
     Vector<Web::Fetch::Engine::EngineCommand> commands;
 };
 
+struct StartedFetches : RefCounted<StartedFetches> {
+    GC_HOLDS_NO_CELL_EDGES;
+
+    Vector<NonnullRefPtr<Web::Fetch::Infrastructure::FetchParams const>> fetch_params;
+};
+
+class StartRecordingEngine final : public Web::Fetch::Engine::EngineCommandSink {
+public:
+    explicit StartRecordingEngine(NonnullRefPtr<StartedFetches> started)
+        : m_engine(make<Web::Fetch::Fetching::FetchEngine>(Web::HTML::surrounding_agent().network_activity_observers, make<Web::Fetch::Engine::FetchEngineRecords::Agent>()))
+        , m_started(move(started))
+    {
+    }
+
+    virtual void attach_to_executor(Web::Fetch::Engine::FetchExecutor& executor) override { m_engine->attach_to_executor(executor); }
+
+    virtual void handle_command(Web::Fetch::Engine::EngineCommand command) override
+    {
+        if (auto const* start = command.get_pointer<Web::Fetch::Engine::Command::StartFetch>())
+            m_started->fetch_params.append(start->input.main_fetch.fetch_params);
+        m_engine->handle_command(move(command));
+    }
+
+private:
+    NonnullOwnPtr<Web::Fetch::Fetching::FetchEngine> m_engine;
+    NonnullRefPtr<StartedFetches> m_started;
+};
+
 inline ByteString describe_transport_control(Web::Fetch::Engine::Command::TransportControl::Operation const& operation, Web::Fetch::Engine::RequestId request_id, Web::Fetch::Engine::TransportEpoch transport_epoch)
 {
     using Web::Fetch::Engine::Command::TransportControl;
@@ -209,6 +237,7 @@ private:
                     [&](ResolveRedirect::AcceptAsFinal) { return ByteString::formatted("accept redirect of {} as final", fetch(resolve.fetch_id)); },
                     [&](ResolveRedirect::Abandon) { return ByteString::formatted("abandon redirect of {}", fetch(resolve.fetch_id)); });
             },
+            [&](ResolveNetworkInterception const& resolve) { return ByteString::formatted("resolve network interception {}", fetch(resolve.fetch_id)); },
             [&](PreloadResponseResolved const& resolved) { return ByteString::formatted("preload response resolved {}", fetch(resolved.fetch_id)); },
             [](TransportControl const& control) { return describe_transport_control(control.operation, control.request_id, control.transport_epoch); },
             [](NavigationBodyAdopted const&) { return ByteString { "navigation body adopted"sv }; },
@@ -266,6 +295,19 @@ struct FetchHarness {
         auto recording_engine = make<CommandRecordingEngine>(commands, NonnullRefPtr { *agent.fetch_executor }, records_gone, handed_over);
         agent.fetch_executor = Web::Fetch::Engine::InlineFetchExecutor::create(move(services), move(recording_engine));
         return commands;
+    }
+
+    // Installs a recording executor and keeps each fetch's params alive.
+    NonnullRefPtr<StartedFetches> record_started_fetches() const
+    {
+        auto started = make_ref_counted<StartedFetches>();
+        auto& agent = Web::HTML::surrounding_agent();
+        Web::Fetch::Engine::FetchExecutorServices services {
+            .event_loop = Core::EventLoop::current_weak(),
+            .known_hsts_host_provider = agent.fetch_executor->known_hsts_host_provider(),
+        };
+        agent.fetch_executor = Web::Fetch::Engine::InlineFetchExecutor::create(move(services), make<StartRecordingEngine>(started));
+        return started;
     }
 
     // An unknown scheme: scheme fetch returns a network error, which has no body.
@@ -523,21 +565,15 @@ inline Web::Fetch::Infrastructure::FetchAlgorithms::Input recording_responses(GC
     return input;
 }
 
-// The token of the agent's fetch whose fetch params match, which a test holds instead of the fetch's controller.
-inline NEVER_INLINE Optional<Web::Fetch::Infrastructure::FetchControllerToken> token_of_fetch(Function<bool(Web::Fetch::Infrastructure::FetchParams const&)> const& matches)
+// The token of the agent's started fetch whose request's first URL has the path, which a test holds instead of the
+// fetch's controller.
+inline NEVER_INLINE Optional<Web::Fetch::Infrastructure::FetchControllerToken> token_of_fetch_for(StringView path)
 {
     for (auto const& controller : Web::HTML::surrounding_agent().fetch_controller_registry.controllers()) {
-        auto fetch_params = controller->original_fetch_params();
-        if (fetch_params && matches(*fetch_params))
+        if (controller->started_fetch_id().has_value() && controller->request()->url().serialize_path() == path)
             return controller->token();
     }
     return {};
-}
-
-// The token of the fetch whose request's first URL has the path.
-inline Optional<Web::Fetch::Infrastructure::FetchControllerToken> token_of_fetch_for(StringView path)
-{
-    return token_of_fetch([&](auto const& fetch_params) { return fetch_params.request()->url().serialize_path() == path; });
 }
 
 inline NEVER_INLINE GC::Ptr<Web::Fetch::Infrastructure::FetchController> find_controller(Web::Fetch::Infrastructure::FetchControllerToken token)
@@ -551,7 +587,7 @@ inline bool was_handed_over(Web::Fetch::Infrastructure::FetchController const& c
     return controller.control_block().agent_timing_info();
 }
 
-// Whether the agent's registry keeps the controller alive, as that of a fetch or of a fetch's CORS preflight.
+// Whether the agent's registry keeps the controller of a fetch alive.
 inline bool is_rooted(Web::Fetch::Infrastructure::FetchControllerToken token)
 {
     return Web::HTML::surrounding_agent().fetch_controller_registry.roots(token);

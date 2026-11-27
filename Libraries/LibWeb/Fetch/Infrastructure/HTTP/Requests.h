@@ -217,6 +217,16 @@ public:
     [[nodiscard]] Optional<ChildNavigableNavigation> const& child_navigable_navigation() const { return m_child_navigable_navigation; }
     void set_child_navigable_navigation(Optional<ChildNavigableNavigation> child_navigable_navigation) { m_child_navigable_navigation = move(child_navigable_navigation); }
 
+    struct ObservedNavigation {
+        HTML::CrossProcessId navigable_id;
+        Optional<String> navigation_id;
+    };
+    [[nodiscard]] Optional<ObservedNavigation> const& observed_navigation() const { return m_observed_navigation; }
+    void set_observed_navigation(Optional<ObservedNavigation> observed_navigation) { m_observed_navigation = move(observed_navigation); }
+
+    [[nodiscard]] RefPtr<HTTP::HeaderList const> const& generated_header_overrides() const { return m_generated_header_overrides; }
+    void set_generated_header_overrides(RefPtr<HTTP::HeaderList const> overrides) { m_generated_header_overrides = move(overrides); }
+
     [[nodiscard]] RefPtr<ReservedClientContextSnapshot const> const& reserved_client_snapshot() const { return m_reserved_client_snapshot; }
     void set_reserved_client_snapshot(RefPtr<ReservedClientContextSnapshot const> reserved_client_snapshot) { m_reserved_client_snapshot = move(reserved_client_snapshot); }
 
@@ -411,6 +421,11 @@ private:
     //         navigable can be navigated to, whichever document started the navigation.
     //         See https://github.com/w3c/webappsec-csp/issues/624.
     Optional<ChildNavigableNavigation> m_child_navigable_navigation;
+
+    Optional<ObservedNavigation> m_observed_navigation;
+
+    // Reapply intercepted headers when Fetch regenerates them on a later hop.
+    RefPtr<HTTP::HeaderList const> m_generated_header_overrides;
 
     // https://fetch.spec.whatwg.org/#concept-request-reserved-client
     // A request has an associated reserved client (null, an environment, or an environment settings object). Unless

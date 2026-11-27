@@ -13,6 +13,7 @@
 #include <LibGC/HoldsNoCellEdges.h>
 #include <LibWeb/Export.h>
 #include <LibWeb/Fetch/Engine/FetchBodyDeliveryGate.h>
+#include <LibWeb/Fetch/Engine/Ids.h>
 #include <LibWeb/Fetch/Infrastructure/FetchControlBlock.h>
 #include <LibWeb/Fetch/Infrastructure/FetchControllerToken.h>
 #include <LibWeb/Fetch/Infrastructure/FetchTimingInfo.h>
@@ -20,6 +21,7 @@
 #include <LibWeb/Fetch/Infrastructure/HTTP/Responses.h>
 #include <LibWebCommon/FileAPI/SerializedBlobURLEntry.h>
 #include <LibWebCommon/Loader/LoaderConfigSnapshot.h>
+#include <LibWebCommon/Page/PageId.h>
 
 namespace Web::Fetch::Engine {
 
@@ -79,8 +81,15 @@ public:
     [[nodiscard]] Engine::FetchEngineRecord* engine_record() const { return m_engine_record; }
     void set_engine_record(NonnullRefPtr<Engine::FetchEngineRecord>) const;
 
-    [[nodiscard]] bool is_cors_preflight() const { return m_is_cors_preflight; }
-    void set_is_cors_preflight() { m_is_cors_preflight = true; }
+    // The CORS preflight these fetch params are for, which runs under the controller of the fetch it is for.
+    [[nodiscard]] bool is_cors_preflight() const { return m_cors_preflight_id.has_value(); }
+    [[nodiscard]] Optional<Engine::CorsPreflightId> cors_preflight_id() const { return m_cors_preflight_id; }
+    void set_cors_preflight_id(Engine::CorsPreflightId cors_preflight_id) { m_cors_preflight_id = cors_preflight_id; }
+
+    // The page of the realm that started the fetch, which its network requests are made for, if it has a top-level
+    // traversable.
+    [[nodiscard]] Optional<PageId> originating_page_id() const { return m_originating_page_id; }
+    void set_originating_page_id(Optional<PageId> page_id) { m_originating_page_id = page_id; }
 
     // The transport of the response body these fetch params receive, which the fetch's engine record keeps.
     void set_body_transport(Engine::FetchBodyDeliveryGate::Transport&) const;
@@ -132,7 +141,9 @@ private:
 
     mutable RefPtr<Engine::FetchEngineRecord> m_engine_record;
 
-    bool m_is_cors_preflight { false };
+    Optional<Engine::CorsPreflightId> m_cors_preflight_id;
+
+    Optional<PageId> m_originating_page_id;
 };
 
 }
