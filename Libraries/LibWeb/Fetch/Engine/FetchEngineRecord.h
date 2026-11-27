@@ -54,10 +54,16 @@ public:
     [[nodiscard]] EngineEventSink& event_sink() { return *m_event_sink; }
 
     // Reports what happened to one of the fetch's RequestServer requests to the agent that started the fetch.
-    void report_network_activity(RequestId request_id, Event::NetworkActivity::Activity activity)
+    void report_network_activity(RequestId request_id, Event::TransportActivity::Activity activity)
     {
-        m_event_sink->handle_event(Event::NetworkActivity { .request_id = request_id, .activity = move(activity) });
+        report_network_activity(Event::TransportActivity { .request_id = request_id, .activity = move(activity) });
     }
+
+    void report_network_activity(Event::NetworkActivity activity) { m_event_sink->handle_event(move(activity)); }
+
+    using NetworkContinuation = Function<void(NetworkDecision)>;
+    void reach_network_phase(Event::FetchNetworkActivity, NetworkContinuation);
+    RefPtr<HTTP::HeaderList>& request_header_overrides(bool preflight) { return preflight ? m_preflight_header_overrides : m_request_header_overrides; }
 
     void report_violation(ContentSecurityPolicy::RequestViolation violation)
     {
@@ -169,6 +175,15 @@ private:
     };
     Optional<RedirectContinuation> m_redirect_continuation;
 
+    struct NetworkInterception {
+        InterceptionPoint point;
+        NetworkContinuation resume;
+    };
+    Optional<NetworkInterception> m_interception;
+    Optional<InterceptionPoint> m_cancelled_interception;
+    u64 m_interception_sequence { 0 };
+    RefPtr<HTTP::HeaderList> m_request_header_overrides;
+    RefPtr<HTTP::HeaderList> m_preflight_header_overrides;
     bool m_stopped { false };
 
     struct MainFetchRunning { };
@@ -231,6 +246,7 @@ public:
     };
 
     explicit FetchEngineRecords(NonnullOwnPtr<Agent>);
+    ~FetchEngineRecords();
 
     // Reports to the agent a command no honest agent could have posted.
     void agent_misbehaved(StringView reason) { m_agent->misbehaved(reason); }
@@ -260,6 +276,7 @@ public:
     // Resolves the preload wait of a started fetch's main fetch. Reports to the agent a fetch id above every start, then,
     // unless the record is gone, a response that is neither a network error nor one whose body is all its bytes, then,
     // unless main fetch has ended, a fetch with no preload candidate or a second resolution.
+    void resolve_network_interception(Command::ResolveNetworkInterception);
     void resolve_preload_wait(FetchId, RefPtr<Infrastructure::Response>);
 
     // Records a network transport, which the agent's transport controls name by the id and transport epoch of its

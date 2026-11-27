@@ -74,8 +74,7 @@ public:
 
     [[nodiscard]] GC::Ref<FetchAlgorithms const> algorithms() const;
 
-    // The fetch params created with the controller, for which WebDriver BiDi reports errors and intercepts requests.
-    [[nodiscard]] RefPtr<FetchParams> original_fetch_params() const;
+    [[nodiscard]] FetchTimingInfo const& network_activity_timing() const { return *m_network_activity_timing; }
 
     // The request the controller's fetch params were created with.
     [[nodiscard]] NonnullRefPtr<Request> request() const;
@@ -131,14 +130,12 @@ private:
     virtual void visit_edges(JS::Cell::Visitor&) override;
     virtual void finalize() override;
 
-    void report_webdriver_bidi_fetch_error(StringView error_text) const;
-    void cancel_webdriver_bidi_network_interception() const;
     void stop_request();
 
     WeakPtr<FetchControllerRegistry> m_registry;
     FetchControllerToken m_token;
     NonnullRefPtr<FetchControlBlock> m_control_block;
-    WeakPtr<FetchParams> m_original_fetch_params;
+    RefPtr<FetchTimingInfo> m_network_activity_timing;
     RefPtr<Request> m_request;
     GC::Ptr<JS::Realm> m_realm;
     RefPtr<NetworkObservation> m_network_observation;

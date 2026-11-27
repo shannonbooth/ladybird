@@ -66,7 +66,7 @@ using Web::Fetch::Engine::NetworkTransportHandle;
 using Web::Fetch::Engine::WholeBodyTransport;
 using Web::Fetch::Engine::Command::TransportControl;
 using Web::Fetch::Engine::Event::EndOfBody;
-using Web::Fetch::Engine::Event::NetworkActivity;
+using Web::Fetch::Engine::Event::TransportActivity;
 using Web::Fetch::Engine::Event::ReadRequestBodyStream;
 using Web::Fetch::Engine::Event::RequestBodyEndOfBody;
 using Web::Fetch::Engine::Event::RequestBodyProgress;
@@ -1906,7 +1906,7 @@ TEST_CASE(a_fetch_whose_request_webdriver_bidi_blocks_ends_once_a_command_resume
     harness.run_until_step(commands, "end of fetch 1"sv);
     harness.settle();
 
-    EXPECT_EQ(commands->steps, (Vector<ByteString> { "start fetch 1", "end of body of 1", "end of fetch 1" }));
+    EXPECT_EQ(commands->steps, (Vector<ByteString> { "start fetch 1", "resolve network interception 1", "end of body of 1", "end of fetch 1" }));
     EXPECT(!is_rooted(controller->token()));
 }
 
@@ -2181,12 +2181,12 @@ static GC::Ref<Web::DOM::Document> create_document_of_page(Web::Page& page)
 }
 
 // One of each network activity, of the RequestServer request with the id.
-static Vector<NetworkActivity> each_network_activity(u64 request_id)
+static Vector<TransportActivity> each_network_activity(u64 request_id)
 {
-    Vector<NetworkActivity> activities;
+    Vector<TransportActivity> activities;
     activities.append({
         .request_id = Web::Fetch::Engine::RequestId { request_id },
-        .activity = NetworkActivity::RequestStarted {
+        .activity = TransportActivity::RequestStarted {
             .url = URL::Parser::basic_parse("https://example.com/upload"sv).release_value(),
             .method = "POST",
             .headers = { { "Accept"sv, "*/*"sv } },
@@ -2199,7 +2199,7 @@ static Vector<NetworkActivity> each_network_activity(u64 request_id)
     });
     activities.append({
         .request_id = Web::Fetch::Engine::RequestId { request_id },
-        .activity = NetworkActivity::ResponseHeaders {
+        .activity = TransportActivity::ResponseHeaders {
             .status_code = 200,
             .reason_phrase = "OK"_string,
             .headers = { { "Content-Type"sv, "text/plain"sv } },
@@ -2208,11 +2208,11 @@ static Vector<NetworkActivity> each_network_activity(u64 request_id)
     });
     activities.append({
         .request_id = Web::Fetch::Engine::RequestId { request_id },
-        .activity = NetworkActivity::ResponseBodyBytes { Core::ImmutableBytes::adopt(MUST(ByteBuffer::copy("world"sv.bytes()))) },
+        .activity = TransportActivity::ResponseBodyBytes { Core::ImmutableBytes::adopt(MUST(ByteBuffer::copy("world"sv.bytes()))) },
     });
     activities.append({
         .request_id = Web::Fetch::Engine::RequestId { request_id },
-        .activity = NetworkActivity::RequestFinished {
+        .activity = TransportActivity::RequestFinished {
             .total_size = 5,
             .timing_info = { .encoded_body_size = 5 },
             .network_error = Requests::NetworkError::IncompleteContent,
@@ -2240,8 +2240,8 @@ TEST_CASE(network_activity_is_reported_to_the_page_of_the_realm_that_started_the
 
     FetchEventSink first_event_sink { first_controller };
     for (auto& activity : each_network_activity(7))
-        first_event_sink.handle_event(move(activity));
-    FetchEventSink { second_controller }.handle_event(each_network_activity(8).take_first());
+        first_event_sink.handle_event(Web::Fetch::Engine::Event::NetworkActivity { move(activity) });
+    FetchEventSink { second_controller }.handle_event(Web::Fetch::Engine::Event::NetworkActivity { each_network_activity(8).take_first() });
 
     EXPECT_EQ(first_page_client->calls, (Vector<ByteString> {
                                             "start 7 POST https://example.com/upload Accept: */* body hello initiator fetch referrer policy no-referrer navigation false priority 0",

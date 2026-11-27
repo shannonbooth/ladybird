@@ -284,6 +284,7 @@ set(SOURCES
     Fetch/Fetching/BodyStreamPullSource.cpp
     Fetch/Fetching/Checks.cpp
     Fetch/Fetching/ClientContextSnapshots.cpp
+    Fetch/Fetching/NetworkActivity.cpp
     Fetch/Fetching/NetworkBodyPump.cpp
     Fetch/Fetching/FetchEngine.cpp
     Fetch/Fetching/FetchEventSink.cpp

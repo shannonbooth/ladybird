@@ -58,6 +58,11 @@ void FetchEngineRecord::stop()
 {
     ASSERT(is_on_owner_thread());
     m_stopped = true;
+    if (m_interception.has_value()) {
+        auto interception = m_interception.release_value();
+        m_cancelled_interception = interception.point;
+        interception.resume(FailFetch {});
+    }
     // AD-HOC: A stop, abort or termination ends main fetch's wait for a preloaded response, which Fetch's wait ignores.
     //         The fetch then ends without a handover.
     if (m_main_fetch.has<MainFetchWaitsForPreload>())
@@ -65,6 +70,94 @@ void FetchEngineRecord::stop()
     if (m_redirect_continuation.has_value())
         abandon_redirect();
     stop_body_transport();
+}
+
+void FetchEngineRecord::reach_network_phase(Event::FetchNetworkActivity event, NetworkContinuation resume)
+{
+    ASSERT(is_on_owner_thread());
+    auto& phase = event.activity.get<Event::FetchNetworkActivity::PhaseReached>();
+    if (m_stopped) {
+        resume(FailFetch {});
+        return;
+    }
+    if (!network_activity_observers().can_intercept(phase.phase)) {
+        if (phase.phase != NetworkPhase::PrepareRequest && network_activity_observers().observes_fetches())
+            report_network_activity(move(event));
+        resume(ContinueFetch {});
+        return;
+    }
+    VERIFY(!m_interception.has_value());
+    InterceptionPoint point { ++m_interception_sequence, phase.phase, event.request.redirect_count };
+    phase.interception = point;
+    m_interception = NetworkInterception { point, move(resume) };
+    report_network_activity(move(event));
+}
+
+static bool valid_headers(Vector<HTTP::Header> const& headers)
+{
+    return all_of(headers, [](auto const& header) { return HTTP::is_header_name(header.name) && HTTP::is_header_value(header.value); });
+}
+
+static bool valid_response_override(ModifyResponse const& response)
+{
+    return (!response.status.has_value() || (*response.status >= 100 && *response.status <= 599))
+        && (!response.reason.has_value() || HTTP::is_header_value(*response.reason))
+        && (!response.headers.has_value() || valid_headers(*response.headers))
+        && (!response.cookies.has_value() || (valid_headers(*response.cookies) && all_of(*response.cookies, [](auto const& header) { return header.name.equals_ignoring_ascii_case("Set-Cookie"sv); })));
+}
+
+static bool valid_decision(NetworkPhase phase, NetworkDecision const& decision)
+{
+    return decision.visit(
+        [](ContinueFetch const&) { return true; },
+        [](FailFetch const&) { return true; },
+        [&](ConfigureRequest const& config) { return phase == NetworkPhase::PrepareRequest && valid_headers(config.extra_headers); },
+        [&](ModifyRequest const& request) {
+            return phase == NetworkPhase::BeforeRequest
+                && (!request.url.has_value() || request.url->scheme().is_one_of("http"sv, "https"sv))
+                && (!request.method.has_value() || HTTP::is_header_name(*request.method))
+                && (!request.cookie.has_value() || HTTP::is_header_value(*request.cookie))
+                && (!request.headers.has_value() || valid_headers(*request.headers));
+        },
+        [&](ModifyResponse const& response) { return (phase == NetworkPhase::ResponseHeaders || phase == NetworkPhase::Authentication) && valid_response_override(response); },
+        [&](ProvideResponse const& response) { return phase != NetworkPhase::PrepareRequest && valid_response_override(response.response); },
+        [&](Authenticate const& auth) { return phase == NetworkPhase::Authentication && HTTP::is_header_value(auth.authorization) && valid_response_override(auth.response); },
+        [&](CancelAuthentication const&) { return phase == NetworkPhase::Authentication; });
+}
+
+void FetchEngineRecords::resolve_network_interception(Command::ResolveNetworkInterception reply)
+{
+    ASSERT(is_on_owner_thread());
+    if (reply.fetch_id.value() == 0 || reply.fetch_id > m_last_started_fetch_id) {
+        agent_misbehaved("The agent answered an interception for an unknown fetch"sv);
+        return;
+    }
+    auto found = m_records.get(reply.fetch_id);
+    if (!found.has_value())
+        return;
+    NonnullRefPtr record = **found;
+    if (record->m_cancelled_interception == reply.point) {
+        record->m_cancelled_interception.clear();
+        return;
+    }
+    if (!record->m_interception.has_value() || record->m_interception->point != reply.point || !valid_decision(reply.point.phase, reply.decision)) {
+        agent_misbehaved("The agent sent an invalid answer to a network interception"sv);
+        return;
+    }
+    auto interception = record->m_interception.release_value();
+    interception.resume(move(reply.decision));
+}
+
+FetchEngineRecords::~FetchEngineRecords()
+{
+    // Each suspended continuation can hold the last reference to its own record.
+    Vector<NonnullRefPtr<FetchEngineRecord>> suspended;
+    for (auto& [_, record] : m_records) {
+        if (record->m_interception.has_value())
+            suspended.append(*record);
+    }
+    for (auto& record : suspended)
+        record->m_interception.clear();
 }
 
 void FetchEngineRecord::add_network_transport(NetworkTransportHandle& handle, FetchBodyDeliveryGate& delivery_gate)

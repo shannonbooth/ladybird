@@ -9,6 +9,8 @@
 #include <LibWeb/ContentSecurityPolicy/BlockingAlgorithms.h>
 #include <LibWeb/Fetch/Fetching/FetchEventSink.h>
 #include <LibWeb/Fetch/Fetching/Fetching.h>
+#include <LibWeb/Fetch/Fetching/NetworkActivity.h>
+#include <LibWeb/WebDriver/BiDi/Network.h>
 #include <LibWeb/Fetch/Infrastructure/FetchAlgorithms.h>
 #include <LibWeb/Fetch/Infrastructure/FetchController.h>
 #include <LibWeb/Fetch/Infrastructure/HTTP/Bodies.h>
@@ -134,6 +136,32 @@ static void drain_request_body_stream(GC::Ref<Infrastructure::FetchController> c
     request_body_reader->body->incrementally_read_loop(request_body_reader->reader, task_destination, ignore_chunk, ignore_end_of_body, ignore_error);
 }
 
+void FetchEventSink::receive_network_activity(Infrastructure::FetchController& controller, Engine::Event::NetworkActivity const& event)
+{
+    event.visit(
+        [&](Engine::Event::TransportActivity const& activity) { controller.page()->did_receive_network_activity(activity); },
+        [&](FetchNetworkActivity const& activity) {
+            auto source = activity.preflight_controller.has_value() ? controller.registry()->find(*activity.preflight_controller) : GC::Ptr { controller };
+            if (source)
+                WebDriver::BiDi::receive_network_activity(controller, *source, activity);
+        });
+}
+
+void FetchEventSink::report_response_completed(Infrastructure::FetchController& controller, Infrastructure::Response const& response, Infrastructure::FetchTimingInfo const& timing)
+{
+    if (WebDriver::BiDi::network_events_enabled())
+        receive_network_activity(controller, snapshot_network_activity({}, *controller.request(), timing, &response, FetchNetworkActivity::ResponseCompleted {}));
+}
+
+void FetchEventSink::report_fetch_error(Infrastructure::FetchController& controller, StringView reason)
+{
+    WebDriver::BiDi::forget_interceptions(controller);
+    if (WebDriver::BiDi::network_events_enabled() && controller.network_observation()) {
+        auto event = snapshot_network_activity({}, *controller.request(), controller.network_activity_timing(), nullptr, FetchNetworkActivity::Failed { String::from_utf8_with_replacement_character(reason) });
+        receive_network_activity(controller, event);
+    }
+}
+
 void FetchEventSink::handle_event(Engine::EngineEvent event)
 {
     VERIFY(m_agent_thread_id.is_current_thread());
@@ -168,9 +196,7 @@ void FetchEventSink::handle_event(Engine::EngineEvent event)
         [&](Engine::Event::RequestBodySentFromSource const&) {
             drain_request_body_stream(controller);
         },
-        [&](Engine::Event::NetworkActivity const& network_activity) {
-            controller->page()->did_receive_network_activity(network_activity);
-        },
+        [&](Engine::Event::NetworkActivity const& activity) { receive_network_activity(controller, activity); },
         [&](Engine::Event::ViolationReport const& report) {
             ContentSecurityPolicy::report_a_violation_of_a_request(controller->realm(), report.violation);
         },

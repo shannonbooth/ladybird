@@ -7,6 +7,9 @@
 #pragma once
 
 #include <AK/NonnullRefPtr.h>
+#include <AK/Optional.h>
+#include <AK/String.h>
+#include <LibWebCommon/HTML/CrossProcessId.h>
 #include <AK/RefCounted.h>
 #include <AK/RefPtr.h>
 #include <LibGC/HoldsNoCellEdges.h>
@@ -30,6 +33,9 @@ public:
     GC_HOLDS_NO_CELL_EDGES;
 
     [[nodiscard]] static NonnullRefPtr<NetworkObservation> create() { return adopt_ref(*new NetworkObservation); }
+
+    Optional<HTML::CrossProcessId> navigation_context;
+    Optional<String> navigation;
 
     [[nodiscard]] RefPtr<NetworkObserverState> const& observer_state() const { return m_observer_state; }
     void set_observer_state(NonnullRefPtr<NetworkObserverState> observer_state) { m_observer_state = move(observer_state); }

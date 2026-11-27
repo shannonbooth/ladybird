@@ -32,6 +32,7 @@ TEST_CASE(commands_round_trip_their_payloads)
     commands.append(Command::ResolveRedirect { .fetch_id = FetchId(5), .continuation_id = ContinuationId(6), .resolution = Command::ResolveRedirect::AcceptAsFinal {} });
     auto preloaded_response = Web::Fetch::Infrastructure::Response::create();
     commands.append(Command::PreloadResponseResolved { .fetch_id = FetchId(7), .response = preloaded_response });
+    commands.append(Command::ResolveNetworkInterception { FetchId(7), { 2, NetworkPhase::Authentication, 1 }, CancelAuthentication {} });
     commands.append(Command::TransportControl { .request_id = RequestId(8), .transport_epoch = TransportEpoch(9), .operation = Command::TransportControl::ReleaseNavigationHoldUpTo { .byte_count = 4096 } });
 
     Vector<u64> seen_ids;
@@ -49,6 +50,13 @@ TEST_CASE(commands_round_trip_their_payloads)
             [&](Command::PreloadResponseResolved const& preload) {
                 EXPECT_EQ(preload.response.ptr(), preloaded_response.ptr());
                 seen_ids.append(preload.fetch_id.value());
+            },
+            [&](Command::ResolveNetworkInterception const& answer) {
+                EXPECT_EQ(answer.fetch_id, FetchId(7));
+                EXPECT_EQ(answer.point.sequence, 2u);
+                EXPECT_EQ(answer.point.phase, NetworkPhase::Authentication);
+                EXPECT_EQ(answer.point.redirect_count, 1);
+                EXPECT(answer.decision.has<CancelAuthentication>());
             },
             [&](Command::TransportControl const& control) {
                 EXPECT_EQ(control.transport_epoch, TransportEpoch(9));
@@ -146,9 +154,9 @@ TEST_CASE(events_round_trip_their_payloads)
     events.append(Event::RequestBodyEndOfBody { .body_is_null = true });
     events.append(Event::ReadRequestBodyStream {});
     events.append(Event::RequestBodySentFromSource {});
-    events.append(Event::NetworkActivity {
+    events.append(Event::NetworkActivity { Event::TransportActivity {
         .request_id = RequestId(8),
-        .activity = Event::NetworkActivity::RequestStarted {
+        .activity = Event::TransportActivity::RequestStarted {
             .url = URL::Parser::basic_parse("https://example.com/upload"sv).release_value(),
             .method = "POST",
             .headers = { { "Accept"sv, "*/*"sv } },
@@ -158,28 +166,28 @@ TEST_CASE(events_round_trip_their_payloads)
             .is_navigation_request = true,
             .priority = Web::Fetch::Infrastructure::RequestPriority::High,
         },
-    });
-    events.append(Event::NetworkActivity {
+    } });
+    events.append(Event::NetworkActivity { Event::TransportActivity {
         .request_id = RequestId(9),
-        .activity = Event::NetworkActivity::ResponseHeaders {
+        .activity = Event::TransportActivity::ResponseHeaders {
             .status_code = 203,
             .reason_phrase = "Non-Authoritative"_string,
             .headers = { { "Content-Type"sv, "text/plain"sv } },
             .cache_state = Requests::CacheState::Validated,
         },
-    });
-    events.append(Event::NetworkActivity {
+    } });
+    events.append(Event::NetworkActivity { Event::TransportActivity {
         .request_id = RequestId(10),
-        .activity = Event::NetworkActivity::ResponseBodyBytes { Core::ImmutableBytes::adopt(MUST(ByteBuffer::copy("response"sv.bytes()))) },
-    });
-    events.append(Event::NetworkActivity {
+        .activity = Event::TransportActivity::ResponseBodyBytes { Core::ImmutableBytes::adopt(MUST(ByteBuffer::copy("response"sv.bytes()))) },
+    } });
+    events.append(Event::NetworkActivity { Event::TransportActivity {
         .request_id = RequestId(11),
-        .activity = Event::NetworkActivity::RequestFinished {
+        .activity = Event::TransportActivity::RequestFinished {
             .total_size = 8,
             .timing_info = { .request_start_microseconds = 40, .encoded_body_size = 8 },
             .network_error = Requests::NetworkError::IncompleteContent,
         },
-    });
+    } });
     auto policy = Web::ContentSecurityPolicy::Policy::parse_a_serialized_csp("img-src 'none'"_string, Web::ContentSecurityPolicy::Policy::Source::Header, Web::ContentSecurityPolicy::Policy::Disposition::Enforce);
     events.append(Event::ViolationReport {
         .violation = {
@@ -245,9 +253,10 @@ TEST_CASE(events_round_trip_their_payloads)
             },
             [&](Event::ReadRequestBodyStream const&) { seen_request_body_events.append("read stream"sv); },
             [&](Event::RequestBodySentFromSource const&) { seen_request_body_events.append("sent from source"sv); },
-            [&](Event::NetworkActivity const& network_activity) {
+            [&](Event::NetworkActivity const& activity) {
+                auto const& network_activity = activity.get<Event::TransportActivity>();
                 network_activity.activity.visit(
-                    [&](Event::NetworkActivity::RequestStarted const& started) {
+                    [&](Event::TransportActivity::RequestStarted const& started) {
                         EXPECT_EQ(started.url.serialize(), "https://example.com/upload"sv);
                         EXPECT_EQ(started.method, "POST"sv);
                         VERIFY(started.headers.size() == 1);
@@ -259,17 +268,17 @@ TEST_CASE(events_round_trip_their_payloads)
                         EXPECT(started.is_navigation_request);
                         EXPECT_EQ(started.priority, Web::Fetch::Infrastructure::RequestPriority::High);
                     },
-                    [&](Event::NetworkActivity::ResponseHeaders const& headers) {
+                    [&](Event::TransportActivity::ResponseHeaders const& headers) {
                         EXPECT_EQ(headers.status_code, 203u);
                         EXPECT_EQ(headers.reason_phrase, "Non-Authoritative"sv);
                         VERIFY(headers.headers.size() == 1);
                         EXPECT_EQ(headers.headers[0].value, "text/plain"sv);
                         EXPECT_EQ(headers.cache_state, Requests::CacheState::Validated);
                     },
-                    [&](Event::NetworkActivity::ResponseBodyBytes const& body_bytes) {
+                    [&](Event::TransportActivity::ResponseBodyBytes const& body_bytes) {
                         EXPECT_EQ(body_bytes.bytes.bytes(), "response"sv.bytes());
                     },
-                    [&](Event::NetworkActivity::RequestFinished const& finished) {
+                    [&](Event::TransportActivity::RequestFinished const& finished) {
                         EXPECT_EQ(finished.total_size, 8u);
                         EXPECT_EQ(finished.timing_info.request_start_microseconds, 40);
                         EXPECT_EQ(finished.timing_info.encoded_body_size, 8);

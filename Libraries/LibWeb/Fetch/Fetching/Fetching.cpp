@@ -86,7 +86,7 @@
 #include <LibWeb/Streams/ReadableStreamDefaultReader.h>
 #include <LibWeb/Streams/TransformStream.h>
 #include <LibWeb/UpgradeInsecureRequests/AbstractOperations.h>
-#include <LibWeb/WebDriver/BiDi/Network.h>
+#include <LibWeb/Fetch/Fetching/NetworkActivity.h>
 #include <LibWeb/WebIDL/ExceptionOrUtils.h>
 #include <LibWebCommon/Fetch/Infrastructure/DataURL.h>
 #include <LibWebCommon/Fetch/Infrastructure/HTTP/Statuses.h>
@@ -852,9 +852,6 @@ RefPtr<PendingResponse> main_fetch(Infrastructure::FetchParams const& fetch_para
     // 1. Let request be fetchParams’s request.
     auto request = fetch_params.request();
 
-    if (WebDriver::BiDi::network_events_enabled())
-        WebDriver::BiDi::initialize_network_request(fetch_params);
-
     // 2. Let response be null.
     RefPtr<Infrastructure::Response> response;
 
@@ -1175,14 +1172,14 @@ void fetch_response_handover(Infrastructure::FetchParams const& fetch_params, In
     // 1. Let timingInfo be fetchParams’s timing info.
     auto timing_info = fetch_params.timing_info();
 
-    if (WebDriver::BiDi::network_events_enabled()) {
+    if (observes_network_activity(fetch_params)) {
         if (response.is_network_error())
-            WebDriver::BiDi::network_fetch_error(fetch_params, response.network_error_message().value_or("Network error"_string));
+            report_network_activity(fetch_params, nullptr, FetchNetworkActivity::Failed { response.network_error_message().value_or("Network error"_string) });
         else {
             auto internal_response = response.unsafe_response();
-            WebDriver::BiDi::network_response_started(fetch_params, *internal_response);
+            report_network_activity(fetch_params, internal_response.ptr(), FetchNetworkActivity::PhaseReached { Engine::NetworkPhase::ResponseHeaders, {} });
             if (fetch_params.request()->is_navigation_request() && !internal_response->network_transport().has_value())
-                WebDriver::BiDi::network_response_completed(fetch_params, *internal_response, *timing_info);
+                report_network_activity(fetch_params, internal_response.ptr(), FetchNetworkActivity::ResponseCompleted {});
         }
     }
 
@@ -1256,10 +1253,6 @@ void finish_fetch_response_handover(GC::Ref<Infrastructure::FetchController> con
     auto const& response = *delivery.response;
     controller->set_redirect_continuation_id(delivery.redirect_continuation_id);
 
-    // NB: WebDriver BiDi reports the response's completion while the fetch params the controller was created with are
-    //     still alive.
-    auto original_fetch_params = controller->original_fetch_params();
-
     // NB: The body view takes the channel that the internal response's body arrives through.
     auto body_view = delivery.body.visit(
         [](Engine::NullBody) -> GC::Ptr<Infrastructure::Body> { return {}; },
@@ -1311,8 +1304,7 @@ void finish_fetch_response_handover(GC::Ref<Infrastructure::FetchController> con
             //        it always a negative value approximately the value of the time origin.
             //        https://github.com/whatwg/fetch/issues/1812
             timing_info->set_end_time(unsafe_end_time);
-            // AD-HOC: The agent keeps this as the end time last set for the fetch, which later handovers and WebDriver
-            //         BiDi's events take.
+            // AD-HOC: Later handovers and network events use the last end time the agent recorded.
             control_block->set_end_time(unsafe_end_time);
 
             // 3. Let cacheState be response’s cache state.
@@ -1378,14 +1370,14 @@ void finish_fetch_response_handover(GC::Ref<Infrastructure::FetchController> con
     });
 
     // 4. Let processResponseEndOfBody be the following steps:
-    auto process_response_end_of_body = GC::create_function(GC::Heap::the(), GC::captures(request, original_fetch_params, controller, response_view, agent_timing_info, setup_report_timing_steps, report_timing_if_appropriate), [](auto& request, auto& original_fetch_params, auto& controller, auto& response_view, auto& agent_timing_info, auto& setup_report_timing_steps, auto& report_timing_if_appropriate) {
+    auto process_response_end_of_body = GC::create_function(GC::Heap::the(), GC::captures(request, controller, response_view, agent_timing_info, setup_report_timing_steps, report_timing_if_appropriate), [](auto& request, auto& controller, auto& response_view, auto& agent_timing_info, auto& setup_report_timing_steps, auto& report_timing_if_appropriate) {
         // 1. Let unsafeEndTime be the unsafe shared current time.
         auto unsafe_end_time = HighResolutionTime::unsafe_shared_current_time();
 
         // 2. (See setup_report_timing_steps above)
         setup_report_timing_steps->function()(unsafe_end_time);
-        if (WebDriver::BiDi::network_events_enabled() && !response_view->is_network_error() && original_fetch_params)
-            WebDriver::BiDi::network_response_completed(*original_fetch_params, *response_view->record()->unsafe_response(), *agent_timing_info);
+        if (!response_view->is_network_error())
+            FetchEventSink::report_response_completed(controller, *response_view->record()->unsafe_response(), *agent_timing_info);
 
         // 3. Let processResponseEndOfBodyTask be the following steps:
         auto process_response_end_of_body_task = GC::create_function(GC::Heap::the(), GC::captures(request, controller, response_view, report_timing_if_appropriate), [](auto& request, auto& controller, auto& response_view, auto& report_timing_if_appropriate) {
@@ -1421,12 +1413,11 @@ void finish_fetch_response_handover(GC::Ref<Infrastructure::FetchController> con
     //         transform the body is piped through, which backpressure on an unread body can hold back.
     if (!delivery.body.has<Engine::NullBody>()) {
         GC::Ptr<GC::Function<void(HighResolutionTime::DOMHighResTimeStamp)>> network_completion_steps;
-        if (request->initiator_type().has_value() || (WebDriver::BiDi::network_events_enabled() && !request->is_navigation_request())) {
-            network_completion_steps = GC::create_function(GC::Heap::the(), GC::captures(original_fetch_params, response_view, agent_timing_info, setup_report_timing_steps, report_timing_if_appropriate), [](auto& original_fetch_params, auto& response_view, auto& agent_timing_info, auto& setup_report_timing_steps, auto& report_timing_if_appropriate, HighResolutionTime::DOMHighResTimeStamp unsafe_end_time) {
+        if (request->initiator_type().has_value() || !request->is_navigation_request()) {
+            network_completion_steps = GC::create_function(GC::Heap::the(), GC::captures(controller, response_view, agent_timing_info, setup_report_timing_steps, report_timing_if_appropriate), [](auto& controller, auto& response_view, auto& agent_timing_info, auto& setup_report_timing_steps, auto& report_timing_if_appropriate, HighResolutionTime::DOMHighResTimeStamp unsafe_end_time) {
                 setup_report_timing_steps->function()(unsafe_end_time);
                 report_timing_if_appropriate->function()();
-                if (WebDriver::BiDi::network_events_enabled() && original_fetch_params)
-                    WebDriver::BiDi::network_response_completed(*original_fetch_params, *response_view->record()->unsafe_response(), *agent_timing_info);
+                FetchEventSink::report_response_completed(controller, *response_view->record()->unsafe_response(), *agent_timing_info);
             });
         }
         // NB: Only a channel still being written at the handover has a delivery id, which its EndOfBody carries.
@@ -2104,8 +2095,7 @@ NonnullRefPtr<PendingResponse> http_fetch(Infrastructure::FetchParams const& fet
 
         // 6. If internalResponse’s status is a redirect status:
         if (Infrastructure::is_redirect_status(internal_response->status())) {
-            if (WebDriver::BiDi::network_events_enabled())
-                WebDriver::BiDi::network_response_completed(fetch_params, *internal_response, *fetch_params->timing_info());
+            report_network_activity(fetch_params, internal_response.ptr(), FetchNetworkActivity::ResponseCompleted {});
             // 1. If request is a navigation request, then append to request's navigation timing allow values list
             //    given request and internalResponse.
             if (request->is_navigation_request())
@@ -2248,7 +2238,7 @@ RefPtr<PendingResponse> http_redirect_fetch(Infrastructure::FetchParams const& f
         // 1. Set request’s method to `GET` and request’s body to null.
         request->set_method("GET"sv);
         request->set_body({});
-        WebDriver::BiDi::remove_network_request_content_length_override(fetch_params);
+        remove_content_length_override(fetch_params);
 
         static constexpr Array request_body_header_names {
             "Content-Encoding"sv,
@@ -2397,23 +2387,19 @@ static void process_http_network_or_cache_response(Infrastructure::FetchParams c
                 return;
             }
 
-            if (WebDriver::BiDi::network_events_enabled() && authentication_handled == AuthenticationHandled::No) {
-                auto intercepts = WebDriver::BiDi::get_network_intercepts(fetch_params, "authRequired"sv);
-                if (!intercepts.is_empty()) {
-                    WebDriver::BiDi::block_network_request(fetch_params, response, "authRequired"_string, move(intercepts), WebDriver::BiDi::NetworkContinuation::create([fetch_params = NonnullRefPtr { fetch_params }, http_request, returned_pending_response, is_authentication_fetch, is_new_connection_fetch, include_credentials](WebDriver::BiDi::NetworkContinuationAction action, RefPtr<Infrastructure::Response> continued_response) {
-                        if (action == WebDriver::BiDi::NetworkContinuationAction::ProvideCredentials) {
+            if (authentication_handled == AuthenticationHandled::No && should_intercept_network_phase(fetch_params, Engine::NetworkPhase::Authentication, response.ptr())) {
+                reach_network_phase(fetch_params, Engine::NetworkPhase::Authentication, response, nullptr, [fetch_params = NonnullRefPtr { fetch_params }, http_request, returned_pending_response, is_authentication_fetch, is_new_connection_fetch, include_credentials](NetworkResult action, RefPtr<Infrastructure::Response> continued_response) {
+                        if (action == NetworkResult::ProvideCredentials) {
                             fetch_params->discard_response_body(*continued_response);
                             auto pending_response = http_network_or_cache_fetch(*fetch_params, IsAuthenticationFetch::Yes);
                             pending_response->when_loaded([returned_pending_response](NonnullRefPtr<Infrastructure::Response> response) { returned_pending_response->resolve(response); });
-                        } else if (first_is_one_of(action, WebDriver::BiDi::NetworkContinuationAction::CancelAuthentication, WebDriver::BiDi::NetworkContinuationAction::Fail, WebDriver::BiDi::NetworkContinuationAction::ProvideResponse)) {
+                        } else if (first_is_one_of(action, NetworkResult::CancelAuthentication, NetworkResult::Fail, NetworkResult::ProvideResponse)) {
                             returned_pending_response->resolve(*continued_response);
                         } else {
-                            process_http_network_or_cache_response(*fetch_params, http_request, *continued_response, returned_pending_response, is_authentication_fetch, is_new_connection_fetch, include_credentials, action == WebDriver::BiDi::NetworkContinuationAction::RetryAuthentication ? AuthenticationHandled::No : AuthenticationHandled::Yes);
+                            process_http_network_or_cache_response(*fetch_params, http_request, *continued_response, returned_pending_response, is_authentication_fetch, is_new_connection_fetch, include_credentials, AuthenticationHandled::Yes);
                         }
-                    }));
-                    return;
-                }
-                WebDriver::BiDi::network_auth_required(fetch_params, *response);
+                });
+                return;
             }
 
             // FIXME: 2. Let username and password be the result of prompting the end user for a username and password,
@@ -2517,8 +2503,7 @@ static NonnullRefPtr<PendingResponse> continue_http_network_or_cache_fetch(Infra
     // AD-HOC: If the controller is already in the non-spec Stopped state, we should report the stop for this request and
     //         cancel the network request immediately.
     if (http_fetch_params->control_block().is_stopped()) {
-        if (WebDriver::BiDi::network_events_enabled())
-            WebDriver::BiDi::network_fetch_error(fetch_params, "Fetch was stopped"sv);
+        report_network_activity(fetch_params, nullptr, FetchNetworkActivity::Failed { "Fetch was stopped"_string });
         http_fetch_params->stop_body_transport();
     }
 
@@ -2565,17 +2550,11 @@ static NonnullRefPtr<PendingResponse> continue_http_network_or_cache_fetch(Infra
         // 11. Set response’s URL list to a clone of httpRequest’s URL list.
         response->set_url_list(http_request->url_list());
 
-        if (WebDriver::BiDi::network_events_enabled()) {
-            // NB: Instrumentation may have been enabled after httpRequest was cloned.
-            WebDriver::BiDi::initialize_network_request_with_its_navigable(*http_fetch_params);
-            auto intercepts = WebDriver::BiDi::get_network_intercepts(*http_fetch_params, "responseStarted"sv);
-            if (!response->is_network_error() && !intercepts.is_empty()) {
-                WebDriver::BiDi::block_network_request(*http_fetch_params, response, "responseStarted"_string, move(intercepts), WebDriver::BiDi::NetworkContinuation::create([fetch_params, http_request, returned_pending_response, is_authentication_fetch, is_new_connection_fetch, include_credentials](WebDriver::BiDi::NetworkContinuationAction, RefPtr<Infrastructure::Response> continued_response) {
-                    process_http_network_or_cache_response(*fetch_params, *http_request, *continued_response, returned_pending_response, is_authentication_fetch, is_new_connection_fetch, include_credentials);
-                }));
-                return;
-            }
-            WebDriver::BiDi::network_response_started(*http_fetch_params, *response);
+        if (!response->is_network_error() && should_intercept_network_phase(*http_fetch_params, Engine::NetworkPhase::ResponseHeaders, response.ptr())) {
+            reach_network_phase(*http_fetch_params, Engine::NetworkPhase::ResponseHeaders, response, nullptr, [fetch_params, http_request, returned_pending_response, is_authentication_fetch, is_new_connection_fetch, include_credentials](NetworkResult, RefPtr<Infrastructure::Response> continued_response) {
+                process_http_network_or_cache_response(*fetch_params, *http_request, *continued_response, returned_pending_response, is_authentication_fetch, is_new_connection_fetch, include_credentials);
+            });
+            return;
         }
         process_http_network_or_cache_response(*fetch_params, *http_request, *response, returned_pending_response, is_authentication_fetch, is_new_connection_fetch, include_credentials);
     });
@@ -2586,7 +2565,7 @@ static NonnullRefPtr<PendingResponse> continue_http_network_or_cache_fetch(Infra
 }
 
 // https://fetch.spec.whatwg.org/#concept-http-network-or-cache-fetch
-NonnullRefPtr<PendingResponse> http_network_or_cache_fetch(Infrastructure::FetchParams const& fetch_params, IsAuthenticationFetch is_authentication_fetch, IsNewConnectionFetch is_new_connection_fetch)
+static NonnullRefPtr<PendingResponse> http_network_or_cache_fetch_with_configuration(Infrastructure::FetchParams const& fetch_params, IsAuthenticationFetch is_authentication_fetch, IsNewConnectionFetch is_new_connection_fetch, Engine::ConfigureRequest const& configuration)
 {
     dbgln_if(WEB_FETCH_DEBUG, "Fetch: Running 'HTTP-network-or-cache fetch' with: fetch_params @ {}, is_authentication_fetch = {}, is_new_connection_fetch = {}",
         &fetch_params, is_authentication_fetch == IsAuthenticationFetch::Yes ? "Yes"sv : "No"sv, is_new_connection_fetch == IsNewConnectionFetch::Yes ? "Yes"sv : "No"sv);
@@ -2594,11 +2573,8 @@ NonnullRefPtr<PendingResponse> http_network_or_cache_fetch(Infrastructure::Fetch
     // 1. Let request be fetchParams’s request.
     auto request = fetch_params.request();
 
-    if (WebDriver::BiDi::network_events_enabled())
-        WebDriver::BiDi::initialize_network_request(fetch_params);
-
-    if (WebDriver::BiDi::network_configuration_enabled())
-        WebDriver::BiDi::apply_network_cache_behavior(fetch_params);
+    if (configuration.bypass_cache)
+        request->set_cache_mode(HTTP::CacheMode::NoStore);
 
     // 2. Let httpFetchParams be null.
     RefPtr<Infrastructure::FetchParams const> http_fetch_params;
@@ -2850,9 +2826,9 @@ NonnullRefPtr<PendingResponse> http_network_or_cache_fetch(Infrastructure::Fetch
         // NOTE: This intentionally does not depend on httpRequest’s credentials mode.
 
         // NB: Existing interception overrides still apply after subscriptions or intercepts are removed.
-        WebDriver::BiDi::apply_network_request_header_overrides(*http_fetch_params);
-        if (WebDriver::BiDi::network_configuration_enabled())
-            WebDriver::BiDi::apply_network_extra_headers(*http_fetch_params);
+        apply_request_header_overrides(*http_fetch_params);
+        for (auto const& header : configuration.extra_headers)
+            http_request->header_list()->set(header);
 
         // 23. Set httpCache to the result of determining the HTTP cache partition, given httpRequest.
         http_cache = determine_the_http_cache_partition(*http_request);
@@ -2895,25 +2871,39 @@ NonnullRefPtr<PendingResponse> http_network_or_cache_fetch(Infrastructure::Fetch
     if (aborted)
         return PendingResponse::create(fetch_params, Infrastructure::Response::appropriate_network_error(fetch_params));
 
-    if (WebDriver::BiDi::network_events_enabled()) {
-        auto intercepts = WebDriver::BiDi::get_network_intercepts(*http_fetch_params, "beforeRequestSent"sv);
-        if (!intercepts.is_empty()) {
-            auto returned_pending_response = PendingResponse::create(fetch_params);
-            WebDriver::BiDi::block_network_request(*http_fetch_params, nullptr, "beforeRequestSent"_string, move(intercepts), WebDriver::BiDi::NetworkContinuation::create([fetch_params = NonnullRefPtr { fetch_params }, http_fetch_params, response, stored_response, http_cache, is_authentication_fetch, is_new_connection_fetch, include_credentials, returned_pending_response](WebDriver::BiDi::NetworkContinuationAction action, RefPtr<Infrastructure::Response> continued_response) {
+    if (should_intercept_network_phase(*http_fetch_params, Engine::NetworkPhase::BeforeRequest)) {
+        auto returned_pending_response = PendingResponse::create(fetch_params);
+        reach_network_phase(*http_fetch_params, Engine::NetworkPhase::BeforeRequest, nullptr, request, [fetch_params = NonnullRefPtr { fetch_params }, http_fetch_params, response, stored_response, http_cache, is_authentication_fetch, is_new_connection_fetch, include_credentials, returned_pending_response](NetworkResult action, RefPtr<Infrastructure::Response> continued_response) {
                 // AD-HOC: The fetch can be canceled while its request is blocked.
                 if (fetch_params->is_canceled()) {
                     returned_pending_response->resolve(Infrastructure::Response::appropriate_network_error(*fetch_params));
                     return;
                 }
-                auto pending_response = continue_http_network_or_cache_fetch(*fetch_params, *http_fetch_params, action == WebDriver::BiDi::NetworkContinuationAction::Continue ? response : continued_response, stored_response, http_cache, is_authentication_fetch, is_new_connection_fetch, include_credentials);
+                auto pending_response = continue_http_network_or_cache_fetch(*fetch_params, *http_fetch_params, action == NetworkResult::Continue ? response : continued_response, stored_response, http_cache, is_authentication_fetch, is_new_connection_fetch, include_credentials);
                 pending_response->when_loaded([returned_pending_response](NonnullRefPtr<Infrastructure::Response> response) { returned_pending_response->resolve(response); });
-            }),
-                request);
-            return returned_pending_response;
-        }
-        WebDriver::BiDi::network_before_request_sent(*http_fetch_params);
+        });
+        return returned_pending_response;
     }
     return continue_http_network_or_cache_fetch(fetch_params, *http_fetch_params, response, stored_response, http_cache, is_authentication_fetch, is_new_connection_fetch, include_credentials);
+}
+
+NonnullRefPtr<PendingResponse> http_network_or_cache_fetch(Infrastructure::FetchParams const& fetch_params, IsAuthenticationFetch is_authentication_fetch, IsNewConnectionFetch is_new_connection_fetch)
+{
+    if (!should_intercept_network_phase(fetch_params, Engine::NetworkPhase::PrepareRequest))
+        return http_network_or_cache_fetch_with_configuration(fetch_params, is_authentication_fetch, is_new_connection_fetch, {});
+    auto pending = PendingResponse::create(fetch_params);
+    auto event = snapshot_network_activity(preflight_controller(fetch_params), *fetch_params.request(), *fetch_params.timing_info(), nullptr, FetchNetworkActivity::PhaseReached { Engine::NetworkPhase::PrepareRequest, {} });
+    fetch_params.engine_record()->reach_network_phase(move(event), [params = NonnullRefPtr { fetch_params }, pending, is_authentication_fetch, is_new_connection_fetch](Engine::NetworkDecision decision) {
+        if (decision.has<Engine::FailFetch>() || params->is_canceled()) {
+            pending->resolve(params->is_canceled() ? Infrastructure::Response::appropriate_network_error(*params) : Infrastructure::Response::network_error("Fetch was stopped"_string));
+            return;
+        }
+        Engine::ConfigureRequest configuration;
+        if (auto* configured = decision.get_pointer<Engine::ConfigureRequest>())
+            configuration = move(*configured);
+        http_network_or_cache_fetch_with_configuration(*params, is_authentication_fetch, is_new_connection_fetch, configuration)->when_loaded([pending](auto response) { pending->resolve(move(response)); });
+    });
+    return pending;
 }
 
 #if defined(WEB_FETCH_DEBUG)
@@ -3058,7 +3048,7 @@ GC::Ptr<Infrastructure::Body> adopt_navigation_response_body(JS::Realm& realm, I
     return create_body_view(realm, response);
 }
 
-static Engine::Event::NetworkActivity::RequestStarted network_request_started(LoadRequest const& load_request, Infrastructure::Request const& request)
+static Engine::Event::TransportActivity::RequestStarted network_request_started(LoadRequest const& load_request, Infrastructure::Request const& request)
 {
     Core::ImmutableBytes body;
     if (auto const* fetch_body = request.body().get_pointer<Infrastructure::FetchBody>(); fetch_body && fetch_body->source().has_value())
@@ -3168,7 +3158,7 @@ NonnullRefPtr<PendingResponse> nonstandard_resource_loader_file_or_http_network_
             return;
 
         if (network_transport) {
-            Engine::Event::NetworkActivity::ResponseHeaders headers {
+            Engine::Event::TransportActivity::ResponseHeaders headers {
                 .status_code = status_code.value_or(0),
                 .reason_phrase = reason_phrase,
                 .headers = response_headers.headers(),
@@ -3255,7 +3245,7 @@ NonnullRefPtr<PendingResponse> nonstandard_resource_loader_file_or_http_network_
             return;
 
         if (network_transport && control_block->is_ongoing() && engine_record->network_activity_observers().has_devtools_client()) {
-            Engine::Event::NetworkActivity::ResponseBodyBytes body_bytes { MUST(Core::ImmutableBytes::copy(data.bytes())) };
+            Engine::Event::TransportActivity::ResponseBodyBytes body_bytes { MUST(Core::ImmutableBytes::copy(data.bytes())) };
             engine_record->report_network_activity(network_transport->request_id(), move(body_bytes));
         }
 
@@ -3307,7 +3297,7 @@ NonnullRefPtr<PendingResponse> nonstandard_resource_loader_file_or_http_network_
                 return;
             }
 
-            Engine::Event::NetworkActivity::RequestFinished finished {
+            Engine::Event::TransportActivity::RequestFinished finished {
                 .total_size = network_request_end->total_size,
                 .timing_info = timing_info,
                 .network_error = network_request_end->network_error,
@@ -3482,11 +3472,11 @@ NonnullRefPtr<PendingResponse> cors_preflight_fetch(Infrastructure::FetchParams 
     preflight_response->when_loaded([request = fetch_params.request(), returned_pending_response, preflight_fetch_params](NonnullRefPtr<Infrastructure::Response> response) {
         dbgln_if(WEB_FETCH_DEBUG, "Fetch: Running 'CORS-preflight fetch' preflight_response load callback");
 
-        if (WebDriver::BiDi::network_events_enabled()) {
+        if (observes_network_activity(*preflight_fetch_params)) {
             if (response->is_network_error())
-                WebDriver::BiDi::network_fetch_error(*preflight_fetch_params, response->network_error_message().value_or("Preflight failed"_string));
+                report_network_activity(*preflight_fetch_params, nullptr, FetchNetworkActivity::Failed { response->network_error_message().value_or("Preflight failed"_string) });
             else
-                WebDriver::BiDi::network_response_completed(*preflight_fetch_params, *response, *preflight_fetch_params->timing_info());
+                report_network_activity(*preflight_fetch_params, response.ptr(), FetchNetworkActivity::ResponseCompleted {});
         }
 
         // NB: Only the preflight response's headers are read.

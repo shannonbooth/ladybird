@@ -16,7 +16,7 @@
 #include <LibWeb/Fetch/Infrastructure/HTTP/Bodies.h>
 #include <LibWeb/Fetch/Infrastructure/HTTP/Responses.h>
 #include <LibWeb/HighResolutionTime/TimeOrigin.h>
-#include <LibWeb/WebDriver/BiDi/Network.h>
+#include <LibWeb/Fetch/Fetching/NetworkActivity.h>
 
 namespace Web::Fetch::Fetching {
 
@@ -155,8 +155,8 @@ void NetworkBodyPump::handle_network_complete(Optional<i64> request_server_encod
 void NetworkBodyPump::handle_network_error(StringView error_message)
 {
     m_delivery_gate->detach_transport();
-    if (WebDriver::BiDi::network_events_enabled() && m_fetch_params)
-        WebDriver::BiDi::network_fetch_error(*m_fetch_params, error_message);
+    if (m_fetch_params && observes_network_activity(*m_fetch_params))
+        report_network_activity(*m_fetch_params, nullptr, FetchNetworkActivity::Failed { String::from_utf8_with_replacement_character(error_message) });
     abandon_cache_entry(HTTP::MemoryCache::StoredResponse::Keep);
     m_channel->error({ .message = MUST(ByteBuffer::copy(error_message.bytes())) });
 }

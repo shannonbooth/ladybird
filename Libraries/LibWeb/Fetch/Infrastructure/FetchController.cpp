@@ -19,8 +19,7 @@
 #include <LibWeb/HTML/StructuredSerialize.h>
 #include <LibWeb/Page/Page.h>
 #include <LibWeb/Page/RenderingStats.h>
-#include <LibWeb/WebDriver/BiDi/BiDi.h>
-#include <LibWeb/WebDriver/BiDi/Network.h>
+#include <LibWeb/Fetch/Fetching/FetchEventSink.h>
 #include <LibWeb/WebIDL/DOMException.h>
 
 namespace Web::Fetch::Infrastructure {
@@ -78,10 +77,10 @@ NonnullRefPtr<FetchParams> FetchController::create_fetch_params(NonnullRefPtr<Re
     VERIFY(!m_request);
     VERIFY(!m_network_observation);
 
+    m_network_activity_timing = timing_info;
     auto fetch_params = FetchParams::create(m_token, m_registry, m_control_block, request, move(timing_info), move(loader_config));
     m_algorithms = algorithms;
     m_control_block->set_body_intent({}, algorithms->body_intent());
-    m_original_fetch_params = fetch_params;
     m_network_observation = request->ensure_network_observation();
     m_request = move(request);
     return fetch_params;
@@ -93,26 +92,7 @@ void FetchController::retarget(TaskDestination task_destination, Engine::BodyInt
     m_control_block->set_body_intent({}, body_intent);
 }
 
-void FetchController::report_webdriver_bidi_fetch_error(StringView error_text) const
-{
-    if (!WebDriver::BiDi::network_events_enabled())
-        return;
-    if (auto fetch_params = m_original_fetch_params.strong_ref())
-        WebDriver::BiDi::network_fetch_error(*fetch_params, error_text);
-}
 
-void FetchController::cancel_webdriver_bidi_network_interception() const
-{
-    if (!WebDriver::BiDi::is_active())
-        return;
-    if (auto fetch_params = original_fetch_params())
-        WebDriver::BiDi::cancel_network_interception(*fetch_params);
-}
-
-RefPtr<FetchParams> FetchController::original_fetch_params() const
-{
-    return m_original_fetch_params.strong_ref();
-}
 
 NonnullRefPtr<Request> FetchController::request() const
 {
@@ -219,8 +199,7 @@ void FetchController::abort(JS::Realm& realm, Optional<JS::Value> error)
 {
     // 1. Set controller’s state to "aborted".
     m_control_block->set_state({}, State::Aborted);
-    report_webdriver_bidi_fetch_error("Fetch was aborted"sv);
-    cancel_webdriver_bidi_network_interception();
+    Fetching::FetchEventSink::report_fetch_error(*this, "Fetch was aborted"sv);
 
     // 2. Let fallbackError be an "AbortError" DOMException.
     auto fallback_error = WebIDL::AbortError::create("Fetch was aborted"_utf16);
@@ -248,8 +227,7 @@ void FetchController::terminate()
 {
     // To terminate a fetch controller controller, set controller’s state to "terminated".
     m_control_block->set_state({}, State::Terminated);
-    report_webdriver_bidi_fetch_error("Fetch was terminated"sv);
-    cancel_webdriver_bidi_network_interception();
+    Fetching::FetchEventSink::report_fetch_error(*this, "Fetch was terminated"sv);
 
     stop_request();
 }
@@ -279,8 +257,7 @@ void FetchController::stop_fetch()
         return;
 
     m_control_block->set_state({}, State::Stopped);
-    report_webdriver_bidi_fetch_error("Fetch was stopped"sv);
-    cancel_webdriver_bidi_network_interception();
+    Fetching::FetchEventSink::report_fetch_error(*this, "Fetch was stopped"sv);
 
     // AD-HOC: Some HTML elements need to stop an ongoing fetching process without causing any network error to be raised
     //         (which abort() and terminate() will both do). This is tricky because the fetch process runs across several

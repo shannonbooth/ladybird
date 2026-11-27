@@ -909,3 +909,97 @@ TEST_CASE(a_handover_while_main_fetch_waits_for_a_preload_dies)
 
     EXPECT_DEATH("Handing a response over while main fetch waits for a preload", record->main_fetch_hands_over(delivery()));
 }
+
+namespace {
+
+class NetworkPhaseSink final : public EngineEventSink {
+public:
+    virtual void handle_event(EngineEvent event) override
+    {
+        auto const& activity = event.get<Event::NetworkActivity>().get<Event::FetchNetworkActivity>();
+        point = activity.activity.get<Event::FetchNetworkActivity::PhaseReached>().interception;
+        ++events;
+    }
+    Optional<InterceptionPoint> point;
+    size_t events { 0 };
+};
+
+static Event::FetchNetworkActivity network_phase(NetworkPhase phase, u8 hop)
+{
+    return { {}, { .url = URL::Parser::basic_parse("https://example.com/"sv).release_value(), .method = "GET", .headers = {}, .body_size = {}, .destination = {}, .initiator_type = {}, .redirect_count = hop, .navigable_id = {}, .time_origin = {} },
+        Web::Fetch::Infrastructure::FetchTimingInfo::create(), {}, Event::FetchNetworkActivity::PhaseReached { phase, {} } };
+}
+
+}
+
+TEST_CASE(a_network_interception_waits_for_one_valid_answer_to_its_phase_and_hop)
+{
+    Vector<ByteString> faults;
+    FetchEngineRecords records { make<MisbehaviorRecordingAgent>(faults) };
+    auto observers = NetworkActivityObservers::create();
+    auto sink = make<NetworkPhaseSink>();
+    auto& observed = *sink;
+    FetchId fetch { 1 };
+    auto record = records.start(fetch, move(sink), observers);
+    size_t resumed = 0;
+    auto phase = NetworkPhase::ResponseHeaders;
+    observers->set_fetch_observation(true, 0);
+    record->reach_network_phase(network_phase(phase, 1), [&](NetworkDecision decision) {
+        EXPECT(decision.has<ContinueFetch>());
+        ++resumed;
+    });
+    EXPECT_EQ(resumed, 1u);
+    EXPECT(!observed.point.has_value());
+
+    observers->set_fetch_observation(true, 1u << to_underlying(phase));
+    record->reach_network_phase(network_phase(phase, 2), [&](NetworkDecision decision) {
+        EXPECT_EQ(decision.get<ModifyResponse>().status.value(), 204u);
+        ++resumed;
+    });
+    auto point = observed.point.value();
+    observers->set_fetch_observation(false, 0);
+    EXPECT_EQ(resumed, 1u);
+    records.resolve_network_interception({ FetchId { 2 }, point, ContinueFetch {} });
+    records.resolve_network_interception({ fetch, { point.sequence, phase, 1 }, ContinueFetch {} });
+    records.resolve_network_interception({ fetch, { point.sequence, NetworkPhase::Authentication, 2 }, ContinueFetch {} });
+    records.resolve_network_interception({ fetch, point, ModifyRequest {} });
+    ModifyResponse invalid;
+    invalid.status = 600;
+    records.resolve_network_interception({ fetch, point, move(invalid) });
+    EXPECT_EQ(faults.size(), 5u);
+    EXPECT_EQ(resumed, 1u);
+    ModifyResponse reply;
+    reply.status = 204;
+    records.resolve_network_interception({ fetch, point, move(reply) });
+    records.resolve_network_interception({ fetch, point, ContinueFetch {} });
+    EXPECT_EQ(faults.size(), 6u);
+    EXPECT_EQ(resumed, 2u);
+    EXPECT_EQ(observed.events, 2u);
+}
+
+TEST_CASE(stopping_a_network_interception_settles_it_before_an_in_flight_reply)
+{
+    Vector<ByteString> faults;
+    FetchEngineRecords records { make<MisbehaviorRecordingAgent>(faults) };
+    auto observers = NetworkActivityObservers::create();
+    auto phase = NetworkPhase::BeforeRequest;
+    observers->set_fetch_observation(true, 1u << to_underlying(phase));
+    auto sink = make<NetworkPhaseSink>();
+    auto& observed = *sink;
+    FetchId fetch { 1 };
+    auto record = records.start(fetch, move(sink), observers);
+    size_t failures = 0;
+    record->reach_network_phase(network_phase(phase, 0), [&](NetworkDecision decision) {
+        EXPECT(decision.has<FailFetch>());
+        ++failures;
+    });
+    auto point = observed.point.value();
+    records.stop(fetch);
+    records.stop(fetch);
+    records.resolve_network_interception({ fetch, point, ContinueFetch {} });
+    EXPECT(faults.is_empty());
+    EXPECT_EQ(failures, 1u);
+    records.resolve_network_interception({ fetch, point, ContinueFetch {} });
+    EXPECT_EQ(faults.size(), 1u);
+    EXPECT_EQ(failures, 1u);
+}

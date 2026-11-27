@@ -9,12 +9,15 @@
 #include <AK/Atomic.h>
 #include <AK/AtomicRefCounted.h>
 #include <AK/NonnullRefPtr.h>
+#include <LibWeb/Fetch/Engine/NetworkInterception.h>
 
 namespace Web::Fetch::Engine {
 
 // Which observers of network activity an agent has. The agent writes it, and its fetch engine reads it before it
 // copies a response's body bytes for them.
 class NetworkActivityObservers final : public AtomicRefCounted<NetworkActivityObservers> {
+    AK_ALLOC_WITH_KMALLOC;
+
 public:
     [[nodiscard]] static NonnullRefPtr<NetworkActivityObservers> create() { return adopt_ref(*new NetworkActivityObservers); }
 
@@ -27,7 +30,17 @@ public:
         VERIFY(previous_count > 0);
     }
 
+    bool observes_fetches() const { return m_observes_fetches.load(); }
+    bool can_intercept(NetworkPhase phase) const { return m_interception_phases.load() & (1u << to_underlying(phase)); }
+    void set_fetch_observation(bool observes, u8 interception_phases)
+    {
+        m_observes_fetches.store(observes);
+        m_interception_phases.store(interception_phases);
+    }
+
 private:
+    Atomic<bool> m_observes_fetches { false };
+    Atomic<u8> m_interception_phases { 0 };
     NetworkActivityObservers() = default;
 
     Atomic<size_t, AK::MemoryOrder::memory_order_relaxed> m_pages_with_devtools_client { 0 };

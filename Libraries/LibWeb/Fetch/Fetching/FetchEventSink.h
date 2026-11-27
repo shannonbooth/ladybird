@@ -23,6 +23,10 @@ class WEB_API FetchEventSink final : public Engine::EngineEventSink {
 public:
     explicit FetchEventSink(Infrastructure::FetchController const&);
 
+    static void receive_network_activity(Infrastructure::FetchController&, Engine::Event::NetworkActivity const&);
+    static void report_response_completed(Infrastructure::FetchController&, Infrastructure::Response const&, Infrastructure::FetchTimingInfo const&);
+    static void report_fetch_error(Infrastructure::FetchController&, StringView);
+
     virtual void handle_event(Engine::EngineEvent) override;
 
 private:
