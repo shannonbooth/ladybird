@@ -2394,7 +2394,7 @@ TEST_CASE(only_the_event_of_the_phase_a_late_session_blocks_at_reports_the_block
     harness.settle();
 }
 
-TEST_CASE(a_cors_preflight_reports_its_network_events_under_a_request_id_of_its_own)
+TEST_CASE(a_cors_preflight_reports_its_network_events_under_the_request_id_of_its_fetch)
 {
     Core::EventLoop event_loop;
     install_font_plugin();
@@ -2429,7 +2429,7 @@ TEST_CASE(a_cors_preflight_reports_its_network_events_under_a_request_id_of_its_
     VERIFY(events->request_ids.size() == 4);
     EXPECT_EQ(events->request_ids[1], events->request_ids[0]);
     EXPECT_EQ(events->request_ids[3], events->request_ids[2]);
-    EXPECT_NE(events->request_ids[2], events->request_ids[0]);
+    EXPECT_EQ(events->request_ids[2], events->request_ids[0]);
 }
 
 TEST_CASE(a_stop_of_a_fetch_whose_request_is_done_reports_nothing_to_webdriver_bidi)
